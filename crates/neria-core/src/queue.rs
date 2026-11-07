@@ -51,8 +51,9 @@ pub struct JobSnapshot {
     pub note: Option<String>,
     /// A Spotify track (the UI offers "pick another match").
     pub music: bool,
-    /// Spotify track whose audio matched Spotify's preview fingerprint.
-    pub verified: bool,
+    /// Spotify track audio check: Some(source) when it matched that preview,
+    /// Some("none") when no preview existed anywhere, None when not checked.
+    pub verified: Option<&'static str>,
 }
 
 impl JobSnapshot {
@@ -74,7 +75,7 @@ impl JobSnapshot {
             file: None,
             note: None,
             music: false,
-            verified: false,
+            verified: None,
         }
     }
 
@@ -487,12 +488,15 @@ impl Queue {
         child: &Mutex<Option<Child>>,
         mut result: anyhow::Result<bool>,
     ) -> anyhow::Result<bool> {
-        let preview = job
-            .track
-            .preview_url
-            .clone()
-            .or_else(|| crate::spotify::track_details(&job.track.id).ok().and_then(|t| t.preview_url));
-        let Some(preview) = preview else { return result }; // nothing to compare with
+        self.update(id, true, |s| {
+            s.state = JobState::Processing;
+            s.postprocessor = Some("Verifying".into());
+        });
+        let Some(reference) = fingerprint::reference_for(&job.track) else {
+            self.update(id, false, |s| s.verified = Some("none"));
+            return result; // no preview anywhere to compare with
+        };
+        let Ok(clip) = fingerprint::reference_fingerprint(&reference) else { return result };
         let picked_by_user = job.forced.is_some();
         let mut tried = vec![req.url.clone()];
         let mut best: Option<(f64, String)> = None;
@@ -520,7 +524,7 @@ impl Queue {
             });
             let sim = self
                 .current_file(id, job)
-                .and_then(|f| fingerprint::compare_with_preview(&preview, &f).ok())
+                .and_then(|f| fingerprint::compare_file(&clip, &f).ok())
                 .map(|a| a.similarity);
             let Some(sim) = sim else { return result }; // couldn't check: leave as is
             if best.as_ref().is_none_or(|(b, _)| sim > *b) {
@@ -529,13 +533,13 @@ impl Queue {
             match fingerprint::verdict(sim) {
                 fingerprint::Verdict::Same => {
                     self.update(id, false, |s| {
-                        s.verified = true;
+                        s.verified = Some(reference.source);
                         s.note = None; // the audio check beats any title-based doubt
                     });
                     return result;
                 }
                 fingerprint::Verdict::Unsure => {
-                    let note = "Close to Spotify's version, maybe another master or edit".to_string();
+                    let note = format!("Close to the {} preview, maybe another master or edit", reference.source);
                     self.update(id, false, |s| s.note = Some(note));
                     return result;
                 }
@@ -567,7 +571,7 @@ impl Queue {
                 None => best.as_ref().map(|(_, u)| u.clone()).filter(|u| *u != req.url),
             };
             let Some(url) = target else {
-                let note = format!("Doesn't sound like Spotify's version ({:.0}% similar). Pick another?", sim * 100.0);
+                let note = format!("Doesn't sound like the {} preview ({:.0}% similar). Pick another?", reference.source, sim * 100.0);
                 self.update(id, false, |s| s.note = Some(note));
                 return result;
             };
@@ -590,7 +594,7 @@ impl Queue {
             }
             if going_back {
                 let pct = best.as_ref().map_or(0.0, |(b, _)| b * 100.0);
-                let note = format!("Doesn't sound like Spotify's version ({pct:.0}% similar). Pick another?");
+                let note = format!("Doesn't sound like the {} preview ({pct:.0}% similar). Pick another?", reference.source);
                 self.update(id, false, |s| s.note = Some(note));
                 return result;
             }

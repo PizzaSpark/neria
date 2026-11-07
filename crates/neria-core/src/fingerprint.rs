@@ -10,7 +10,10 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use anyhow::{Context, Result, bail};
+use serde_json::Value;
 
+use crate::spotify::Track;
+use crate::ytmusic::{self, Candidate};
 use crate::{paths, proc, web};
 
 /// Seconds of audio per fingerprint item (Chromaprint default: 4096-sample
@@ -82,9 +85,9 @@ pub enum Verdict {
     Different,
 }
 
-/// Thresholds measured on real tracks (preview vs file):
+/// Thresholds measured on real tracks (reference preview vs file):
 /// same master 0.98, same recording edited (radio edit) 0.95, same recording
-/// other master/length 0.76, re-recording 0.58, different song 0.57.
+/// other master/length 0.76–0.88, re-recording 0.58–0.64, different song 0.57.
 pub fn verdict(similarity: f64) -> Verdict {
     if similarity >= SAME {
         Verdict::Same
@@ -95,13 +98,18 @@ pub fn verdict(similarity: f64) -> Verdict {
     }
 }
 
-pub const SAME: f64 = 0.70;
-pub const UNSURE: f64 = 0.62;
+pub const SAME: f64 = 0.72;
+pub const UNSURE: f64 = 0.66;
 
-/// Download (and cache) Spotify's preview MP3.
+/// Download (and cache) a preview clip.
 pub fn fetch_preview(url: &str) -> Result<PathBuf> {
-    let id = url.rsplit('/').next().unwrap_or("preview").split('?').next().unwrap_or("preview");
-    let path = paths::cache_dir().join(format!("preview-{}.mp3", crate::music::sanitize(id)));
+    // Key on the URL path: Deezer adds expiring tokens in the query string.
+    let key = url.split('?').next().unwrap_or(url);
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in key.bytes() {
+        hash = (hash ^ b as u64).wrapping_mul(0x100000001b3);
+    }
+    let path = paths::cache_dir().join(format!("preview-{hash:016x}.audio"));
     if !path.is_file() {
         let bytes = web::client()?.get(url).send()?.error_for_status()?.bytes()?;
         std::fs::write(&path, &bytes)?;
@@ -109,12 +117,103 @@ pub fn fetch_preview(url: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Compare a downloaded file with Spotify's preview.
-pub fn compare_with_preview(preview_url: &str, file: &Path) -> Result<Alignment> {
-    let preview = fetch_preview(preview_url)?;
-    let clip = fingerprint(preview.as_os_str())?;
+/// The 30 s clip we trust as "the right recording", and where it came from.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Reference {
+    pub url: String,
+    /// "Spotify", "Deezer" or "Apple Music".
+    pub source: &'static str,
+}
+
+/// Find a reference preview for a Spotify track: Spotify's own preview first,
+/// then Deezer (exact ISRC, else a strict title/artist/length match), then the
+/// iTunes Search API. All three are public preview clips meant for this.
+/// Fallback clips must match title, artist and length (±3 s) so a re-recording
+/// can't become the reference.
+pub fn reference_for(track: &Track) -> Option<Reference> {
+    let spotify = track
+        .preview_url
+        .clone()
+        .or_else(|| (!track.id.is_empty()).then(|| crate::spotify::track_details(&track.id).ok()).flatten().and_then(|t| t.preview_url));
+    if let Some(url) = spotify {
+        return Some(Reference { url, source: "Spotify" });
+    }
+    deezer_reference(track).or_else(|| itunes_reference(track))
+}
+
+/// A fallback result is only trusted if it's clearly the same release.
+fn trusted(track: &Track, title: &str, artist: &str, secs: f64) -> bool {
+    let c = Candidate { video_id: String::new(), title: title.into(), artists: artist.into(), album: None, duration: Some(secs), score: 0.0 };
+    (secs - track.duration_secs()).abs() <= 3.0 && ytmusic::score(track, &c).is_some_and(|s| s >= 0.85)
+}
+
+fn deezer_reference(track: &Track) -> Option<Reference> {
+    let get = |url: &str| web::get_text(url).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+    if let Some(isrc) = &track.isrc {
+        if let Some(t) = get(&format!("https://api.deezer.com/track/isrc:{}", web::encode(isrc))) {
+            if let Some(url) = t["preview"].as_str().filter(|u| !u.is_empty()) {
+                return Some(Reference { url: url.to_string(), source: "Deezer" });
+            }
+        }
+    }
+    let q = web::encode(&format!("{} {}", track.main_artist(), ytmusic::normalize_title(&track.title)));
+    let results = get(&format!("https://api.deezer.com/search/track?q={q}&limit=15"))?;
+    results["data"].as_array()?.iter().find_map(|t| {
+        let url = t["preview"].as_str().filter(|u| !u.is_empty())?;
+        let ok = trusted(track, t["title"].as_str()?, t["artist"]["name"].as_str()?, t["duration"].as_f64()?);
+        ok.then(|| Reference { url: url.to_string(), source: "Deezer" })
+    })
+}
+
+fn itunes_reference(track: &Track) -> Option<Reference> {
+    let term = web::encode(&format!("{} {}", track.main_artist(), ytmusic::normalize_title(&track.title)));
+    let text = web::get_text(&format!("https://itunes.apple.com/search?term={term}&entity=song&limit=15")).ok()?;
+    let v: Value = serde_json::from_str(&text).ok()?;
+    v["results"].as_array()?.iter().find_map(|t| {
+        let url = t["previewUrl"].as_str()?;
+        let secs = t["trackTimeMillis"].as_f64()? / 1000.0;
+        let ok = trusted(track, t["trackName"].as_str()?, t["artistName"].as_str()?, secs);
+        ok.then(|| Reference { url: url.to_string(), source: "Apple Music" })
+    })
+}
+
+/// Fingerprint of a reference clip (cached on disk).
+pub fn reference_fingerprint(r: &Reference) -> Result<Vec<u32>> {
+    let clip = fetch_preview(&r.url)?;
+    fingerprint(clip.as_os_str())
+}
+
+/// Compare a downloaded file with a reference clip.
+pub fn compare_file(reference: &[u32], file: &Path) -> Result<Alignment> {
     let song = fingerprint(file.as_os_str())?;
-    align(&clip, &song).context("audio too short to compare")
+    align(reference, &song).context("audio too short to compare")
+}
+
+/// Compare a YouTube Music result *before* the user picks it. YouTube refuses
+/// plain ffmpeg reads of its streams, so yt-dlp fetches the audio (a few MB,
+/// no conversion) into the cache; it's deleted after fingerprinting.
+pub fn compare_candidate(reference: &[u32], watch_url: &str) -> Result<Alignment> {
+    let dir = paths::cache_dir().join("check");
+    std::fs::create_dir_all(&dir)?;
+    let id = watch_url.rsplit("v=").next().unwrap_or("x").split('&').next().unwrap_or("x");
+    let stem = format!("cand-{}", crate::music::sanitize(id));
+    let status = proc::command(paths::tool("yt-dlp"))
+        .args(["--no-warnings", "--quiet", "--no-playlist", "--no-part", "--force-overwrites", "-f", "ba[ext=m4a]/ba/b"])
+        .arg("-P")
+        .arg(&dir)
+        .args(["-o", &format!("{stem}.%(ext)s"), "--", watch_url])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .context("failed to start yt-dlp")?;
+    let file = std::fs::read_dir(&dir)?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.file_stem().is_some_and(|s| s.to_string_lossy() == stem));
+    let Some(file) = file.filter(|_| status.success()) else { bail!("couldn't get that audio") };
+    let result = compare_file(reference, &file);
+    let _ = std::fs::remove_file(&file);
+    result
 }
 
 #[cfg(test)]

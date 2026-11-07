@@ -24,7 +24,8 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example clip -- <file> <start> <end> [fast|exact]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example compress -- <file> <mb|q0.0-1.0> [h264|hevc|av1] [cpu|gpu]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
-- `NERIA_HOME=target/debug cargo run -p neria-core --example verify -- <spotify track id> <file>...` (audio check scores)
+- `NERIA_HOME=target/debug cargo run -p neria-core --example verify -- <spotify track id> [--no-spotify] <file|youtube url>...`
+  (audio check scores; `--no-spotify` forces the Deezer/Apple fallback reference)
 
 Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_CLIP_IN` /
 `NERIA_CLIP_OUT`, `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`

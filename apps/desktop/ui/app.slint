@@ -8,6 +8,10 @@ export struct MatchItem {
     ruled-out: bool,
     current: bool,
     url: string,
+    // Sound check vs the reference preview:
+    // 0 not checked, 1 checking, 2 same recording, 3 unsure, 4 different, 5 failed
+    check-state: int,
+    check-text: string,
 }
 
 export struct SyncItem {
@@ -583,6 +587,8 @@ export component AppWindow inherits Window {
     callback match-use(int);
     callback match-search();
     callback match-open-url(string);
+    callback match-check(int);
+    in property <bool> match-can-check;
 
     callback sync-toggle(int, bool);
     callback sync-delete-selected();
@@ -2048,12 +2054,32 @@ export component AppWindow inherits Window {
                                         overflow: elide;
                                     }
                                 }
-                                Text {
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 3px;
                                     horizontal-stretch: 0;
-                                    text: item.current ? "Current" : item.ruled-out ? "length differs" : item.score + "% match";
-                                    color: item.current ? Theme.accent-hi : item.ruled-out ? Theme.muted : item.score >= 80 ? Theme.success : item.score >= 60 ? Theme.warn : Theme.muted;
-                                    font-size: 12px;
-                                    vertical-alignment: center;
+                                    Text {
+                                        text: item.current ? "Current" : item.ruled-out ? "length differs" : item.score + "% match";
+                                        color: item.current ? Theme.accent-hi : item.ruled-out ? Theme.muted : item.score >= 80 ? Theme.success : item.score >= 60 ? Theme.warn : Theme.muted;
+                                        font-size: 12px;
+                                        horizontal-alignment: right;
+                                    }
+                                    if item.check-state > 0: Text {
+                                        text: item.check-text;
+                                        color: item.check-state == 2 ? Theme.success : item.check-state == 4 ? Theme.danger : item.check-state == 3 ? Theme.warn : Theme.muted;
+                                        font-size: 12px;
+                                        font-weight: item.check-state == 2 ? 600 : 400;
+                                        horizontal-alignment: right;
+                                    }
+                                }
+                                if item.check-state == 0 && root.match-can-check: VerticalLayout {
+                                    alignment: center;
+                                    GhostButton {
+                                        height: 36px;
+                                        text: "Check";
+                                        icon: "\u{E8D6}";
+                                        clicked => { root.match-check(i); }
+                                    }
                                 }
                                 VerticalLayout {
                                     alignment: center;
@@ -2075,7 +2101,7 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                Hint { text: "\"Use this\" re-downloads the song from that result and replaces the file, keeping Spotify's tags, cover and lyrics. The arrow button opens it in your browser so you can listen first."; }
+                Hint { text: "\"Same recording\" means it sounds like the official preview. \"Use this\" re-downloads that result and replaces the file, keeping Spotify's tags, cover and lyrics. The arrow opens it in your browser."; }
             }
         }
     }

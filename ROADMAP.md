@@ -81,11 +81,22 @@ Done:
   copies of a version that already failed), then goes back to the closest and flags it
   "Doesn't sound like Spotify's version (58% similar). Pick another?". ~1 s per song
 
+- Reference preview fallbacks: Spotify's preview first, then Deezer's public API (exact ISRC,
+  else search), then Apple's iTunes Search API. A fallback clip is only trusted if its title,
+  artist and length (±3 s) match Spotify's, so a re-recording can't become the reference.
+  Rows say which preview they matched ("✓ matches the Deezer preview"); with none anywhere
+  they say "no preview to check against". Measured with Deezer as reference: original 0.88,
+  re-recording 0.64 (cut-offs now 0.72 same / 0.66 unsure)
+- Picker sound checks: when the dialog opens it finds the reference and checks the top 3
+  matches plus same-title versions ruled out by length (often the album version of the same
+  recording), in parallel; every other row has a "Check" button. YouTube refuses plain ffmpeg
+  reads, so yt-dlp fetches the candidate's audio to the cache (~10 s each, deleted after).
+  "✓ Same recording" rows float to the top. On Bonnie Tyler this surfaces the 6:58 album
+  original (76%) above the re-recordings
+
 Still to do:
-- Picker: run the audio check on a candidate before choosing it (would show e.g. that the
-  6:58 album version is the same recording as Spotify's 4:27 edit)
-- Risk: Spotify could drop previews from embeds (already gone from the Web API for new apps
-  since Nov 2024); the check then quietly skips
+- Faster candidate checks (yt-dlp start-up + YouTube's JS challenge dominate the ~10 s)
+- No-preview-anywhere path is written but not exercised on a real track
 - Own-key Web API path is written but untested (needs a real Client ID/secret)
 - Spotify playlists > 100 songs without a key: no workaround yet beyond the notice
 - Output note: source is YouTube Music (~128–160 kbps Opus/AAC); FLAC/WAV don't add quality

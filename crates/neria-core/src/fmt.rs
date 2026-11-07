@@ -38,7 +38,7 @@ pub fn postprocessor(name: &str) -> &'static str {
         "VideoRemuxer" | "VideoConvertor" => "Converting video…",
         "MoveFiles" => "Finishing up…",
         "Matching" => "Finding it on YouTube Music…",
-        "Verifying" => "Checking it against Spotify's preview…",
+        "Verifying" => "Checking the sound against the official preview…",
         "Retrying" => "Different recording, trying another version…",
         "Tagging" => "Adding cover, tags and lyrics…",
         _ => "Processing…",
@@ -90,10 +90,12 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
                 .and_then(|p| std::fs::metadata(p).ok())
                 .map(|m| bytes(m.len() as f64))
                 .unwrap_or_default();
-            if s.verified {
-                return (name, format!("✓ sounds like Spotify  ·  {size}"));
+            match s.verified {
+                Some("none") => (name, format!("no preview to check against  ·  {size}")),
+                Some("Spotify") => (name, format!("✓ sounds like Spotify  ·  {size}")),
+                Some(src) => (name, format!("✓ matches the {src} preview  ·  {size}")),
+                None => (name, size),
             }
-            (name, size)
         }
         JobState::Failed => (
             s.error.clone().unwrap_or_else(|| "Download failed".into()),
