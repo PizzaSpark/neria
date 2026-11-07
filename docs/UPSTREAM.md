@@ -14,6 +14,11 @@ After porting anything (or re-reviewing upstream), move the baseline forward and
 | spotDL | [spotDL/spotify-downloader](https://github.com/spotDL/spotify-downloader) | `master` | `58ced9af69dce17d33ff280bafbcc917a9dba0aa` | 2026-10-26 | v4.6.0 | MIT: code may be ported, with credit in the source |
 | Sunnify | [sunnypatell/sunnify-spotify-downloader](https://github.com/sunnypatell/sunnify-spotify-downloader) | `main` | `0138cbf107395057bac7e33d820a28837cbe8522` | 2026-11-02 | v2.6.0 | Custom educational-use: **ideas only, never copy code** |
 
+Why Sunnify is ideas-only: its LICENSE allows using and redistributing the software only
+"not modified or altered in any way", free of charge and with attribution, and it asks people
+to contact the author about modification. Porting its code into Neria would be a modification. If
+the author grants permission, record it here (date + link) and it can be ported like spotDL.
+
 ## What we take from each, and where it lives upstream
 
 ### spotDL (MIT)

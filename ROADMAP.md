@@ -25,10 +25,15 @@ Fast, portable, UX-first video/audio downloader. Rust + Slint, yt-dlp + ffmpeg (
   chosen quality; Exact adds `--force-keyframes-at-cuts` for frame-exact cuts
 - Polish still to do: waveform for links (needs the audio); live/very long streams untested
 
-## Phase 4: Compressor
-- Target-size presets (10 / 25 / 50 MB) with two-pass bitrate math
-- CRF mode, codec (H.264 / H.265 / AV1), resolution/fps caps
-- GPU encoder detection (NVENC / QSV / AMF)
+## Phase 4: Compressor ✅
+- Fit a size (10 MB Discord / 25 / 50 / 100 / custom) or pick a quality (slider → CRF/CQ/QP)
+- Auto resolution/fps from bits-per-pixel (e.g. 10 MB × 60 s → 720p30); manual caps; audio
+  bitrate or remove; stereo downmix
+- H.264 / H.265 / AV1; GPU encoders (NVENC / Quick Sync / AMF) detected by a real test encode,
+  CPU fallback with two-pass for x264/x265
+- Guaranteed fit: if the result overshoots, it re-encodes smaller (up to 3 tries)
+- Compress button on finished downloads
+- Polish still to do: before/after preview; batch compress; trim inside the compressor
 
 ## Phase 5: Spotify links (spotDL-style)
 Spotify audio itself is DRM-protected, so Neria does what spotDL does:

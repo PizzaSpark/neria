@@ -14,9 +14,23 @@ pub struct FileInfo {
     pub duration: f64,
     pub width: u32,
     pub height: u32,
+    /// Frames per second of the video stream (0 if unknown).
+    pub fps: f64,
+    pub video_codec: String,
+    pub size_bytes: u64,
     /// A real video stream (cover art doesn't count).
     pub has_video: bool,
     pub has_audio: bool,
+}
+
+fn parse_rate(s: &str) -> f64 {
+    match s.split_once('/') {
+        Some((n, d)) => {
+            let (n, d) = (n.parse::<f64>().unwrap_or(0.0), d.parse::<f64>().unwrap_or(0.0));
+            if d > 0.0 { n / d } else { 0.0 }
+        }
+        None => s.parse().unwrap_or(0.0),
+    }
 }
 
 pub fn file_info(path: &Path) -> Result<FileInfo> {
@@ -33,6 +47,7 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
     let v: Value = serde_json::from_slice(&out.stdout)?;
     let mut info = FileInfo {
         duration: v["format"]["duration"].as_str().and_then(|d| d.parse().ok()).unwrap_or(0.0),
+        size_bytes: std::fs::metadata(path).map(|m| m.len()).unwrap_or(0),
         ..Default::default()
     };
     for s in v["streams"].as_array().into_iter().flatten() {
@@ -41,6 +56,9 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
                 if !info.has_video {
                     info.width = s["width"].as_u64().unwrap_or(0) as u32;
                     info.height = s["height"].as_u64().unwrap_or(0) as u32;
+                    info.video_codec = s["codec_name"].as_str().unwrap_or("").to_string();
+                    let avg = parse_rate(s["avg_frame_rate"].as_str().unwrap_or(""));
+                    info.fps = if avg > 0.0 { avg } else { parse_rate(s["r_frame_rate"].as_str().unwrap_or("")) };
                 }
                 info.has_video = true;
             }

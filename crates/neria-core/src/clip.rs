@@ -44,6 +44,11 @@ pub fn output_path(req: &ClipRequest) -> PathBuf {
         _ => src_ext,
     };
     let base = format!("{stem} (clip {}-{})", stamp(req.start), stamp(req.end));
+    unique_path(&dir, &base, &ext)
+}
+
+/// `dir/base.ext`, or `dir/base (2).ext`, … if that already exists.
+pub fn unique_path(dir: &Path, base: &str, ext: &str) -> PathBuf {
     let mut out = dir.join(format!("{base}.{ext}"));
     let mut n = 2;
     while out.exists() {

@@ -8,7 +8,7 @@ Deno and libmpv, all auto-fetched into `bin/` next to the exe. Plan and status: 
   media info). Shared with the future Android app, so no UI or platform UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI (`ui/app.slint`), `main.rs` (download page), `clipper.rs` (clip page;
-  mpv renders into a GL texture shown as a Slint image).
+  mpv renders into a GL texture shown as a Slint image), `compressor.rs` (compress page).
 
 ## Commands
 ```bash
@@ -21,9 +21,12 @@ Rust isn't on PATH in fresh shells here: prefix with `$env:Path += ";$env:USERPR
 Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example smoke -- <url> [audio|video] [out] [start end [exact]]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example clip -- <file> <start> <end> [fast|exact]`
+- `NERIA_HOME=target/debug cargo run -p neria-core --example compress -- <file> <mb|q0.0-1.0> [h264|hevc|av1] [cpu|gpu]`
 
 Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_CLIP_IN` /
-`NERIA_CLIP_OUT`, `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_HOME` (override app dir).
+`NERIA_CLIP_OUT`, `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
+(auto-start it), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args
+for compression), `NERIA_HOME` (override app dir).
 The window can be captured even when covered with `PrintWindow(..., PW_RENDERFULLCONTENT)`.
 
 ## Rules

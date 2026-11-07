@@ -14,6 +14,7 @@ use neria_core::{fmt, probe, tools};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod clipper;
+mod compressor;
 
 slint::include_modules!();
 
@@ -162,6 +163,9 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             // Dev/automation hook: open a file straight into the clipper.
             if let Some(path) = std::env::var_os("NERIA_OPEN") {
                 ui.invoke_clip_open_path(path.to_string_lossy().as_ref().into());
+            }
+            if let Some(path) = std::env::var_os("NERIA_COMPRESS") {
+                ui.invoke_cmp_open_path(path.to_string_lossy().as_ref().into());
             }
         });
     });
@@ -394,6 +398,11 @@ fn main() -> anyhow::Result<()> {
         clipper::install(&ui, move |id| q1.file_of(id), move |req| {
             q2.add(req);
         })?
+    };
+
+    let _compressor = {
+        let queue = queue.clone();
+        compressor::install(&ui, move |id| queue.file_of(id))
     };
 
     start_setup(&ui, settings.clone());

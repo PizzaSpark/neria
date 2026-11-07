@@ -4,6 +4,7 @@
 //! front-end can share it.
 
 pub mod clip;
+pub mod compress;
 pub mod download;
 pub mod fmt;
 pub mod media;

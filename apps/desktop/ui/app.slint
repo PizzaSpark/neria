@@ -1,4 +1,4 @@
-import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView } from "std-widgets.slint";
+import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider } from "std-widgets.slint";
 
 export struct JobItem {
     id: int,
@@ -205,6 +205,7 @@ component JobRow inherits Rectangle {
     callback retry();
     callback open();
     callback open-clipper();
+    callback open-compressor();
 
     property <color> tone: root.job.state == 3 ? Theme.success : root.job.state == 4 ? Theme.danger : root.job.state == 5 ? Theme.muted : Theme.accent;
     property <string> glyph: root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? "\u{E73E}" : root.job.state == 4 ? "\u{E783}" : "\u{E711}";
@@ -289,6 +290,13 @@ component JobRow inherits Rectangle {
                 if root.job.state == 3: IconButton {
                     icon: "\u{E8C6}";
                     clicked => { root.open-clipper(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                if root.job.state == 3: IconButton {
+                    icon: "\u{E73F}";
+                    clicked => { root.open-compressor(); }
                 }
                 if root.job.state == 4 || root.job.state == 5: IconButton {
                     icon: "\u{E72C}";
@@ -588,6 +596,38 @@ export component AppWindow inherits Window {
     callback clip-open-path(string);
     callback clip-open-link(string, string); // url, title
     callback clip-paste-link();
+
+    // Compressor
+    in property <bool> cmp-loaded;
+    in property <string> cmp-name;
+    in property <string> cmp-info;
+    in property <image> cmp-thumb;
+    in-out property <int> cmp-mode;
+    in-out property <int> cmp-size-index;
+    in-out property <string> cmp-custom-mb: "8";
+    in-out property <float> cmp-quality: 0.6;
+    in-out property <int> cmp-codec;
+    in-out property <bool> cmp-use-gpu: true;
+    in property <bool> cmp-gpu-available;
+    in property <string> cmp-gpu-label: "Use GPU";
+    in-out property <int> cmp-res-index;
+    in-out property <int> cmp-fps-index;
+    in-out property <int> cmp-audio-index;
+    in property <string> cmp-estimate;
+    in property <bool> cmp-warning;
+    in property <bool> cmp-can-start;
+    in property <bool> cmp-running;
+    in property <float> cmp-progress;
+    in property <string> cmp-status;
+    in property <bool> cmp-has-output;
+
+    callback cmp-open();
+    callback cmp-open-path(string);
+    callback cmp-job(int);
+    callback cmp-options-changed();
+    callback cmp-start();
+    callback cmp-cancel();
+    callback cmp-show-output();
 
     function set-in() {
         root.clip-in = min(root.clip-position, root.clip-duration);
@@ -909,6 +949,7 @@ export component AppWindow inherits Window {
                             retry => { root.retry-job(job.id); }
                             open => { root.open-job(job.id); }
                             open-clipper => { root.clip-job(job.id); }
+                            open-compressor => { root.cmp-job(job.id); }
                         }
                     }
                 }
@@ -1223,27 +1264,350 @@ export component AppWindow inherits Window {
             }
 
             if root.page == 2: VerticalLayout {
-                alignment: center;
-                padding: 48px;
-                spacing: 12px;
-                Icon {
-                    text: "\u{E73F}";
-                    font-size: 44px;
-                    color: Theme.accent-hi;
+                padding: 28px;
+                spacing: 16px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: "Compress";
+                            color: Theme.text;
+                            font-size: 26px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Shrink a video to fit an upload limit, or just make it smaller.";
+                            color: Theme.muted;
+                            font-size: 13px;
+                            overflow: elide;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        GhostButton {
+                            text: "Open file…";
+                            icon: "\u{E8E5}";
+                            clicked => { root.cmp-open(); }
+                        }
+                    }
                 }
-                Text {
-                    text: "Compressor is coming";
-                    color: Theme.text;
-                    font-size: 22px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
+
+                if !root.cmp-loaded: Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: 14px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 12px;
+                        Icon {
+                            text: "\u{E73F}";
+                            font-size: 36px;
+                            color: Theme.accent-hi;
+                        }
+                        Text {
+                            text: "Open a video to compress";
+                            color: Theme.text;
+                            font-size: 15px;
+                            horizontal-alignment: center;
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            PrimaryButton {
+                                text: "Open file…";
+                                icon: "\u{E8E5}";
+                                clicked => { root.cmp-open(); }
+                            }
+                        }
+                        Text {
+                            text: "Tip: finished downloads have a compress button too.";
+                            color: Theme.muted;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                        }
+                    }
                 }
-                Text {
-                    text: "Shrink videos to fit Discord and friends: pick a target size, Neria works out the bitrate and uses your GPU encoder.";
-                    color: Theme.muted;
-                    font-size: 13px;
-                    wrap: word-wrap;
-                    horizontal-alignment: center;
+
+                // File card
+                if root.cmp-loaded: Rectangle {
+                    height: 100px;
+                    border-radius: 14px;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    HorizontalLayout {
+                        padding: 12px;
+                        spacing: 16px;
+                        Rectangle {
+                            width: 136px;
+                            border-radius: 8px;
+                            background: #000000;
+                            clip: true;
+                            Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: root.cmp-thumb;
+                                image-fit: cover;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: root.cmp-name;
+                                color: Theme.text;
+                                font-size: 15px;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: root.cmp-info;
+                                color: Theme.muted;
+                                font-size: 12px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+
+                // Options card
+                if root.cmp-loaded: Rectangle {
+                    border-radius: 14px;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 16px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                width: 90px;
+                                text: "Goal";
+                                color: Theme.muted;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "Fit a size";
+                                selected: root.cmp-mode == 0;
+                                clicked => { root.cmp-mode = 0; root.cmp-options-changed(); }
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "Pick a quality";
+                                selected: root.cmp-mode == 1;
+                                clicked => { root.cmp-mode = 1; root.cmp-options-changed(); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        if root.cmp-mode == 0: HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                width: 90px;
+                                text: "Size";
+                                color: Theme.muted;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "10 MB · Discord";
+                                selected: root.cmp-size-index == 0;
+                                clicked => { root.cmp-size-index = 0; root.cmp-options-changed(); }
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "25 MB";
+                                selected: root.cmp-size-index == 1;
+                                clicked => { root.cmp-size-index = 1; root.cmp-options-changed(); }
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "50 MB";
+                                selected: root.cmp-size-index == 2;
+                                clicked => { root.cmp-size-index = 2; root.cmp-options-changed(); }
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "100 MB";
+                                selected: root.cmp-size-index == 3;
+                                clicked => { root.cmp-size-index = 3; root.cmp-options-changed(); }
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "Custom";
+                                selected: root.cmp-size-index == 4;
+                                clicked => { root.cmp-size-index = 4; root.cmp-options-changed(); }
+                            }
+                            if root.cmp-size-index == 4: LineEdit {
+                                width: 90px;
+                                placeholder-text: "MB";
+                                text <=> root.cmp-custom-mb;
+                                edited => { root.cmp-options-changed(); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        if root.cmp-mode == 1: HorizontalLayout {
+                            spacing: 12px;
+                            Text {
+                                width: 90px;
+                                text: "Quality";
+                                color: Theme.muted;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "Smaller";
+                                color: Theme.muted;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
+                            Slider {
+                                horizontal-stretch: 1;
+                                minimum: 0;
+                                maximum: 1;
+                                value <=> root.cmp-quality;
+                                changed => { root.cmp-options-changed(); }
+                            }
+                            Text {
+                                text: "Better";
+                                color: Theme.muted;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                width: 90px;
+                                text: "Codec";
+                                color: Theme.muted;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "H.264 · plays everywhere";
+                                selected: root.cmp-codec == 0;
+                                clicked => { root.cmp-codec = 0; root.cmp-options-changed(); }
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "H.265 · smaller";
+                                selected: root.cmp-codec == 1;
+                                clicked => { root.cmp-codec = 1; root.cmp-options-changed(); }
+                            }
+                            Chip {
+                                horizontal-stretch: 0;
+                                text: "AV1 · smallest";
+                                selected: root.cmp-codec == 2;
+                                clicked => { root.cmp-codec = 2; root.cmp-options-changed(); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 10px;
+                            Text {
+                                width: 90px;
+                                text: "Output";
+                                color: Theme.muted;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            ComboBox {
+                                width: 150px;
+                                model: ["Auto resolution", "Original size", "Max 1080p", "Max 720p", "Max 480p"];
+                                current-index <=> root.cmp-res-index;
+                                selected => { root.cmp-options-changed(); }
+                            }
+                            ComboBox {
+                                width: 130px;
+                                model: ["Original fps", "Max 60 fps", "Max 30 fps"];
+                                current-index <=> root.cmp-fps-index;
+                                selected => { root.cmp-options-changed(); }
+                            }
+                            ComboBox {
+                                width: 140px;
+                                model: ["Audio 128 kbps", "Audio 96 kbps", "Audio 64 kbps", "No audio"];
+                                current-index <=> root.cmp-audio-index;
+                                selected => { root.cmp-options-changed(); }
+                            }
+                            CheckBox {
+                                text: root.cmp-gpu-label;
+                                enabled: root.cmp-gpu-available;
+                                checked <=> root.cmp-use-gpu;
+                                toggled => { root.cmp-options-changed(); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+                    }
+                }
+
+                if root.cmp-loaded: HorizontalLayout {
+                    spacing: 10px;
+                    Icon {
+                        horizontal-stretch: 0;
+                        text: root.cmp-warning ? "\u{E7BA}" : "\u{E946}";
+                        font-size: 14px;
+                        color: root.cmp-warning ? Theme.warn : Theme.accent-hi;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.cmp-estimate;
+                        color: root.cmp-warning ? Theme.warn : Theme.text;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if root.cmp-loaded: Rectangle { vertical-stretch: 1; }
+
+                if root.cmp-loaded && root.cmp-running: Bar {
+                    value: root.cmp-progress;
+                }
+
+                if root.cmp-loaded: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.cmp-status;
+                        color: Theme.muted;
+                        font-size: 13px;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                    if root.cmp-has-output && !root.cmp-running: GhostButton {
+                        horizontal-stretch: 0;
+                        text: "Show file";
+                        icon: "\u{E838}";
+                        clicked => { root.cmp-show-output(); }
+                    }
+                    PrimaryButton {
+                        horizontal-stretch: 0;
+                        text: root.cmp-running ? "Cancel  " + Math.round(root.cmp-progress * 100) + "%" : "Compress";
+                        icon: root.cmp-running ? "" : "\u{E73F}";
+                        enabled: root.cmp-running || root.cmp-can-start;
+                        clicked => {
+                            if root.cmp-running {
+                                root.cmp-cancel();
+                            } else {
+                                root.cmp-start();
+                            }
+                        }
+                    }
                 }
             }
         }
