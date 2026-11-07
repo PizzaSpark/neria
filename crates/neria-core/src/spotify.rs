@@ -93,6 +93,8 @@ pub struct Track {
     pub duration_ms: u64,
     pub cover_url: Option<String>,
     pub isrc: Option<String>,
+    /// Spotify's public 30 s preview MP3 (used to verify the YouTube Music match).
+    pub preview_url: Option<String>,
 }
 
 impl Track {
@@ -211,6 +213,10 @@ fn split_artists(s: &str) -> Vec<String> {
     s.split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect()
 }
 
+fn preview_of(v: &Value) -> Option<String> {
+    v.pointer("/audioPreview/url").and_then(Value::as_str).filter(|u| u.starts_with("https://")).map(str::to_string)
+}
+
 fn id_from_uri(uri: &str) -> String {
     uri.rsplit(':').next().unwrap_or("").to_string()
 }
@@ -233,6 +239,7 @@ fn parse_embed(link: &Link, e: &Value) -> Result<Collection> {
             release_date: date,
             duration_ms: e.get("duration").and_then(Value::as_u64).unwrap_or(0),
             cover_url: cover.clone(),
+            preview_url: preview_of(e),
             ..Default::default()
         };
         return Ok(Collection {
@@ -262,6 +269,7 @@ fn parse_embed(link: &Link, e: &Value) -> Result<Collection> {
                 title,
                 artists: str_of(t, "subtitle").map(|s| split_artists(&s)).unwrap_or_default(),
                 duration_ms: t.get("duration").and_then(Value::as_u64).unwrap_or(0),
+                preview_url: preview_of(t),
                 ..Default::default()
             };
             if link.kind == Kind::Album {
@@ -367,6 +375,7 @@ mod api {
             duration_ms: t["duration_ms"].as_u64().unwrap_or(0),
             cover_url: album.and_then(|a| largest_image(&a["images"])),
             isrc: t["external_ids"]["isrc"].as_str().map(str::to_string),
+            preview_url: t["preview_url"].as_str().map(str::to_string),
         })
     }
 
@@ -461,7 +470,8 @@ mod tests {
             "trackList": [
                 { "uri": "spotify:track:0dEIca2nhcxDUV8C5QkPYb", "title": "Give Life Back to Music", "subtitle": "Daft Punk", "duration": 275386 },
                 { "uri": "spotify:track:69kOkLUCkxIZYexIgSG8rq", "title": "Get Lucky (feat. Pharrell Williams and Nile Rodgers)",
-                  "subtitle": "Daft Punk,\u{a0}Pharrell Williams,\u{a0}Nile Rodgers", "duration": 369626 }
+                  "subtitle": "Daft Punk,\u{a0}Pharrell Williams,\u{a0}Nile Rodgers", "duration": 369626,
+                  "audioPreview": { "url": "https://p.scdn.co/mp3-preview/abc" } }
             ]
         });
         let link = Link { kind: Kind::Album, id: "4m2880jivSbbyEGAKfITCa".into() };
@@ -474,6 +484,8 @@ mod tests {
         assert_eq!(t.release_date.as_deref(), Some("2013-05-17"));
         assert_eq!(t.cover_url.as_deref(), Some("big"));
         assert_eq!(t.id, "69kOkLUCkxIZYexIgSG8rq");
+        assert_eq!(t.preview_url.as_deref(), Some("https://p.scdn.co/mp3-preview/abc"));
+        assert_eq!(c.tracks[0].preview_url, None);
         assert!(!c.truncated);
     }
 }

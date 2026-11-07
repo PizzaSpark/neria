@@ -6,6 +6,7 @@
 pub mod clip;
 pub mod compress;
 pub mod download;
+pub mod fingerprint;
 pub mod fmt;
 pub mod media;
 pub mod music;

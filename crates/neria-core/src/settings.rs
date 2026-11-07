@@ -63,6 +63,8 @@ pub struct Settings {
     pub last_update_check: u64,
     /// Spotify songs: fetch lyrics (embedded + .lrc next to the file).
     pub lyrics: bool,
+    /// Spotify songs: compare with Spotify's 30 s preview, retry other versions on mismatch.
+    pub verify_audio: bool,
     /// Optional: the user's own Spotify app (developer.spotify.com) for full playlists.
     pub spotify_client_id: String,
     pub spotify_client_secret: String,
@@ -91,6 +93,7 @@ impl Default for Settings {
             max_concurrent: 2,
             last_update_check: 0,
             lyrics: true,
+            verify_audio: true,
             spotify_client_id: String::new(),
             spotify_client_secret: String::new(),
         }

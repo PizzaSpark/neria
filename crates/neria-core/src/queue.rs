@@ -8,7 +8,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::download::{self, DlEvent, DownloadRequest};
-use crate::{music, proc};
+use crate::spotify::Track;
+use crate::ytmusic::Candidate;
+use crate::{fingerprint, music, proc};
 use crate::settings::Settings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,6 +49,10 @@ pub struct JobSnapshot {
     pub file: Option<PathBuf>,
     /// Shown on a finished row, e.g. a Spotify match worth double-checking.
     pub note: Option<String>,
+    /// A Spotify track (the UI offers "pick another match").
+    pub music: bool,
+    /// Spotify track whose audio matched Spotify's preview fingerprint.
+    pub verified: bool,
 }
 
 impl JobSnapshot {
@@ -67,6 +73,8 @@ impl JobSnapshot {
             error: None,
             file: None,
             note: None,
+            music: false,
+            verified: false,
         }
     }
 
@@ -115,6 +123,16 @@ struct Entry {
     req: DownloadRequest,
     cancel: Arc<AtomicBool>,
     child: Arc<Mutex<Option<Child>>>,
+    /// Spotify jobs: YouTube Music candidates (best first) and the URL used.
+    candidates: Vec<Candidate>,
+    chosen: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchInfo {
+    pub track: Track,
+    pub candidates: Vec<Candidate>,
+    pub chosen: Option<String>,
 }
 
 type Notify = Box<dyn Fn(JobSnapshot) + Send + Sync>;
@@ -160,16 +178,58 @@ impl Queue {
     fn add_to_group(&self, req: DownloadRequest, group: u64) -> u64 {
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let title = if req.title_hint.is_empty() { req.url.clone() } else { req.title_hint.clone() };
-        let snap = JobSnapshot::new(id, group, title);
+        let mut snap = JobSnapshot::new(id, group, title);
+        snap.music = req.music.is_some();
         (self.inner.notify)(snap.clone());
         self.inner.entries.lock().unwrap().push(Entry {
             snap,
             req,
             cancel: Arc::new(AtomicBool::new(false)),
             child: Arc::new(Mutex::new(None)),
+            candidates: Vec::new(),
+            chosen: None,
         });
         self.pump();
         id
+    }
+
+    /// For the "pick another match" dialog: the Spotify track, the candidates
+    /// found so far (may be empty, e.g. for "Already downloaded" rows) and the
+    /// URL currently used.
+    pub fn match_info(&self, id: u64) -> Option<MatchInfo> {
+        let entries = self.inner.entries.lock().unwrap();
+        let e = entries.iter().find(|e| e.snap.id == id)?;
+        let job = e.req.music.as_ref()?;
+        Some(MatchInfo { track: job.track.clone(), candidates: e.candidates.clone(), chosen: e.chosen.clone() })
+    }
+
+    /// Re-download a Spotify track from a URL the user picked, replacing the file.
+    pub fn rematch(&self, id: u64, url: String) -> bool {
+        {
+            let mut entries = self.inner.entries.lock().unwrap();
+            let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return false };
+            if e.snap.state.is_active() {
+                return false;
+            }
+            let Some(job) = e.req.music.as_mut() else { return false };
+            job.forced = Some(url.clone());
+            e.chosen = Some(url);
+            let (title, group) = (e.snap.title.clone(), e.snap.group);
+            e.snap = JobSnapshot::new(id, group, title);
+            e.snap.music = true;
+            e.cancel = Arc::new(AtomicBool::new(false));
+            (self.inner.notify)(e.snap.clone());
+        }
+        self.pump();
+        true
+    }
+
+    fn set_match(&self, id: u64, candidates: Vec<Candidate>, chosen: Option<String>) {
+        let mut entries = self.inner.entries.lock().unwrap();
+        if let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) {
+            e.candidates = candidates;
+            e.chosen = chosen;
+        }
     }
 
     pub fn cancel(&self, id: u64) {
@@ -197,8 +257,9 @@ impl Queue {
             if e.snap.state.is_active() || e.snap.state == JobState::Done {
                 return;
             }
-            let (title, group) = (e.snap.title.clone(), e.snap.group);
+            let (title, group, music) = (e.snap.title.clone(), e.snap.group, e.snap.music);
             e.snap = JobSnapshot::new(id, group, title);
+            e.snap.music = music;
             e.cancel = Arc::new(AtomicBool::new(false));
             (self.inner.notify)(e.snap.clone());
         }
@@ -277,8 +338,11 @@ impl Queue {
         cancel: Arc<AtomicBool>,
         child: Arc<Mutex<Option<Child>>>,
     ) {
-        // Spotify track: resume if already on disk, else find it on YouTube Music.
-        if let Some(job) = req.music.clone() {
+        // Spotify track picked by hand: download that URL, overwriting the old file.
+        if let Some(url) = req.music.as_ref().and_then(|m| m.forced.clone()) {
+            req.url = url;
+        } else if let Some(job) = req.music.clone() {
+            // Spotify track: resume if already on disk, else find it on YouTube Music.
             if let Some(existing) = music::existing_file(&job.dir, &job.stem) {
                 self.update(id, true, |s| {
                     s.state = JobState::Done;
@@ -293,8 +357,12 @@ impl Queue {
                 s.state = JobState::Processing;
                 s.postprocessor = Some("Matching".into());
             });
-            match music::find_match(&job) {
-                Ok(c) if !cancel.load(Ordering::SeqCst) => {
+            let found = music::find_match(&job);
+            if let Ok((all, best)) = &found {
+                self.set_match(id, all.clone(), best.as_ref().map(|c| c.url()));
+            }
+            match found {
+                Ok((_, Some(c))) if !cancel.load(Ordering::SeqCst) => {
                     req.url = c.url();
                     if c.score < music::CONFIDENT {
                         let note = format!("Check match: \"{}\" by {}", c.title, c.artists);
@@ -309,7 +377,10 @@ impl Queue {
                             s.state = JobState::Failed;
                             s.error = Some(e.to_string());
                         }
-                        Ok(_) => s.state = JobState::Cancelled,
+                        Ok(_) => {
+                            s.state = JobState::Failed;
+                            s.error = Some("No confident match on YouTube Music. Pick one yourself.".into());
+                        }
                     });
                     self.pump();
                     return;
@@ -317,22 +388,16 @@ impl Queue {
             }
         }
 
-        let mut last_emit = Instant::now() - Duration::from_secs(1);
-        let keep_title = req.music.is_some();
-        let result = download::run(&req, &settings, &child, &cancel, |ev| {
-            // Spotify jobs keep "Artist - Title" rather than the YouTube video title.
-            let ev = match ev {
-                DlEvent::Info { streams, .. } if keep_title => DlEvent::Info { title: String::new(), streams },
-                ev => ev,
-            };
-            // Progress lines arrive very fast; repaint at most ~10x per second.
-            let force = !matches!(ev, DlEvent::Progress { finished: false, .. });
-            let emit = force || last_emit.elapsed() >= Duration::from_millis(100);
-            if emit {
-                last_emit = Instant::now();
+        let mut result = self.download_once(id, &req, &settings, &cancel, &child);
+
+        // Spotify track: check it's the recording Spotify plays (30 s preview
+        // fingerprint). A different recording (re-recorded, live, cover…)
+        // triggers up to two other good candidates before we give up and flag it.
+        if let (Some(job), Ok(true)) = (req.music.clone(), &result) {
+            if job.verify && !cancel.load(Ordering::SeqCst) {
+                result = self.verify_and_retry(id, &mut req, &job, &settings, &cancel, &child, result);
             }
-            self.update(id, emit, |s| s.apply(ev));
-        });
+        }
 
         let cancelled = cancel.load(Ordering::SeqCst);
 
@@ -373,6 +438,170 @@ impl Queue {
             }
         });
         self.pump();
+    }
+
+    fn download_once(
+        &self,
+        id: u64,
+        req: &DownloadRequest,
+        settings: &Settings,
+        cancel: &AtomicBool,
+        child: &Mutex<Option<Child>>,
+    ) -> anyhow::Result<bool> {
+        let mut last_emit = Instant::now() - Duration::from_secs(1);
+        let keep_title = req.music.is_some();
+        download::run(req, settings, child, cancel, |ev| {
+            // Spotify jobs keep "Artist - Title" rather than the YouTube video title.
+            let ev = match ev {
+                DlEvent::Info { streams, .. } if keep_title => DlEvent::Info { title: String::new(), streams },
+                ev => ev,
+            };
+            // Progress lines arrive very fast; repaint at most ~10x per second.
+            let force = !matches!(ev, DlEvent::Progress { finished: false, .. });
+            let emit = force || last_emit.elapsed() >= Duration::from_millis(100);
+            if emit {
+                last_emit = Instant::now();
+            }
+            self.update(id, emit, |s| s.apply(ev));
+        })
+    }
+
+    fn current_file(&self, id: u64, job: &music::MusicJob) -> Option<PathBuf> {
+        let entries = self.inner.entries.lock().unwrap();
+        entries
+            .iter()
+            .find(|e| e.snap.id == id)
+            .and_then(|e| e.snap.file.clone())
+            .filter(|f| f.is_file())
+            .or_else(|| music::existing_file(&job.dir, &job.stem))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn verify_and_retry(
+        &self,
+        id: u64,
+        req: &mut DownloadRequest,
+        job: &music::MusicJob,
+        settings: &Settings,
+        cancel: &AtomicBool,
+        child: &Mutex<Option<Child>>,
+        mut result: anyhow::Result<bool>,
+    ) -> anyhow::Result<bool> {
+        let preview = job
+            .track
+            .preview_url
+            .clone()
+            .or_else(|| crate::spotify::track_details(&job.track.id).ok().and_then(|t| t.preview_url));
+        let Some(preview) = preview else { return result }; // nothing to compare with
+        let picked_by_user = job.forced.is_some();
+        let mut tried = vec![req.url.clone()];
+        let mut best: Option<(f64, String)> = None;
+        // (normalized title, duration) of versions that failed the check: the same
+        // re-recording often sits on several compilations, no point trying each.
+        let mut rejected: Vec<(String, Option<f64>)> = Vec::new();
+        let describe = |url: &str| -> Option<(String, Option<f64>)> {
+            let entries = self.inner.entries.lock().unwrap();
+            let e = entries.iter().find(|e| e.snap.id == id)?;
+            let c = e.candidates.iter().find(|c| c.url() == url)?;
+            Some((crate::ytmusic::normalize(&c.title), c.duration))
+        };
+        let same_version = |a: &(String, Option<f64>), b: &(String, Option<f64>)| {
+            a.0 == b.0
+                && match (a.1, b.1) {
+                    (Some(x), Some(y)) => (x - y).abs() <= 2.0,
+                    _ => true,
+                }
+        };
+
+        loop {
+            self.update(id, true, |s| {
+                s.state = JobState::Processing;
+                s.postprocessor = Some("Verifying".into());
+            });
+            let sim = self
+                .current_file(id, job)
+                .and_then(|f| fingerprint::compare_with_preview(&preview, &f).ok())
+                .map(|a| a.similarity);
+            let Some(sim) = sim else { return result }; // couldn't check: leave as is
+            if best.as_ref().is_none_or(|(b, _)| sim > *b) {
+                best = Some((sim, req.url.clone()));
+            }
+            match fingerprint::verdict(sim) {
+                fingerprint::Verdict::Same => {
+                    self.update(id, false, |s| {
+                        s.verified = true;
+                        s.note = None; // the audio check beats any title-based doubt
+                    });
+                    return result;
+                }
+                fingerprint::Verdict::Unsure => {
+                    let note = "Close to Spotify's version, maybe another master or edit".to_string();
+                    self.update(id, false, |s| s.note = Some(note));
+                    return result;
+                }
+                fingerprint::Verdict::Different => {}
+            }
+
+            // Different recording: try the next good candidate (unless the user chose this one).
+            if let Some(d) = describe(&req.url) {
+                rejected.push(d);
+            }
+            let next = if picked_by_user || tried.len() >= 3 {
+                None
+            } else {
+                let entries = self.inner.entries.lock().unwrap();
+                entries.iter().find(|e| e.snap.id == id).and_then(|e| {
+                    e.candidates
+                        .iter()
+                        .filter(|c| c.score >= crate::ytmusic::MIN_SCORE && !tried.contains(&c.url()))
+                        .find(|c| {
+                            let me = (crate::ytmusic::normalize(&c.title), c.duration);
+                            !rejected.iter().any(|r| same_version(r, &me))
+                        })
+                        .cloned()
+                })
+            };
+            let target = match next {
+                Some(c) => Some(c.url()),
+                // Out of options: go back to the closest one if we've moved off it.
+                None => best.as_ref().map(|(_, u)| u.clone()).filter(|u| *u != req.url),
+            };
+            let Some(url) = target else {
+                let note = format!("Doesn't sound like Spotify's version ({:.0}% similar). Pick another?", sim * 100.0);
+                self.update(id, false, |s| s.note = Some(note));
+                return result;
+            };
+            let going_back = !tried.iter().all(|t| *t != url);
+            tried.push(url.clone());
+            req.url = url.clone();
+            if let Some(m) = req.music.as_mut() {
+                m.forced = Some(url.clone()); // overwrite the file we just checked
+            }
+            self.set_chosen(id, url);
+            self.update(id, true, |s| {
+                s.state = JobState::Processing;
+                s.postprocessor = Some("Retrying".into());
+                s.stage = 0;
+                s.progress = 0.0;
+            });
+            result = self.download_once(id, req, settings, cancel, child);
+            if !matches!(result, Ok(true)) || cancel.load(Ordering::SeqCst) {
+                return result;
+            }
+            if going_back {
+                let pct = best.as_ref().map_or(0.0, |(b, _)| b * 100.0);
+                let note = format!("Doesn't sound like Spotify's version ({pct:.0}% similar). Pick another?");
+                self.update(id, false, |s| s.note = Some(note));
+                return result;
+            }
+        }
+    }
+
+    fn set_chosen(&self, id: u64, url: String) {
+        let mut entries = self.inner.entries.lock().unwrap();
+        if let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) {
+            e.chosen = Some(url);
+        }
     }
 
     fn update(&self, id: u64, emit: bool, f: impl FnOnce(&mut JobSnapshot)) {

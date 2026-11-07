@@ -222,7 +222,22 @@ pub fn score(track: &Track, cand: &Candidate) -> Option<f64> {
     Some(s.clamp(0.0, 1.0))
 }
 
-/// Candidates for a track, best first (scored; unusable ones dropped).
+/// Score search results against a track and sort best first. Results the
+/// duration rules out stay in the list with score 0 (the picker still shows them).
+pub fn rank(track: &Track, found: Vec<Candidate>) -> Vec<Candidate> {
+    let mut out: Vec<Candidate> = Vec::new();
+    for mut c in found {
+        if out.iter().any(|x| x.video_id == c.video_id) {
+            continue;
+        }
+        c.score = score(track, &c).unwrap_or(0.0);
+        out.push(c);
+    }
+    out.sort_by(|a, b| b.score.total_cmp(&a.score));
+    out
+}
+
+/// Candidates for a track, best first (scored; ruled-out ones kept with score 0).
 pub fn candidates(track: &Track) -> Result<Vec<Candidate>> {
     let mut queries = Vec::new();
     if let Some(isrc) = &track.isrc {
@@ -230,34 +245,25 @@ pub fn candidates(track: &Track) -> Result<Vec<Candidate>> {
     }
     queries.push(format!("{} {}", track.main_artist(), track.title));
 
-    let mut all: Vec<Candidate> = Vec::new();
+    let mut found: Vec<Candidate> = Vec::new();
     let mut last_err = None;
     for q in &queries {
         match search_songs(q) {
-            Ok(found) => {
-                for mut c in found {
-                    if all.iter().any(|x| x.video_id == c.video_id) {
-                        continue;
-                    }
-                    if let Some(s) = score(track, &c) {
-                        c.score = s;
-                        all.push(c);
-                    }
-                }
-                if all.iter().any(|c| c.score >= 0.9) {
+            Ok(more) => {
+                found.extend(more);
+                if rank(track, found.clone()).first().is_some_and(|c| c.score >= 0.9) {
                     break;
                 }
             }
             Err(e) => last_err = Some(e),
         }
     }
-    if all.is_empty() {
+    if found.is_empty() {
         if let Some(e) = last_err {
             return Err(e);
         }
     }
-    all.sort_by(|a, b| b.score.total_cmp(&a.score));
-    Ok(all)
+    Ok(rank(track, found))
 }
 
 /// The best candidate, if it's good enough to download without asking.

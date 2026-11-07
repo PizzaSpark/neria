@@ -1,5 +1,15 @@
 import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider } from "std-widgets.slint";
 
+export struct MatchItem {
+    title: string,
+    detail: string,
+    // 0..100; 0 with ruled-out = length too different
+    score: int,
+    ruled-out: bool,
+    current: bool,
+    url: string,
+}
+
 export struct SyncItem {
     title: string,
     file: string,
@@ -17,6 +27,8 @@ export struct JobItem {
     stats: string,
     // Finished, but worth a look (e.g. uncertain Spotify match).
     warn: bool,
+    // Spotify track: offers "pick another match".
+    music: bool,
 }
 
 global Theme {
@@ -215,6 +227,7 @@ component JobRow inherits Rectangle {
     callback open();
     callback open-clipper();
     callback open-compressor();
+    callback pick-match();
 
     property <color> tone: root.job.state == 3 ? Theme.success : root.job.state == 4 ? Theme.danger : root.job.state == 5 ? Theme.muted : Theme.accent;
     property <string> glyph: root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? "\u{E73E}" : root.job.state == 4 ? "\u{E783}" : "\u{E711}";
@@ -310,6 +323,14 @@ component JobRow inherits Rectangle {
                 if root.job.state == 4 || root.job.state == 5: IconButton {
                     icon: "\u{E72C}";
                     clicked => { root.retry(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                if root.job.music && (root.job.state == 3 || root.job.state == 4): IconButton {
+                    icon: "\u{E8AB}";
+                    tint: root.job.warn || root.job.state == 4 ? Theme.warn : Theme.muted;
+                    clicked => { root.pick-match(); }
                 }
             }
             VerticalLayout {
@@ -547,8 +568,22 @@ export component AppWindow inherits Window {
     in property <[SyncItem]> sync-items;
     in-out property <bool> sync-open;
     in-out property <bool> lyrics: true;
+    in-out property <bool> verify-audio: true;
     in-out property <string> spotify-client-id;
     in-out property <string> spotify-client-secret;
+    // "Pick another match" dialog for a Spotify track
+    in-out property <bool> match-open;
+    in property <string> match-heading;
+    in property <string> match-sub;
+    in property <[MatchItem]> match-items;
+    in property <bool> match-loading;
+    in property <string> match-status;
+    in-out property <string> match-query;
+    callback match-pick(int);
+    callback match-use(int);
+    callback match-search();
+    callback match-open-url(string);
+
     callback sync-toggle(int, bool);
     callback sync-delete-selected();
     callback sync-keep-all();
@@ -999,6 +1034,7 @@ export component AppWindow inherits Window {
                             open => { root.open-job(job.id); }
                             open-clipper => { root.clip-job(job.id); }
                             open-compressor => { root.cmp-job(job.id); }
+                            pick-match => { root.match-pick(job.id); }
                         }
                     }
                 }
@@ -1863,6 +1899,12 @@ export component AppWindow inherits Window {
                                 checked <=> root.lyrics;
                                 toggled => { root.settings-changed(); }
                             }
+                            CheckBox {
+                                text: "Check each song against Spotify's 30 s preview";
+                                checked <=> root.verify-audio;
+                                toggled => { root.settings-changed(); }
+                            }
+                            Hint { text: "Catches re-recordings, live and cover versions by their sound, and tries other versions automatically. Adds about a second per song."; }
                             Hint { text: "Optional: your own Spotify app (developer.spotify.com → Create app) unlocks playlists over 100 songs. Never shared, stored only in settings.json next to Neria."; }
                             LineEdit {
                                 placeholder-text: "Client ID";
@@ -1895,6 +1937,145 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // ───────────── Pick another match ─────────────
+    if root.match-open: Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: #000000b0;
+        TouchArea {
+            clicked => { root.match-open = false; }
+        }
+
+        Rectangle {
+            width: min(680px, root.width - 80px);
+            height: min(620px, root.height - 60px);
+            border-radius: 16px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+            TouchArea { }
+
+            VerticalLayout {
+                padding: 22px;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: "Pick the right song";
+                            color: Theme.text;
+                            font-size: 18px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: root.match-heading;
+                            color: Theme.muted;
+                            font-size: 13px;
+                            overflow: elide;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        IconButton {
+                            icon: "\u{E711}";
+                            clicked => { root.match-open = false; }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        height: 40px;
+                        placeholder-text: "Search YouTube Music";
+                        text <=> root.match-query;
+                        accepted => { root.match-search(); }
+                    }
+                    GhostButton {
+                        horizontal-stretch: 0;
+                        height: 40px;
+                        text: "Search";
+                        icon: "\u{E721}";
+                        clicked => { root.match-search(); }
+                    }
+                }
+
+                Text {
+                    text: root.match-loading ? "Searching YouTube Music…" : root.match-status != "" ? root.match-status : root.match-sub;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+
+                ListView {
+                    vertical-stretch: 1;
+                    for item[i] in root.match-items: VerticalLayout {
+                        padding-bottom: 6px;
+                        Rectangle {
+                            height: 64px;
+                            border-radius: 10px;
+                            background: item.current ? Theme.accent.with-alpha(0.12) : Theme.surface-hi;
+                            border-width: item.current ? 1px : 0px;
+                            border-color: Theme.accent;
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 8px;
+                                spacing: 10px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    Text {
+                                        text: item.title;
+                                        color: Theme.text;
+                                        font-size: 14px;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: item.detail;
+                                        color: Theme.muted;
+                                        font-size: 12px;
+                                        overflow: elide;
+                                    }
+                                }
+                                Text {
+                                    horizontal-stretch: 0;
+                                    text: item.current ? "Current" : item.ruled-out ? "length differs" : item.score + "% match";
+                                    color: item.current ? Theme.accent-hi : item.ruled-out ? Theme.muted : item.score >= 80 ? Theme.success : item.score >= 60 ? Theme.warn : Theme.muted;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    IconButton {
+                                        icon: "\u{E8A7}";
+                                        clicked => { root.match-open-url(item.url); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    GhostButton {
+                                        height: 36px;
+                                        text: "Use this";
+                                        clicked => { root.match-use(i); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Hint { text: "\"Use this\" re-downloads the song from that result and replaces the file, keeping Spotify's tags, cover and lyrics. The arrow button opens it in your browser so you can listen first."; }
             }
         }
     }

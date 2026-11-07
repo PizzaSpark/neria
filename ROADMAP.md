@@ -65,8 +65,27 @@ Done:
   Spotify list show a "Review N removed" dialog, all unticked by default, ticked ones go to
   the Recycle Bin (only for complete lists, never for truncated ones)
 
+- "Pick another match" (swap button on Spotify rows, amber when flagged or failed): lists the
+  YouTube Music candidates with album, length difference and match %, marks the current one,
+  free-text search, open-in-browser to listen, and "Use this" re-downloads in place
+  (`--force-overwrites`) keeping Spotify's tags, cover and lyrics. Songs with no confident match
+  now fail with "Pick one yourself" instead of silently skipping
+
+- Audio check (`fingerprint.rs`, on by default, Settings → Spotify links): after each
+  download, Spotify's public 30 s preview (`audioPreview.url` in the embed data) and the file
+  are fingerprinted with ffmpeg's Chromaprint muxer; the preview is slid along the song for
+  the best bit agreement. Measured: same master 0.98, same recording edited 0.95, same
+  recording other master/length 0.76, re-recording 0.58, different song 0.57. Verdicts:
+  ≥ 0.70 "✓ sounds like Spotify", 0.62–0.70 "close, maybe another master", below that a
+  different recording → automatically tries up to two other good candidates (skipping other
+  copies of a version that already failed), then goes back to the closest and flags it
+  "Doesn't sound like Spotify's version (58% similar). Pick another?". ~1 s per song
+
 Still to do:
-- "Wrong match? pick another" on a finished/flagged row: show the other candidates, re-download
+- Picker: run the audio check on a candidate before choosing it (would show e.g. that the
+  6:58 album version is the same recording as Spotify's 4:27 edit)
+- Risk: Spotify could drop previews from embeds (already gone from the Web API for new apps
+  since Nov 2024); the check then quietly skips
 - Own-key Web API path is written but untested (needs a real Client ID/secret)
 - Spotify playlists > 100 songs without a key: no workaround yet beyond the notice
 - Output note: source is YouTube Music (~128–160 kbps Opus/AAC); FLAC/WAV don't add quality

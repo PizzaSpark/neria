@@ -15,6 +15,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod clipper;
 mod compressor;
+mod match_ui;
 mod spotify_ui;
 
 slint::include_modules!();
@@ -48,6 +49,7 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_extra_args(s.extra_args.as_str().into());
     ui.set_max_concurrent(s.max_concurrent as i32);
     ui.set_lyrics(s.lyrics);
+    ui.set_verify_audio(s.verify_audio);
     ui.set_spotify_client_id(s.spotify_client_id.as_str().into());
     ui.set_spotify_client_secret(s.spotify_client_secret.as_str().into());
 }
@@ -69,6 +71,7 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.extra_args = ui.get_extra_args().to_string();
     s.max_concurrent = ui.get_max_concurrent().clamp(1, 8) as u32;
     s.lyrics = ui.get_lyrics();
+    s.verify_audio = ui.get_verify_audio();
     s.spotify_client_id = ui.get_spotify_client_id().trim().to_string();
     s.spotify_client_secret = ui.get_spotify_client_secret().trim().to_string();
 }
@@ -91,6 +94,7 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         status: status.into(),
         stats: stats.into(),
         warn: s.note.is_some(),
+        music: s.music,
     }
 }
 
@@ -99,6 +103,16 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
     let model = ui.get_jobs();
     let Some(vec) = model.as_any().downcast_ref::<VecModel<JobItem>>() else { return };
     let item = job_item(snap);
+    // Dev hook for scripted checks: open "pick another match" on the first flagged song.
+    static PICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if item.warn && item.state == 3 && std::env::var_os("NERIA_MATCH_PICK").is_some() && !PICKED.swap(true, Ordering::SeqCst) {
+        let (weak, id) = (ui.as_weak(), item.id);
+        slint::Timer::single_shot(Duration::from_millis(300), move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.invoke_match_pick(id);
+            }
+        });
+    }
     match vec.iter().position(|j| j.id == item.id) {
         Some(i) => vec.set_row_data(i, item),
         // New jobs go on top, except album/playlist tracks, which follow the
@@ -329,6 +343,7 @@ fn main() -> anyhow::Result<()> {
         spotify: Arc::new(Mutex::new(None)),
     });
     spotify_ui::install_sync_review(&ui);
+    match_ui::install(&ui, queue.clone());
 
     ui.on_url_edited({
         let weak = ui.as_weak();

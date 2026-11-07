@@ -25,6 +25,11 @@ pub struct MusicJob {
     pub dir: PathBuf,
     pub stem: String,
     pub lyrics: bool,
+    /// The user picked this YouTube Music URL ("pick another match"):
+    /// skip matching and overwrite the existing file.
+    pub forced: Option<String>,
+    /// Check the download against Spotify's 30 s preview (and retry on mismatch).
+    pub verify: bool,
 }
 
 /// Remove characters Windows forbids in file names and tidy the result.
@@ -65,11 +70,11 @@ pub fn existing_file(dir: &Path, stem: &str) -> Option<PathBuf> {
     AUDIO_EXTS.iter().map(|e| dir.join(format!("{stem}.{e}"))).find(|p| p.is_file())
 }
 
-pub fn find_match(job: &MusicJob) -> Result<Candidate> {
-    match ytmusic::best_match(&job.track)? {
-        Some(c) => Ok(c),
-        None => bail!("No confident match on YouTube Music"),
-    }
+/// All candidates (best first) and the one to download, if any is good enough.
+pub fn find_match(job: &MusicJob) -> Result<(Vec<Candidate>, Option<Candidate>)> {
+    let all = ytmusic::candidates(&job.track)?;
+    let best = all.first().filter(|c| c.score >= ytmusic::MIN_SCORE).cloned();
+    Ok((all, best))
 }
 
 // ───────────── Lyrics (LRCLIB) ─────────────
@@ -215,7 +220,14 @@ pub fn prepare(col: &Collection, settings: &crate::settings::Settings) -> Result
     let jobs: Vec<MusicJob> = col
         .tracks
         .iter()
-        .map(|t| MusicJob { track: t.clone(), dir: dir.clone(), stem: file_stem(t, col.kind), lyrics: settings.lyrics })
+        .map(|t| MusicJob {
+            track: t.clone(),
+            dir: dir.clone(),
+            stem: file_stem(t, col.kind),
+            lyrics: settings.lyrics,
+            forced: None,
+            verify: settings.verify_audio,
+        })
         .collect();
 
     if col.kind != Kind::Track {

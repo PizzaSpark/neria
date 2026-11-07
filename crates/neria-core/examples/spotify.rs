@@ -1,5 +1,8 @@
 //! Spotify end-to-end check without the UI:
-//! `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only]`
+//! `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
+//!
+//! `--rematch`: after downloading, re-download the first song from its 2nd-best
+//! candidate (exercises "pick another match").
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -65,12 +68,35 @@ fn main() -> anyhow::Result<()> {
         queue.add(DownloadRequest::music(j));
     }
     let mut finished = std::collections::HashSet::new();
+    let mut first_id = None;
     while finished.len() < n {
         let s = rx.recv_timeout(Duration::from_secs(300))?;
+        first_id = first_id.or(Some(s.id));
         if !s.state.is_active() && finished.insert(s.id) {
             let (status, stats) = fmt::job_lines(&s);
             println!("[{:?}] {} :: {status} {stats} {}", s.state, s.title, s.error.clone().unwrap_or_default());
         }
+    }
+
+    if args.iter().any(|a| a == "--rematch") {
+        let id = first_id.expect("a job");
+        let info = queue.match_info(id).expect("music job");
+        let alt = match info.candidates.get(1) {
+            Some(c) => c.clone(),
+            None => ytmusic::candidates(&info.track)?.get(1).cloned().expect("a 2nd candidate"),
+        };
+        println!("rematch -> {} | {} | {:?}", alt.title, alt.album.clone().unwrap_or_default(), alt.duration);
+        assert!(queue.rematch(id, alt.url()));
+        loop {
+            let s = rx.recv_timeout(Duration::from_secs(300))?;
+            if s.id == id && !s.state.is_active() {
+                let (status, stats) = fmt::job_lines(&s);
+                println!("[{:?}] {} :: {status} {stats} {}", s.state, s.title, s.error.clone().unwrap_or_default());
+                break;
+            }
+        }
+        let after = queue.match_info(id).unwrap();
+        println!("chosen now: {:?}", after.chosen);
     }
     Ok(())
 }

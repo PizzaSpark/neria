@@ -90,6 +90,10 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
         None => template,
     };
     push(&["-o", &template]);
+    if req.music.as_ref().is_some_and(|m| m.forced.is_some()) {
+        // Replacing a wrong match: same file name, so overwrite it.
+        push(&["--force-overwrites"]);
+    }
     if let Some((a, b)) = req.section {
         // Same range again (e.g. switching Fast -> Exact) must redo it, not
         // report the earlier file as "already downloaded".

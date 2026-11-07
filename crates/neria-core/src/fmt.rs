@@ -38,6 +38,8 @@ pub fn postprocessor(name: &str) -> &'static str {
         "VideoRemuxer" | "VideoConvertor" => "Converting video…",
         "MoveFiles" => "Finishing up…",
         "Matching" => "Finding it on YouTube Music…",
+        "Verifying" => "Checking it against Spotify's preview…",
+        "Retrying" => "Different recording, trying another version…",
         "Tagging" => "Adding cover, tags and lyrics…",
         _ => "Processing…",
     }
@@ -88,6 +90,9 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
                 .and_then(|p| std::fs::metadata(p).ok())
                 .map(|m| bytes(m.len() as f64))
                 .unwrap_or_default();
+            if s.verified {
+                return (name, format!("✓ sounds like Spotify  ·  {size}"));
+            }
             (name, size)
         }
         JobState::Failed => (
