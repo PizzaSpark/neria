@@ -112,6 +112,24 @@ Not planned: Zotify-style downloading of Spotify's own encrypted streams, or str
 downloading from Qobuz/Tidal/Deezer accounts (DRM/protection circumvention; gets accounts banned).
 SoundCloud already works through yt-dlp.
 
-## Phase 6: Android
-- Same `neria-core`; Slint Android UI; embedded Python for yt-dlp; ffmpeg + libmpv as `.so`
+## Phase 6: UI overhaul (before Android)
+The features grew page by page; before porting, make the UI one coherent system that can
+also scale down to a phone.
+- Design system: shared tokens (colors, spacing, radii, type scale) and one component set
+  (buttons, chips, rows, dialogs, toasts) instead of per-page variations; split `app.slint`
+  into per-page/component files
+- Layouts that adapt to window width (wide desktop → narrow), so the same screens can become
+  the Android layouts
+- Queue: group album/playlist songs under one collapsible card with overall progress;
+  filters (active / done / needs attention); clearer flagged-match states
+- Consistent dialogs (match picker, sync review, settings) and toasts for results like
+  "Saved" / "Moved to Recycle Bin"
+- Drag and drop files and links anywhere; keyboard navigation and focus states everywhere
+- Settings reorganised into sections that match the pages (Download, Clip, Compress, Spotify)
+- First-run onboarding, better empty states, light theme option, accessibility pass
+  (contrast, screen-reader labels)
+
+## Phase 7: Android
+- Same `neria-core`; Slint Android UI (built on the Phase 6 adaptive layouts); embedded Python
+  for yt-dlp; ffmpeg + libmpv as `.so`
 - Share-sheet target ("Share → Neria"); APK via GitHub / F-Droid (Play Store bans downloaders)
