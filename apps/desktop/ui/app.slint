@@ -1,13 +1,22 @@
 import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider } from "std-widgets.slint";
 
+export struct SyncItem {
+    title: string,
+    file: string,
+    checked: bool,
+}
+
 export struct JobItem {
     id: int,
+    group: int,
     title: string,
     // 0 queued, 1 downloading, 2 processing, 3 done, 4 failed, 5 cancelled
     state: int,
     progress: float,
     status: string,
     stats: string,
+    // Finished, but worth a look (e.g. uncertain Spotify match).
+    warn: bool,
 }
 
 global Theme {
@@ -256,7 +265,7 @@ component JobRow inherits Rectangle {
                 spacing: 12px;
                 Text {
                     text: root.job.status;
-                    color: root.job.state == 4 ? Theme.danger : Theme.muted;
+                    color: root.job.state == 4 ? Theme.danger : root.job.state == 3 && root.job.warn ? Theme.warn : Theme.muted;
                     font-size: 12px;
                     overflow: elide;
                     horizontal-stretch: 1;
@@ -530,6 +539,19 @@ export component AppWindow inherits Window {
     in property <string> probe-meta;
     in property <image> probe-thumb;
     in-out property <int> quality;
+
+    // Spotify
+    in property <bool> probe-is-spotify;
+    in property <int> spotify-count;
+    in property <string> spotify-note;
+    in property <[SyncItem]> sync-items;
+    in-out property <bool> sync-open;
+    in-out property <bool> lyrics: true;
+    in-out property <string> spotify-client-id;
+    in-out property <string> spotify-client-secret;
+    callback sync-toggle(int, bool);
+    callback sync-delete-selected();
+    callback sync-keep-all();
 
     // Queue
     in property <[JobItem]> jobs;
@@ -811,7 +833,7 @@ export component AppWindow inherits Window {
                                         overflow: elide;
                                     }
                                 }
-                                if root.probe-state == 2: VerticalLayout {
+                                if root.probe-state == 2 && !root.probe-is-spotify: VerticalLayout {
                                     alignment: center;
                                     horizontal-stretch: 0;
                                     GhostButton {
@@ -823,33 +845,58 @@ export component AppWindow inherits Window {
                             }
                         }
 
+                        // Spotify notices: truncated playlist, API fallback, removed songs.
+                        if root.probe-is-spotify && (root.spotify-note != "" || root.sync-items.length > 0): HorizontalLayout {
+                            spacing: 10px;
+                            Icon {
+                                horizontal-stretch: 0;
+                                text: "\u{E7BA}";
+                                font-size: 14px;
+                                color: Theme.warn;
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: root.spotify-note != "" ? root.spotify-note
+                                    : root.sync-items.length + " song" + (root.sync-items.length == 1 ? "" : "s") + " in your folder " + (root.sync-items.length == 1 ? "is" : "are") + " no longer in this list on Spotify.";
+                                color: Theme.warn;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                                vertical-alignment: center;
+                            }
+                            if root.sync-items.length > 0: GhostButton {
+                                horizontal-stretch: 0;
+                                text: "Review " + root.sync-items.length + " removed";
+                                clicked => { root.sync-open = true; }
+                            }
+                        }
+
                         HorizontalLayout {
                             spacing: 8px;
-                            Chip {
+                            if !root.probe-is-spotify: Chip {
                                 horizontal-stretch: 0;
                                 text: "Best";
                                 selected: root.quality == 0;
                                 clicked => { root.quality = 0; root.settings-changed(); }
                             }
-                            Chip {
+                            if !root.probe-is-spotify: Chip {
                                 horizontal-stretch: 0;
                                 text: "1080p";
                                 selected: root.quality == 1;
                                 clicked => { root.quality = 1; root.settings-changed(); }
                             }
-                            Chip {
+                            if !root.probe-is-spotify: Chip {
                                 horizontal-stretch: 0;
                                 text: "720p";
                                 selected: root.quality == 2;
                                 clicked => { root.quality = 2; root.settings-changed(); }
                             }
-                            Chip {
+                            if !root.probe-is-spotify: Chip {
                                 horizontal-stretch: 0;
                                 text: "480p";
                                 selected: root.quality == 3;
                                 clicked => { root.quality = 3; root.settings-changed(); }
                             }
-                            Chip {
+                            if !root.probe-is-spotify: Chip {
                                 horizontal-stretch: 0;
                                 text: "Audio only";
                                 selected: root.quality == 4;
@@ -857,19 +904,21 @@ export component AppWindow inherits Window {
                             }
                             Text {
                                 horizontal-stretch: 1;
-                                text: root.quality == 4
+                                text: root.probe-is-spotify
+                                    ? "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "") + "  ·  change in Settings"
+                                    : root.quality == 4
                                     ? root.audio-formats[root.audio-format-index]
                                     : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
                                 color: Theme.muted;
                                 font-size: 12px;
                                 vertical-alignment: center;
-                                horizontal-alignment: right;
+                                horizontal-alignment: root.probe-is-spotify ? left : right;
                             }
                             PrimaryButton {
                                 horizontal-stretch: 0;
-                                text: "Download";
+                                text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs" : "Download";
                                 icon: "\u{E896}";
-                                enabled: root.tools-ready && root.url != "";
+                                enabled: root.tools-ready && root.url != "" && (!root.probe-is-spotify || root.spotify-count > 0);
                                 clicked => { root.start-download(); }
                             }
                         }
@@ -1807,6 +1856,29 @@ export component AppWindow inherits Window {
 
                         VerticalLayout {
                             spacing: 8px;
+                            SectionTitle { text: "Spotify links"; }
+                            Hint { text: "Song info comes from Spotify, audio from YouTube Music. Format is the \"Audio only\" format above."; }
+                            CheckBox {
+                                text: "Add lyrics (embedded + synced .lrc file)";
+                                checked <=> root.lyrics;
+                                toggled => { root.settings-changed(); }
+                            }
+                            Hint { text: "Optional: your own Spotify app (developer.spotify.com → Create app) unlocks playlists over 100 songs. Never shared, stored only in settings.json next to Neria."; }
+                            LineEdit {
+                                placeholder-text: "Client ID";
+                                text <=> root.spotify-client-id;
+                                edited => { root.settings-changed(); }
+                            }
+                            LineEdit {
+                                placeholder-text: "Client secret";
+                                input-type: password;
+                                text <=> root.spotify-client-secret;
+                                edited => { root.settings-changed(); }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 8px;
                             SectionTitle { text: "Expert"; }
                             Hint { text: "File name template"; }
                             LineEdit {
@@ -1821,6 +1893,62 @@ export component AppWindow inherits Window {
                             }
                             Hint { text: root.ytdlp-version == "" ? "" : "yt-dlp " + root.ytdlp-version + "  ·  auto-updates daily"; }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // ───────────── Sync review: songs removed from a playlist ─────────────
+    if root.sync-open: Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: #000000b0;
+        TouchArea { }
+
+        Rectangle {
+            width: min(560px, root.width - 80px);
+            height: min(520px, root.height - 80px);
+            border-radius: 16px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            VerticalLayout {
+                padding: 22px;
+                spacing: 14px;
+                Text {
+                    text: "Removed on Spotify";
+                    color: Theme.text;
+                    font-size: 18px;
+                    font-weight: 700;
+                }
+                Hint { text: "These songs are still in your folder but no longer in the playlist or album on Spotify. Nothing is deleted unless you tick it, and ticked songs go to the Recycle Bin."; }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 6px;
+                        for item[i] in root.sync-items: CheckBox {
+                            text: item.title;
+                            checked: item.checked;
+                            toggled => { root.sync-toggle(i, self.checked); }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    GhostButton {
+                        text: "Keep all";
+                        clicked => { root.sync-keep-all(); }
+                    }
+                    PrimaryButton {
+                        text: "Move ticked to Recycle Bin";
+                        icon: "\u{E74D}";
+                        clicked => { root.sync-delete-selected(); }
                     }
                 }
             }

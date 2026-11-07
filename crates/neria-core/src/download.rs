@@ -9,6 +9,7 @@ use std::thread;
 
 use anyhow::{Context, Result};
 
+use crate::music::MusicJob;
 use crate::settings::{Quality, Settings};
 use crate::{paths, proc};
 
@@ -23,11 +24,19 @@ pub struct DownloadRequest {
     /// Re-encode around the cuts so the section is frame-exact
     /// (otherwise it starts on the keyframe before `section.0`).
     pub exact_cuts: bool,
+    /// Spotify track: matched on YouTube Music first (`url` is filled in then),
+    /// saved under a fixed name, and tagged afterwards.
+    pub music: Option<Box<MusicJob>>,
 }
 
 impl DownloadRequest {
     pub fn new(url: impl Into<String>, quality: Quality, title_hint: impl Into<String>) -> Self {
-        Self { url: url.into(), quality, title_hint: title_hint.into(), section: None, exact_cuts: false }
+        Self { url: url.into(), quality, title_hint: title_hint.into(), section: None, exact_cuts: false, music: None }
+    }
+
+    pub fn music(job: MusicJob) -> Self {
+        let title = format!("{} - {}", job.track.artist_line(), job.track.title);
+        Self { music: Some(Box::new(job)), ..Self::new("", Quality::Audio, title) }
     }
 }
 
@@ -60,11 +69,15 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     push(&["--print", "video:NERIA_INFO %(format_id)s|%(title)s"]);
     push(&["--print", "after_move:NERIA_FILE %(filepath)s"]);
     push(&["--ffmpeg-location", &paths::bin_dir().to_string_lossy()]);
-    push(&["-P", &s.output_dir.to_string_lossy()]);
-    let template = if s.filename_template.trim().is_empty() {
-        "%(title)s [%(id)s].%(ext)s"
+    let out_dir = req.music.as_ref().map_or(s.output_dir.clone(), |m| m.dir.clone());
+    push(&["-P", &out_dir.to_string_lossy()]);
+    let template = if let Some(m) = &req.music {
+        // Fixed, predictable name so resume/M3U/sync can find the file. `%` must be escaped.
+        format!("{}.%(ext)s", m.stem.replace('%', "%%"))
+    } else if s.filename_template.trim().is_empty() {
+        "%(title)s [%(id)s].%(ext)s".to_string()
     } else {
-        s.filename_template.trim()
+        s.filename_template.trim().to_string()
     };
     let template = match req.section {
         Some((a, b)) => {
@@ -74,7 +87,7 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
                 None => format!("{template}{tag}"),
             }
         }
-        None => template.to_string(),
+        None => template,
     };
     push(&["-o", &template]);
     if let Some((a, b)) = req.section {
@@ -119,7 +132,9 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     if s.embed_subs && req.quality != Quality::Audio {
         push(&["--embed-subs", "--sub-langs", "all,-live_chat"]);
     }
-    if s.sponsorblock {
+    // Not for Spotify tracks: YouTube Music audio has no sponsor segments, and
+    // cutting "music_offtopic" would shorten songs.
+    if s.sponsorblock && req.music.is_none() {
         push(&["--sponsorblock-remove", "sponsor,selfpromo,interaction"]);
     }
     if !s.cookies_browser.is_empty() {

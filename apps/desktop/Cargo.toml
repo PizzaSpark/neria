@@ -14,6 +14,7 @@ slint = "1.18"
 rfd = "0.17"
 arboard = { version = "3.7", default-features = false }
 open = "5"
+trash = "5"
 
 [build-dependencies]
 slint-build = "1.18"

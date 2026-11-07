@@ -64,3 +64,4 @@ Also skim both repos' open issues for the symptom (e.g. "429", "embed", "no matc
 |---|---|---|---|
 | 2026-11-07 | spotDL | n/a → `58ced9a` | Initial study for the phase 5 design (matching, lyrics, sync, M3U). Nothing ported yet. |
 | 2026-11-07 | Sunnify | n/a → `0138cbf` | Initial study (no-login embed pages, resume manifest). Nothing ported yet. |
+| 2026-11-07 | both | (baselines unchanged) | Phase 5 built. Our own Rust code: embed `__NEXT_DATA__` parsing (`spotify.rs`), YouTube Music `youtubei/v1/search` with the ytmusicapi "Songs" filter param (`ytmusic.rs`), scoring modelled on spotDL's ideas (title/artist/duration + version penalties), LRCLIB for lyrics. No upstream code copied. If matching or metadata breaks, check spotDL `spotdl/providers/audio/ytmusic.py` + `utils/matching.py` and Sunnify's embed parsing first. |

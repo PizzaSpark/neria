@@ -40,29 +40,39 @@ Spotify audio itself is DRM-protected, so Neria does what spotDL does:
 read the track/album/playlist metadata from Spotify, find the matching song on
 YouTube Music, download it with the bundled yt-dlp, and tag it with Spotify's metadata.
 
-- Implemented natively in `neria-core` (not by bundling spotdl.exe or Sunnify), so it uses our
-  auto-updated yt-dlp, our queue/progress UI, and one row per track
-- Best-of-both design (spotDL is MIT, so its algorithms can be ported with credit; Sunnify's
-  license is custom, so only its ideas are reused):
-  - Metadata like Sunnify: public embed pages, no login, no API key (spotDL's shared API key
-    hits 24h rate limits). Optional **own** Client ID/secret in Advanced (never a shared key)
-    for artist pages / big playlists; falls back to embed pages if the key is rate-limited
-  - Matching like spotDL: search YouTube **Music** "songs" first (official audio, not music
-    videos), then YouTube; score title + artist + duration; ISRC when available
-  - Resume like Sunnify: per-folder manifest, skip tracks already on disk
-  - Sync like spotDL: re-run a playlist to add new tracks. Tracks removed from the playlist are
-    never deleted silently: a review screen lists them with checkboxes (default: keep), and
-    "Delete selected" moves them to the Recycle Bin
-  - Tags: full set from both (title, artists, album, album artist, track/disc no., year, genre,
-    ISRC, cover art) plus lyrics: synced .lrc next to the file and embedded, plain-text fallback
-  - M3U playlist file per playlist (from spotDL)
-  - Upstream baselines and what to re-check later: `docs/UPSTREAM.md`
-  - "Wrong match? pick another" button on each track (neither tool has this)
-- Tags: title, artist, album, track number, year, cover art; optional synced lyrics (LRC)
-- Output: MP3 / M4A / Opus / FLAC (note: source is YouTube Music, ~128–256 kbps; FLAC
-  doesn't add quality)
+Status: ✅ core flow done (`spotify.rs`, `ytmusic.rs`, `music.rs`, desktop `spotify_ui.rs`).
+Tested on Random Access Memories (13/13 matched at 1.00, whole album in 83 s) and All Out 80s.
+
+Done:
+- Paste a Spotify track / album / playlist / artist link (incl. `intl-xx` and `spotify:` URIs):
+  preview with cover, song count, length; "Download N songs" queues one row per song, in order
+- Metadata like Sunnify: public embed pages, no login, no API key. Limits shown to the user:
+  playlists show the first 100 songs, artists their top 10, playlist tracks have no album name
+  (filled from YouTube Music). Optional **own** Client ID/secret in Settings → Spotify links
+  uses the Web API (full playlists, ISRC, track/disc numbers) and falls back to embed pages
+- Matching like spotDL: YouTube Music "Songs" search through its web API (~0.6 s per song),
+  ISRC query first when known, scored on title + artist + duration (±3 s full marks, >30 s
+  rejected) with penalties for live/remix/cover/re-recorded/… versions the Spotify title
+  doesn't mention. Matches below 0.8 are downloaded but flagged "Check match: …" in amber;
+  below 0.6 the song fails instead of downloading the wrong thing
+- Tags: title, artists, album artist, album, track n/total, disc, date, ISRC, 640px Spotify
+  cover; YouTube description/URL noise removed. Lyrics from LRCLIB: embedded (USLT) + synced
+  `.lrc` next to the file (toggle in Settings)
+- Album tracks named `01 Artist - Title`, playlists `Artist - Title`, one folder per
+  album/playlist, `<name>.m3u8` in order
+- Resume like Sunnify: re-pasting a link skips songs already on disk ("Already downloaded")
+- Sync like spotDL, but safe: `.neria-sync.json` manifest per folder; songs no longer on the
+  Spotify list show a "Review N removed" dialog, all unticked by default, ticked ones go to
+  the Recycle Bin (only for complete lists, never for truncated ones)
+
+Still to do:
+- "Wrong match? pick another" on a finished/flagged row: show the other candidates, re-download
+- Own-key Web API path is written but untested (needs a real Client ID/secret)
+- Spotify playlists > 100 songs without a key: no workaround yet beyond the notice
+- Output note: source is YouTube Music (~128–160 kbps Opus/AAC); FLAC/WAV don't add quality
 - Risks: Spotify keeps tightening its Web API (Feb 2026: Development Mode needs Premium,
-  5-user cap, fewer endpoints), so the no-login fallback matters
+  5-user cap, fewer endpoints), and YouTube Music's web API isn't official; both can break,
+  see `docs/UPSTREAM.md` for where to look first
 
 - Reference: Sunnify (sunnypatell/sunnify-spotify-downloader) does exactly this flow
   (public embed pages, no login; YouTube match on title + artist + duration). Its code is under a

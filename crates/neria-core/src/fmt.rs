@@ -37,6 +37,8 @@ pub fn postprocessor(name: &str) -> &'static str {
         "SponsorBlock" | "ModifyChapters" => "Removing sponsor segments…",
         "VideoRemuxer" | "VideoConvertor" => "Converting video…",
         "MoveFiles" => "Finishing up…",
+        "Matching" => "Finding it on YouTube Music…",
+        "Tagging" => "Adding cover, tags and lyrics…",
         _ => "Processing…",
     }
 }
@@ -69,6 +71,10 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
             postprocessor(s.postprocessor.as_deref().unwrap_or("")).into(),
             String::new(),
         ),
+        JobState::Done if s.postprocessor.as_deref() == Some("AlreadyHave") => {
+            ("Already downloaded".into(), String::new())
+        }
+        JobState::Done if s.note.is_some() => (s.note.clone().unwrap_or_default(), String::new()),
         JobState::Done => {
             let name = s
                 .file

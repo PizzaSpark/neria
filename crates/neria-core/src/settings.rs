@@ -61,6 +61,11 @@ pub struct Settings {
     pub max_concurrent: u32,
     /// Unix seconds of the last yt-dlp self-update check.
     pub last_update_check: u64,
+    /// Spotify songs: fetch lyrics (embedded + .lrc next to the file).
+    pub lyrics: bool,
+    /// Optional: the user's own Spotify app (developer.spotify.com) for full playlists.
+    pub spotify_client_id: String,
+    pub spotify_client_secret: String,
 }
 
 impl Default for Settings {
@@ -85,6 +90,9 @@ impl Default for Settings {
             extra_args: String::new(),
             max_concurrent: 2,
             last_update_check: 0,
+            lyrics: true,
+            spotify_client_id: String::new(),
+            spotify_client_secret: String::new(),
         }
     }
 }
@@ -99,6 +107,15 @@ impl Settings {
                 serde_json::from_slice(b).ok()
             })
             .unwrap_or_default()
+    }
+
+    pub fn spotify_credentials(&self) -> Option<crate::spotify::Credentials> {
+        (!self.spotify_client_id.trim().is_empty() && !self.spotify_client_secret.trim().is_empty()).then(|| {
+            crate::spotify::Credentials {
+                client_id: self.spotify_client_id.trim().to_string(),
+                client_secret: self.spotify_client_secret.trim().to_string(),
+            }
+        })
     }
 
     pub fn save(&self) -> anyhow::Result<()> {

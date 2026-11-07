@@ -5,7 +5,8 @@ Deno and libmpv, all auto-fetched into `bin/` next to the exe. Plan and status: 
 
 ## Layout
 - `crates/neria-core`: everything non-UI (tool fetch, yt-dlp probe/download queue, clip export,
-  media info). Shared with the future Android app, so no UI or platform UI code here.
+  compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
+  `music.rs` tags/lyrics/M3U/sync). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI (`ui/app.slint`), `main.rs` (download page), `clipper.rs` (clip page;
   mpv renders into a GL texture shown as a Slint image), `compressor.rs` (compress page).
@@ -22,11 +23,16 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example smoke -- <url> [audio|video] [out] [start end [exact]]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example clip -- <file> <start> <end> [fast|exact]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example compress -- <file> <mb|q0.0-1.0> [h264|hevc|av1] [cpu|gpu]`
+- `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only]`
 
 Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_CLIP_IN` /
 `NERIA_CLIP_OUT`, `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
-(auto-start it), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args
-for compression), `NERIA_HOME` (override app dir).
+(auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
+Download once a Spotify preview is ready), `NERIA_SYNC_REVIEW` (open the removed-songs dialog),
+`NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
+`NERIA_HOME` (override app dir; for UI tests point it at a scratch folder with its own
+`settings.json` and a junction `bin` → `target/debug/bin`, so downloads don't land in the real
+Videos folder).
 The window can be captured even when covered with `PrintWindow(..., PW_RENDERFULLCONTENT)`.
 
 ## Rules

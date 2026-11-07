@@ -15,6 +15,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod clipper;
 mod compressor;
+mod spotify_ui;
 
 slint::include_modules!();
 
@@ -46,6 +47,9 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_filename_template(s.filename_template.as_str().into());
     ui.set_extra_args(s.extra_args.as_str().into());
     ui.set_max_concurrent(s.max_concurrent as i32);
+    ui.set_lyrics(s.lyrics);
+    ui.set_spotify_client_id(s.spotify_client_id.as_str().into());
+    ui.set_spotify_client_secret(s.spotify_client_secret.as_str().into());
 }
 
 fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
@@ -64,12 +68,16 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.filename_template = ui.get_filename_template().to_string();
     s.extra_args = ui.get_extra_args().to_string();
     s.max_concurrent = ui.get_max_concurrent().clamp(1, 8) as u32;
+    s.lyrics = ui.get_lyrics();
+    s.spotify_client_id = ui.get_spotify_client_id().trim().to_string();
+    s.spotify_client_secret = ui.get_spotify_client_secret().trim().to_string();
 }
 
 fn job_item(s: &JobSnapshot) -> JobItem {
     let (status, stats) = fmt::job_lines(s);
     JobItem {
         id: s.id as i32,
+        group: s.group as i32,
         title: s.title.as_str().into(),
         state: match s.state {
             JobState::Queued => 0,
@@ -82,6 +90,7 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         progress: s.progress,
         status: status.into(),
         stats: stats.into(),
+        warn: s.note.is_some(),
     }
 }
 
@@ -92,8 +101,17 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
     let item = job_item(snap);
     match vec.iter().position(|j| j.id == item.id) {
         Some(i) => vec.set_row_data(i, item),
-        // New jobs go on top. Ignore stray updates for rows the user removed.
-        None if snap.state == JobState::Queued => vec.insert(0, item),
+        // New jobs go on top, except album/playlist tracks, which follow the
+        // previous track of their group so they read in order.
+        // Updates for rows the user removed are ignored.
+        None if snap.state == JobState::Queued => {
+            let after = if item.group != 0 {
+                vec.iter().enumerate().filter(|(_, j)| j.group == item.group).map(|(i, _)| i).last()
+            } else {
+                None
+            };
+            vec.insert(after.map_or(0, |i| i + 1), item);
+        }
         None => {}
     }
     refresh_active(ui);
@@ -167,6 +185,11 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             if let Some(path) = std::env::var_os("NERIA_COMPRESS") {
                 ui.invoke_cmp_open_path(path.to_string_lossy().as_ref().into());
             }
+            if let Some(url) = std::env::var_os("NERIA_URL") {
+                let url = url.to_string_lossy().into_owned();
+                ui.set_url(url.as_str().into());
+                ui.invoke_url_edited(url.into());
+            }
         });
     });
 }
@@ -174,14 +197,17 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
 struct ProbeState {
     generation: Arc<AtomicU64>,
     last_url: RefCell<String>,
+    spotify: spotify_ui::PendingSlot,
 }
 
 fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settings>>, text: &str) {
     let url = text.trim().to_string();
-    if !probe::looks_like_url(&url) {
+    let spotify_link = neria_core::spotify::parse_link(&url);
+    if !probe::looks_like_url(&url) && spotify_link.is_none() {
         state.generation.fetch_add(1, Ordering::SeqCst);
         state.last_url.borrow_mut().clear();
         ui.set_probe_state(0);
+        ui.set_probe_is_spotify(false);
         return;
     }
     if !ui.get_tools_ready() || *state.last_url.borrow() == url {
@@ -194,9 +220,15 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
     ui.set_probe_title("".into());
     ui.set_probe_meta(url.as_str().into());
     ui.set_probe_thumb(slint::Image::default());
+    ui.set_spotify_note("".into());
 
     let generation = state.generation.clone();
     let settings = settings.lock().unwrap().clone();
+    if let Some(link) = spotify_link {
+        spotify_ui::preview(ui, url, link, settings, generation, my_gen, state.spotify.clone());
+        return;
+    }
+    ui.set_probe_is_spotify(false);
     let weak = ui.as_weak();
     std::thread::spawn(move || {
         // Debounce typing: only the latest edit actually runs yt-dlp.
@@ -294,7 +326,9 @@ fn main() -> anyhow::Result<()> {
     let probe_state = Rc::new(ProbeState {
         generation: Arc::new(AtomicU64::new(0)),
         last_url: RefCell::new(String::new()),
+        spotify: Arc::new(Mutex::new(None)),
     });
+    spotify_ui::install_sync_review(&ui);
 
     ui.on_url_edited({
         let weak = ui.as_weak();
@@ -319,7 +353,7 @@ fn main() -> anyhow::Result<()> {
 
     ui.on_start_download({
         let weak = ui.as_weak();
-        let (queue, probe_state, save) = (queue.clone(), probe_state.clone(), save.clone());
+        let (queue, probe_state, save, settings) = (queue.clone(), probe_state.clone(), save.clone(), settings.clone());
         move || {
             let ui = weak.unwrap();
             let url = ui.get_url().trim().to_string();
@@ -327,13 +361,22 @@ fn main() -> anyhow::Result<()> {
                 return;
             }
             save();
-            let title_hint = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { url.clone() };
-            queue.add(DownloadRequest::new(url, Quality::from_index(ui.get_quality()), title_hint));
+            if neria_core::spotify::parse_link(&url).is_some() {
+                // Spotify: download every song once the lookup has finished.
+                let settings = settings.lock().unwrap().clone();
+                if !spotify_ui::enqueue(&ui, &url, &probe_state.spotify, &settings, &queue) {
+                    return; // still looking it up (or the lookup failed)
+                }
+            } else {
+                let title_hint = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { url.clone() };
+                queue.add(DownloadRequest::new(url, Quality::from_index(ui.get_quality()), title_hint));
+            }
 
             probe_state.generation.fetch_add(1, Ordering::SeqCst);
             probe_state.last_url.borrow_mut().clear();
             ui.set_url("".into());
             ui.set_probe_state(0);
+            ui.set_probe_is_spotify(false);
         }
     });
 
