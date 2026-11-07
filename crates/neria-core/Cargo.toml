@@ -1,0 +1,15 @@
+[package]
+name = "neria-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Platform-agnostic core of Neria: tool management, yt-dlp/ffmpeg orchestration, download queue."
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+dirs = "7"
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+sevenz-rust2 = "0.25"

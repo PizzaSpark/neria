@@ -1,0 +1,10 @@
+[package]
+name = "neria-player"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Minimal libmpv binding (loaded at runtime) with OpenGL render API support."
+
+[dependencies]
+anyhow.workspace = true
+libloading = "0.9"
