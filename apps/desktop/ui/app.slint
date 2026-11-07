@@ -629,6 +629,8 @@ export component AppWindow inherits Window {
     in-out property <float> clip-in;
     in-out property <float> clip-out;
     in-out property <int> clip-mode;
+    // Play the selection on repeat instead of stopping at Out.
+    in-out property <bool> clip-loop;
     in property <[image]> clip-thumbs;
     in property <image> clip-wave;
     in property <bool> clip-exporting;
@@ -1080,6 +1082,10 @@ export component AppWindow inherits Window {
                         root.clip-frame-step(1);
                         return accept;
                     }
+                    if event.text == "r" || event.text == "R" {
+                        root.clip-loop = !root.clip-loop;
+                        return accept;
+                    }
                     if event.text == Key.Home {
                         root.clip-seek(root.clip-in);
                         return accept;
@@ -1245,6 +1251,20 @@ export component AppWindow inherits Window {
                                 clicked => { root.clip-frame-step(1); }
                             }
                         }
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 32px;
+                                height: 32px;
+                                border-radius: 8px;
+                                background: root.clip-loop ? Theme.accent.with-alpha(0.2) : transparent;
+                                IconButton {
+                                    icon: "\u{E8EE}";
+                                    tint: root.clip-loop ? Theme.accent-hi : Theme.muted;
+                                    clicked => { root.clip-loop = !root.clip-loop; }
+                                }
+                            }
+                        }
                         Text {
                             text: Fmt.time(root.clip-position) + "  /  " + Fmt.time(root.clip-duration);
                             color: Theme.text;
@@ -1283,7 +1303,7 @@ export component AppWindow inherits Window {
                     }
 
                     if root.clip-loaded: Text {
-                        text: "Space play/pause  ·  I / O set in / out  ·  ← → 5s (Shift 1s)  ·  , . frame step  ·  Home / End jump to in / out";
+                        text: "Space play clip  ·  I / O set in / out  ·  R loop " + (root.clip-loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  Home / End jump to in / out";
                         color: Theme.muted;
                         font-size: 11px;
                         overflow: elide;

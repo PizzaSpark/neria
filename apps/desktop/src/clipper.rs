@@ -50,6 +50,8 @@ pub struct Clipper {
     title_known: bool,
     pending_load: bool,
     duration_applied: bool,
+    /// Playback position at the previous tick (to notice crossing the Out point).
+    last_pos: f64,
     load_gen: Arc<AtomicU64>,
     export_cancel: Option<Arc<AtomicBool>>,
     last_output: Arc<Mutex<Option<PathBuf>>>,
@@ -97,6 +99,7 @@ impl Clipper {
         self.source = Some(source.clone());
         self.title_known = title_known;
         self.duration_applied = false;
+        self.last_pos = 0.0;
         self.pending_load = true;
         *self.last_output.lock().unwrap() = None;
 
@@ -155,16 +158,23 @@ impl Clipper {
         let settings = neria_core::settings::Settings::load();
         let need_title = !self.title_known;
         std::thread::spawn(move || {
-            let Ok(preview) = neria_core::probe::preview_stream(&url, &settings) else { return };
-            if need_title && !preview.title.is_empty() {
-                let (title, load_gen) = (preview.title.clone(), load_gen.clone());
+            // Storyboards first (YouTube blocks direct stream reads); stream frames as a fallback.
+            let (title, thumbs) = match media::storyboard_strip(&url, &settings, 12, 120) {
+                Ok((title, _, thumbs)) => (title, thumbs),
+                Err(_) => {
+                    let Ok(preview) = neria_core::probe::preview_stream(&url, &settings) else { return };
+                    let thumbs = media::thumbnails_remote(&preview.stream_url, &url, preview.duration, 12, 120);
+                    (preview.title, thumbs)
+                }
+            };
+            if need_title && !title.is_empty() {
+                let load_gen = load_gen.clone();
                 let _ = weak.upgrade_in_event_loop(move |ui| {
                     if load_gen.load(Ordering::SeqCst) == generation {
                         ui.set_clip_name(title.into());
                     }
                 });
             }
-            let thumbs = media::thumbnails_remote(&preview.stream_url, &url, preview.duration, 12, 120);
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 if load_gen.load(Ordering::SeqCst) != generation {
                     return;
@@ -238,14 +248,37 @@ impl Clipper {
                 ui.set_clip_out(env("NERIA_CLIP_OUT").unwrap_or(d as f32));
                 if let Some(t) = env("NERIA_CLIP_IN") {
                     let _ = mpv.command(&["seek", &t.to_string(), "absolute+exact"]);
+                    self.last_pos = t as f64;
+                }
+                if std::env::var_os("NERIA_CLIP_PLAY").is_some() {
+                    let _ = mpv.set_property("pause", "no");
+                }
+                if std::env::var_os("NERIA_CLIP_LOOP").is_some() {
+                    ui.set_clip_loop(true);
                 }
             }
         }
-        if let Some(p) = mpv.get_f64("time-pos") {
-            ui.set_clip_position(p as f32);
-        }
         let paused = mpv.get_flag("pause").unwrap_or(true);
         let ended = mpv.get_flag("eof-reached").unwrap_or(false);
+        if let Some(p) = mpv.get_f64("time-pos") {
+            // Playing through the selection: stop at Out, or loop back to In.
+            let (cin, cout) = (ui.get_clip_in() as f64, ui.get_clip_out() as f64);
+            let crossed = !paused && cout > cin && self.last_pos < cout && p >= cout && self.last_pos >= cin - 0.25;
+            if crossed {
+                if ui.get_clip_loop() {
+                    let _ = mpv.command(&["seek", &format!("{cin:.3}"), "absolute+exact"]);
+                } else {
+                    let _ = mpv.set_property("pause", "yes");
+                    let _ = mpv.command(&["seek", &format!("{cout:.3}"), "absolute+exact"]);
+                }
+                self.last_pos = if ui.get_clip_loop() { cin } else { cout };
+                ui.set_clip_position(self.last_pos as f32);
+            } else {
+                self.last_pos = p;
+                ui.set_clip_position(p as f32);
+            }
+        }
+        let paused = mpv.get_flag("pause").unwrap_or(true);
         ui.set_clip_playing(!paused && !ended);
 
         if matches!(self.source, Some(Source::Link(_))) {
@@ -254,19 +287,32 @@ impl Clipper {
         }
     }
 
-    fn toggle_play(&mut self) {
+    /// Play/pause. Pressing play at (or after) the Out point replays the
+    /// selection from In, so "play" always means "play my clip".
+    fn toggle_play(&mut self, clip_in: f64, clip_out: f64) {
         let Some(mpv) = &self.mpv else { return };
-        if mpv.get_flag("eof-reached").unwrap_or(false) {
+        let paused = mpv.get_flag("pause").unwrap_or(true);
+        let ended = mpv.get_flag("eof-reached").unwrap_or(false);
+        let pos = mpv.get_f64("time-pos").unwrap_or(0.0);
+        let has_selection = clip_out > clip_in;
+        if (paused || ended) && has_selection && pos >= clip_out - 0.05 {
+            let _ = mpv.command(&["seek", &format!("{clip_in:.3}"), "absolute+exact"]);
+            self.last_pos = clip_in;
+            let _ = mpv.set_property("pause", "no");
+        } else if ended {
             let _ = mpv.command(&["seek", "0", "absolute+exact"]);
+            self.last_pos = 0.0;
             let _ = mpv.set_property("pause", "no");
         } else {
             let _ = mpv.command(&["cycle", "pause"]);
         }
     }
 
-    fn seek(&self, t: f32) {
+    fn seek(&mut self, t: f32) {
         if let Some(mpv) = &self.mpv {
             let _ = mpv.command(&["seek", &format!("{:.3}", t.max(0.0)), "absolute+exact"]);
+            // A manual jump isn't "playing across" the Out point.
+            self.last_pos = t.max(0.0) as f64;
         }
     }
 
@@ -504,12 +550,15 @@ pub fn install(
     });
 
     ui.on_clip_toggle_play({
-        let clipper = clipper.clone();
-        move || clipper.borrow_mut().toggle_play()
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            clipper.borrow_mut().toggle_play(ui.get_clip_in() as f64, ui.get_clip_out() as f64)
+        }
     });
     ui.on_clip_seek({
         let clipper = clipper.clone();
-        move |t| clipper.borrow().seek(t)
+        move |t| clipper.borrow_mut().seek(t)
     });
     ui.on_clip_frame_step({
         let clipper = clipper.clone();

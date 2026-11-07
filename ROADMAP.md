@@ -16,11 +16,24 @@ Fast, portable, UX-first video/audio downloader. Rust + Slint, yt-dlp + ffmpeg (
 - Scissors button on finished downloads opens them in the clipper
 - Lossless mode shows keyframe ticks, highlights in amber any extra footage before the in point
   (where the cut really starts), with a one-click "Snap to keyframe"
-- Polish still to do: drag-and-drop files from Explorer; volume control
+- Playback stops at the Out handle; play from there replays the selection from In; loop toggle
+  (button / R) repeats the selection
+- Audio controls (to do), two separate things so it's clear what ends up in the file:
+  - **Preview volume**: a volume slider + mute for listening while you edit (mpv `volume`);
+    never changes the exported clip
+  - **Clip audio**, applied on export: keep as is / mute (no audio track) / adjust gain
+    (± dB) / **normalize** loudness (ffmpeg `loudnorm`, EBU R128, presets like -14 LUFS for
+    YouTube/TikTok/Discord and -16 for podcasts). Option to preview the effect live (mpv
+    `af=loudnorm` / `volume`) before exporting
+  - Fast · lossless can still be used: video stays stream-copied, only the audio is
+    re-encoded when an audio change is picked (say so in the UI)
+- Polish still to do: drag-and-drop files from Explorer
 
 ## Phase 3: Clip before download ✅
 - "Clip first" on a link preview, or "Paste link" on the Clip page, streams the link in mpv
-  (mpv's yt-dlp hook, 720p preview) with a filmstrip built from a low-res stream
+  (mpv's yt-dlp hook, 720p preview). Filmstrip from the site's storyboards (YouTube's
+  hover-preview sprite sheets, cropped per frame); YouTube now answers direct ffmpeg reads of
+  its streams with 403, so frames from a low-res stream are only a fallback for other sites
 - Download clip sends only the selected range to the queue (`--download-sections`), in the
   chosen quality; Exact adds `--force-keyframes-at-cuts` for frame-exact cuts
 - Polish still to do: waveform for links (needs the audio); live/very long streams untested

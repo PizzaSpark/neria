@@ -116,7 +116,10 @@ Open the **Clip** page, then either:
 Then:
 
 1. Drag the purple **handles** on the timeline to set where the clip starts and ends.
-   Click anywhere on the timeline to jump there.
+   Click anywhere on the timeline to jump there. The white line is the **playhead** (where the
+   video is right now), not a marker; only what's between the purple handles is your clip.
+   Playing stops at your end handle, and pressing play there replays the clip from the start.
+   Turn on **loop** (the ⟳ button or **R**) to hear the clip on repeat.
 2. Choose **Fast · lossless** (instant, original quality) or **Exact · re-encode** (cuts on
    the exact frame).
 3. Press **Export clip** (or **Download clip** for links).
@@ -131,8 +134,9 @@ where those are. If your start point is between them, the extra part is shaded a
 
 | Key | Action |
 |---|---|
-| Space or K | Play / pause |
+| Space or K | Play / pause (stops at the end handle; at the end it replays the clip) |
 | I / O | Set start / end at the current position |
+| R | Loop the clip on / off |
 | ← → or J / L | Jump 5 seconds (hold Shift for 1 second) |
 | , / . | Step one frame back / forward |
 | Home / End | Jump to the start / end of the clip |

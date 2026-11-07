@@ -28,7 +28,7 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   (audio check scores; `--no-spotify` forces the Deezer/Apple fallback reference)
 
 Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_CLIP_IN` /
-`NERIA_CLIP_OUT`, `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
+`NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
 (auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a Spotify preview is ready), `NERIA_SYNC_REVIEW` (open the removed-songs dialog),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
