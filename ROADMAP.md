@@ -76,10 +76,10 @@ Done:
   are fingerprinted with ffmpeg's Chromaprint muxer; the preview is slid along the song for
   the best bit agreement. Measured: same master 0.98, same recording edited 0.95, same
   recording other master/length 0.76, re-recording 0.58, different song 0.57. Verdicts:
-  ≥ 0.70 "✓ sounds like Spotify", 0.62–0.70 "close, maybe another master", below that a
+  ≥ 0.72 "✓ sounds like Spotify", 0.66–0.72 "close, maybe another master", below that a
   different recording → automatically tries up to two other good candidates (skipping other
   copies of a version that already failed), then goes back to the closest and flags it
-  "Doesn't sound like Spotify's version (58% similar). Pick another?". ~1 s per song
+  "Doesn't sound like the Spotify preview (58% similar). Pick another?". ~1 s per song
 
 - Reference preview fallbacks: Spotify's preview first, then Deezer's public API (exact ISRC,
   else search), then Apple's iTunes Search API. A fallback clip is only trusted if its title,
