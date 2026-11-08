@@ -675,7 +675,7 @@ export component AppWindow inherits Window {
     in-out property <bool> cmp-use-gpu: true;
     in property <bool> cmp-gpu-available;
     in property <string> cmp-gpu-label: "Use GPU";
-    in-out property <int> cmp-res-index;
+    in-out property <int> cmp-res-index: 1; // Original size by default
     in-out property <int> cmp-fps-index;
     in-out property <int> cmp-audio-index;
     in property <string> cmp-estimate;
@@ -1531,7 +1531,7 @@ export component AppWindow inherits Window {
                             }
                             Chip {
                                 horizontal-stretch: 0;
-                                text: "10 MB · Discord";
+                                text: "20 MB · Discord";
                                 selected: root.cmp-size-index == 0;
                                 clicked => { root.cmp-size-index = 0; root.cmp-options-changed(); }
                             }

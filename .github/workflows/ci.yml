@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test core
+        run: cargo test -p neria-core --locked
+      - name: Build app
+        run: cargo build --release -p neria --locked
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: neria-${{ github.sha }}
+          path: target/release/neria.exe
+          retention-days: 14

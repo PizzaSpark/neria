@@ -16,7 +16,7 @@ use slint::ComponentHandle;
 use crate::AppWindow;
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv"];
-const SIZES_MB: [f64; 4] = [10.0, 25.0, 50.0, 100.0];
+const SIZES_MB: [f64; 4] = [20.0, 25.0, 50.0, 100.0];
 
 #[derive(Default)]
 pub struct Compressor {

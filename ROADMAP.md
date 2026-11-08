@@ -39,9 +39,9 @@ Fast, portable, UX-first video/audio downloader. Rust + Slint, yt-dlp + ffmpeg (
 - Polish still to do: waveform for links (needs the audio); live/very long streams untested
 
 ## Phase 4: Compressor ✅
-- Fit a size (10 MB Discord / 25 / 50 / 100 / custom) or pick a quality (slider → CRF/CQ/QP)
-- Auto resolution/fps from bits-per-pixel (e.g. 10 MB × 60 s → 720p30); manual caps; audio
-  bitrate or remove; stereo downmix
+- Fit a size (20 MB Discord / 25 / 50 / 100 / custom) or pick a quality (slider → CRF/CQ/QP)
+- Keeps the original resolution by default; Auto resolution/fps from bits-per-pixel
+  (e.g. 10 MB × 60 s → 720p30) as an option; manual caps; audio bitrate or remove; stereo downmix
 - H.264 / H.265 / AV1; GPU encoders (NVENC / Quick Sync / AMF) detected by a real test encode,
   CPU fallback with two-pass for x264/x265
 - Guaranteed fit: if the result overshoots, it re-encodes smaller (up to 3 tries)
@@ -124,6 +124,26 @@ Still to do:
 Not planned: Zotify-style downloading of Spotify's own encrypted streams, or streamrip-style
 downloading from Qobuz/Tidal/Deezer accounts (DRM/protection circumvention; gets accounts banned).
 SoundCloud already works through yt-dlp.
+
+## Ideas / backlog (not scheduled yet)
+- **Livestreams**: record a live stream from now (or from the start where the site allows,
+  yt-dlp `--live-from-start`), with a Stop button that finishes the file cleanly; show "LIVE"
+  and elapsed time/size in the queue instead of a progress bar; optional "wait for the stream
+  to start" for scheduled streams (`--wait-for-video`). Clipping a live stream: pick a range
+  from the last N minutes (DVR window)
+- **Bulk download**: paste several links at once (one per line, or a text file) → one queue
+  row per link with the current quality; skip duplicates and links already in the queue
+- **Quick download**: one-click "download with my defaults" (skip the preview step), e.g. a
+  "Paste & download" button and an optional clipboard watcher that offers detected links
+- **Clip render queue**: mark several In/Out ranges on the same video, list them as clips
+  (rename, reorder, remove, jump to each), then export them all in one go: from files through
+  a local export queue, from links as several `--download-sections` jobs. Option to also join
+  them into one file
+- **Check for updates**: Neria itself (GitHub releases: "Neria x.y is out" with changelog,
+  download + swap the exe next to itself, keep `bin/` and `settings.json`, stays portable) and
+  the tools: today only yt-dlp updates (daily `yt-dlp -U`); FFmpeg, Deno and libmpv are
+  fetched once and never refreshed. Settings → About: versions of everything, "Check now",
+  auto-check on/off
 
 ## Phase 6: UI overhaul (before Android)
 The features grew page by page; before porting, make the UI one coherent system that can

@@ -1,4 +1,4 @@
-//! Video compression: hit a target file size (e.g. Discord's 10 MB) or a quality level,
+//! Video compression: hit a target file size (e.g. Discord's 20 MB) or a quality level,
 //! using a GPU encoder when one works on this machine.
 
 use std::io::{BufRead, BufReader, Read};

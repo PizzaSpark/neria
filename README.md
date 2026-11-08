@@ -5,7 +5,7 @@ them. Built with Rust + Slint, powered by yt-dlp, FFmpeg and mpv.
 
 - Download from YouTube, TikTok, X, Instagram, Twitch, Reddit, SoundCloud and 1000+ other sites
 - Trim any video or audio file on a real timeline, or clip a link *before* downloading it
-- Shrink videos to fit Discord's 10 MB (or any size), using your graphics card when possible
+- Shrink videos to fit Discord's 20 MB (or any size), using your graphics card when possible
 - Paste Spotify links to get the songs from YouTube Music with full tags, cover art and lyrics
 
 Windows 10/11 for now. Android is planned (see [ROADMAP.md](ROADMAP.md)).
@@ -145,18 +145,20 @@ where those are. If your start point is between them, the extra part is shaded a
 
 1. Open the **Compress** page and press **Open file…** (or press ↙↗ on a finished download).
 2. Choose a goal:
-   - **Fit a size**: 10 MB (Discord), 25, 50, 100 MB or **Custom**, or
+   - **Fit a size**: 20 MB (Discord), 25, 50, 100 MB or **Custom**, or
    - **Pick a quality**: drag the slider between Smaller and Better.
 3. Choose a codec: **H.264** plays everywhere, **H.265** is smaller, **AV1** is smallest.
-4. Check the line under the options. It shows the plan, e.g. "Will fit in 10 MB · 1280×720 ·
+4. Check the line under the options. It shows the plan, e.g. "Will fit in 20 MB · 1920×1080 ·
    30 fps · H.264 on Intel Quick Sync".
 5. Press **Compress**.
 
-Neria picks the best resolution and frame rate for the size on its own, and uses your
+Neria keeps the original resolution by default. Set **Output** to **Auto resolution** to let
+it pick the sharpest resolution and frame rate the size can carry, or cap it at 1080p / 720p /
+480p. It uses your
 graphics card (NVIDIA, Intel or AMD) when it can, which is much faster. If a result comes out
 too big, it automatically redoes it smaller, so it always fits.
 
-The result is saved next to the original, e.g. `video (compressed 10MB).mp4`.
+The result is saved next to the original, e.g. `video (compressed 20MB).mp4`.
 
 ---
 

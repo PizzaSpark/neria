@@ -1,0 +1,49 @@
+name: Release
+
+# Push a tag like v0.2.0 to build Neria and publish it as a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.2.0); created on the current commit if missing"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test core
+        run: cargo test -p neria-core --locked
+      - name: Build
+        run: cargo build --release -p neria --locked
+      - name: Package
+        shell: pwsh
+        run: |
+          $dir = "Neria-$env:TAG-windows-x64"
+          New-Item -ItemType Directory $dir | Out-Null
+          Copy-Item target/release/neria.exe "$dir/Neria.exe"
+          Copy-Item README.md "$dir/README.md"
+          Compress-Archive -Path $dir -DestinationPath "$dir.zip"
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = "Neria-$env:TAG-windows-x64.zip"
+          gh release view $env:TAG 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG $zip --clobber
+          } else {
+            gh release create $env:TAG $zip --target $env:GITHUB_SHA --title "Neria $env:TAG" --generate-notes `
+              --notes "Unzip anywhere and run Neria.exe. The first start downloads yt-dlp, FFmpeg, Deno and mpv into a bin folder next to it. Windows SmartScreen may warn because the exe isn't signed: More info -> Run anyway."
+          }
