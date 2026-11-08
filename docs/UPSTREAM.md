@@ -14,6 +14,7 @@ After porting anything (or re-reviewing upstream), move the baseline forward and
 | spotDL | [spotDL/spotify-downloader](https://github.com/spotDL/spotify-downloader) | `master` | `58ced9af69dce17d33ff280bafbcc917a9dba0aa` | 2026-10-26 | v4.6.0 | MIT: code may be ported, with credit in the source |
 | Sunnify | [sunnypatell/sunnify-spotify-downloader](https://github.com/sunnypatell/sunnify-spotify-downloader) | `main` | `0138cbf107395057bac7e33d820a28837cbe8522` | 2026-11-02 | v2.6.0 | Custom educational-use: **ideas only, never copy code** |
 | spotify-lyrics-api | [akashrchandran/spotify-lyrics-api](https://github.com/akashrchandran/spotify-lyrics-api) | `main` | `e158b96b854778d8ff51a3c9544ebb4f68b64907` | 2025-12-30 | n/a | GPL-3.0: **ideas only, never copy code** (Neria is MIT) |
+| loopgif (our own) | [PizzaSpark/loopgif](https://github.com/PizzaSpark/loopgif) | `main` | `cf5c980ee120026feeaef370d4affba5023425ef` | 2026-11-07 | n/a | Ours: port freely |
 
 Why Sunnify is ideas-only: its LICENSE allows using and redistributing the software only
 "not modified or altered in any way", free of charge and with attribution, and it asks people
@@ -46,6 +47,16 @@ runtime from a third-party repo, xyloflake/spot-secrets-go). Its README says it'
 Spotify's terms. Not used: Neria's lyrics stay on LRCLIB (no login). Revisit only if we decide on
 an opt-in "Sign in to Spotify for lyrics". Files to watch: `src/Spotify.php`.
 
+### loopgif (our own, for "Perfect loop GIF")
+Python tool by the same author; the source of the planned Perfect loop GIF in the clipper.
+Local checkout: `D:\Files\Documents\Code Projects\Active\Tools\gif-maker` (GitHub:
+PizzaSpark/loopgif). Read `README.md` for the method and `loopgif.py` (~200 lines, ffmpeg +
+numpy) for the details: frame fingerprints (64×36 grayscale, decoded through ffmpeg), seam
+score over a few frames on both sides of a cut, static sections skipped, shorter cycle
+preferred, `--from/--to` search range, `--rank` for the next-best loop, palettegen +
+paletteuse (sierra2_4a) render. `legacy/` holds older OpenCV/SSIM experiments, not needed.
+Port to Rust in `neria-core` (no Python in Neria).
+
 ## How to check what changed since the baseline
 
 Quick look in the browser (replace the SHA with the baseline above):
@@ -77,3 +88,4 @@ Also skim both repos' open issues for the symptom (e.g. "429", "embed", "no matc
 | 2026-11-07 | Sunnify | n/a → `0138cbf` | Initial study (no-login embed pages, resume manifest). Nothing ported yet. |
 | 2026-11-07 | both | (baselines unchanged) | Phase 5 built. Our own Rust code: embed `__NEXT_DATA__` parsing (`spotify.rs`), YouTube Music `youtubei/v1/search` with the ytmusicapi "Songs" filter param (`ytmusic.rs`), scoring modelled on spotDL's ideas (title/artist/duration + version penalties), LRCLIB for lyrics. No upstream code copied. If matching or metadata breaks, check spotDL `spotdl/providers/audio/ytmusic.py` + `utils/matching.py` and Sunnify's embed parsing first. |
 | 2026-11-08 | spotify-lyrics-api | n/a → `e158b96` | Studied for a lyrics-only mode. Needs `sp_dc` login cookie + TOTP secrets scraped from Spotify's web player; GPL-3.0. Not used; lyrics stay on LRCLIB. Nothing ported. |
+| 2026-11-08 | loopgif | n/a → `cf5c980` | Recorded as the source for Perfect loop GIF. Nothing ported yet. |

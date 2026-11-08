@@ -289,6 +289,13 @@ the big features (livestreams, audio tools, library).
   1:1, 4:5, 16:9 with a draggable frame; saved with the clip
 - **Make a GIF** from the selection: size, fps and loop, with an estimate of the file size
   (ffmpeg palettegen for good colors); also WebP/short MP4 "GIF-like" for Discord
+- **Perfect loop GIF** (port of our own loopgif, see `docs/UPSTREAM.md`): a "Perfect loop"
+  toggle in Make a GIF finds where the motion inside In/Out starts over and snaps the
+  selection to exactly one clean cycle (tiny grayscale fingerprints, seam scored on both
+  sides, still parts ignored, shorter cycle wins, matching end frame dropped, per-clip
+  palette). Plays the loop on repeat before export; "Try another loop" = next-best cycle;
+  plain "No loop found here" with "pick the frames yourself". Native Rust in `neria-core`
+  (ffmpeg only, no Python/numpy)
 - **Preview the result** before exporting: plays the selection with crop/rotate/audio
   changes applied
 - Audio on export: fade in / fade out, mute, gain, normalize (see the audio controls in
@@ -326,6 +333,12 @@ the big features (livestreams, audio tools, library).
   compress for Discord, move to folder) before any full workflow builder; a builder only if
   people actually want chains like download → clip → 9:16 → compress
 - Watched folder: auto-compress/convert files dropped into a folder
+- **External tools** (instead of a plugin system): Settings → Tools lets power users add
+  their own command-line tools as actions ("Run on this file" / "Run on selection") with
+  placeholders like `{file}`, `{in}`, `{out}`, `{dir}`; jobs run in Neria's queue with
+  output/errors shown. If many people use it, that's the signal a real extension system is
+  worth it. Not a plugin API: no extension code loaded into Neria, nothing bundled (users
+  bring their own tools, e.g. Python scripts)
 
 Not planned (from outside suggestions, decided against for now):
 - spotDL as a dependency: Neria already does its flow natively in Rust (see Phase 5 and
