@@ -131,6 +131,26 @@ Not planned: Zotify-style downloading of Spotify's own encrypted streams, or str
 downloading from Qobuz/Tidal/Deezer accounts (DRM/protection circumvention; gets accounts banned).
 SoundCloud already works through yt-dlp.
 
+## Before friends test (reliability and feedback)
+Release small and often: the high-priority items below → v0.2.0 → collect feedback before
+the big features (livestreams, audio tools, library).
+- **Report a problem** button: copies a short report (Neria version, tool versions, the link,
+  last lines of the yt-dlp/ffmpeg log) to paste in a message or issue
+- **Version in the app** (Settings → About), so reports say which build
+- **Auto-retry when YouTube breaks**: on known "needs a newer yt-dlp" errors, update yt-dlp
+  right away and retry once instead of waiting for the daily update
+- **Robust first start**: clear progress for each tool download, Retry button, plain error
+  when offline or blocked
+- **Writable folder check**: if Neria can't write next to itself (e.g. unzipped into
+  Program Files), say "Move Neria to a folder like Documents or Desktop"
+- **Cookies hint**: Chrome's newer cookie encryption usually stops yt-dlp from reading
+  them; Firefox works. Say so in the cookies picker and in sign-in errors
+- **Free space check** before big downloads, livestreams and compressions
+- **Release checks**: the release workflow refuses to build if the tag doesn't match the
+  `Cargo.toml` version; CI also runs `cargo clippy` and `cargo fmt --check`
+- **Code signing** to remove the SmartScreen warning: SignPath gives free signing to
+  open-source projects, if the repo goes public
+
 ## Features still wanted (before Android)
 - **High priority: clear answers for links Neria can't download.** Today every failed preview
   says "You can still try downloading it." and Download stays clickable, so dead links just
