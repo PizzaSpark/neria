@@ -1181,48 +1181,63 @@ export component AppWindow inherits Window {
                         }
                     }
 
+                    // The black box hugs the video's own shape (no side bars in a wide
+                    // window); 16:9 until the first frame arrives or for audio files.
                     if root.clip-loaded: Rectangle {
                         vertical-stretch: 1;
                         min-height: 180px;
-                        border-radius: 12px;
-                        background: #000000;
-                        clip: true;
-                        Image {
-                            width: parent.width;
-                            height: parent.height;
-                            source: root.clip-frame;
-                            image-fit: contain;
-                        }
-                        if !root.clip-has-video: Icon {
-                            text: "\u{E8D6}";
-                            font-size: 56px;
-                            color: Theme.border;
-                        }
-                        if root.clip-buffering: Rectangle {
-                            width: 150px;
-                            height: 40px;
-                            border-radius: 20px;
-                            background: #000000b0;
-                            HorizontalLayout {
-                                alignment: center;
-                                spacing: 8px;
-                                Icon {
-                                    text: "\u{E895}";
-                                    font-size: 14px;
-                                    color: Theme.accent-hi;
-                                }
-                                Text {
-                                    text: "Loading…";
-                                    color: Theme.text;
-                                    font-size: 13px;
-                                    vertical-alignment: center;
+                        // Fixed hints so the inner box (sized from this one) can't feed its
+                        // size back into the page layout.
+                        min-width: 0px;
+                        preferred-width: 0px;
+                        preferred-height: 0px;
+                        property <float> aspect: root.clip-has-video && root.clip-frame.width > 0 && root.clip-frame.height > 0
+                            ? root.clip-frame.width / root.clip-frame.height : 16 / 9;
+                        Rectangle {
+                            width: min(parent.width, parent.height * parent.aspect);
+                            height: min(parent.height, parent.width / parent.aspect);
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 12px;
+                            background: #000000;
+                            clip: true;
+                            Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: root.clip-frame;
+                                image-fit: contain;
+                            }
+                            if !root.clip-has-video: Icon {
+                                text: "\u{E8D6}";
+                                font-size: 56px;
+                                color: Theme.border;
+                            }
+                            if root.clip-buffering: Rectangle {
+                                width: 150px;
+                                height: 40px;
+                                border-radius: 20px;
+                                background: #000000b0;
+                                HorizontalLayout {
+                                    alignment: center;
+                                    spacing: 8px;
+                                    Icon {
+                                        text: "\u{E895}";
+                                        font-size: 14px;
+                                        color: Theme.accent-hi;
+                                    }
+                                    Text {
+                                        text: "Loading…";
+                                        color: Theme.text;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
                                 }
                             }
-                        }
-                        TouchArea {
-                            clicked => {
-                                root.clip-toggle-play();
-                                clip-fs.focus();
+                            TouchArea {
+                                clicked => {
+                                    root.clip-toggle-play();
+                                    clip-fs.focus();
+                                }
                             }
                         }
                     }

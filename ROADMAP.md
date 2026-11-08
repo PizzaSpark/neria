@@ -2,6 +2,10 @@
 
 Fast, portable, UX-first video/audio downloader. Rust + Slint, yt-dlp + ffmpeg (+ Deno) auto-fetched into `bin/`.
 
+**UX is the priority.** Every feature ships with a clear UI: plain-language status, sensible
+defaults, no dead ends, nothing that needs a manual to understand. A feature that works but
+feels confusing isn't done.
+
 ## Phase 1: Downloader ✅
 - First-run auto-fetch of yt-dlp, FFmpeg, Deno; daily `yt-dlp -U`
 - Paste link → instant preview (title, thumbnail, channel, length)
@@ -18,6 +22,8 @@ Fast, portable, UX-first video/audio downloader. Rust + Slint, yt-dlp + ffmpeg (
   (where the cut really starts), with a one-click "Snap to keyframe"
 - Playback stops at the Out handle; play from there replays the selection from In; loop toggle
   (button / R) repeats the selection
+- Player box takes the video's own shape, centred (no black side bars in wide windows,
+  vertical videos show as a tall box); checked with 16:9 and 9:16 test videos
 - Audio controls (to do), two separate things so it's clear what ends up in the file:
   - **Preview volume**: a volume slider + mute for listening while you edit (mpv `volume`);
     never changes the exported clip
@@ -125,12 +131,95 @@ Not planned: Zotify-style downloading of Spotify's own encrypted streams, or str
 downloading from Qobuz/Tidal/Deezer accounts (DRM/protection circumvention; gets accounts banned).
 SoundCloud already works through yt-dlp.
 
-## Ideas / backlog (not scheduled yet)
-- **Livestreams**: record a live stream from now (or from the start where the site allows,
-  yt-dlp `--live-from-start`), with a Stop button that finishes the file cleanly; show "LIVE"
-  and elapsed time/size in the queue instead of a progress bar; optional "wait for the stream
-  to start" for scheduled streams (`--wait-for-video`). Clipping a live stream: pick a range
-  from the last N minutes (DVR window)
+## Features still wanted (before Android)
+- **High priority: clear answers for links Neria can't download.** Today every failed preview
+  says "You can still try downloading it." and Download stays clickable, so dead links just
+  fail again in the queue.
+  - Errors that won't change (unsupported site, video unavailable/deleted, private): say it
+    plainly ("Neria can't download from this site"), list what does work ("Works with
+    YouTube, Spotify, TikTok, Instagram, X, Twitch, SoundCloud and 1,800+ other sites") and
+    grey out Download
+  - Errors that might pass (network, rate limit, sign-in needed, age-restricted): keep
+    Download enabled and say what to try (check connection, pick a browser under Cookies…)
+  - Spotify is supported (tracks, albums, playlists, artists), so Spotify links never show
+    "unsupported". Spotify links Neria can't handle get their own message instead, e.g.
+    podcasts/episodes/shows, audiobooks, private or deleted playlists, region-locked tracks
+  - Text that isn't a link: a quiet hint ("Paste a link from YouTube, Spotify…") instead of
+    nothing
+- **High priority: synced lyrics from more sources (Musixmatch first).** Users love synced
+  lyrics, and Musixmatch is where Spotify's own synced lyrics come from, so it has the best
+  coverage. Order: LRCLIB (free, open) → Musixmatch (synced) → plain-text fallbacks (Genius,
+  AZLyrics, as spotDL does; MIT, port with credit)
+  - No user login. Musixmatch's official API only gives synced lyrics on paid plans, so look
+    at how spotDL / the `syncedlyrics` project reach Musixmatch without a key, check it
+    still works and what the terms risk is, and record it in `docs/UPSTREAM.md`
+  - Fully in our code: no keys or files fetched from third-party repos at runtime
+  - Each row says the source and "synced" / "plain text only" / "no lyrics found"; Settings
+    lets you turn sources on/off and pick "synced only"
+  - Also used by the lyrics-only mode and "Add lyrics to songs I already have"
+- **Queue order**: drag rows to reorder waiting downloads; "Move to top" / "Move to bottom"
+  in each row's menu (and Ctrl+↑ / Ctrl+↓); jobs already downloading stay put, the next free
+  slot takes the top waiting row. Albums/playlists move as one group (and can be reordered
+  inside). Optional pause/resume per row, "Pause all"
+- **Folders and order** (today: everything goes to `Videos\Neria`; Spotify albums/playlists
+  get their own folder + numbered names/M3U, but YouTube playlists land loose in the main
+  folder, unnumbered, so their order is lost)
+  - Separate places for audio and video: audio (Audio only, Spotify) to `Music\Neria`, video
+    to `Videos\Neria`, each changeable in Settings
+  - YouTube/other playlists like Spotify ones: a folder per playlist, files numbered in
+    playlist order (`01 Title`), a `.m3u8`, and resume/skip what's already there
+  - Optional "Number Spotify playlist songs" (`01 Artist - Title`) so the folder sorts in
+    playlist order without the M3U
+  - Ties into the filename builder (Playlist / Playlist # chips)
+- **Spotify heads-up dialog**: the first time someone presses Download on a Spotify link,
+  explain where the audio comes from: "Spotify doesn't allow downloading its audio. Neria
+  reads the song info (title, artist, album, cover) from Spotify and downloads the matching
+  song from YouTube Music, then checks it sounds the same. Quality is YouTube Music's
+  (~128–160 kbps), and once in a while a match can be a different version; you can swap it."
+  Buttons: **I understand** (continues the download) / **Cancel**, plus a "Don't show this
+  again" tickbox saved in `settings.json` (re-enable under Settings → Spotify links). Today
+  this is only a small "audio from YouTube Music" note on the preview line and a hint in
+  Settings
+- **Lyrics only (Spotify links)**: a "Lyrics only" choice next to "Download N songs" that
+  saves just the lyrics, no audio: synced `.lrc` (and/or plain `.txt`) per song named like the
+  audio would be (`01 Artist - Title.lrc`), one folder per album/playlist. Also "Add lyrics to
+  songs I already have": fills in `.lrc` files and embedded lyrics for a folder Neria
+  downloaded before. Source: LRCLIB (already used, free, no login, synced when available);
+  rows say "synced", "plain text only" or "no lyrics found"
+  - More lyrics sources: see the high-priority synced lyrics item above
+  - Later, opt-in only: "Sign in to Spotify for more synced lyrics" (Spotify's own Musixmatch
+    lyrics), off by default with a clear warning about account risk. Must not depend on
+    third-party repos at runtime; would need a CLAUDE.md rule change first
+  - Looked at akashrchandran/spotify-lyrics-api (Spotify's own Musixmatch lyrics): not used.
+    It needs the user's Spotify login cookie (`sp_dc`), its README says it's probably against
+    Spotify's terms (account risk), and it's GPL-3.0. Ideas-only reference, like Sunnify
+- **Captions / subtitles download** (any video link):
+  - On the preview, a "Captions" picker listing every language the video has, split into
+    **Made by the creator** and **Auto-generated**, with the video's own language on top;
+    tick one or several (search box for long lists, "All" / "None")
+  - Format: SRT (plays everywhere, default), VTT, ASS, or plain text (just the words, no
+    timings, e.g. for notes/transcripts)
+  - Save as separate files next to the video (`Title.en.srt`), embed into the video, or both
+  - **Captions only**: download just the captions, no video (`--skip-download`)
+  - Remember the last picked languages; "No captions on this video" shown plainly when none
+- **Livestreams**:
+  - Two ways to record, picked automatically and said plainly on the preview:
+    - **From the start**: when the stream allows rewinding (YouTube with DVR on), download
+      everything since it went live (`--live-from-start`) and keep following it live
+    - **From now**: when the creator turned rewinding off (or the site doesn't support it),
+      record from the moment you press Download. The preview says "This stream can't be
+      rewound, recording starts now"
+  - Scheduled streams: "Waiting for the stream to start" with a countdown (`--wait-for-video`)
+  - Stop button that finishes the file cleanly (playable even if stopped mid-way); recording
+    also ends on its own when the stream ends
+  - **Live timeline bar** on the queue row: a strip from stream start to "now" that fills as
+    segments arrive. Recorded parts solid, the part before you joined (From now) hatched,
+    gaps where segments were missed or the connection dropped shown as visible holes with
+    their time ("missed 0:42 at 1:13:05"), and a pulsing live edge
+  - **Stats** under the bar: recorded length, file size, current download speed, stream
+    bitrate/resolution, how far behind live you are, segments received / retried / missed,
+    connection status (OK / reconnecting / lost)
+  - Clipping a live stream: pick a range from the rewindable window
 - **Bulk download**: paste several links at once (one per line, or a text file) → one queue
   row per link with the current quality; skip duplicates and links already in the queue
 - **Quick download**: one-click "download with my defaults" (skip the preview step), e.g. a
@@ -139,11 +228,95 @@ SoundCloud already works through yt-dlp.
   (rename, reorder, remove, jump to each), then export them all in one go: from files through
   a local export queue, from links as several `--download-sections` jobs. Option to also join
   them into one file
+- **Filename builder** (drag and drop, no yt-dlp template syntax):
+  - A palette of field chips: Title, Channel, Upload date, Video ID, Playlist, Playlist #,
+    Resolution, Duration, Site…
+  - Drag chips into a builder line, reorder them by dragging, remove with × or by dragging
+    out; type anything between them as plain text (` -- `, ` [`, `] `, `_`…). A `/` makes a
+    folder (e.g. Channel / Title)
+  - Live example under the builder using the current link (or a sample video), e.g.
+    `Rick Astley -- Never Gonna Give You Up [dQw4w9WgXcQ].mp4`; warns about characters
+    Windows doesn't allow and names that would collide
+  - Presets ("Title", "Channel - Title", "Date - Title", "Title [ID]", "Playlist / 01 Title")
+    fill the builder as a starting point; save your own as named presets
+  - Behind the scenes it becomes the yt-dlp `-o` template; "Advanced" still shows the raw
+    template for power users
 - **Check for updates**: Neria itself (GitHub releases: "Neria x.y is out" with changelog,
   download + swap the exe next to itself, keep `bin/` and `settings.json`, stays portable) and
   the tools: today only yt-dlp updates (daily `yt-dlp -U`); FFmpeg, Deno and libmpv are
   fetched once and never refreshed. Settings → About: versions of everything, "Check now",
   auto-check on/off
+
+### Download, more
+- **Simple format presets** on the Download page instead of codec/container talk: Best
+  quality · Best compatibility (H.264 MP4, plays everywhere) · Smallest file · Audio only;
+  the current chips/containers move under Advanced
+- **Watch the link before downloading**: a play button on the link preview that streams it
+  (we already stream links for "Clip first"; this is the same player without the trimming)
+- **Chapters**: show a video's chapters on the preview; "Split by chapters" saves one file
+  per chapter (`--split-chapters`), and the clipper shows chapter marks on the timeline
+- **Duplicate check**: warn when a link (or the same video ID) is already in the queue or
+  already downloaded, with "Open existing" / "Download again"
+- **Queue survives restarts**: waiting and interrupted downloads come back after closing
+  Neria, and resume where yt-dlp can
+- **Tray + notifications**: closing to the tray keeps downloads running (optional);
+  a Windows notification when a download/compress/export finishes or fails
+- Later: follow a channel/playlist and download new uploads; schedule downloads
+
+### Clip / edit
+- **Rotate and flip** (90° steps, mirror), applied on export (forces re-encode; say so)
+- **Crop and aspect ratio**: draw a crop box on the player, or pick 9:16 (Shorts/TikTok),
+  1:1, 4:5, 16:9 with a draggable frame; saved with the clip
+- **Make a GIF** from the selection: size, fps and loop, with an estimate of the file size
+  (ffmpeg palettegen for good colors); also WebP/short MP4 "GIF-like" for Discord
+- **Preview the result** before exporting: plays the selection with crop/rotate/audio
+  changes applied
+- Audio on export: fade in / fade out, mute, gain, normalize (see the audio controls in
+  Phase 2); "Save audio only" (extract the selection as MP3/M4A/Opus)
+- Joins with the clip render queue: export several clips, optionally merged into one file
+
+### Compress: understandable for everyone, advanced when needed
+- Start with plain goals instead of numbers: **For Discord** (20 MB) · **For email**
+  (25 MB) · **For WhatsApp** · **Smaller, still sharp** · **As small as possible** · Custom
+  size. Each says what it'll look like: "1080p, looks the same" / "720p, a bit softer"
+- **Before/after**: original vs. estimated size up front, then actual size and "% smaller";
+  a side-by-side (or slider) frame comparison to judge quality before committing
+- **Plain-language options**: "Plays everywhere / Smaller / Smallest" instead of
+  H.264 / H.265 / AV1; "Use my graphics card (faster)"
+- Everything technical (bitrate, CRF/CQ, two-pass, fps, resolution, audio kbps) stays
+  available under an **Advanced** fold, never in the way
+- **Batch**: drop several files or a folder, same settings for all, one progress list
+
+### Audio tools (own page)
+- **Convert** audio: MP3, M4A/AAC, Opus, FLAC, WAV; bitrate (128–320), mono/stereo, sample
+  rate under Advanced. Also "Extract audio" from videos. Batch for many files
+- **Even out loudness** across songs (EBU R128 / LUFS) so a playlist plays at one volume
+- **Tag editor**: title, artist, album, track #, genre, year, cover art, lyrics; edit many
+  files at once (e.g. set the album/cover for 100 songs); "Find tags online" from Spotify
+  metadata
+- **Organize**: move songs into Artist / Album folders, make M3U playlists, find duplicates
+- Split audio by timestamps / remove silence at start and end (later)
+
+### Bigger ideas, later (after the above, keep UX simple)
+- **Library page**: everything Neria downloaded/made, with thumbnails/covers, search,
+  audio/video filters, sort by date/size/length; open, show in folder, clip/compress again
+- **Command palette** (Ctrl+K): type "compress", "extract audio", "clip"… to jump to any
+  action; also lists recent files
+- **Saved workflows**: start with simple "after download" actions (extract audio,
+  compress for Discord, move to folder) before any full workflow builder; a builder only if
+  people actually want chains like download → clip → 9:16 → compress
+- Watched folder: auto-compress/convert files dropped into a folder
+
+Not planned (from outside suggestions, decided against for now):
+- spotDL as a dependency: Neria already does its flow natively in Rust (see Phase 5 and
+  `docs/UPSTREAM.md`); bundling Python would hurt portability and start-up
+- Rewriting storage on SQLite / Tokio: JSON settings + manifests and threads are enough
+  today; revisit only if the Library page needs it
+- Downloading comments, subtitle translation through online services
+
+Low priority (nice to have, after the above):
+- **App icon**: a proper Neria icon for the exe (embedded `.ico`), window title bar, taskbar
+  and Alt-Tab, release zip; sized for 16–256 px so it stays crisp in Explorer
 
 ## Phase 6: UI overhaul (before Android)
 The features grew page by page; before porting, make the UI one coherent system that can
@@ -162,7 +335,8 @@ also scale down to a phone.
 - First-run onboarding, better empty states, light theme option, accessibility pass
   (contrast, screen-reader labels)
 
-## Phase 7: Android
+## Phase 7: Android (on hold)
+On hold until the desktop app has every feature we want; no Android work before then.
 - Same `neria-core`; Slint Android UI (built on the Phase 6 adaptive layouts); embedded Python
   for yt-dlp; ffmpeg + libmpv as `.so`
 - Share-sheet target ("Share → Neria"); APK via GitHub / F-Droid (Play Store bans downloaders)
