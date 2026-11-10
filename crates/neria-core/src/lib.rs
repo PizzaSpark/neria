@@ -18,5 +18,6 @@ pub mod report;
 pub mod settings;
 pub mod spotify;
 pub mod tools;
+pub mod update;
 pub mod web;
 pub mod ytmusic;

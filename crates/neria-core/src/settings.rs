@@ -68,6 +68,8 @@ pub struct Settings {
     /// Optional: the user's own Spotify app (developer.spotify.com) for full playlists.
     pub spotify_client_id: String,
     pub spotify_client_secret: String,
+    /// Look for a new Neria and newer tools at start-up (GitHub releases).
+    pub check_updates: bool,
 }
 
 impl Default for Settings {
@@ -96,6 +98,7 @@ impl Default for Settings {
             verify_audio: true,
             spotify_client_id: String::new(),
             spotify_client_secret: String::new(),
+            check_updates: true,
         }
     }
 }

@@ -632,6 +632,19 @@ export component AppWindow inherits Window {
     // Short message at the bottom of the window ("Report copied…"); Rust clears it.
     in property <string> toast;
 
+    // Updates. update-state: 0 idle, 1 checking, 2 downloading, 3 ready to restart, 4 failed
+    in-out property <bool> check-updates: true;
+    in property <int> update-state;
+    in property <string> update-version; // "" = no newer Neria found
+    in property <string> update-url;
+    in property <string> update-notes;
+    in property <string> update-status;
+    in property <float> update-progress;
+    in property <bool> update-banner;
+    in property <string> tools-outdated; // tool labels, one per line
+    in property <string> tools-status;
+    in property <bool> tools-updating;
+
     in-out property <int> page;
     in-out property <bool> drawer-open;
 
@@ -741,6 +754,11 @@ export component AppWindow inherits Window {
     callback retry-setup();
     callback report-job(int);
     callback copy-report();
+    callback update-check();
+    callback update-install();
+    callback update-restart();
+    callback update-later();
+    callback tools-update();
 
     HorizontalLayout {
         // ───────────── Sidebar ─────────────
@@ -820,6 +838,68 @@ export component AppWindow inherits Window {
                             text: "Advanced";
                             icon: "\u{E9E9}";
                             clicked => { root.drawer-open = true; }
+                        }
+                    }
+                }
+
+                // New Neria version (or one downloading / ready to restart)
+                if root.update-banner || root.update-state == 2 || root.update-state == 3: Rectangle {
+                    border-radius: 12px;
+                    background: Theme.accent.with-alpha(0.12);
+                    border-width: 1px;
+                    border-color: Theme.accent.with-alpha(0.45);
+                    HorizontalLayout {
+                        padding: 12px;
+                        padding-left: 16px;
+                        spacing: 12px;
+                        Icon {
+                            horizontal-stretch: 0;
+                            text: root.update-state == 3 ? "\u{E72C}" : "\u{E896}";
+                            color: Theme.accent-hi;
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 6px;
+                            Text {
+                                text: root.update-state == 2 || root.update-state == 3 || root.update-state == 4
+                                    ? root.update-status
+                                    : "Neria " + root.update-version + " is out.";
+                                color: root.update-state == 4 ? Theme.danger : Theme.text;
+                                font-size: 13px;
+                                font-weight: 600;
+                                wrap: word-wrap;
+                            }
+                            if root.update-state == 2: Bar {
+                                value: root.update-progress;
+                            }
+                            if root.update-state == 3 && root.active-count > 0: Text {
+                                text: "Restarting stops " + root.active-count + (root.active-count == 1 ? " running download." : " running downloads.");
+                                color: Theme.warn;
+                                font-size: 12px;
+                            }
+                        }
+                        if root.update-state == 0 || root.update-state == 4: GhostButton {
+                            horizontal-stretch: 0;
+                            text: "What's new";
+                            clicked => { root.drawer-open = true; }
+                        }
+                        if root.update-state == 0 || root.update-state == 4: PrimaryButton {
+                            horizontal-stretch: 0;
+                            text: root.update-state == 4 ? "Try again" : "Update now";
+                            clicked => { root.update-install(); }
+                        }
+                        if root.update-state == 3: PrimaryButton {
+                            horizontal-stretch: 0;
+                            text: "Restart now";
+                            clicked => { root.update-restart(); }
+                        }
+                        if root.update-state != 2: VerticalLayout {
+                            alignment: center;
+                            IconButton {
+                                icon: "\u{E711}";
+                                clicked => { root.update-later(); }
+                            }
                         }
                     }
                 }
@@ -2022,8 +2102,59 @@ export component AppWindow inherits Window {
                                 color: Theme.text;
                                 font-size: 13px;
                             }
+                            if root.update-status != "": Text {
+                                text: root.update-status;
+                                color: root.update-state == 4 ? Theme.danger : root.update-version != "" ? Theme.accent-hi : Theme.muted;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                            }
+                            if root.update-version != "" && root.update-notes != "": Rectangle {
+                                border-radius: 8px;
+                                background: Theme.surface-hi;
+                                VerticalLayout {
+                                    padding: 10px;
+                                    Hint { text: root.update-notes; }
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: 8px;
+                                if root.update-version != "" && (root.update-state == 0 || root.update-state == 4): PrimaryButton {
+                                    text: "Update to " + root.update-version;
+                                    clicked => { root.update-install(); }
+                                }
+                                if root.update-state == 3: PrimaryButton {
+                                    text: "Restart now";
+                                    clicked => { root.update-restart(); }
+                                }
+                                if root.update-state == 0 || root.update-state == 4: GhostButton {
+                                    text: "Check now";
+                                    icon: "\u{E72C}";
+                                    clicked => { root.update-check(); }
+                                }
+                            }
+                            if root.update-state == 2: Bar { value: root.update-progress; }
+                            CheckBox {
+                                text: "Check for updates when Neria starts";
+                                checked <=> root.check-updates;
+                                toggled => { root.settings-changed(); }
+                            }
                             Hint { text: root.tool-versions == "" ? "Checking tool versions…" : root.tool-versions; }
-                            Hint { text: "yt-dlp updates itself daily."; }
+                            Hint { text: "yt-dlp updates itself daily. FFmpeg, Deno and libmpv are offered an update once a newer build exists and yours is over a month old."; }
+                            if root.tools-status != "": Text {
+                                text: root.tools-status;
+                                color: root.tools-outdated != "" ? Theme.accent-hi : Theme.muted;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                            }
+                            if root.tools-outdated != "" && !root.tools-updating: HorizontalLayout {
+                                alignment: start;
+                                GhostButton {
+                                    text: "Update tools";
+                                    icon: "\u{E896}";
+                                    clicked => { root.tools-update(); }
+                                }
+                            }
                             Hint { text: "Something not working? Copy a report and paste it in a message. It has the versions above and your settings, never your Spotify key. Failed downloads have their own report button (bug icon) with the link and log."; }
                             HorizontalLayout {
                                 alignment: start;

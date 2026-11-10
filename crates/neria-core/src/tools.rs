@@ -25,6 +25,9 @@ pub struct ToolSpec {
     pub archive: Option<&'static [(&'static str, &'static str)]>,
     /// Files that must exist in `bin/` for this tool to count as installed.
     pub files: &'static [&'static str],
+    /// GitHub repo (and tag, else the latest release) to check for newer builds.
+    /// `None` for yt-dlp, which updates itself.
+    pub release: Option<(&'static str, Option<&'static str>)>,
 }
 
 #[cfg(windows)]
@@ -34,6 +37,7 @@ pub const TOOLS: &[ToolSpec] = &[
         url: Source::Url("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"),
         archive: None,
         files: &["yt-dlp.exe"],
+        release: None,
     },
     ToolSpec {
         label: "FFmpeg",
@@ -42,12 +46,14 @@ pub const TOOLS: &[ToolSpec] = &[
         ),
         archive: Some(&[("bin/ffmpeg.exe", "ffmpeg.exe"), ("bin/ffprobe.exe", "ffprobe.exe")]),
         files: &["ffmpeg.exe", "ffprobe.exe"],
+        release: Some(("yt-dlp/FFmpeg-Builds", Some("latest"))),
     },
     ToolSpec {
         label: "Deno (needed by yt-dlp for YouTube)",
         url: Source::Url("https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"),
         archive: Some(&[("deno.exe", "deno.exe")]),
         files: &["deno.exe"],
+        release: Some(("denoland/deno", None)),
     },
     ToolSpec {
         label: "libmpv (video player)",
@@ -59,6 +65,7 @@ pub const TOOLS: &[ToolSpec] = &[
         },
         archive: Some(&[("libmpv-2.dll", "libmpv-2.dll")]),
         files: &["libmpv-2.dll"],
+        release: Some(("shinchiro/mpv-winbuild-cmake", None)),
     },
 ];
 
@@ -148,40 +155,36 @@ pub fn missing() -> Vec<&'static ToolSpec> {
 /// Download every missing tool. Blocking; call from a worker thread.
 pub fn ensure_all(mut on: impl FnMut(Progress)) -> Result<()> {
     let todo = missing();
-    if todo.is_empty() {
-        return Ok(());
-    }
-    let bin = paths::bin_dir();
-    fs::create_dir_all(&bin).with_context(|| format!("cannot create {}", bin.display()))?;
-
     let steps = todo.len();
     for (step, tool) in todo.into_iter().enumerate() {
-        let tmp = bin.join(format!("{}.download", tool.files[0]));
-        let label = tool.label.to_string();
-        let url = resolve(&tool.url).with_context(|| format!("finding {}", tool.label))?;
-        download_to(&url, &tmp, |downloaded, total| {
-            on(Progress { step, steps, label: label.clone(), downloaded, total })
-        })
+        install(tool, step, steps, &mut on)?;
+    }
+    Ok(())
+}
+
+/// Download one tool into `bin/` (replacing what's there). `step`/`steps` are for progress.
+pub fn install(tool: &ToolSpec, step: usize, steps: usize, on: &mut impl FnMut(Progress)) -> Result<()> {
+    let bin = paths::bin_dir();
+    fs::create_dir_all(&bin).with_context(|| format!("cannot create {}", bin.display()))?;
+    let tmp = bin.join(format!("{}.download", tool.files[0]));
+    let label = tool.label.to_string();
+    let url = resolve(&tool.url).with_context(|| format!("finding {}", tool.label))?;
+    download_to(&url, &tmp, |downloaded, total| on(Progress { step, steps, label: label.clone(), downloaded, total }))
         .with_context(|| format!("downloading {}", tool.label))?;
 
-        match tool.archive {
-            None => fs::rename(&tmp, bin.join(tool.files[0]))?,
-            Some(entries) => {
-                on(Progress { step, steps, label: format!("{} (extracting)", tool.label), downloaded: 1, total: Some(1) });
-                let res = if url.ends_with(".7z") {
-                    extract_7z(&tmp, &bin, entries)
-                } else {
-                    extract_zip(&tmp, &bin, entries)
-                };
-                let _ = fs::remove_file(&tmp);
-                res.with_context(|| format!("extracting {}", tool.label))?;
-            }
+    match tool.archive {
+        None => fs::rename(&tmp, bin.join(tool.files[0]))?,
+        Some(entries) => {
+            on(Progress { step, steps, label: format!("{} (extracting)", tool.label), downloaded: 1, total: Some(1) });
+            let res = if url.ends_with(".7z") { extract_7z(&tmp, &bin, entries) } else { extract_zip(&tmp, &bin, entries) };
+            let _ = fs::remove_file(&tmp);
+            res.with_context(|| format!("extracting {}", tool.label))?;
         }
     }
     Ok(())
 }
 
-fn download_to(url: &str, dest: &Path, mut on: impl FnMut(u64, Option<u64>)) -> Result<()> {
+pub(crate) fn download_to(url: &str, dest: &Path, mut on: impl FnMut(u64, Option<u64>)) -> Result<()> {
     let mut resp = http()?.get(url).send()?.error_for_status()?;
     let total = resp.content_length();
 
@@ -207,7 +210,7 @@ fn download_to(url: &str, dest: &Path, mut on: impl FnMut(u64, Option<u64>)) -> 
     Ok(())
 }
 
-fn extract_zip(archive: &Path, dest: &Path, entries: &[(&str, &str)]) -> Result<()> {
+pub(crate) fn extract_zip(archive: &Path, dest: &Path, entries: &[(&str, &str)]) -> Result<()> {
     let mut zip = zip::ZipArchive::new(File::open(archive)?)?;
     let mut found = vec![false; entries.len()];
 

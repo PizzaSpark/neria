@@ -17,6 +17,7 @@ mod clipper;
 mod compressor;
 mod match_ui;
 mod spotify_ui;
+mod updates_ui;
 
 slint::include_modules!();
 
@@ -52,6 +53,7 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_verify_audio(s.verify_audio);
     ui.set_spotify_client_id(s.spotify_client_id.as_str().into());
     ui.set_spotify_client_secret(s.spotify_client_secret.as_str().into());
+    ui.set_check_updates(s.check_updates);
 }
 
 fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
@@ -74,6 +76,7 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.verify_audio = ui.get_verify_audio();
     s.spotify_client_id = ui.get_spotify_client_id().trim().to_string();
     s.spotify_client_secret = ui.get_spotify_client_secret().trim().to_string();
+    s.check_updates = ui.get_check_updates();
 }
 
 fn job_item(s: &JobSnapshot) -> JobItem {
@@ -198,12 +201,16 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             let _ = s.save();
         }
 
+        let check_updates = settings.lock().unwrap().check_updates;
         let version = tools::ytdlp_version().unwrap_or_default();
         let versions: Vec<String> = report::tool_versions().iter().map(|(n, v)| format!("{n} {v}")).collect();
         let _ = weak.upgrade_in_event_loop(move |ui| {
             ui.set_ytdlp_version(version.into());
             ui.set_tool_versions(versions.join("\n").into());
             ui.set_tools_ready(true);
+            if check_updates {
+                updates_ui::check(&ui, false);
+            }
             // Dev/automation hook: open a file straight into the clipper.
             if let Some(path) = std::env::var_os("NERIA_OPEN") {
                 ui.invoke_clip_open_path(path.to_string_lossy().as_ref().into());
@@ -387,6 +394,9 @@ fn main() -> anyhow::Result<()> {
     // The video preview renders through OpenGL, so insist on a GL renderer.
     slint::BackendSelector::new().require_opengl().select()?;
 
+    // Leftovers from an update (the replaced exe, old tool files).
+    neria_core::update::cleanup();
+
     let settings = Arc::new(Mutex::new(Settings::load()));
     let ui = AppWindow::new()?;
     settings_to_ui(&ui, &settings.lock().unwrap());
@@ -421,6 +431,7 @@ fn main() -> anyhow::Result<()> {
     });
     spotify_ui::install_sync_review(&ui);
     match_ui::install(&ui, queue.clone());
+    updates_ui::install(&ui);
 
     ui.on_url_edited({
         let weak = ui.as_weak();
