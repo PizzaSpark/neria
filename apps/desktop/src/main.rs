@@ -53,6 +53,7 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_max_concurrent(s.max_concurrent as i32);
     ui.set_lyrics(s.lyrics);
     ui.set_verify_audio(s.verify_audio);
+    ui.set_spotify_explain(s.spotify_explain);
     ui.set_spotify_client_id(s.spotify_client_id.as_str().into());
     ui.set_spotify_client_secret(s.spotify_client_secret.as_str().into());
     ui.set_check_updates(s.check_updates);
@@ -77,6 +78,7 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.max_concurrent = ui.get_max_concurrent().clamp(1, 8) as u32;
     s.lyrics = ui.get_lyrics();
     s.verify_audio = ui.get_verify_audio();
+    s.spotify_explain = ui.get_spotify_explain();
     s.spotify_client_id = ui.get_spotify_client_id().trim().to_string();
     s.spotify_client_secret = ui.get_spotify_client_secret().trim().to_string();
     s.check_updates = ui.get_check_updates();
@@ -268,6 +270,72 @@ fn demo_rows(ui: &AppWindow) {
     ui.set_active_count(3);
 }
 
+/// Set by "Got it, download" so the next Download skips the Spotify heads-up once.
+static HEADS_UP_OK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Dev hook (`NERIA_DIALOG`): open a dialog with sample data, for design checks.
+/// `match`, `sync`, `spotify`, `toast`, `update`, `update-ready`, `update-failed`.
+fn demo_dialog(ui: &AppWindow, which: &str) {
+    match which {
+        "match" => {
+            let item = |title: &str, detail: &str, score: i32, ruled_out: bool, current: bool, check_state: i32, check_text: &str| MatchItem {
+                title: title.into(),
+                detail: detail.into(),
+                score,
+                ruled_out,
+                current,
+                url: "https://music.youtube.com/watch?v=dQw4w9WgXcQ".into(),
+                check_state,
+                check_text: check_text.into(),
+            };
+            let items = vec![
+                item("Total Eclipse of the Heart (Live)", "Bonnie Tyler · 6:12", 64, false, true, 4, "Different (41%)"),
+                item("Total Eclipse of the Heart", "Bonnie Tyler · Faster Than the Speed of Night · 6:59", 96, false, false, 2, "Same recording"),
+                item("Total Eclipse of the Heart (Single Edit)", "Bonnie Tyler · 4:30", 88, false, false, 3, "Unsure (72%)"),
+                item("Total Eclipse of the Heart (Turn Around)", "Bonnie Tyler · 7:00", 81, false, false, 1, "Checking…"),
+                item("Total Eclipse of the Heart — Karaoke Version", "Sing King · 6:58", 52, false, false, 0, ""),
+                item("Total Eclipse of the Heart (2015 Remaster)", "Bonnie Tyler · 3:02", 0, true, false, 0, ""),
+                item("Total Eclipse of the Heart (Acoustic)", "Bonnie Tyler · 5:40", 70, false, false, 5, "Couldn't check"),
+            ];
+            ui.set_match_heading("Bonnie Tyler – Total Eclipse of the Heart · 6:59".into());
+            ui.set_match_sub("Best matches on YouTube Music. The one in use doesn't sound like Spotify's preview.".into());
+            ui.set_match_query("Bonnie Tyler Total Eclipse of the Heart".into());
+            ui.set_match_can_check(true);
+            ui.set_match_items(ModelRc::from(Rc::new(VecModel::from(items))));
+            ui.set_match_open(true);
+        }
+        "sync" => {
+            let items: Vec<SyncItem> = ["Daft Punk - One More Time", "Justice - D.A.N.C.E.", "Kavinsky - Nightcall (feat. Lovefoxxx) [Drive Original Motion Picture Soundtrack]", "Air - La femme d'argent"]
+                .iter()
+                .enumerate()
+                .map(|(i, t)| SyncItem { title: (*t).into(), file: format!("C:\\Music\\{t}.mp3").into(), checked: i == 1 })
+                .collect();
+            ui.set_sync_items(ModelRc::from(Rc::new(VecModel::from(items))));
+            ui.set_sync_ticked(1);
+            ui.set_sync_open(true);
+        }
+        "spotify" => ui.set_spotify_heads_up(true),
+        "toast" => ui.set_toast("Report copied. Paste it in a message to whoever helps you with Neria (Ctrl+V).".into()),
+        "update" | "update-ready" | "update-failed" => {
+            ui.set_update_version("0.2.0".into());
+            ui.set_update_banner(true);
+            match which {
+                "update-ready" => {
+                    ui.set_update_state(3);
+                    ui.set_update_status("Neria 0.2.0 is ready. Restart to start using it.".into());
+                    ui.set_active_count(2);
+                }
+                "update-failed" => {
+                    ui.set_update_state(4);
+                    ui.set_update_status("Couldn't download the update. Check your connection and try again.".into());
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+}
+
 fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -315,6 +383,9 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             }
             if let Some(path) = std::env::var_os("NERIA_COMPRESS") {
                 ui.invoke_cmp_open_path(path.to_string_lossy().as_ref().into());
+            }
+            if let Ok(which) = std::env::var("NERIA_DIALOG") {
+                demo_dialog(&ui, &which);
             }
             if std::env::var_os("NERIA_SETTINGS").is_some() {
                 ui.set_drawer_open(true);
@@ -580,6 +651,13 @@ fn main() -> anyhow::Result<()> {
             }
             save();
             if neria_core::spotify::parse_link(&url).is_some() {
+                // First time: explain where the audio comes from (once the lookup is done).
+                let looked_up = probe_state.spotify.lock().unwrap().as_ref().is_some_and(|p| p.url == url);
+                if looked_up && ui.get_spotify_explain() && !HEADS_UP_OK.swap(false, Ordering::SeqCst) {
+                    ui.set_spotify_heads_up_skip(true);
+                    ui.set_spotify_heads_up(true);
+                    return;
+                }
                 // Spotify: download every song once the lookup has finished.
                 let settings = settings.lock().unwrap().clone();
                 if !spotify_ui::enqueue(&ui, &url, &probe_state.spotify, &settings, &queue) {
@@ -596,6 +674,20 @@ fn main() -> anyhow::Result<()> {
             ui.set_probe_state(0);
             ui.set_probe_blocked(false);
             ui.set_probe_is_spotify(false);
+        }
+    });
+
+    ui.on_spotify_heads_up_ok({
+        let (weak, save) = (ui.as_weak(), save.clone());
+        move |skip| {
+            let ui = weak.unwrap();
+            ui.set_spotify_heads_up(false);
+            if skip {
+                ui.set_spotify_explain(false);
+                save();
+            }
+            HEADS_UP_OK.store(true, Ordering::SeqCst);
+            ui.invoke_start_download();
         }
     });
 

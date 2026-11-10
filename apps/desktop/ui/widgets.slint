@@ -372,3 +372,118 @@ export component Kbd inherits Rectangle {
         }
     }
 }
+
+// A tickbox you press: 2px outline, ink fill with a check when on. The label is part of
+// the target.
+export component Tick inherits Rectangle {
+    in-out property <bool> checked;
+    in property <string> text;
+    callback toggled(bool);
+    min-height: 28px;
+    min-width: row.preferred-width;
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+    row := HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                border-radius: 6px;
+                border-width: 2px;
+                border-color: root.checked ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
+                background: root.checked ? Theme.ink : transparent;
+                animate background, border-color { duration: 90ms; }
+                if root.checked: Icon {
+                    text: "\u{E73E}";
+                    font-size: 11px;
+                    color: Theme.bg;
+                }
+            }
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: Theme.ink;
+            font-family: Theme.body;
+            font-size: 13px;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+// The floating card for dialogs: scrim, `panel`, 1px `line-strong`, 12px radius, a title
+// with an optional line under it, and a close button. Put it over the whole window.
+// `fit` sizes the card to its content instead of `card-height`.
+export component Dialog inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <length> card-width: 560px;
+    in property <length> card-height: 520px;
+    in property <bool> fit;
+    // Clicking outside or the × closes it. Off for dialogs that need an answer.
+    in property <bool> closable: true;
+    callback close();
+    background: Theme.scrim;
+    TouchArea {
+        clicked => {
+            if root.closable {
+                root.close();
+            }
+        }
+    }
+    Rectangle {
+        width: min(root.card-width, root.width - 48px);
+        height: root.fit ? min(body.preferred-height, root.height - 48px) : min(root.card-height, root.height - 48px);
+        border-radius: 12px;
+        background: Theme.panel;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        clip: true;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: 24px;
+            padding-top: 22px;
+            spacing: 16px;
+            HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    Text {
+                        text: root.title;
+                        color: Theme.ink;
+                        font-family: Theme.display;
+                        font-size: 20px;
+                        font-weight: 700;
+                        letter-spacing: -0.4px;
+                        wrap: word-wrap;
+                    }
+                    if root.subtitle != "": Text {
+                        text: root.subtitle;
+                        color: Theme.muted;
+                        font-family: Theme.body;
+                        font-size: 13px;
+                        overflow: elide;
+                    }
+                }
+                if root.closable: VerticalLayout {
+                    alignment: start;
+                    IconButton {
+                        icon: "\u{E711}";
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+            @children
+        }
+    }
+}

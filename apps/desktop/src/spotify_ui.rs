@@ -89,6 +89,7 @@ pub fn preview(ui: &AppWindow, url: String, link: Link, settings: Settings, gene
                         })
                         .collect();
                     ui.set_sync_items(ModelRc::from(Rc::new(VecModel::from(items))));
+                    ui.set_sync_ticked(0);
                     *slot.lock().unwrap() = Some(Pending { url, collection: col });
                     // Dev hooks for scripted checks.
                     if std::env::var_os("NERIA_SYNC_REVIEW").is_some() && ui.get_sync_items().row_count() > 0 {
@@ -144,6 +145,7 @@ pub fn install_sync_review(ui: &AppWindow) {
                 row.checked = checked;
                 model.set_row_data(i as usize, row);
             }
+            ui.set_sync_ticked(model.iter().filter(|r| r.checked).count() as i32);
         }
     });
 
@@ -175,6 +177,7 @@ pub fn install_sync_review(ui: &AppWindow) {
                 }
             }
             ui.set_sync_items(ModelRc::from(Rc::new(VecModel::from(keep))));
+            ui.set_sync_ticked(0);
             ui.set_sync_open(false);
             let mut msg = format!("Moved {moved} song{} to the Recycle Bin", if moved == 1 { "" } else { "s" });
             if failed > 0 {

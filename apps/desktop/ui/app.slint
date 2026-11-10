@@ -1,6 +1,6 @@
 import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, Chip, Bar, NavItem, PageTitle, SectionTitle, Hint, Tag, Kbd, LinkField, TextLink } from "widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, Chip, Bar, NavItem, PageTitle, SectionTitle, Hint, Tag, Kbd, LinkField, TextLink, Tick, Dialog } from "widgets.slint";
 
 export { Theme }
 
@@ -542,6 +542,12 @@ export component AppWindow inherits Window {
     callback match-check(int);
     in property <bool> match-can-check;
 
+    in property <int> sync-ticked;
+    // First Download on a Spotify link: explain where the audio comes from.
+    in-out property <bool> spotify-heads-up;
+    in-out property <bool> spotify-heads-up-skip: true;
+    in-out property <bool> spotify-explain: true; // Settings: show the heads-up
+    callback spotify-heads-up-ok(bool);
     callback sync-toggle(int, bool);
     callback sync-delete-selected();
     callback sync-keep-all();
@@ -803,20 +809,19 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // New Neria version (or one downloading / ready to restart)
-                if root.update-banner || root.update-state == 2 || root.update-state == 3: Rectangle {
-                    border-radius: 12px;
-                    background: Theme.accent.with-alpha(0.12);
-                    border-width: 1px;
-                    border-color: Theme.accent.with-alpha(0.45);
+                // New Neria version (or one downloading / ready to restart). Calm strip, not a
+                // card: the Download button keeps the page's one yellow action.
+                if root.update-banner || root.update-state == 2 || root.update-state == 3: VerticalLayout {
+                    vertical-stretch: 0;
+                    spacing: 10px;
                     HorizontalLayout {
-                        padding: 12px;
-                        padding-left: 16px;
                         spacing: 12px;
-                        Icon {
-                            horizontal-stretch: 0;
-                            text: root.update-state == 3 ? "\u{E72C}" : "\u{E896}";
-                            color: Theme.accent-hi;
+                        VerticalLayout {
+                            alignment: center;
+                            Tag {
+                                text: root.update-state == 3 ? "Ready" : root.update-state == 4 ? "Failed" : "New";
+                                kind: root.update-state == 3 ? 1 : root.update-state == 4 ? 3 : 4;
+                            }
                         }
                         VerticalLayout {
                             horizontal-stretch: 1;
@@ -826,9 +831,10 @@ export component AppWindow inherits Window {
                                 text: root.update-state == 2 || root.update-state == 3 || root.update-state == 4
                                     ? root.update-status
                                     : "Neria " + root.update-version + " is out.";
-                                color: root.update-state == 4 ? Theme.danger : Theme.text;
+                                color: Theme.ink;
+                                font-family: Theme.body;
                                 font-size: 13px;
-                                font-weight: 600;
+                                font-weight: 500;
                                 wrap: word-wrap;
                             }
                             if root.update-state == 2: Bar {
@@ -837,23 +843,34 @@ export component AppWindow inherits Window {
                             if root.update-state == 3 && root.active-count > 0: Text {
                                 text: "Restarting stops " + root.active-count + (root.active-count == 1 ? " running download." : " running downloads.");
                                 color: Theme.warn;
+                                font-family: Theme.body;
                                 font-size: 12px;
                             }
                         }
-                        if root.update-state == 0 || root.update-state == 4: GhostButton {
-                            horizontal-stretch: 0;
-                            text: "What's new";
-                            clicked => { root.drawer-open = true; }
+                        if root.update-state == 0 || root.update-state == 4: VerticalLayout {
+                            alignment: center;
+                            TextLink {
+                                text: "What's new";
+                                clicked => { root.drawer-open = true; }
+                            }
                         }
-                        if root.update-state == 0 || root.update-state == 4: PrimaryButton {
-                            horizontal-stretch: 0;
-                            text: root.update-state == 4 ? "Try again" : "Update now";
-                            clicked => { root.update-install(); }
+                        if root.update-state == 0 || root.update-state == 4: VerticalLayout {
+                            alignment: center;
+                            GhostButton {
+                                compact: true;
+                                text: root.update-state == 4 ? "Try again" : "Update now";
+                                icon: root.update-state == 4 ? "\u{E72C}" : "\u{E896}";
+                                clicked => { root.update-install(); }
+                            }
                         }
-                        if root.update-state == 3: PrimaryButton {
-                            horizontal-stretch: 0;
-                            text: "Restart now";
-                            clicked => { root.update-restart(); }
+                        if root.update-state == 3: VerticalLayout {
+                            alignment: center;
+                            GhostButton {
+                                compact: true;
+                                text: "Restart now";
+                                icon: "\u{E72C}";
+                                clicked => { root.update-restart(); }
+                            }
                         }
                         if root.update-state != 2: VerticalLayout {
                             alignment: center;
@@ -862,6 +879,10 @@ export component AppWindow inherits Window {
                                 clicked => { root.update-later(); }
                             }
                         }
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.line;
                     }
                 }
 
@@ -2018,6 +2039,11 @@ export component AppWindow inherits Window {
                                 toggled => { root.settings-changed(); }
                             }
                             Hint { text: "Catches re-recordings, live and cover versions by their sound, and tries other versions automatically. Adds about a second per song."; }
+                            CheckBox {
+                                text: "Explain where the audio comes from before downloading";
+                                checked <=> root.spotify-explain;
+                                toggled => { root.settings-changed(); }
+                            }
                             Hint { text: "Optional: your own Spotify app (developer.spotify.com → Create app) unlocks playlists over 100 songs. Never shared, stored only in settings.json next to Neria."; }
                             LineEdit {
                                 placeholder-text: "Client ID";
@@ -2147,25 +2173,35 @@ export component AppWindow inherits Window {
     // ───────────── Toast ─────────────
     if root.toast != "": Rectangle {
         x: (root.width - self.width) / 2;
-        y: root.height - self.height - 28px;
-        width: min(toast-text.preferred-width + 80px, root.width - 80px);
-        height: 44px;
-        border-radius: 22px;
-        background: Theme.surface-hi;
+        y: root.height - self.height - 26px;
+        width: min(toast-row.preferred-width, root.width - 80px);
+        height: 46px;
+        border-radius: 12px;
+        background: Theme.panel;
         border-width: 1px;
-        border-color: Theme.border;
-        HorizontalLayout {
-            padding-left: 20px;
+        border-color: Theme.line-strong;
+        toast-row := HorizontalLayout {
+            padding-left: 16px;
             padding-right: 20px;
             spacing: 10px;
-            Icon {
-                text: "\u{E73E}";
-                font-size: 13px;
-                color: Theme.success;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 6px;
+                    background: Theme.ok-bg;
+                    Icon {
+                        text: "\u{E73E}";
+                        font-size: 11px;
+                        color: Theme.ok;
+                    }
+                }
             }
-            toast-text := Text {
+            Text {
                 text: root.toast;
-                color: Theme.text;
+                color: Theme.ink;
+                font-family: Theme.body;
                 font-size: 13px;
                 vertical-alignment: center;
                 overflow: elide;
@@ -2174,220 +2210,288 @@ export component AppWindow inherits Window {
     }
 
     // ───────────── Pick another match ─────────────
-    if root.match-open: Rectangle {
+    if root.match-open: Dialog {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
-        background: #000000b0;
-        TouchArea {
-            clicked => { root.match-open = false; }
+        title: "Pick the right song";
+        subtitle: root.match-heading;
+        card-width: 720px;
+        card-height: 640px;
+        close => { root.match-open = false; }
+
+        LinkField {
+            height: 46px;
+            text <=> root.match-query;
+            placeholder: "Search YouTube Music";
+            accepted => { root.match-search(); }
+            VerticalLayout {
+                alignment: center;
+                GhostButton {
+                    compact: true;
+                    text: "Search";
+                    icon: "\u{E721}";
+                    clicked => { root.match-search(); }
+                }
+            }
         }
 
-        Rectangle {
-            width: min(680px, root.width - 80px);
-            height: min(620px, root.height - 60px);
-            border-radius: 16px;
-            background: Theme.surface;
-            border-width: 1px;
-            border-color: Theme.border;
-            TouchArea { }
+        Text {
+            text: root.match-loading ? "Searching YouTube Music…" : root.match-status != "" ? root.match-status : root.match-sub;
+            color: Theme.muted;
+            font-family: Theme.body;
+            font-size: 12px;
+            overflow: elide;
+        }
 
-            VerticalLayout {
-                padding: 22px;
-                spacing: 12px;
-
-                HorizontalLayout {
-                    VerticalLayout {
-                        spacing: 4px;
-                        horizontal-stretch: 1;
-                        Text {
-                            text: "Pick the right song";
-                            color: Theme.text;
-                            font-family: Theme.display;
-                            font-size: 18px;
-                            font-weight: 700;
-                        }
-                        Text {
-                            text: root.match-heading;
-                            color: Theme.muted;
-                            font-size: 13px;
-                            overflow: elide;
-                        }
-                    }
-                    VerticalLayout {
-                        alignment: start;
-                        IconButton {
-                            icon: "\u{E711}";
-                            clicked => { root.match-open = false; }
-                        }
-                    }
+        VerticalLayout {
+            vertical-stretch: 1;
+            Rectangle {
+                height: 1px;
+                Rectangle {
+                    x: 0;
+                    width: parent.width - 16px;
+                    background: Theme.line;
                 }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    LineEdit {
-                        horizontal-stretch: 1;
-                        height: 40px;
-                        placeholder-text: "Search YouTube Music";
-                        text <=> root.match-query;
-                        accepted => { root.match-search(); }
+            }
+            ListView {
+                vertical-stretch: 1;
+                for item[i] in root.match-items: Rectangle {
+                    height: 64px;
+                    // Calm rows; the one in use sits on a slightly raised band.
+                    Rectangle {
+                        x: 0;
+                        width: parent.width - 16px;
+                        background: item.current ? Theme.raised : transparent;
                     }
-                    GhostButton {
-                        horizontal-stretch: 0;
-                        height: 40px;
-                        text: "Search";
-                        icon: "\u{E721}";
-                        clicked => { root.match-search(); }
+                    Rectangle {
+                        x: 0;
+                        y: parent.height - 1px;
+                        width: parent.width - 16px;
+                        height: 1px;
+                        background: Theme.line;
                     }
-                }
-
-                Text {
-                    text: root.match-loading ? "Searching YouTube Music…" : root.match-status != "" ? root.match-status : root.match-sub;
-                    color: Theme.muted;
-                    font-size: 12px;
-                    overflow: elide;
-                }
-
-                ListView {
-                    vertical-stretch: 1;
-                    for item[i] in root.match-items: VerticalLayout {
-                        padding-bottom: 6px;
-                        // Room for the list's scrollbar, which is drawn over the right edge.
-                        padding-right: 14px;
-                        Rectangle {
-                            height: 64px;
-                            border-radius: 10px;
-                            background: item.current ? Theme.accent.with-alpha(0.12) : Theme.surface-hi;
-                            border-width: item.current ? 1px : 0px;
-                            border-color: Theme.accent;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        // 16px lane for the scrollbar, plus breathing room.
+                        padding-right: 26px;
+                        spacing: 8px;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 5px;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: item.title;
+                                color: Theme.ink;
+                                font-family: Theme.body;
+                                font-size: 14px;
+                                font-weight: 500;
+                                overflow: elide;
+                            }
                             HorizontalLayout {
-                                padding-left: 14px;
-                                padding-right: 8px;
-                                spacing: 10px;
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 4px;
+                                spacing: 8px;
+                                if item.current: Text {
+                                    text: "In use";
+                                    color: Theme.ink;
+                                    font-family: Theme.display;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+                                Tag {
+                                    text: item.ruled-out ? "Length differs" : item.score + "% match";
+                                    kind: item.ruled-out ? 0 : item.score >= 80 ? 1 : item.score >= 60 ? 2 : 0;
+                                }
+                                if item.check-state > 0: Tag {
+                                    text: item.check-text;
+                                    kind: item.check-state == 2 ? 1 : item.check-state == 3 ? 2 : item.check-state == 4 ? 3 : 0;
+                                }
+                                Text {
+                                    text: item.detail;
+                                    color: Theme.muted;
+                                    font-family: Theme.body;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
                                     horizontal-stretch: 1;
-                                    Text {
-                                        text: item.title;
-                                        color: Theme.text;
-                                        font-size: 14px;
-                                        font-weight: 600;
-                                        overflow: elide;
-                                    }
-                                    Text {
-                                        text: item.detail;
-                                        color: Theme.muted;
-                                        font-size: 12px;
-                                        overflow: elide;
-                                    }
                                 }
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 3px;
-                                    horizontal-stretch: 0;
-                                    Text {
-                                        text: item.current ? "Current" : item.ruled-out ? "length differs" : item.score + "% match";
-                                        color: item.current ? Theme.accent-hi : item.ruled-out ? Theme.muted : item.score >= 80 ? Theme.success : item.score >= 60 ? Theme.warn : Theme.muted;
-                                        font-size: 12px;
-                                        horizontal-alignment: right;
-                                    }
-                                    if item.check-state > 0: Text {
-                                        text: item.check-text;
-                                        color: item.check-state == 2 ? Theme.success : item.check-state == 4 ? Theme.danger : item.check-state == 3 ? Theme.warn : Theme.muted;
-                                        font-size: 12px;
-                                        font-weight: item.check-state == 2 ? 600 : 400;
-                                        horizontal-alignment: right;
-                                    }
-                                }
-                                if item.check-state == 0 && root.match-can-check: VerticalLayout {
-                                    alignment: center;
-                                    GhostButton {
-                                        height: 36px;
-                                        text: "Check";
-                                        icon: "\u{E8D6}";
-                                        clicked => { root.match-check(i); }
-                                    }
-                                }
-                                VerticalLayout {
-                                    alignment: center;
-                                    IconButton {
-                                        icon: "\u{E8A7}";
-                                        clicked => { root.match-open-url(item.url); }
-                                    }
-                                }
-                                VerticalLayout {
-                                    alignment: center;
-                                    GhostButton {
-                                        height: 36px;
-                                        text: "Use this";
-                                        clicked => { root.match-use(i); }
-                                    }
-                                }
+                            }
+                        }
+                        if item.check-state == 0 && root.match-can-check: VerticalLayout {
+                            alignment: center;
+                            GhostButton {
+                                compact: true;
+                                text: "Check";
+                                icon: "\u{E8D6}";
+                                clicked => { root.match-check(i); }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IconButton {
+                                icon: "\u{E8A7}";
+                                clicked => { root.match-open-url(item.url); }
+                            }
+                        }
+                        if !item.current: VerticalLayout {
+                            alignment: center;
+                            GhostButton {
+                                compact: true;
+                                text: "Use this";
+                                clicked => { root.match-use(i); }
                             }
                         }
                     }
                 }
-
-                Hint { text: "\"Same recording\" means it sounds like the official preview. \"Use this\" re-downloads that result and replaces the file, keeping Spotify's tags, cover and lyrics. The arrow opens it in your browser."; }
             }
+        }
+
+        Hint {
+            text: "Check plays it against Spotify's preview. Use this re-downloads that version and keeps Spotify's tags, cover and lyrics. The arrow opens it in your browser.";
         }
     }
 
     // ───────────── Sync review: songs removed from a playlist ─────────────
-    if root.sync-open: Rectangle {
+    if root.sync-open: Dialog {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
-        background: #000000b0;
-        TouchArea { }
+        title: "Removed on Spotify";
+        subtitle: root.sync-items.length == 1 ? "1 song is still in your folder" : root.sync-items.length + " songs are still in your folder";
+        card-width: 560px;
+        card-height: 540px;
+        // Closing decides nothing: the files stay.
+        close => { root.sync-keep-all(); }
 
-        Rectangle {
-            width: min(560px, root.width - 80px);
-            height: min(520px, root.height - 80px);
-            border-radius: 16px;
-            background: Theme.surface;
-            border-width: 1px;
-            border-color: Theme.border;
-
-            VerticalLayout {
-                padding: 22px;
-                spacing: 14px;
-                Text {
-                    text: "Removed on Spotify";
-                    color: Theme.text;
-                    font-family: Theme.display;
-                    font-size: 18px;
-                    font-weight: 700;
+        Hint {
+            text: "These are no longer in the playlist or album on Spotify. Nothing is deleted unless you tick it, and ticked songs go to the Recycle Bin.";
+        }
+        VerticalLayout {
+            vertical-stretch: 1;
+            Rectangle {
+                height: 1px;
+                Rectangle {
+                    x: 0;
+                    width: parent.width - 16px;
+                    background: Theme.line;
                 }
-                Hint { text: "These songs are still in your folder but no longer in the playlist or album on Spotify. Nothing is deleted unless you tick it, and ticked songs go to the Recycle Bin."; }
-                ScrollView {
-                    vertical-stretch: 1;
-                    VerticalLayout {
-                        alignment: start;
-                        spacing: 6px;
-                        for item[i] in root.sync-items: CheckBox {
+            }
+            ListView {
+                vertical-stretch: 1;
+                for item[i] in root.sync-items: Rectangle {
+                    height: 52px;
+                    Rectangle {
+                        x: 0;
+                        y: parent.height - 1px;
+                        width: parent.width - 16px;
+                        height: 1px;
+                        background: Theme.line;
+                    }
+                    HorizontalLayout {
+                        padding-left: 4px;
+                        padding-right: 26px;
+                        Tick {
                             text: item.title;
                             checked: item.checked;
-                            toggled => { root.sync-toggle(i, self.checked); }
+                            toggled(on) => { root.sync-toggle(i, on); }
                         }
                     }
                 }
-                HorizontalLayout {
-                    spacing: 10px;
-                    alignment: end;
-                    GhostButton {
-                        text: "Keep all";
-                        clicked => { root.sync-keep-all(); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: end;
+            GhostButton {
+                text: "Keep all";
+                clicked => { root.sync-keep-all(); }
+            }
+            PrimaryButton {
+                enabled: root.sync-ticked > 0;
+                text: root.sync-ticked == 0 ? "Move to Recycle Bin" : "Move " + root.sync-ticked + " to Recycle Bin";
+                icon: "\u{E74D}";
+                clicked => { root.sync-delete-selected(); }
+            }
+        }
+    }
+
+    // ───────────── Spotify heads-up: where the audio comes from ─────────────
+    if root.spotify-heads-up: Dialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        title: "Where Spotify songs come from";
+        card-width: 540px;
+        fit: true;
+        close => { root.spotify-heads-up = false; }
+
+        Text {
+            text: "Spotify doesn't allow downloading its audio. So Neria reads each song's details from Spotify and downloads the matching song from YouTube Music.";
+            color: Theme.ink;
+            font-family: Theme.body;
+            font-size: 14px;
+            wrap: word-wrap;
+        }
+        VerticalLayout {
+            Rectangle {
+                height: 1px;
+                background: Theme.line;
+            }
+            for fact in [
+                { label: "Song info", text: "From Spotify: title, artist, album, cover and lyrics" },
+                { label: "Audio", text: "From YouTube Music, about 128–160 kbps" },
+                { label: "Checked", text: "Each song is compared with Spotify's preview. Now and then a match is a different version; you can swap it." },
+            ]: Rectangle {
+                min-height: fact-row.preferred-height;
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.line;
+                }
+                fact-row := HorizontalLayout {
+                    padding-top: 11px;
+                    padding-bottom: 11px;
+                    spacing: 16px;
+                    Text {
+                        width: 84px;
+                        text: fact.label;
+                        color: Theme.muted;
+                        font-family: Theme.display;
+                        font-size: 13px;
+                        font-weight: 700;
                     }
-                    PrimaryButton {
-                        text: "Move ticked to Recycle Bin";
-                        icon: "\u{E74D}";
-                        clicked => { root.sync-delete-selected(); }
+                    Text {
+                        text: fact.text;
+                        color: Theme.ink;
+                        font-family: Theme.body;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
                     }
                 }
+            }
+        }
+        HorizontalLayout {
+            padding-top: 4px;
+            spacing: 12px;
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Tick {
+                    text: "Don't show this again";
+                    checked <=> root.spotify-heads-up-skip;
+                }
+            }
+            GhostButton {
+                text: "Cancel";
+                clicked => { root.spotify-heads-up = false; }
+            }
+            PrimaryButton {
+                text: "Got it, download";
+                clicked => { root.spotify-heads-up-ok(root.spotify-heads-up-skip); }
             }
         }
     }

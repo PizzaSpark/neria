@@ -65,6 +65,8 @@ pub struct Settings {
     pub lyrics: bool,
     /// Spotify songs: compare with Spotify's 30 s preview, retry other versions on mismatch.
     pub verify_audio: bool,
+    /// Spotify songs: explain where the audio comes from on the first Download.
+    pub spotify_explain: bool,
     /// Optional: the user's own Spotify app (developer.spotify.com) for full playlists.
     pub spotify_client_id: String,
     pub spotify_client_secret: String,
@@ -98,6 +100,7 @@ impl Default for Settings {
             last_update_check: 0,
             lyrics: true,
             verify_audio: true,
+            spotify_explain: true,
             spotify_client_id: String::new(),
             spotify_client_secret: String::new(),
             check_updates: true,

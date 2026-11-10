@@ -89,6 +89,12 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
 - **Narrow windows**: secondary row actions shrink to icons; preview thumbnail shrinks on short
   windows; long option lists scroll while the main action stays pinned.
 - **Toast / dialog / drawer**: the only floating cards: `panel`, 1px `line-strong`, 12px radius.
+  Dialogs use the shared `Dialog` (scrim, Space Grotesk 20 title, optional muted line, ×);
+  lists inside are calm rows with hairlines, never cards per row.
+- **Tick**: 20px box, 2px `line-strong` outline, 6px radius; ticked = `ink` fill with a `bg`
+  check. The label is part of the target.
+- **Banner** (new version and the like): a calm strip with a tag, one line of text, ghost
+  actions and a hairline under it, so the page keeps its one yellow action.
 
 ## Themes
 

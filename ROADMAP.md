@@ -82,15 +82,11 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
 - ✅ **Writable folder check** (`paths::check_writable`): if Neria can't write next to itself
   (e.g. unzipped into Program Files) the setup screen says "Move Neria somewhere else.", shows
   the folder, and offers "Show Neria's folder" / "Check again"; nothing gets downloaded
-- **Spotify heads-up dialog**: the first time someone presses Download on a Spotify link,
-  explain where the audio comes from: "Spotify doesn't allow downloading its audio. Neria
-  reads the song info (title, artist, album, cover) from Spotify and downloads the matching
-  song from YouTube Music, then checks it sounds the same. Quality is YouTube Music's
-  (~128–160 kbps), and once in a while a match can be a different version; you can swap it."
-  Buttons: **I understand** (continues the download) / **Cancel**, plus a "Don't show this
-  again" tickbox saved in `settings.json` (re-enable under Settings → Spotify links). Today
-  this is only a small "audio from YouTube Music" note on the preview line and a hint in
-  Settings
+- ✅ **Spotify heads-up dialog**: the first Download on a Spotify link (once the lookup is
+  done) explains where the audio comes from: song info from Spotify, audio from YouTube Music
+  (~128–160 kbps), each song checked against Spotify's preview and swappable. **Got it,
+  download** continues, **Cancel** stops; "Don't show this again" (ticked by default) saves
+  `spotify_explain: false`, re-enable under Settings → Spotify links
 - **Cookies hint**: Chrome's newer cookie encryption usually stops yt-dlp from reading
   them; Firefox works. Say so in the cookies picker and in sign-in errors
 - **Free space check** before big downloads, livestreams and compressions
@@ -113,8 +109,12 @@ Tight / JetBrains Mono, dark and light themes.
   as calm rows with labelled actions instead of unlabelled icons, friendlier empty state),
   Clip/Compress/Settings restyled, Settings → Appearance (Same as Windows / Dark / Light)
 - ✅ First-run setup screen in the new style (logo sticker, headline, calm tool rows)
-- Next: split the pages out of `app.slint`, restyle the match picker and sync review in
-  detail, then the items below
+- ✅ Dialogs in the new style: one shared `Dialog` card and `Tick` box (`ui/widgets.slint`);
+  match picker as calm rows with status tags (score, sound check), sync review with ticks and
+  "Move N to Recycle Bin" (greyed out until something is ticked), update banner as a calm strip
+  with a ghost "Update now" (the Download button stays the page's one yellow action), toast as
+  a small card. `NERIA_DIALOG` opens each with sample data
+- Next: split the pages out of `app.slint`, then the items below
 - Design system: shared tokens (colors, spacing, radii, type scale) and one component set
   (buttons, chips, rows, dialogs, toasts) instead of per-page variations; split `app.slint`
   into per-page/component files
