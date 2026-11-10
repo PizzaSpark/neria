@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use crate::download::{self, DlEvent, DownloadRequest};
 use crate::spotify::Track;
 use crate::ytmusic::Candidate;
-use crate::{fingerprint, music, proc, report};
+use crate::{disk, fingerprint, music, probe, proc, report, tools};
 use crate::settings::Settings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -149,11 +149,32 @@ pub struct MatchInfo {
 
 type Notify = Box<dyn Fn(JobSnapshot) + Send + Sync>;
 
+const SPACE_ADVICE: &str = "Free some up or change the folder in Settings.";
+
+/// Remove what an interrupted download of `final_path` left behind: `.part`/`.ytdl`
+/// files, per-format pieces (`name.f401.mp4`) and the thumbnail. Never the finished file.
+fn remove_leftovers(final_path: &std::path::Path) {
+    let (Some(dir), Some(stem)) = (final_path.parent(), final_path.file_stem()) else { return };
+    let prefix = format!("{}.", stem.to_string_lossy());
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(rest) = name.strip_prefix(&prefix) else { continue };
+        let piece = rest.starts_with('f') && rest[1..].split('.').next().is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+        let leftover = rest.ends_with(".part") || rest.ends_with(".ytdl") || piece || ["webp", "jpg", "png"].contains(&rest);
+        if leftover && entry.path() != final_path {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 struct Inner {
     entries: Mutex<Vec<Entry>>,
     settings: Arc<Mutex<Settings>>,
     notify: Notify,
     next_id: AtomicU64,
+    /// When yt-dlp was last updated because a site broke it (one update at a time).
+    ytdlp_updated: Mutex<Option<Instant>>,
 }
 
 /// Cheap to clone; all clones share the same queue.
@@ -171,6 +192,7 @@ impl Queue {
                 settings,
                 notify: Box::new(notify),
                 next_id: AtomicU64::new(1),
+                ytdlp_updated: Mutex::new(None),
             }),
         }
     }
@@ -447,7 +469,21 @@ impl Queue {
             }
         }
 
-        let mut result = self.download_once(id, &req, &settings, &cancel, &child);
+        let dir = req.music.as_ref().map(|m| m.dir.clone()).unwrap_or_else(|| settings.output_dir.clone());
+        let mut result = match disk::check(&dir, 0) {
+            Ok(()) => self.download_once(id, &req, &settings, &dir, &cancel, &child),
+            Err(msg) => Err(anyhow::anyhow!("{msg} {SPACE_ADVICE}")),
+        };
+
+        // The site changed under yt-dlp: get a newer one right away and try once more,
+        // instead of failing until tomorrow's daily update.
+        if !matches!(result, Ok(true)) && !cancel.load(Ordering::SeqCst) && self.broke_ytdlp(id, &result) && self.update_ytdlp(id) {
+            self.update(id, true, |s| {
+                s.error = None;
+                s.state = JobState::Downloading;
+            });
+            result = self.download_once(id, &req, &settings, &dir, &cancel, &child);
+        }
 
         // Spotify track: check it's the recording Spotify plays (30 s preview
         // fingerprint). A different recording (re-recorded, live, cover…)
@@ -499,20 +535,95 @@ impl Queue {
         self.pump();
     }
 
+    /// Did this attempt fail the way an outdated yt-dlp fails?
+    fn broke_ytdlp(&self, id: u64, result: &anyhow::Result<bool>) -> bool {
+        let mut text = match result {
+            Err(e) => e.to_string(),
+            _ => String::new(),
+        };
+        if let Some(e) = self.inner.entries.lock().unwrap().iter().find(|e| e.snap.id == id) {
+            text.push('\n');
+            text.push_str(e.snap.error.as_deref().unwrap_or(""));
+            for line in e.log.iter().rev().take(15) {
+                text.push('\n');
+                text.push_str(line);
+            }
+        }
+        probe::needs_newer_ytdlp(&text)
+    }
+
+    /// Update yt-dlp (once per half hour, one job at a time). True if the next try may go
+    /// differently: a new version arrived, or another job just got one.
+    fn update_ytdlp(&self, id: u64) -> bool {
+        let mut last = self.inner.ytdlp_updated.lock().unwrap();
+        if last.is_some_and(|t| t.elapsed() < Duration::from_secs(30 * 60)) {
+            return true;
+        }
+        self.update(id, true, |s| {
+            s.state = JobState::Processing;
+            s.postprocessor = Some("UpdatingYtdlp".into());
+        });
+        let before = tools::ytdlp_version();
+        let ok = tools::update_ytdlp().is_ok();
+        let after = tools::ytdlp_version();
+        *last = Some(Instant::now());
+        if ok {
+            let mut s = self.inner.settings.lock().unwrap();
+            s.last_update_check = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let _ = s.save();
+        }
+        ok && after.is_some() && after != before
+    }
+
     fn download_once(
         &self,
         id: u64,
         req: &DownloadRequest,
         settings: &Settings,
+        dir: &std::path::Path,
         cancel: &AtomicBool,
         child: &Mutex<Option<Child>>,
     ) -> anyhow::Result<bool> {
         let mut last_emit = Instant::now() - Duration::from_secs(1);
         let keep_title = req.music.is_some();
-        download::run(req, settings, child, cancel, |ev| {
+        // Once yt-dlp knows the size, make sure it fits; keep checking for livestreams.
+        let mut last_space_check: Option<Instant> = None;
+        let mut no_space: Option<String> = None;
+        let (mut stage, mut stages) = (0u32, 1u32);
+        // Files yt-dlp started writing, removed again if the drive fills up.
+        let mut written: Vec<PathBuf> = Vec::new();
+        let result = download::run(req, settings, child, cancel, |ev| {
             if let DlEvent::Log(line) = ev {
+                if let Some(path) = line.strip_prefix("NERIA_DEST ") {
+                    written.push(PathBuf::from(path.trim()));
+                }
                 self.push_log(id, line);
                 return;
+            }
+            match &ev {
+                DlEvent::Info { streams, .. } => stages = (*streams).max(1),
+                DlEvent::Progress { finished: true, .. } => stage += 1,
+                DlEvent::Progress { finished: false, downloaded, total, .. }
+                    if no_space.is_none() && last_space_check.is_none_or(|t| t.elapsed() >= Duration::from_secs(3)) =>
+                {
+                    last_space_check = Some(Instant::now());
+                    let left = match (total, downloaded) {
+                        (Some(t), d) => (t - d.unwrap_or(0.0)).max(0.0) as u64,
+                        _ => 0,
+                    };
+                    // Video + audio: the merge writes the whole file once more.
+                    let merge = if stages > 1 && stage + 1 < stages { total.unwrap_or(0.0) as u64 * 5 / 4 } else { 0 };
+                    if let Err(msg) = disk::check(dir, left + merge) {
+                        no_space = Some(msg);
+                        if let Some(c) = child.lock().unwrap().as_mut() {
+                            proc::kill_tree(c);
+                        }
+                    }
+                }
+                _ => {}
             }
             // Spotify jobs keep "Artist - Title" rather than the YouTube video title.
             let ev = match ev {
@@ -526,7 +637,18 @@ impl Queue {
                 last_emit = Instant::now();
             }
             self.update(id, emit, |s| s.apply(ev));
-        })
+        });
+        match no_space {
+            Some(msg) => {
+                // Don't leave half a download on an almost full drive.
+                thread::sleep(Duration::from_millis(300));
+                for path in &written {
+                    remove_leftovers(path);
+                }
+                Err(anyhow::anyhow!("{msg} {SPACE_ADVICE}"))
+            }
+            None => result,
+        }
     }
 
     fn current_file(&self, id: u64, job: &music::MusicJob) -> Option<PathBuf> {
@@ -650,7 +772,7 @@ impl Queue {
                 s.stage = 0;
                 s.progress = 0.0;
             });
-            result = self.download_once(id, req, settings, cancel, child);
+            result = self.download_once(id, req, settings, &job.dir, cancel, child);
             if !matches!(result, Ok(true)) || cancel.load(Ordering::SeqCst) {
                 return result;
             }
@@ -678,5 +800,33 @@ impl Queue {
                 (self.inner.notify)(e.snap.clone());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removes_only_this_downloads_leftovers() {
+        let dir = std::env::temp_dir().join(format!("neria-leftovers-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let names = [
+            "Clip [abc].f401.mp4.part",
+            "Clip [abc].f251.webm",
+            "Clip [abc].webp",
+            "Clip [abc].mp4.ytdl",
+            "Clip [abc] (compressed).mp4",
+            "Clip [abcd].f401.mp4.part",
+            "Other.mp4",
+        ];
+        for n in names {
+            std::fs::write(dir.join(n), b"x").unwrap();
+        }
+        remove_leftovers(&dir.join("Clip [abc].mp4"));
+        let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        assert_eq!(left, ["Clip [abc] (compressed).mp4", "Clip [abcd].f401.mp4.part", "Other.mp4"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

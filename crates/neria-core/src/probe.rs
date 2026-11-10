@@ -240,7 +240,22 @@ pub fn explain(msg: &str) -> LinkProblem {
     let low = raw.to_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| low.contains(n));
     let gone = |t: &str| LinkProblem::new(t, "There's nothing left to download at this link.", true);
-    let cookies = "Pick the browser you're signed in with under Advanced → Cookies (Firefox works best).";
+    let cookies = "Pick the browser you're signed in with under Settings → Network → Cookies. Firefox works best; Chrome and Edge usually don't.";
+
+    if has(&["not enough space"]) {
+        return LinkProblem::new(msg, "", false);
+    }
+    if has(&["no space left on device", "errno 28", "disk full", "not enough space on the disk"]) {
+        return LinkProblem::new("Your drive ran out of space", "Free some up, or pick another folder in Settings.", false);
+    }
+    // Reading the browser's cookies failed (before the site was even asked).
+    if has(&["cookie database", "cookies database", "failed to decrypt with dpapi", "app-bound encryption", "app bound encryption"]) {
+        return LinkProblem::new(
+            "Neria couldn't read your browser's cookies",
+            "Chrome and Edge lock their cookies while open and encrypt them. Sign in to the site in Firefox and pick Firefox under Settings → Network → Cookies.",
+            false,
+        );
+    }
 
     if has(&["unsupported url"]) {
         return LinkProblem::new("Neria can't download from this site", WORKS_WITH, true);
@@ -292,12 +307,32 @@ pub fn explain(msg: &str) -> LinkProblem {
     if has(&["signature extraction failed", "nsig extraction failed", "please report this issue", "unable to extract"]) {
         return LinkProblem::new(
             "The site changed and the downloader needs an update",
-            "Neria updates it daily. You can still try downloading it.",
+            "Neria updates it when you download. Fixes usually land within a day or two.",
             false,
         );
     }
     let title = if msg.is_empty() { "Couldn't read this link" } else { msg };
     LinkProblem::new(title, "You can still try downloading it.", false)
+}
+
+/// yt-dlp output that usually means the site changed and a newer yt-dlp fixes it.
+pub fn needs_newer_ytdlp(text: &str) -> bool {
+    let low = text.to_lowercase();
+    [
+        "signature extraction failed",
+        "nsig extraction failed",
+        "n challenge solving failed",
+        "unable to extract",
+        "please report this issue",
+        "confirm you are on the latest version",
+        "update to the latest version",
+        "yt-dlp is out of date",
+        "your yt-dlp version",
+        // An old yt-dlp next to a newer Neria that passes options it doesn't know yet.
+        "error: no such option",
+    ]
+    .iter()
+    .any(|n| low.contains(n))
 }
 
 /// One-line version of [`explain`] for queue rows.
@@ -336,6 +371,17 @@ mod tests {
         assert!(!explain("[youtube] x: Sign in to confirm you’re not a bot. Use --cookies-from-browser").permanent);
         assert_eq!(explain("[youtube] x: Sign in to confirm your age. This video may be inappropriate for some users.").title, "This video is age-restricted");
         assert!(!explain("[youtube] x: HTTP Error 429: Too Many Requests").permanent);
+        assert_eq!(explain("ERROR: [Errno 28] No space left on device").title, "Your drive ran out of space");
+        assert_eq!(
+            explain("ERROR: Could not copy Chrome cookie database. See https://github.com/yt-dlp/yt-dlp/issues/7271").title,
+            "Neria couldn't read your browser's cookies"
+        );
+        assert_eq!(explain("ERROR: Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/10927").title, "Neria couldn't read your browser's cookies");
+        assert!(needs_newer_ytdlp("[youtube] x: nsig extraction failed: You may experience throttling"));
+        assert!(needs_newer_ytdlp("ERROR: [youtube] x: Unable to extract uploader id; please report this issue on https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using yt-dlp -U"));
+        assert!(!needs_newer_ytdlp("[youtube] x: Private video. Sign in if you've been granted access to this video"));
+        assert!(!needs_newer_ytdlp("ERROR: [youtube] x: Video unavailable"));
+        assert!(needs_newer_ytdlp("yt-dlp.exe: error: no such option: --js-runtimes"));
         let other = explain("[foo] 1: something odd");
         assert_eq!(other.title, "something odd");
         assert!(!other.permanent);

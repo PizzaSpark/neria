@@ -1993,6 +1993,22 @@ export component AppWindow inherits Window {
                                 }
                             }
                             Hint { text: "Use this for age-restricted, members-only or \"confirm you're not a bot\" videos."; }
+                            // Chromium browsers lock their cookie file while open and encrypt it.
+                            if root.cookies-index == 1 || root.cookies-index == 2 || root.cookies-index >= 4: HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    alignment: start;
+                                    padding-top: 1px;
+                                    Tag {
+                                        text: "Heads-up";
+                                        kind: 2;
+                                    }
+                                }
+                                Hint {
+                                    horizontal-stretch: 1;
+                                    text: "This browser usually blocks it: it locks its cookies while open and encrypts them. Firefox works best: sign in there and pick Firefox.";
+                                }
+                            }
                             HorizontalLayout {
                                 spacing: 10px;
                                 Hint {

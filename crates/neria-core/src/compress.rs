@@ -453,6 +453,14 @@ pub fn run(
     let mut plan = plan(info, opts, encoders)?;
     let out = output_path(input, opts);
     let work = paths::cache_dir();
+    // Room for the result (quality mode: assume up to the original's size).
+    let needed = match opts.target {
+        Target::SizeMb(mb) => (mb * 1e6) as u64,
+        Target::Quality(_) => info.size_bytes,
+    };
+    if let Some(dir) = out.parent() {
+        crate::disk::check(dir, needed).map_err(|m| anyhow::anyhow!("{m} Free some up and try again."))?;
+    }
 
     const ATTEMPTS: usize = 3;
     for attempt in 1..=ATTEMPTS {

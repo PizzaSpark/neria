@@ -5,6 +5,7 @@
 
 pub mod clip;
 pub mod compress;
+pub mod disk;
 pub mod download;
 pub mod fingerprint;
 pub mod fmt;

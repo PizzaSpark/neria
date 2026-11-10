@@ -72,6 +72,8 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     // URLs never contain '|' in practice, titles can: keep the title last.
     push(&["--print", "video:NERIA_INFO %(format_id)s|%(thumbnail)s|%(title)s"]);
     push(&["--print", "after_move:NERIA_FILE %(filepath)s"]);
+    // Where it will land, so leftovers can be removed if the drive fills up.
+    push(&["--print", "video:NERIA_DEST %(filename)s"]);
     push(&["--ffmpeg-location", &paths::bin_dir().to_string_lossy()]);
     let out_dir = req.music.as_ref().map_or(s.output_dir.clone(), |m| m.dir.clone());
     push(&["-P", &out_dir.to_string_lossy()]);

@@ -72,8 +72,11 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   "Restart now" (warns about running downloads). FFmpeg, Deno and libmpv get "Update tools" once
   a newer build exists and ours is over 30 days old (old files moved aside, restored on failure).
   **Needs the repo to be public** (private repos answer 404 to unauthenticated checks)
-- **Auto-retry when YouTube breaks**: on known "needs a newer yt-dlp" errors, update yt-dlp
-  right away and retry once instead of waiting for the daily update
+- ✅ **Auto-retry when YouTube breaks** (`probe::needs_newer_ytdlp`, queue): when a download
+  fails the way an outdated yt-dlp fails ("please report this issue", nsig/signature, "no such
+  option"…), the row says "The site changed. Updating the downloader, then trying again…",
+  runs `yt-dlp -U` (one job at a time, at most every 30 min) and retries once if a new version
+  arrived. Tested with a 2023 yt-dlp: it updated to the current one and the download finished
 - ✅ **Robust first start** (desktop `setup_ui.rs`, `tools::explain`): the setup screen lists
   each tool (what it's for, Waiting / its own meter with sizes / Ready / Stopped), and failures
   get one plain sentence (offline or firewall, GitHub rate limit or hiccup, cut-off download,
@@ -87,9 +90,13 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   (~128–160 kbps), each song checked against Spotify's preview and swappable. **Got it,
   download** continues, **Cancel** stops; "Don't show this again" (ticked by default) saves
   `spotify_explain: false`, re-enable under Settings → Spotify links
-- **Cookies hint**: Chrome's newer cookie encryption usually stops yt-dlp from reading
-  them; Firefox works. Say so in the cookies picker and in sign-in errors
-- **Free space check** before big downloads, livestreams and compressions
+- ✅ **Cookies hint**: picking Chrome, Edge, Brave, Opera or Vivaldi shows a "Heads-up" that
+  they lock and encrypt their cookies and Firefox works best; sign-in errors point to Settings
+  → Network → Cookies, and a failed cookie read gets its own message
+- ✅ **Free space check** (`disk.rs`): every download needs 200 MB spare to start; once yt-dlp
+  reports the size (and every 3 s after, so livestreams too) it checks the rest fits, including
+  the video+audio merge, and stops with "Not enough space on D: (381 MB free, needs about
+  1.5 GB)", removing the partial files. Compress checks room for the result first
 - **Drag and drop files from Explorer** onto the Clip and Compress pages
 - **App icon**: a proper Neria icon for the exe (embedded `.ico`), window title bar, taskbar
   and Alt-Tab, release zip; sized for 16–256 px so it stays crisp in Explorer
