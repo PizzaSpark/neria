@@ -66,12 +66,12 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   40 lines of yt-dlp output; the user folder shows as `%USERPROFILE%`. Settings → About has a
   general "Copy report". A toast confirms. Not yet for Clip/Compress errors
 - ✅ **Version in the app**: Settings → About shows Neria, yt-dlp, FFmpeg, Deno, libmpv
-- **Check for updates**, so testers don't stay on old builds:
-  - Neria itself (GitHub releases: "Neria x.y is out" with changelog, download + swap the exe
-    next to itself, keep `bin/` and `settings.json`, stays portable)
-  - The tools: today only yt-dlp updates (daily `yt-dlp -U`); FFmpeg, Deno and libmpv are
-    fetched once and never refreshed
-  - Settings → About: versions of everything, "Check now", auto-check on/off
+- ✅ **Check for updates** (`update.rs`, desktop `updates_ui.rs`): at start-up (Settings → About
+  toggle, "Check now") Neria checks GitHub releases of `PizzaSpark/neria`; a banner offers
+  "Update now", downloads the zip, swaps the exe in place (bin/ and settings.json untouched) and
+  "Restart now" (warns about running downloads). FFmpeg, Deno and libmpv get "Update tools" once
+  a newer build exists and ours is over 30 days old (old files moved aside, restored on failure).
+  **Needs the repo to be public** (private repos answer 404 to unauthenticated checks)
 - **Auto-retry when YouTube breaks**: on known "needs a newer yt-dlp" errors, update yt-dlp
   right away and retry once instead of waiting for the daily update
 - **Robust first start**: clear progress for each tool download, Retry button, plain error
@@ -101,6 +101,9 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
 ## Next: UI foundation
 The features grew page by page. Make the UI one coherent system now, while it's small, so the
 features below are built once on it instead of rebuilt later. Friends' feedback feeds in here.
+Direction chosen: **Studio + Play** (`docs/DESIGN.md`, mockups in `design/download-directions.html`):
+calm where you read and watch, playful where you touch; sticker yellow, Space Grotesk / Inter
+Tight / JetBrains Mono, dark and light themes.
 - Design system: shared tokens (colors, spacing, radii, type scale) and one component set
   (buttons, chips, rows, dialogs, toasts) instead of per-page variations; split `app.slint`
   into per-page/component files
@@ -113,7 +116,7 @@ features below are built once on it instead of rebuilt later. Friends' feedback 
   filters (active / done / needs attention); clearer flagged-match states
 - Drag and drop links anywhere (files already done in v0.2); keyboard navigation and focus
   states everywhere
-- First-run onboarding, better empty states, light theme option, accessibility pass
+- First-run onboarding, better empty states, light theme (follows Windows), accessibility pass
   (contrast, screen-reader labels)
 
 ## Then: feature tracks

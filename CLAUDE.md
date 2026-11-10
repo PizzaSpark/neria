@@ -2,6 +2,7 @@
 
 Fast, portable, UX-first downloader / clipper / compressor. Rust + Slint, driving yt-dlp, ffmpeg,
 Deno and libmpv, all auto-fetched into `bin/` next to the exe. Plan and status: `ROADMAP.md`.
+UI design system: `docs/DESIGN.md` (Studio + Play); follow it for any new or changed screen.
 
 ## Layout
 - `crates/neria-core`: everything non-UI (tool fetch, yt-dlp probe/download queue, clip export,
@@ -26,12 +27,16 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example verify -- <spotify track id> [--no-spotify] <file|youtube url>...`
   (audio check scores; `--no-spotify` forces the Deezer/Apple fallback reference)
+- `NERIA_HOME=target/debug cargo run -p neria-core --example updates -- [--any-age] [--update <tool>]`
+  (new Neria release / newer tool builds; `--update` re-downloads into NERIA_HOME/bin, use a scratch copy)
 
 Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_CLIP_IN` /
 `NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
 (auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
-failed download), `NERIA_SETTINGS` (open the settings drawer), `NERIA_SYNC_REVIEW` (open the removed-songs dialog),
+failed download), `NERIA_SETTINGS` (open the settings drawer), `NERIA_UPDATE_URL` (check this "latest
+release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),
+`NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_SYNC_REVIEW` (open the removed-songs dialog),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
 `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
 `NERIA_HOME` (override app dir; for UI tests point it at a scratch folder with its own
