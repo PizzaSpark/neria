@@ -18,12 +18,17 @@ pub struct MediaInfo {
     pub thumbnail_url: Option<String>,
     pub max_height: Option<u32>,
     pub playlist_count: Option<usize>,
+    /// An X (Twitter) "GIF" (a short silent MP4).
+    pub gif: bool,
 }
 
 impl MediaInfo {
     /// One-line summary such as "Channel · 12:34 · up to 1080p".
     pub fn meta_line(&self) -> String {
         let mut parts = Vec::new();
+        if self.gif {
+            parts.push("GIF".to_string());
+        }
         if let Some(n) = self.playlist_count {
             parts.push(format!("Playlist · {n} items"));
         }
@@ -88,6 +93,7 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
         thumbnail_url: pick_thumbnail(&v),
         max_height,
         playlist_count: is_playlist.then(|| v.get("entries").and_then(Value::as_array).map_or(0, |e| e.len())),
+        gif: v.get("url").and_then(Value::as_str).is_some_and(crate::gif::is_x_gif_url),
     })
 }
 

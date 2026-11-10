@@ -48,6 +48,8 @@ pub enum DlEvent {
         title: String,
         streams: u32,
         thumbnail: Option<String>,
+        /// An X (Twitter) "GIF": really a short silent MP4.
+        gif: bool,
     },
     Progress {
         finished: bool,
@@ -74,7 +76,7 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     push(&["--encoding", "utf-8", "--newline", "--progress", "--color", "never", "--no-mtime", "--no-simulate"]);
     push(&["--progress-template", DL_TEMPLATE, "--progress-template", PP_TEMPLATE]);
     // URLs never contain '|' in practice, titles can: keep the title last.
-    push(&["--print", "video:NERIA_INFO %(format_id)s|%(thumbnail)s|%(title)s"]);
+    push(&["--print", "video:NERIA_INFO %(format_id)s|%(url)s|%(thumbnail)s|%(title)s"]);
     push(&["--print", "after_move:NERIA_FILE %(filepath)s"]);
     // Where it will land, so leftovers can be removed if the drive fills up.
     push(&["--print", "video:NERIA_DEST %(filename)s"]);
@@ -285,10 +287,12 @@ pub fn parse_line(line: &str) -> Option<DlEvent> {
     }
     if let Some(rest) = line.strip_prefix("NERIA_INFO ") {
         let (fmt, rest) = rest.split_once('|').unwrap_or(("", rest));
+        let (url, rest) = rest.split_once('|').unwrap_or(("", rest));
         let (thumb, title) = rest.split_once('|').unwrap_or(("", rest));
         let streams = fmt.split('+').count().max(1) as u32;
         let thumbnail = (thumb.starts_with("http")).then(|| thumb.to_string());
-        return Some(DlEvent::Info { title: title.to_string(), streams, thumbnail });
+        let gif = crate::gif::is_x_gif_url(url);
+        return Some(DlEvent::Info { title: title.to_string(), streams, thumbnail, gif });
     }
     if let Some(rest) = line.strip_prefix("NERIA_FILE ") {
         return Some(DlEvent::File(PathBuf::from(rest.trim())));
@@ -321,18 +325,20 @@ mod tests {
 
     #[test]
     fn parses_info_with_pipe_in_title() {
-        match parse_line("NERIA_INFO 137+140|https://i.ytimg.com/vi/x/maxresdefault.jpg|A | B").unwrap() {
-            DlEvent::Info { title, streams, thumbnail } => {
+        match parse_line("NERIA_INFO 137+140|NA|https://i.ytimg.com/vi/x/maxresdefault.jpg|A | B").unwrap() {
+            DlEvent::Info { title, streams, thumbnail, gif } => {
                 assert_eq!(title, "A | B");
                 assert_eq!(streams, 2);
                 assert_eq!(thumbnail.as_deref(), Some("https://i.ytimg.com/vi/x/maxresdefault.jpg"));
+                assert!(!gif);
             }
             _ => panic!(),
         }
-        match parse_line("NERIA_INFO 18|NA|Title").unwrap() {
-            DlEvent::Info { title, thumbnail, .. } => {
-                assert_eq!(title, "Title");
+        match parse_line("NERIA_INFO http|https://video.twimg.com/tweet_video/HWyQ.mp4|NA|Cat").unwrap() {
+            DlEvent::Info { title, thumbnail, gif, .. } => {
+                assert_eq!(title, "Cat");
                 assert_eq!(thumbnail, None);
+                assert!(gif);
             }
             _ => panic!(),
         }

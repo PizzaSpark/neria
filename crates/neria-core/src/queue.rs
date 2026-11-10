@@ -9,10 +9,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::download::{self, DlEvent, DownloadRequest};
+use crate::settings::Quality;
 use crate::settings::Settings;
 use crate::spotify::Track;
 use crate::ytmusic::Candidate;
-use crate::{disk, fingerprint, music, probe, proc, report, tools};
+use crate::{disk, fingerprint, gif, music, probe, proc, report, tools};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JobState {
@@ -54,6 +55,8 @@ pub struct JobSnapshot {
     pub thumbnail: Option<String>,
     /// A Spotify track (the UI offers "pick another match").
     pub music: bool,
+    /// An X (Twitter) "GIF" (a short silent MP4), saved as a real .gif when the setting is on.
+    pub gif: bool,
     /// Spotify track audio check: Some(source) when it matched that preview,
     /// Some("none") when no preview existed anywhere, None when not checked.
     pub verified: Option<&'static str>,
@@ -79,13 +82,15 @@ impl JobSnapshot {
             note: None,
             thumbnail: None,
             music: false,
+            gif: false,
             verified: None,
         }
     }
 
     fn apply(&mut self, ev: DlEvent) {
         match ev {
-            DlEvent::Info { title, streams, thumbnail } => {
+            DlEvent::Info { title, streams, thumbnail, gif } => {
+                self.gif = gif;
                 if !title.is_empty() {
                     self.title = title;
                 }
@@ -502,6 +507,33 @@ impl Queue {
 
         let cancelled = cancel.load(Ordering::SeqCst);
 
+        // X "GIF" (really a silent MP4): save it as the .gif people expect.
+        let mut gif_error = None;
+        if matches!(result, Ok(true))
+            && !cancelled
+            && req.music.is_none()
+            && settings.x_gifs_as_gif
+            && req.quality != Quality::Audio
+        {
+            let file = {
+                let entries = self.inner.entries.lock().unwrap();
+                entries.iter().find(|e| e.snap.id == id).filter(|e| e.snap.gif).and_then(|e| e.snap.file.clone())
+            };
+            if let Some(video) = file {
+                self.update(id, true, |s| {
+                    s.state = JobState::Processing;
+                    s.postprocessor = Some("MakingGif".into());
+                });
+                match gif::from_video(&video) {
+                    Ok(out) => {
+                        let _ = std::fs::remove_file(&video);
+                        self.update(id, false, |s| s.file = Some(out));
+                    }
+                    Err(e) => gif_error = Some(format!("Saved as MP4: couldn't make the GIF ({e})")),
+                }
+            }
+        }
+
         // Spotify track downloaded: add Spotify tags, cover art and lyrics.
         let mut tag_error = None;
         if let (Some(job), Ok(true), false) = (&req.music, &result, cancelled) {
@@ -522,6 +554,9 @@ impl Queue {
         self.update(id, true, |s| {
             if let Some(e) = &tag_error {
                 s.error = Some(format!("Saved, but tagging failed: {e}"));
+            }
+            if let Some(e) = &gif_error {
+                s.note = Some(e.clone());
             }
             s.speed = None;
             s.eta = None;
@@ -631,8 +666,8 @@ impl Queue {
             }
             // Spotify jobs keep "Artist - Title" rather than the YouTube video title.
             let ev = match ev {
-                DlEvent::Info { streams, thumbnail, .. } if keep_title => {
-                    DlEvent::Info { title: String::new(), streams, thumbnail }
+                DlEvent::Info { streams, thumbnail, gif, .. } if keep_title => {
+                    DlEvent::Info { title: String::new(), streams, thumbnail, gif }
                 }
                 ev => ev,
             };

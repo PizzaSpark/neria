@@ -52,6 +52,8 @@ pub struct Settings {
     pub embed_subs: bool,
     pub sponsorblock: bool,
     pub allow_playlists: bool,
+    /// X (Twitter) "GIFs" are short silent MP4s: convert them to real .gif files.
+    pub x_gifs_as_gif: bool,
     /// Browser to borrow cookies from (empty = none).
     pub cookies_browser: String,
     /// yt-dlp rate limit, e.g. "5M". Empty = unlimited.
@@ -90,6 +92,7 @@ impl Default for Settings {
             embed_subs: false,
             sponsorblock: false,
             allow_playlists: false,
+            x_gifs_as_gif: true,
             cookies_browser: String::new(),
             rate_limit: String::new(),
             filename_template: "%(title)s [%(id)s].%(ext)s".into(),

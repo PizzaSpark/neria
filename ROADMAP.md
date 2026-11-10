@@ -102,6 +102,12 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   "Drop to compress it", or "Neria opens video and audio files"); dropping on Clip or Compress
   opens it there, a video dropped on Download asks "Clip it / Compress it", audio goes to Clip.
   Not yet tried with a real mouse drag from Explorer
+- ✅ **X GIFs saved as real GIFs** (`gif.rs`): X stores "GIFs" as short silent MP4s served from
+  `video.twimg.com/tweet_video/` (real videos come from `amplify_video/` / `ext_tw_video/`).
+  Neria spots that address, shows "GIF" in the preview instead of quality chips, and after the
+  download turns the MP4 into a looping .gif (palettegen, width capped at 720) and removes the
+  MP4. Settings → Extras "Save X (Twitter) GIFs as real .gif files" (on by default) keeps the
+  MP4 instead, which is far smaller (131 KB vs 5.7 MB for the test clip)
 - ✅ **App icon**: an "N" whose left stem is a download arrow, on the yellow sticker (picked
   from side-by-side options, idea from a friend's sketch). `design/icon/make_icon.py` renders
   16–256 px into `apps/desktop/assets/neria.ico` (small sizes drop the shadow, thicker

@@ -33,6 +33,7 @@ pub fn postprocessor(name: &str) -> &'static str {
         "Verifying" => "Checking the sound against the official preview…",
         "Retrying" => "Different recording, trying another version…",
         "Tagging" => "Adding cover, tags and lyrics…",
+        "MakingGif" => "Turning it into a GIF…",
         "UpdatingYtdlp" => "The site changed. Updating the downloader, then trying again…",
         _ => "Processing…",
     }

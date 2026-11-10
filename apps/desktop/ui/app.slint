@@ -62,6 +62,7 @@ export global Fmt {
 // under the preview title on wide windows, in its own row on narrow ones.
 component QualityRow inherits HorizontalLayout {
     in-out property <int> quality;
+    // No quality to pick (Spotify songs, X GIFs): show `spotify-text` instead of the chips.
     in property <bool> spotify;
     in property <string> spotify-text;
     in property <string> format-text;
@@ -521,6 +522,9 @@ export component AppWindow inherits Window {
 
     // Spotify
     in property <bool> probe-is-spotify;
+    // An X GIF that will be saved as a real .gif: no quality chips, just say so.
+    in property <bool> probe-is-gif;
+    property <bool> gif-mode: probe-is-gif && x-gifs-as-gif;
     in property <int> spotify-count;
     in property <string> spotify-note;
     in property <[SyncItem]> sync-items;
@@ -568,6 +572,7 @@ export component AppWindow inherits Window {
     in-out property <bool> embed-subs;
     in-out property <bool> sponsorblock;
     in-out property <bool> allow-playlists;
+    in-out property <bool> x-gifs-as-gif: true;
     in-out property <int> cookies-index;
     in-out property <string> rate-limit;
     in-out property <string> filename-template;
@@ -979,9 +984,11 @@ export component AppWindow inherits Window {
                             padding-top: 8px;
                             QualityRow {
                                 quality <=> root.quality;
-                                spotify: root.probe-is-spotify;
-                                spotify-text: "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
-                                format-text: root.probe-is-spotify || root.quality == 4
+                                spotify: root.probe-is-spotify || root.gif-mode;
+                                spotify-text: root.gif-mode ? "Saved as a .gif (X keeps GIFs as short silent videos)"
+                                    : "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
+                                format-text: root.gif-mode ? "gif"
+                                    : root.probe-is-spotify || root.quality == 4
                                     ? root.audio-formats[root.audio-format-index]
                                     : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
                                 changed => { root.settings-changed(); }
@@ -1031,9 +1038,11 @@ export component AppWindow inherits Window {
 
                 if !root.chips-inline: QualityRow {
                     quality <=> root.quality;
-                    spotify: root.probe-is-spotify;
-                    spotify-text: "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
-                    format-text: root.probe-is-spotify || root.quality == 4
+                    spotify: root.probe-is-spotify || root.gif-mode;
+                    spotify-text: root.gif-mode ? "Saved as a .gif (X keeps GIFs as short silent videos)"
+                        : "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
+                    format-text: root.gif-mode ? "gif"
+                        : root.probe-is-spotify || root.quality == 4
                         ? root.audio-formats[root.audio-format-index]
                         : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
                     changed => { root.settings-changed(); }
@@ -1977,6 +1986,11 @@ export component AppWindow inherits Window {
                             CheckBox {
                                 text: "Download whole playlists";
                                 checked <=> root.allow-playlists;
+                                toggled => { root.settings-changed(); }
+                            }
+                            CheckBox {
+                                text: "Save X (Twitter) GIFs as real .gif files";
+                                checked <=> root.x-gifs-as-gif;
                                 toggled => { root.settings-changed(); }
                             }
                         }

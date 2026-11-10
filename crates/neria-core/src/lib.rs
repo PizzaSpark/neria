@@ -9,6 +9,7 @@ pub mod disk;
 pub mod download;
 pub mod fingerprint;
 pub mod fmt;
+pub mod gif;
 pub mod media;
 pub mod music;
 pub mod paths;

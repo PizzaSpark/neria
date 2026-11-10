@@ -43,6 +43,7 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_audio_format_index(index_of(&AUDIO_FORMATS, &s.audio_format));
     ui.set_prefer_h264(s.prefer_h264);
     ui.set_embed_thumbnail(s.embed_thumbnail);
+    ui.set_x_gifs_as_gif(s.x_gifs_as_gif);
     ui.set_embed_metadata(s.embed_metadata);
     ui.set_embed_subs(s.embed_subs);
     ui.set_sponsorblock(s.sponsorblock);
@@ -68,6 +69,7 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.audio_format = pick(&AUDIO_FORMATS, ui.get_audio_format_index());
     s.prefer_h264 = ui.get_prefer_h264();
     s.embed_thumbnail = ui.get_embed_thumbnail();
+    s.x_gifs_as_gif = ui.get_x_gifs_as_gif();
     s.embed_metadata = ui.get_embed_metadata();
     s.embed_subs = ui.get_embed_subs();
     s.sponsorblock = ui.get_sponsorblock();
@@ -539,6 +541,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
         ui.set_probe_blocked(false);
         ui.set_probe_state(if partial_link(text) { 0 } else { 4 });
         ui.set_probe_is_spotify(false);
+        ui.set_probe_is_gif(false);
         return;
     };
     // Same link again: keep the preview, but look it up again after an error
@@ -563,6 +566,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
         return;
     }
     ui.set_probe_is_spotify(false);
+    ui.set_probe_is_gif(false);
     // Spotify links we can't handle (podcasts, short links…): say so without asking yt-dlp,
     // which would only report "DRM" or "unsupported".
     if let Some((title, hint)) = neria_core::spotify::unsupported_reason(&url) {
@@ -589,6 +593,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     ui.set_probe_state(2);
                     ui.set_probe_title(info.title.as_str().into());
                     ui.set_probe_meta(info.meta_line().into());
+                    ui.set_probe_is_gif(info.gif);
                     if let Some(img) = thumb.and_then(|p| slint::Image::load_from_path(&p).ok()) {
                         ui.set_probe_thumb(img);
                     }
@@ -763,7 +768,8 @@ fn main() -> anyhow::Result<()> {
                 }
             } else {
                 let title_hint = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { url.clone() };
-                queue.add(DownloadRequest::new(url, Quality::from_index(ui.get_quality()), title_hint));
+                let quality = if ui.get_probe_is_gif() { Quality::Best } else { Quality::from_index(ui.get_quality()) };
+                queue.add(DownloadRequest::new(url, quality, title_hint));
             }
 
             probe_state.generation.fetch_add(1, Ordering::SeqCst);
@@ -772,6 +778,7 @@ fn main() -> anyhow::Result<()> {
             ui.set_probe_state(0);
             ui.set_probe_blocked(false);
             ui.set_probe_is_spotify(false);
+            ui.set_probe_is_gif(false);
         }
     });
 
