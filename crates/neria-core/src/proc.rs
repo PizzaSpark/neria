@@ -84,10 +84,7 @@ mod tests {
 
     #[test]
     fn splits_with_quotes() {
-        assert_eq!(
-            split_args(r#"--foo "a b" -x '' c"#),
-            vec!["--foo", "a b", "-x", "", "c"]
-        );
+        assert_eq!(split_args(r#"--foo "a b" -x '' c"#), vec!["--foo", "a b", "-x", "", "c"]);
         assert!(split_args("   ").is_empty());
     }
 }

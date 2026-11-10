@@ -33,7 +33,7 @@ pub fn fingerprint(input: &OsStr) -> Result<Vec<u32>> {
     if !out.status.success() {
         bail!("fingerprint failed: {}", String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or(""));
     }
-    Ok(out.stdout.chunks_exact(4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
+    Ok(out.stdout.as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -131,10 +131,12 @@ pub struct Reference {
 /// Fallback clips must match title, artist and length (±3 s) so a re-recording
 /// can't become the reference.
 pub fn reference_for(track: &Track) -> Option<Reference> {
-    let spotify = track
-        .preview_url
-        .clone()
-        .or_else(|| (!track.id.is_empty()).then(|| crate::spotify::track_details(&track.id).ok()).flatten().and_then(|t| t.preview_url));
+    let spotify = track.preview_url.clone().or_else(|| {
+        (!track.id.is_empty())
+            .then(|| crate::spotify::track_details(&track.id).ok())
+            .flatten()
+            .and_then(|t| t.preview_url)
+    });
     if let Some(url) = spotify {
         return Some(Reference { url, source: "Spotify" });
     }
@@ -143,18 +145,24 @@ pub fn reference_for(track: &Track) -> Option<Reference> {
 
 /// A fallback result is only trusted if it's clearly the same release.
 fn trusted(track: &Track, title: &str, artist: &str, secs: f64) -> bool {
-    let c = Candidate { video_id: String::new(), title: title.into(), artists: artist.into(), album: None, duration: Some(secs), score: 0.0 };
+    let c = Candidate {
+        video_id: String::new(),
+        title: title.into(),
+        artists: artist.into(),
+        album: None,
+        duration: Some(secs),
+        score: 0.0,
+    };
     (secs - track.duration_secs()).abs() <= 3.0 && ytmusic::score(track, &c).is_some_and(|s| s >= 0.85)
 }
 
 fn deezer_reference(track: &Track) -> Option<Reference> {
     let get = |url: &str| web::get_text(url).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
-    if let Some(isrc) = &track.isrc {
-        if let Some(t) = get(&format!("https://api.deezer.com/track/isrc:{}", web::encode(isrc))) {
-            if let Some(url) = t["preview"].as_str().filter(|u| !u.is_empty()) {
-                return Some(Reference { url: url.to_string(), source: "Deezer" });
-            }
-        }
+    if let Some(isrc) = &track.isrc
+        && let Some(t) = get(&format!("https://api.deezer.com/track/isrc:{}", web::encode(isrc)))
+        && let Some(url) = t["preview"].as_str().filter(|u| !u.is_empty())
+    {
+        return Some(Reference { url: url.to_string(), source: "Deezer" });
     }
     let q = web::encode(&format!("{} {}", track.main_artist(), ytmusic::normalize_title(&track.title)));
     let results = get(&format!("https://api.deezer.com/search/track?q={q}&limit=15"))?;
@@ -198,7 +206,15 @@ pub fn compare_candidate(reference: &[u32], watch_url: &str) -> Result<Alignment
     let id = watch_url.rsplit("v=").next().unwrap_or("x").split('&').next().unwrap_or("x");
     let stem = format!("cand-{}", crate::music::sanitize(id));
     let status = proc::command(paths::tool("yt-dlp"))
-        .args(["--no-warnings", "--quiet", "--no-playlist", "--no-part", "--force-overwrites", "-f", "ba[ext=m4a]/ba/b"])
+        .args([
+            "--no-warnings",
+            "--quiet",
+            "--no-playlist",
+            "--no-part",
+            "--force-overwrites",
+            "-f",
+            "ba[ext=m4a]/ba/b",
+        ])
         .arg("-P")
         .arg(&dir)
         .args(["-o", &format!("{stem}.%(ext)s"), "--", watch_url])

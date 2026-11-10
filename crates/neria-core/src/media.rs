@@ -116,23 +116,6 @@ pub fn decimate(keyframes: &[f64], duration: f64, max: usize) -> Vec<f64> {
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn keyframe_parsing_and_lookup() {
-        let kf = parse_keyframes("0.000000,K__\n0.033000,___\n4.004000,K__\nN/A,K__\n8.008000,K_\n");
-        assert_eq!(kf, vec![0.0, 4.004, 8.008]);
-        assert_eq!(keyframe_before(&kf, 3.5), 0.0);
-        assert_eq!(keyframe_before(&kf, 4.004), 4.004);
-        assert_eq!(keyframe_before(&kf, 9.0), 8.008);
-        assert_eq!(keyframe_before(&[], 2.0), 2.0);
-        assert_eq!(decimate(&kf, 8.0, 2), vec![0.0, 4.004, 8.008]);
-        assert_eq!(decimate(&kf, 8.0, 1), vec![0.0, 8.008]);
-    }
-}
-
 /// Per-file cache folder, keyed by path + size + mtime.
 fn cache_for(path: &Path) -> PathBuf {
     let meta = std::fs::metadata(path).ok();
@@ -210,7 +193,8 @@ pub fn storyboard_strip(
             let (url, path) = (board.fragments[k].0.clone(), dir.join(format!("sb-{k}.jpg")));
             thread::spawn(move || {
                 if !path.is_file() {
-                    let bytes = crate::web::client().ok()?.get(&url).send().ok()?.error_for_status().ok()?.bytes().ok()?;
+                    let bytes =
+                        crate::web::client().ok()?.get(&url).send().ok()?.error_for_status().ok()?.bytes().ok()?;
                     std::fs::write(&path, &bytes).ok()?;
                 }
                 Some(())
@@ -333,9 +317,8 @@ pub fn waveform(path: &Path, width: u32, height: u32) -> Result<PathBuf> {
     if out.is_file() {
         return Ok(out);
     }
-    let filter = format!(
-        "[0:a:0]aformat=channel_layouts=mono,showwavespic=s={width}x{height}:colors=0x8e8c88:scale=sqrt"
-    );
+    let filter =
+        format!("[0:a:0]aformat=channel_layouts=mono,showwavespic=s={width}x{height}:colors=0x8e8c88:scale=sqrt");
     let status = proc::command(paths::tool("ffmpeg"))
         .args(["-v", "error", "-y", "-i"])
         .arg(path)
@@ -348,4 +331,21 @@ pub fn waveform(path: &Path, width: u32, height: u32) -> Result<PathBuf> {
         bail!("waveform failed");
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keyframe_parsing_and_lookup() {
+        let kf = parse_keyframes("0.000000,K__\n0.033000,___\n4.004000,K__\nN/A,K__\n8.008000,K_\n");
+        assert_eq!(kf, vec![0.0, 4.004, 8.008]);
+        assert_eq!(keyframe_before(&kf, 3.5), 0.0);
+        assert_eq!(keyframe_before(&kf, 4.004), 4.004);
+        assert_eq!(keyframe_before(&kf, 9.0), 8.008);
+        assert_eq!(keyframe_before(&[], 2.0), 2.0);
+        assert_eq!(decimate(&kf, 8.0, 2), vec![0.0, 4.004, 8.008]);
+        assert_eq!(decimate(&kf, 8.0, 1), vec![0.0, 8.008]);
+    }
 }

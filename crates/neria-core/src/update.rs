@@ -84,11 +84,7 @@ fn parse_release(v: &Value) -> Result<Release> {
 }
 
 fn parse_version(v: &str) -> Vec<u64> {
-    v.trim_start_matches('v')
-        .split(['.', '-', '+'])
-        .take(3)
-        .map(|p| p.parse().unwrap_or(0))
-        .collect()
+    v.trim_start_matches('v').split(['.', '-', '+']).take(3).map(|p| p.parse().unwrap_or(0)).collect()
 }
 
 /// `a` is a newer version than `b` ("0.10.0" > "0.9.3").
@@ -235,7 +231,11 @@ pub fn plain_notes(md: &str) -> String {
     let mut lines = Vec::new();
     for line in md.lines() {
         let l = line.trim();
-        if l.is_empty() || l.starts_with("**Full Changelog**") || l.starts_with("Unzip anywhere") || l.starts_with("<!--") {
+        if l.is_empty()
+            || l.starts_with("**Full Changelog**")
+            || l.starts_with("Unzip anywhere")
+            || l.starts_with("<!--")
+        {
             continue;
         }
         let l = l.trim_start_matches('#').trim();

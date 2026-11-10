@@ -252,7 +252,16 @@ pub fn plan(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan
                 Codec::Av1 => 45.0 - l * 20.0,
             }
             .round() as u32;
-            Ok(Plan { encoder, width, height, fps, video_kbps: None, audio_kbps, quality: Some(quality), target_bytes: None })
+            Ok(Plan {
+                encoder,
+                width,
+                height,
+                fps,
+                video_kbps: None,
+                audio_kbps,
+                quality: Some(quality),
+                target_bytes: None,
+            })
         }
         Target::SizeMb(mb) => {
             let target_bytes = (mb * 1_000_000.0) as u64;
@@ -325,9 +334,8 @@ pub fn output_path(input: &Path, opts: &Options) -> PathBuf {
 /// Pass: None = single pass, Some(1) / Some(2) = two-pass stage.
 pub fn build_args(input: &Path, out: &Path, info: &FileInfo, plan: &Plan, pass: Option<u8>) -> Vec<String> {
     let enc = plan.encoder;
-    let mut a: Vec<String> = ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"]
-        .map(String::from)
-        .to_vec();
+    let mut a: Vec<String> =
+        ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"].map(String::from).to_vec();
     a.push(input.to_string_lossy().into_owned());
     a.extend(["-map", "0:V:0"].map(String::from));
 
@@ -395,18 +403,15 @@ pub fn build_args(input: &Path, out: &Path, info: &FileInfo, plan: &Plan, pass: 
         a.extend(["-tag:v", "hvc1"].map(String::from));
     }
 
-    match pass {
-        Some(p) => {
-            // Relative stats file: the process runs in the cache dir (x265's
-            // option parser chokes on Windows drive-letter colons).
-            if enc.codec() == Codec::Hevc {
-                a.extend(["-x265-params".into(), format!("pass={p}:stats=neria-2pass.log")]);
-            } else {
-                // `:v` so the audio encoder doesn't also look for pass stats.
-                a.extend(["-pass:v".into(), p.to_string(), "-passlogfile:v".into(), "neria-2pass".into()]);
-            }
+    if let Some(p) = pass {
+        // Relative stats file: the process runs in the cache dir (x265's
+        // option parser chokes on Windows drive-letter colons).
+        if enc.codec() == Codec::Hevc {
+            a.extend(["-x265-params".into(), format!("pass={p}:stats=neria-2pass.log")]);
+        } else {
+            // `:v` so the audio encoder doesn't also look for pass stats.
+            a.extend(["-pass:v".into(), p.to_string(), "-passlogfile:v".into(), "neria-2pass".into()]);
         }
-        None => {}
     }
 
     if pass == Some(1) {
@@ -465,11 +470,8 @@ pub fn run(
     const ATTEMPTS: usize = 3;
     for attempt in 1..=ATTEMPTS {
         let retry = if attempt > 1 { format!(" (try {attempt})") } else { String::new() };
-        let passes: Vec<Option<u8>> = if plan.encoder.two_pass() && plan.video_kbps.is_some() {
-            vec![Some(1), Some(2)]
-        } else {
-            vec![None]
-        };
+        let passes: Vec<Option<u8>> =
+            if plan.encoder.two_pass() && plan.video_kbps.is_some() { vec![Some(1), Some(2)] } else { vec![None] };
         let n = passes.len();
         for (i, pass) in passes.into_iter().enumerate() {
             let stage = match (pass, n) {
@@ -492,7 +494,10 @@ pub fn run(
                 // Scale the video bitrate by how far over we went, plus a margin.
                 let factor = target as f64 / bytes as f64 * 0.95;
                 plan.video_kbps = plan.video_kbps.map(|v| v * factor);
-                on(Progress { fraction: 0.0, stage: format!("{} is a bit over, redoing smaller…", fmt::bytes(bytes as f64)) });
+                on(Progress {
+                    fraction: 0.0,
+                    stage: format!("{} is a bit over, redoing smaller…", fmt::bytes(bytes as f64)),
+                });
             }
             Some(target) if bytes > target => {
                 let _ = std::fs::remove_file(&out);

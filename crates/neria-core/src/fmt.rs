@@ -10,21 +10,13 @@ pub fn bytes(b: f64) -> String {
         v /= 1024.0;
         i += 1;
     }
-    if i == 0 {
-        format!("{v:.0} {}", UNITS[i])
-    } else {
-        format!("{v:.1} {}", UNITS[i])
-    }
+    if i == 0 { format!("{v:.0} {}", UNITS[i]) } else { format!("{v:.1} {}", UNITS[i]) }
 }
 
 pub fn duration(secs: f64) -> String {
     let s = secs.max(0.0).round() as u64;
     let (h, m, s) = (s / 3600, (s % 3600) / 60, s % 60);
-    if h > 0 {
-        format!("{h}:{m:02}:{s:02}")
-    } else {
-        format!("{m}:{s:02}")
-    }
+    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
 }
 
 pub fn postprocessor(name: &str) -> &'static str {
@@ -70,10 +62,7 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
             }
             (status, parts.join("  ·  "))
         }
-        JobState::Processing => (
-            postprocessor(s.postprocessor.as_deref().unwrap_or("")).into(),
-            String::new(),
-        ),
+        JobState::Processing => (postprocessor(s.postprocessor.as_deref().unwrap_or("")).into(), String::new()),
         JobState::Done if s.postprocessor.as_deref() == Some("AlreadyHave") => {
             ("Already downloaded".into(), String::new())
         }
@@ -98,10 +87,7 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
                 None => (name, size),
             }
         }
-        JobState::Failed => (
-            s.error.clone().unwrap_or_else(|| "Download failed".into()),
-            String::new(),
-        ),
+        JobState::Failed => (s.error.clone().unwrap_or_else(|| "Download failed".into()), String::new()),
         JobState::Cancelled => ("Cancelled".into(), String::new()),
     }
 }

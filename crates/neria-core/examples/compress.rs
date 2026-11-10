@@ -26,7 +26,14 @@ fn main() -> anyhow::Result<()> {
     println!("gpu encoders: {:?} ({:.1}s)", encoders.gpu, t.elapsed().as_secs_f32());
 
     let info = media::file_info(&input)?;
-    println!("input: {}x{} {:.2}fps {:.1}s {}", info.width, info.height, info.fps, info.duration, fmt::bytes(info.size_bytes as f64));
+    println!(
+        "input: {}x{} {:.2}fps {:.1}s {}",
+        info.width,
+        info.height,
+        info.fps,
+        info.duration,
+        fmt::bytes(info.size_bytes as f64)
+    );
     let opts = Options { target, codec, use_gpu, resolution: Resolution::Auto, max_fps: None, audio_kbps: Some(128) };
     println!("plan: {}", compress::plan(&info, &opts, &encoders)?.summary());
 

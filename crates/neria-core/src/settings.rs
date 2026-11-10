@@ -78,9 +78,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        let base = dirs::video_dir()
-            .or_else(dirs::download_dir)
-            .unwrap_or_else(paths::app_dir);
+        let base = dirs::video_dir().or_else(dirs::download_dir).unwrap_or_else(paths::app_dir);
         Self {
             output_dir: base.join("Neria"),
             quality: Quality::Best,

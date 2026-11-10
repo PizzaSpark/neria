@@ -58,7 +58,8 @@ mod imp {
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
-        fn GetDiskFreeSpaceExW(dir: *const u16, free_to_caller: *mut u64, total: *mut u64, total_free: *mut u64) -> i32;
+        fn GetDiskFreeSpaceExW(dir: *const u16, free_to_caller: *mut u64, total: *mut u64, total_free: *mut u64)
+        -> i32;
     }
 
     pub fn free(dir: &Path) -> Option<u64> {

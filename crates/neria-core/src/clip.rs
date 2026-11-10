@@ -60,9 +60,8 @@ pub fn unique_path(dir: &Path, base: &str, ext: &str) -> PathBuf {
 
 pub fn build_args(req: &ClipRequest, out: &Path) -> Vec<String> {
     let dur = (req.end - req.start).max(0.01);
-    let mut a: Vec<String> = ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y"]
-        .map(String::from)
-        .to_vec();
+    let mut a: Vec<String> =
+        ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y"].map(String::from).to_vec();
     a.extend(["-ss".into(), format!("{:.3}", req.start), "-i".into(), req.input.to_string_lossy().into_owned()]);
     a.extend(["-t".into(), format!("{dur:.3}")]);
     // `V` = real video only (skips embedded cover art).

@@ -26,6 +26,9 @@ enum Check {
     Failed,
 }
 
+/// The reference preview's fingerprint and where it came from.
+type Reference = (Arc<Vec<u32>>, &'static str);
+
 #[derive(Default)]
 struct State {
     /// Bumped on every open so results for an older dialog are ignored.
@@ -35,7 +38,7 @@ struct State {
     items: Vec<Candidate>,
     chosen: Option<String>,
     /// None = still looking; Some(None) = no preview anywhere.
-    reference: Option<Option<(Arc<Vec<u32>>, &'static str)>>,
+    reference: Option<Option<Reference>>,
     checks: HashMap<String, Check>,
 }
 
@@ -94,7 +97,9 @@ fn show(ui: &AppWindow, st: &mut State) {
     ui.set_match_can_check(matches!(st.reference, Some(Some(_))));
     let status = match &st.reference {
         None => "Finding an official preview to compare the sound with…".to_string(),
-        Some(None) => "No official preview found (Spotify, Deezer or Apple), so versions can't be checked by sound.".into(),
+        Some(None) => {
+            "No official preview found (Spotify, Deezer or Apple), so versions can't be checked by sound.".into()
+        }
         Some(Some((_, src))) => {
             let running = st.checks.values().filter(|c| matches!(c, Check::Running)).count();
             if running > 0 {
@@ -227,7 +232,9 @@ pub fn install(ui: &AppWindow, queue: Queue) {
             let ui = weak.unwrap();
             let Some(info) = queue.match_info(id as u64) else { return };
             let t = &info.track;
-            ui.set_match_heading(format!("Spotify: {} – {}  ·  {}", t.artist_line(), t.title, fmt::duration(t.duration_secs())).into());
+            ui.set_match_heading(
+                format!("Spotify: {} – {}  ·  {}", t.artist_line(), t.title, fmt::duration(t.duration_secs())).into(),
+            );
             ui.set_match_query(format!("{} {}", t.main_artist(), t.title).into());
             ui.set_match_status("".into());
             let have = !info.candidates.is_empty();

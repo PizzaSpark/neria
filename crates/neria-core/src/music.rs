@@ -103,7 +103,9 @@ pub fn fetch_lyrics(track: &Track, album: Option<&str>) -> Option<Lyrics> {
             "https://lrclib.net/api/get?artist_name={artist}&track_name={title}&album_name={}&duration={secs}",
             web::encode(album)
         );
-        if let Some(l) = web::get_text(&url).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| lyrics_from(&v)) {
+        if let Some(l) =
+            web::get_text(&url).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| lyrics_from(&v))
+        {
             return Some(l);
         }
     }
@@ -136,11 +138,12 @@ fn embedded_album(file: &Path) -> Option<String> {
 pub fn finish(file: &Path, job: &MusicJob) -> Result<()> {
     let mut track = job.track.clone();
     // Playlist tracks come without cover/date: one cheap embed lookup fills them in.
-    if (track.cover_url.is_none() || track.release_date.is_none()) && !track.id.is_empty() {
-        if let Ok(d) = crate::spotify::track_details(&track.id) {
-            track.cover_url = track.cover_url.or(d.cover_url);
-            track.release_date = track.release_date.or(d.release_date);
-        }
+    if (track.cover_url.is_none() || track.release_date.is_none())
+        && !track.id.is_empty()
+        && let Ok(d) = crate::spotify::track_details(&track.id)
+    {
+        track.cover_url = track.cover_url.or(d.cover_url);
+        track.release_date = track.release_date.or(d.release_date);
     }
     let album = track.album.clone().or_else(|| embedded_album(file));
     let cover = track.cover_url.as_deref().and_then(|u| probe::fetch_thumbnail(u).ok());
@@ -152,7 +155,13 @@ pub fn finish(file: &Path, job: &MusicJob) -> Result<()> {
     write_tags(file, &track, album.as_deref(), cover.as_deref(), lyrics.as_ref())
 }
 
-fn write_tags(file: &Path, t: &Track, album: Option<&str>, cover: Option<&Path>, lyrics: Option<&Lyrics>) -> Result<()> {
+fn write_tags(
+    file: &Path,
+    t: &Track,
+    album: Option<&str>,
+    cover: Option<&Path>,
+    lyrics: Option<&Lyrics>,
+) -> Result<()> {
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     // ffmpeg can attach cover art to these containers; others just get text tags.
     let cover = cover.filter(|_| matches!(ext.as_str(), "mp3" | "m4a" | "flac"));
@@ -161,8 +170,25 @@ fn write_tags(file: &Path, t: &Track, album: Option<&str>, cover: Option<&Path>,
     let mut a: Vec<String> = ["-hide_banner", "-v", "error", "-y", "-i"].map(String::from).to_vec();
     a.push(file.to_string_lossy().into_owned());
     if let Some(c) = cover {
-        a.extend(["-i".into(), c.to_string_lossy().into_owned(), "-map".into(), "0:a".into(), "-map".into(), "1:v".into()]);
-        a.extend(["-disposition:v:0", "attached_pic", "-metadata:s:v", "title=Album cover", "-metadata:s:v", "comment=Cover (front)"].map(String::from));
+        a.extend([
+            "-i".into(),
+            c.to_string_lossy().into_owned(),
+            "-map".into(),
+            "0:a".into(),
+            "-map".into(),
+            "1:v".into(),
+        ]);
+        a.extend(
+            [
+                "-disposition:v:0",
+                "attached_pic",
+                "-metadata:s:v",
+                "title=Album cover",
+                "-metadata:s:v",
+                "comment=Cover (front)",
+            ]
+            .map(String::from),
+        );
     } else {
         a.extend(["-map", "0"].map(String::from));
     }
@@ -234,7 +260,13 @@ pub fn prepare(col: &Collection, settings: &crate::settings::Settings) -> Result
         let ext = &settings.audio_format;
         let entries: Vec<(String, f64, String)> = jobs
             .iter()
-            .map(|j| (format!("{} - {}", j.track.artist_line(), j.track.title), j.track.duration_secs(), format!("{}.{ext}", j.stem)))
+            .map(|j| {
+                (
+                    format!("{} - {}", j.track.artist_line(), j.track.title),
+                    j.track.duration_secs(),
+                    format!("{}.{ext}", j.stem),
+                )
+            })
             .collect();
         write_m3u(&dir, &col.name, &entries)?;
         let manifest = Manifest {
@@ -243,7 +275,11 @@ pub fn prepare(col: &Collection, settings: &crate::settings::Settings) -> Result
             name: col.name.clone(),
             tracks: jobs
                 .iter()
-                .map(|j| ManifestTrack { id: j.track.id.clone(), stem: j.stem.clone(), title: format!("{} - {}", j.track.artist_line(), j.track.title) })
+                .map(|j| ManifestTrack {
+                    id: j.track.id.clone(),
+                    stem: j.stem.clone(),
+                    title: format!("{} - {}", j.track.artist_line(), j.track.title),
+                })
                 .collect(),
         };
         write_manifest(&dir, &manifest)?;
@@ -325,7 +361,12 @@ mod tests {
 
     #[test]
     fn album_tracks_are_numbered() {
-        let t = Track { title: "Get Lucky".into(), artists: vec!["Daft Punk".into()], track_number: Some(8), ..Default::default() };
+        let t = Track {
+            title: "Get Lucky".into(),
+            artists: vec!["Daft Punk".into()],
+            track_number: Some(8),
+            ..Default::default()
+        };
         assert_eq!(file_stem(&t, Kind::Album), "08 Daft Punk - Get Lucky");
         assert_eq!(file_stem(&t, Kind::Playlist), "Daft Punk - Get Lucky");
     }

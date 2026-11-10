@@ -106,8 +106,9 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   from side-by-side options, idea from a friend's sketch). `design/icon/make_icon.py` renders
   16–256 px into `apps/desktop/assets/neria.ico` (small sizes drop the shadow, thicker
   outline); `build.rs` embeds it in the exe without rc.exe; the window uses `neria-256.png`
-- **Release checks**: the release workflow refuses to build if the tag doesn't match the
-  `Cargo.toml` version; CI also runs `cargo clippy` and `cargo fmt --check`
+- ✅ **Release checks**: the release workflow refuses to build if the tag doesn't match the
+  `Cargo.toml` version; CI and release run `cargo fmt --check` (`rustfmt.toml`: width 120)
+  and `cargo clippy -D warnings`; release notes come from `docs/releases/<tag>.md`
 - Optional: **code signing** to remove the SmartScreen warning (SignPath gives free signing to
   open-source projects, if the repo goes public)
 

@@ -108,9 +108,16 @@ pub fn unsupported_reason(input: &str) -> Option<(&'static str, &'static str)> {
     Some(match kind {
         "episode" | "show" => ("Neria can't download Spotify podcasts", WORKS),
         "audiobook" | "chapter" => ("Neria can't download Spotify audiobooks", WORKS),
-        "track" | "album" | "playlist" | "artist" => ("This Spotify link looks incomplete", "Copy the link again from Spotify (Share → Copy link)."),
-        "user" => ("Spotify profiles can't be downloaded", "Open one of their public playlists and paste that link instead."),
-        "collection" => ("Your Liked Songs can't be read without a login", "Add them to a public playlist and paste that link instead."),
+        "track" | "album" | "playlist" | "artist" => {
+            ("This Spotify link looks incomplete", "Copy the link again from Spotify (Share → Copy link).")
+        }
+        "user" => {
+            ("Spotify profiles can't be downloaded", "Open one of their public playlists and paste that link instead.")
+        }
+        "collection" => (
+            "Your Liked Songs can't be read without a login",
+            "Add them to a public playlist and paste that link instead.",
+        ),
         _ => ("This kind of Spotify link isn't supported", WORKS),
     })
 }
@@ -455,12 +462,7 @@ mod api {
                 let a = get(&token, &format!("{API}/artists/{id}"))?;
                 let top = get(&token, &format!("{API}/artists/{id}/top-tracks?market=US"))?;
                 let tracks = top["tracks"].as_array().into_iter().flatten().filter_map(|t| track(t, None)).collect();
-                (
-                    a["name"].as_str().unwrap_or("Artist").to_string(),
-                    None,
-                    largest_image(&a["images"]),
-                    tracks,
-                )
+                (a["name"].as_str().unwrap_or("Artist").to_string(), None, largest_image(&a["images"]), tracks)
             }
         };
         Ok(Collection {
@@ -500,10 +502,19 @@ mod tests {
         let reason = |s| unsupported_reason(s).map(|r| r.0);
         assert_eq!(reason("https://open.spotify.com/track/69kOkLUCkxIZYexIgSG8rq"), None);
         assert_eq!(reason("https://www.youtube.com/watch?v=x"), None);
-        assert_eq!(reason("https://open.spotify.com/episode/4rOoJ6Egrf8K2IrywzwOMk"), Some("Neria can't download Spotify podcasts"));
-        assert_eq!(reason("https://open.spotify.com/intl-fr/show/4rOoJ6Egrf8K2IrywzwOMk?si=1"), Some("Neria can't download Spotify podcasts"));
+        assert_eq!(
+            reason("https://open.spotify.com/episode/4rOoJ6Egrf8K2IrywzwOMk"),
+            Some("Neria can't download Spotify podcasts")
+        );
+        assert_eq!(
+            reason("https://open.spotify.com/intl-fr/show/4rOoJ6Egrf8K2IrywzwOMk?si=1"),
+            Some("Neria can't download Spotify podcasts")
+        );
         assert_eq!(reason("spotify:episode:4rOoJ6Egrf8K2IrywzwOMk"), Some("Neria can't download Spotify podcasts"));
-        assert_eq!(reason("https://open.spotify.com/audiobook/4rOoJ6Egrf8K2IrywzwOMk"), Some("Neria can't download Spotify audiobooks"));
+        assert_eq!(
+            reason("https://open.spotify.com/audiobook/4rOoJ6Egrf8K2IrywzwOMk"),
+            Some("Neria can't download Spotify audiobooks")
+        );
         assert_eq!(reason("https://spotify.link/ZCkfTK3Tdyb"), Some("Short Spotify links can't be opened here"));
         assert_eq!(reason("https://open.spotify.com/track/short"), Some("This Spotify link looks incomplete"));
         assert!(reason("https://open.spotify.com/").is_some());

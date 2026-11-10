@@ -1,6 +1,7 @@
 name: Release
 
 # Push a tag like v0.2.0 to build Neria and publish it as a GitHub release.
+# The tag must match the version in Cargo.toml; notes come from docs/releases/<tag>.md.
 on:
   push:
     tags: ["v*"]
@@ -20,8 +21,23 @@ jobs:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+      - name: Tag must match the Cargo.toml version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ("v$v" -ne $env:TAG) {
+            Write-Error "Tag $env:TAG doesn't match the version in Cargo.toml ($v). Bump the version or fix the tag."
+            exit 1
+          }
+          "Releasing $env:TAG"
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test core
         run: cargo test -p neria-core --locked
       - name: Build
@@ -40,10 +56,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $zip = "Neria-$env:TAG-windows-x64.zip"
+          $notes = "docs/releases/$env:TAG.md"
+          if (-not (Test-Path $notes)) {
+            $notes = "release-notes.md"
+            "Unzip anywhere and run Neria.exe. The first start downloads yt-dlp, FFmpeg, Deno and mpv into a bin folder next to it. Windows SmartScreen may warn because the exe isn't signed: More info -> Run anyway." | Out-File -Encoding utf8 $notes
+          }
           gh release view $env:TAG 2>$null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $env:TAG $zip --clobber
           } else {
-            gh release create $env:TAG $zip --target $env:GITHUB_SHA --title "Neria $env:TAG" --generate-notes `
-              --notes "Unzip anywhere and run Neria.exe. The first start downloads yt-dlp, FFmpeg, Deno and mpv into a bin folder next to it. Windows SmartScreen may warn because the exe isn't signed: More info -> Run anyway."
+            gh release create $env:TAG $zip --target $env:GITHUB_SHA --title "Neria $env:TAG" --notes-file $notes
           }

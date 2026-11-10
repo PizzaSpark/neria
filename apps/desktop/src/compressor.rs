@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use neria_core::compress::{self, Codec, Encoders, Options, Resolution, Target};
-use neria_core::media::{self, FileInfo};
 use neria_core::fmt;
+use neria_core::media::{self, FileInfo};
 use slint::ComponentHandle;
 
 use crate::AppWindow;
@@ -92,7 +92,8 @@ impl Compressor {
         self.refresh(ui);
 
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let (gen_ref, info_slot, weak, path) = (self.generation.clone(), self.info.clone(), ui.as_weak(), path.to_path_buf());
+        let (gen_ref, info_slot, weak, path) =
+            (self.generation.clone(), self.info.clone(), ui.as_weak(), path.to_path_buf());
         std::thread::spawn(move || {
             let result = media::file_info(&path);
             let thumb = result
@@ -169,31 +170,36 @@ impl Compressor {
         let (text, warning, can_start) = match (info, opts) {
             (None, _) => ("Reading file…".to_string(), false, false),
             (_, Err(e)) => (e.to_string(), true, false),
-            (Some(info), Ok(opts)) => match compress::plan(&info, &opts, encoders.as_ref().unwrap_or(&Encoders::default())) {
-                Err(e) => (e.to_string(), true, false),
-                Ok(plan) => {
-                    let mut text = plan.summary();
-                    let mut warning = false;
-                    match plan.target_bytes {
-                        Some(t) if t >= info.size_bytes => {
-                            text = format!(
-                                "Already smaller than {}: compressing would only lose quality.  {text}",
-                                fmt::bytes(t as f64)
-                            );
-                            warning = true;
+            (Some(info), Ok(opts)) => {
+                match compress::plan(&info, &opts, encoders.as_ref().unwrap_or(&Encoders::default())) {
+                    Err(e) => (e.to_string(), true, false),
+                    Ok(plan) => {
+                        let mut text = plan.summary();
+                        let mut warning = false;
+                        match plan.target_bytes {
+                            Some(t) if t >= info.size_bytes => {
+                                text = format!(
+                                    "Already smaller than {}: compressing would only lose quality.  {text}",
+                                    fmt::bytes(t as f64)
+                                );
+                                warning = true;
+                            }
+                            Some(t) => {
+                                let pct = 100.0 - t as f64 / info.size_bytes.max(1) as f64 * 100.0;
+                                text = format!(
+                                    "Will fit in {} MB (at least {pct:.0}% smaller)  ·  {text}",
+                                    t as f64 / 1e6
+                                );
+                            }
+                            None => text = format!("Size depends on the video  ·  {text}"),
                         }
-                        Some(t) => {
-                            let pct = 100.0 - t as f64 / info.size_bytes.max(1) as f64 * 100.0;
-                            text = format!("Will fit in {} MB (at least {pct:.0}% smaller)  ·  {text}", t as f64 / 1e6);
+                        if encoders.is_none() {
+                            text.push_str("  ·  checking GPU…");
                         }
-                        None => text = format!("Size depends on the video  ·  {text}"),
+                        (text, warning, true)
                     }
-                    if encoders.is_none() {
-                        text.push_str("  ·  checking GPU…");
-                    }
-                    (text, warning, true)
                 }
-            },
+            }
         };
         ui.set_cmp_estimate(text.into());
         ui.set_cmp_warning(warning);
@@ -269,10 +275,8 @@ pub fn install(ui: &AppWindow, file_for_job: impl Fn(u64) -> Option<PathBuf> + '
     ui.on_cmp_open({
         let (cmp, weak) = (cmp.clone(), ui.as_weak());
         move || {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("Video", VIDEO_EXTENSIONS)
-                .add_filter("All files", &["*"])
-                .pick_file()
+            if let Some(path) =
+                rfd::FileDialog::new().add_filter("Video", VIDEO_EXTENSIONS).add_filter("All files", &["*"]).pick_file()
             {
                 cmp.borrow_mut().open(&weak.unwrap(), &path);
             }

@@ -9,10 +9,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::download::{self, DlEvent, DownloadRequest};
+use crate::settings::Settings;
 use crate::spotify::Track;
 use crate::ytmusic::Candidate;
 use crate::{disk, fingerprint, music, probe, proc, report, tools};
-use crate::settings::Settings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JobState {
@@ -160,8 +160,10 @@ fn remove_leftovers(final_path: &std::path::Path) {
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let Some(rest) = name.strip_prefix(&prefix) else { continue };
-        let piece = rest.starts_with('f') && rest[1..].split('.').next().is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
-        let leftover = rest.ends_with(".part") || rest.ends_with(".ytdl") || piece || ["webp", "jpg", "png"].contains(&rest);
+        let piece = rest.starts_with('f')
+            && rest[1..].split('.').next().is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+        let leftover =
+            rest.ends_with(".part") || rest.ends_with(".ytdl") || piece || ["webp", "jpg", "png"].contains(&rest);
         if leftover && entry.path() != final_path {
             let _ = std::fs::remove_file(entry.path());
         }
@@ -333,7 +335,8 @@ impl Queue {
             if e.snap.state.is_active() || e.snap.state == JobState::Done {
                 return;
             }
-            let (title, group, music, thumbnail) = (e.snap.title.clone(), e.snap.group, e.snap.music, e.snap.thumbnail.clone());
+            let (title, group, music, thumbnail) =
+                (e.snap.title.clone(), e.snap.group, e.snap.music, e.snap.thumbnail.clone());
             e.snap = JobSnapshot::new(id, group, title);
             e.snap.music = music;
             e.snap.thumbnail = thumbnail;
@@ -384,10 +387,8 @@ impl Queue {
         let settings = self.inner.settings.lock().unwrap().clone();
         let max = settings.max_concurrent.clamp(1, 8) as usize;
         let mut entries = self.inner.entries.lock().unwrap();
-        let mut running = entries
-            .iter()
-            .filter(|e| matches!(e.snap.state, JobState::Downloading | JobState::Processing))
-            .count();
+        let mut running =
+            entries.iter().filter(|e| matches!(e.snap.state, JobState::Downloading | JobState::Processing)).count();
 
         for e in entries.iter_mut() {
             if running >= max {
@@ -477,7 +478,11 @@ impl Queue {
 
         // The site changed under yt-dlp: get a newer one right away and try once more,
         // instead of failing until tomorrow's daily update.
-        if !matches!(result, Ok(true)) && !cancel.load(Ordering::SeqCst) && self.broke_ytdlp(id, &result) && self.update_ytdlp(id) {
+        if !matches!(result, Ok(true))
+            && !cancel.load(Ordering::SeqCst)
+            && self.broke_ytdlp(id, &result)
+            && self.update_ytdlp(id)
+        {
             self.update(id, true, |s| {
                 s.error = None;
                 s.state = JobState::Downloading;
@@ -488,10 +493,11 @@ impl Queue {
         // Spotify track: check it's the recording Spotify plays (30 s preview
         // fingerprint). A different recording (re-recorded, live, cover…)
         // triggers up to two other good candidates before we give up and flag it.
-        if let (Some(job), Ok(true)) = (req.music.clone(), &result) {
-            if job.verify && !cancel.load(Ordering::SeqCst) {
-                result = self.verify_and_retry(id, &mut req, &job, &settings, &cancel, &child, result);
-            }
+        if let (Some(job), Ok(true)) = (req.music.clone(), &result)
+            && job.verify
+            && !cancel.load(Ordering::SeqCst)
+        {
+            result = self.verify_and_retry(id, &mut req, &job, &settings, &cancel, &child, result);
         }
 
         let cancelled = cancel.load(Ordering::SeqCst);
@@ -569,10 +575,8 @@ impl Queue {
         *last = Some(Instant::now());
         if ok {
             let mut s = self.inner.settings.lock().unwrap();
-            s.last_update_check = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+            s.last_update_check =
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
             let _ = s.save();
         }
         ok && after.is_some() && after != before
@@ -627,7 +631,9 @@ impl Queue {
             }
             // Spotify jobs keep "Artist - Title" rather than the YouTube video title.
             let ev = match ev {
-                DlEvent::Info { streams, thumbnail, .. } if keep_title => DlEvent::Info { title: String::new(), streams, thumbnail },
+                DlEvent::Info { streams, thumbnail, .. } if keep_title => {
+                    DlEvent::Info { title: String::new(), streams, thumbnail }
+                }
                 ev => ev,
             };
             // Progress lines arrive very fast; repaint at most ~10x per second.
@@ -755,7 +761,11 @@ impl Queue {
                 None => best.as_ref().map(|(_, u)| u.clone()).filter(|u| *u != req.url),
             };
             let Some(url) = target else {
-                let note = format!("Doesn't sound like the {} preview ({:.0}% similar). Pick another?", reference.source, sim * 100.0);
+                let note = format!(
+                    "Doesn't sound like the {} preview ({:.0}% similar). Pick another?",
+                    reference.source,
+                    sim * 100.0
+                );
                 self.update(id, false, |s| s.note = Some(note));
                 return result;
             };
@@ -778,7 +788,8 @@ impl Queue {
             }
             if going_back {
                 let pct = best.as_ref().map_or(0.0, |(b, _)| b * 100.0);
-                let note = format!("Doesn't sound like the {} preview ({pct:.0}% similar). Pick another?", reference.source);
+                let note =
+                    format!("Doesn't sound like the {} preview ({pct:.0}% similar). Pick another?", reference.source);
                 self.update(id, false, |s| s.note = Some(note));
                 return result;
             }
@@ -824,7 +835,8 @@ mod tests {
             std::fs::write(dir.join(n), b"x").unwrap();
         }
         remove_leftovers(&dir.join("Clip [abc].mp4"));
-        let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        let mut left: Vec<String> =
+            std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
         left.sort();
         assert_eq!(left, ["Clip [abc] (compressed).mp4", "Clip [abcd].f401.mp4.part", "Other.mp4"]);
         let _ = std::fs::remove_dir_all(&dir);

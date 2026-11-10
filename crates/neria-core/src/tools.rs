@@ -14,7 +14,12 @@ pub enum Source {
     Url(&'static str),
     /// Newest asset of a GitHub release whose name starts with `prefix`,
     /// ends with `suffix`, and doesn't contain `exclude`.
-    GithubAsset { repo: &'static str, prefix: &'static str, suffix: &'static str, exclude: &'static str },
+    GithubAsset {
+        repo: &'static str,
+        prefix: &'static str,
+        suffix: &'static str,
+        exclude: &'static str,
+    },
 }
 
 pub struct ToolSpec {
@@ -88,12 +93,8 @@ fn resolve(source: &Source) -> Result<String> {
         Source::Url(u) => Ok(u.to_string()),
         Source::GithubAsset { repo, prefix, suffix, exclude } => {
             let api = format!("https://api.github.com/repos/{repo}/releases/latest");
-            let body = http()?
-                .get(api)
-                .header("Accept", "application/vnd.github+json")
-                .send()?
-                .error_for_status()?
-                .bytes()?;
+            let body =
+                http()?.get(api).header("Accept", "application/vnd.github+json").send()?.error_for_status()?.bytes()?;
             let release: serde_json::Value = serde_json::from_slice(&body)?;
             release["assets"]
                 .as_array()
@@ -147,20 +148,10 @@ impl Progress {
 
     pub fn text(&self) -> String {
         let amount = match self.total {
-            Some(t) => format!(
-                "{} / {}",
-                crate::fmt::bytes(self.downloaded as f64),
-                crate::fmt::bytes(t as f64)
-            ),
+            Some(t) => format!("{} / {}", crate::fmt::bytes(self.downloaded as f64), crate::fmt::bytes(t as f64)),
             None => crate::fmt::bytes(self.downloaded as f64),
         };
-        format!(
-            "Downloading {} ({}/{})  ·  {}",
-            self.label,
-            self.step + 1,
-            self.steps,
-            amount
-        )
+        format!("Downloading {} ({}/{})  ·  {}", self.label, self.step + 1, self.steps, amount)
     }
 }
 
@@ -195,7 +186,8 @@ pub fn install(tool: &ToolSpec, step: usize, steps: usize, on: &mut impl FnMut(P
         None => fs::rename(&tmp, bin.join(tool.files[0]))?,
         Some(entries) => {
             on(p(format!("{} (extracting)", tool.label), 1, Some(1)));
-            let res = if url.ends_with(".7z") { extract_7z(&tmp, &bin, entries) } else { extract_zip(&tmp, &bin, entries) };
+            let res =
+                if url.ends_with(".7z") { extract_7z(&tmp, &bin, entries) } else { extract_zip(&tmp, &bin, entries) };
             let _ = fs::remove_file(&tmp);
             res.with_context(|| format!("extracting {}", tool.label))?;
         }
@@ -208,7 +200,10 @@ pub fn install(tool: &ToolSpec, step: usize, steps: usize, on: &mut impl FnMut(P
 pub fn explain(err: &anyhow::Error, tool: &str) -> String {
     for cause in err.chain() {
         let net = cause.downcast_ref::<reqwest::Error>().or_else(|| {
-            cause.downcast_ref::<std::io::Error>().and_then(|e| e.get_ref()).and_then(|e| e.downcast_ref::<reqwest::Error>())
+            cause
+                .downcast_ref::<std::io::Error>()
+                .and_then(|e| e.get_ref())
+                .and_then(|e| e.downcast_ref::<reqwest::Error>())
         });
         if let Some(e) = net {
             if let Some(status) = e.status() {
@@ -230,22 +225,30 @@ pub fn explain(err: &anyhow::Error, tool: &str) -> String {
             use std::io::ErrorKind::*;
             match e.kind() {
                 StorageFull | QuotaExceeded => {
-                    return format!("Your drive is full, so Neria couldn't save {tool}. Free up about 500 MB, then try again.");
+                    return format!(
+                        "Your drive is full, so Neria couldn't save {tool}. Free up about 500 MB, then try again."
+                    );
                 }
                 PermissionDenied => {
-                    return format!("Windows stopped Neria from saving {tool} in its bin folder. If your antivirus quarantined it, allow Neria there; otherwise move Neria to Documents or Desktop.");
+                    return format!(
+                        "Windows stopped Neria from saving {tool} in its bin folder. If your antivirus quarantined it, allow Neria there; otherwise move Neria to Documents or Desktop."
+                    );
                 }
                 TimedOut | ConnectionReset | ConnectionAborted | UnexpectedEof => {
                     return format!("The download of {tool} was cut off. Check your connection, then try again.");
                 }
                 _ if e.raw_os_error() == Some(112) => {
-                    return format!("Your drive is full, so Neria couldn't save {tool}. Free up about 500 MB, then try again.");
+                    return format!(
+                        "Your drive is full, so Neria couldn't save {tool}. Free up about 500 MB, then try again."
+                    );
                 }
                 _ => {}
             }
         }
     }
-    format!("Something went wrong while getting {tool}. Try again; if it keeps happening, copy the details and report it.")
+    format!(
+        "Something went wrong while getting {tool}. Try again; if it keeps happening, copy the details and report it."
+    )
 }
 
 pub(crate) fn download_to(url: &str, dest: &Path, mut on: impl FnMut(u64, Option<u64>)) -> Result<()> {
@@ -347,11 +350,7 @@ pub fn ytdlp_version() -> Option<String> {
 
 /// Run `yt-dlp -U`. Must not run while downloads are active (it replaces itself).
 pub fn update_ytdlp() -> Result<()> {
-    let status = proc::command(paths::tool("yt-dlp"))
-        .arg("-U")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
+    let status = proc::command(paths::tool("yt-dlp")).arg("-U").stdout(Stdio::null()).stderr(Stdio::null()).status()?;
     if !status.success() {
         bail!("yt-dlp update failed");
     }

@@ -32,7 +32,9 @@ pub fn install(ui: &AppWindow) {
                 let w = weak.clone();
                 let result = update::install_neria(&rel, |done, total| {
                     let (frac, text) = match total {
-                        Some(t) if t > 0 => (done as f32 / t as f32, format!("{} / {}", fmt::bytes(done as f64), fmt::bytes(t as f64))),
+                        Some(t) if t > 0 => {
+                            (done as f32 / t as f32, format!("{} / {}", fmt::bytes(done as f64), fmt::bytes(t as f64)))
+                        }
                         _ => (0.0, fmt::bytes(done as f64)),
                     };
                     let _ = w.upgrade_in_event_loop(move |ui| {
@@ -43,7 +45,9 @@ pub fn install(ui: &AppWindow) {
                 let _ = weak.upgrade_in_event_loop(move |ui| match result {
                     Ok(()) => {
                         ui.set_update_state(READY);
-                        ui.set_update_status(format!("Neria {} is ready. Restart to start using it.", rel.version).into());
+                        ui.set_update_status(
+                            format!("Neria {} is ready. Restart to start using it.", rel.version).into(),
+                        );
                         if std::env::var("NERIA_UPDATE_INSTALL").as_deref() == Ok("restart") {
                             ui.invoke_update_restart();
                         }
@@ -80,7 +84,8 @@ pub fn install(ui: &AppWindow) {
         let weak = ui.as_weak();
         move || {
             let ui = weak.unwrap();
-            let labels: Vec<String> = ui.get_tools_outdated().split('\n').filter(|s| !s.is_empty()).map(str::to_string).collect();
+            let labels: Vec<String> =
+                ui.get_tools_outdated().split('\n').filter(|s| !s.is_empty()).map(str::to_string).collect();
             if labels.is_empty() {
                 return;
             }
@@ -101,7 +106,9 @@ pub fn install(ui: &AppWindow) {
                             ui.set_tools_outdated("".into());
                             ui.set_tools_status("Tools updated. New versions show after a restart.".into());
                         }
-                        Err(e) => ui.set_tools_status(format!("Tool update failed: {e:#}. The old versions are still in place.").into()),
+                        Err(e) => ui.set_tools_status(
+                            format!("Tool update failed: {e:#}. The old versions are still in place.").into(),
+                        ),
                     }
                 });
             });

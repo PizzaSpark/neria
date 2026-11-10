@@ -15,8 +15,7 @@ use neria_core::{fmt, music, spotify, ytmusic};
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let link = spotify::parse_link(&args[0]).expect("not a Spotify link");
-    let mut settings = Settings::default();
-    settings.output_dir = args[1].clone().into();
+    let settings = Settings { output_dir: args[1].clone().into(), ..Settings::default() };
     let max: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(usize::MAX);
     let match_only = args.iter().any(|a| a == "--match-only");
 

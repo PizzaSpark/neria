@@ -177,14 +177,18 @@ impl Mpv {
     pub fn get_f64(&self, name: &str) -> Option<f64> {
         let n = cstr(name);
         let mut v = 0f64;
-        let r = unsafe { (self.api.get_property)(self.handle, n.as_ptr(), FORMAT_DOUBLE, &mut v as *mut f64 as *mut c_void) };
+        let r = unsafe {
+            (self.api.get_property)(self.handle, n.as_ptr(), FORMAT_DOUBLE, &mut v as *mut f64 as *mut c_void)
+        };
         (r >= 0).then_some(v)
     }
 
     pub fn get_i64(&self, name: &str) -> Option<i64> {
         let n = cstr(name);
         let mut v = 0i64;
-        let r = unsafe { (self.api.get_property)(self.handle, n.as_ptr(), FORMAT_INT64, &mut v as *mut i64 as *mut c_void) };
+        let r = unsafe {
+            (self.api.get_property)(self.handle, n.as_ptr(), FORMAT_INT64, &mut v as *mut i64 as *mut c_void)
+        };
         (r >= 0).then_some(v)
     }
 
@@ -192,7 +196,8 @@ impl Mpv {
     pub fn get_string(&self, name: &str) -> Option<String> {
         let n = cstr(name);
         let mut p: *mut c_char = null_mut();
-        let r = unsafe { (self.api.get_property)(self.handle, n.as_ptr(), FORMAT_STRING, &mut p as *mut _ as *mut c_void) };
+        let r =
+            unsafe { (self.api.get_property)(self.handle, n.as_ptr(), FORMAT_STRING, &mut p as *mut _ as *mut c_void) };
         if r < 0 || p.is_null() {
             return None;
         }
@@ -204,7 +209,9 @@ impl Mpv {
     pub fn get_flag(&self, name: &str) -> Option<bool> {
         let n = cstr(name);
         let mut v: c_int = 0;
-        let r = unsafe { (self.api.get_property)(self.handle, n.as_ptr(), FORMAT_FLAG, &mut v as *mut c_int as *mut c_void) };
+        let r = unsafe {
+            (self.api.get_property)(self.handle, n.as_ptr(), FORMAT_FLAG, &mut v as *mut c_int as *mut c_void)
+        };
         (r >= 0).then_some(v != 0)
     }
 

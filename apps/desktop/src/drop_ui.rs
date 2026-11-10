@@ -12,7 +12,8 @@ use slint::winit_030::{EventResult, WinitWindowAccessor, winit::event::WindowEve
 
 use crate::AppWindow;
 
-const VIDEO: &[&str] = &["mp4", "mkv", "webm", "mov", "avi", "m4v", "flv", "wmv", "ts", "mts", "m2ts", "3gp", "mpg", "mpeg", "ogv"];
+const VIDEO: &[&str] =
+    &["mp4", "mkv", "webm", "mov", "avi", "m4v", "flv", "wmv", "ts", "mts", "m2ts", "3gp", "mpg", "mpeg", "ogv"];
 const AUDIO: &[&str] = &["mp3", "m4a", "aac", "wav", "flac", "opus", "ogg", "wma"];
 
 fn ext(path: &Path) -> String {
@@ -36,7 +37,13 @@ pub fn install(ui: &AppWindow) {
                     ui.set_drop_hover(true);
                     ui.set_drop_name(name(path).into());
                     let e = ext(path);
-                    ui.set_drop_kind(if VIDEO.contains(&e.as_str()) { 1 } else if AUDIO.contains(&e.as_str()) { 2 } else { 0 });
+                    ui.set_drop_kind(if VIDEO.contains(&e.as_str()) {
+                        1
+                    } else if AUDIO.contains(&e.as_str()) {
+                        2
+                    } else {
+                        0
+                    });
                 }
             }
             WindowEvent::HoveredFileCancelled => ui.set_drop_hover(false),
@@ -107,7 +114,13 @@ pub fn dev_hooks(ui: &AppWindow) {
     if let Some(p) = std::env::var_os("NERIA_DROP_HOVER").map(PathBuf::from) {
         let e = ext(&p);
         ui.set_drop_name(name(&p).into());
-        ui.set_drop_kind(if VIDEO.contains(&e.as_str()) { 1 } else if AUDIO.contains(&e.as_str()) { 2 } else { 0 });
+        ui.set_drop_kind(if VIDEO.contains(&e.as_str()) {
+            1
+        } else if AUDIO.contains(&e.as_str()) {
+            2
+        } else {
+            0
+        });
         ui.set_drop_hover(true);
     }
     if let Some(p) = std::env::var_os("NERIA_DROP").map(PathBuf::from) {

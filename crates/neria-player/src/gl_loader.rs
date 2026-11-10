@@ -25,14 +25,10 @@ pub fn get_proc_address(name: &CStr) -> *const c_void {
     // wglGetProcAddress only knows extension/1.2+ functions and signals
     // failure with a few magic values; core 1.1 functions live in opengl32.dll.
     let p = unsafe { wgl(name.as_ptr()) };
-    if !matches!(p as isize, -1 | 0 | 1 | 2 | 3) {
+    if !matches!(p as isize, -1..=3) {
         return p;
     }
-    unsafe {
-        lib.get::<*const c_void>(name.to_bytes_with_nul())
-            .map(|s| *s)
-            .unwrap_or(null())
-    }
+    unsafe { lib.get::<*const c_void>(name.to_bytes_with_nul()).map(|s| *s).unwrap_or(null()) }
 }
 
 #[cfg(not(windows))]

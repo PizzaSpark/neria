@@ -36,7 +36,10 @@ pub fn tool_versions() -> &'static [(&'static str, String)] {
                     .and_then(|l| l.split_whitespace().nth(1).map(str::to_string))
                     .unwrap_or_else(missing),
             ),
-            ("libmpv", file_date(&paths::bin_dir().join(LIBMPV)).map(|d| format!("downloaded {d}")).unwrap_or_else(missing)),
+            (
+                "libmpv",
+                file_date(&paths::bin_dir().join(LIBMPV)).map(|d| format!("downloaded {d}")).unwrap_or_else(missing),
+            ),
         ]
     })
 }
@@ -76,7 +79,8 @@ fn windows_version() -> Option<String> {
     #[cfg(windows)]
     {
         // "Microsoft Windows [Version 10.0.26300.1234]"
-        let out = proc::command("cmd").args(["/c", "ver"]).stdout(Stdio::piped()).stderr(Stdio::null()).output().ok()?;
+        let out =
+            proc::command("cmd").args(["/c", "ver"]).stdout(Stdio::piped()).stderr(Stdio::null()).output().ok()?;
         let text = String::from_utf8_lossy(&out.stdout);
         let v = text.split("Version ").nth(1)?.trim().trim_end_matches(']').to_string();
         Some(format!("Windows {v}"))
@@ -110,11 +114,8 @@ pub fn header(settings: &Settings) -> String {
     s.push('\n');
 
     let quality = format!("{:?}", settings.quality).replace('P', "");
-    let mut opts = vec![
-        format!("quality {quality}"),
-        format!("{}", settings.container),
-        format!("audio {}", settings.audio_format),
-    ];
+    let mut opts =
+        vec![format!("quality {quality}"), settings.container.to_string(), format!("audio {}", settings.audio_format)];
     if settings.prefer_h264 {
         opts.push("H.264".into());
     }

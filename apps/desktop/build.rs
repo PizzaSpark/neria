@@ -66,7 +66,7 @@ fn resource(out: &mut Vec<u8>, kind: u16, id: u16, flags: u16, data: &[u8]) {
     out.extend_from_slice(&0u32.to_le_bytes()); // version
     out.extend_from_slice(&0u32.to_le_bytes()); // characteristics
     out.extend_from_slice(data);
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0);
     }
 }

@@ -58,10 +58,10 @@ pub fn search_songs(query: &str) -> Result<Vec<Candidate>> {
 fn parse_results(v: &Value) -> Vec<Candidate> {
     let mut out = Vec::new();
     walk(v, &mut |node| {
-        if let Some(r) = node.get("musicResponsiveListItemRenderer") {
-            if let Some(c) = parse_item(r) {
-                out.push(c);
-            }
+        if let Some(r) = node.get("musicResponsiveListItemRenderer")
+            && let Some(c) = parse_item(r)
+        {
+            out.push(c);
         }
     });
     out
@@ -119,9 +119,29 @@ fn parse_clock(s: &str) -> Option<f64> {
 // ───────────── Scoring ─────────────
 
 const VERSION_WORDS: &[&str] = &[
-    "live", "remix", "cover", "karaoke", "instrumental", "acoustic", "sped", "slowed", "reverb", "nightcore",
-    "8d", "edit", "version", "demo", "remaster", "remastered", "mix", "rework", "extended", "recorded",
-    "rerecorded", "tribute", "lofi",
+    "live",
+    "remix",
+    "cover",
+    "karaoke",
+    "instrumental",
+    "acoustic",
+    "sped",
+    "slowed",
+    "reverb",
+    "nightcore",
+    "8d",
+    "edit",
+    "version",
+    "demo",
+    "remaster",
+    "remastered",
+    "mix",
+    "rework",
+    "extended",
+    "recorded",
+    "rerecorded",
+    "tribute",
+    "lofi",
 ];
 
 /// Lowercase, drop "feat./ft./with …" credits and punctuation, collapse spaces.
@@ -217,8 +237,9 @@ pub fn score(track: &Track, cand: &Candidate) -> Option<f64> {
         }
         _ => 0.5,
     };
-    let s = 0.45 * title_similarity(&track.title, &cand.title) + 0.35 * artist_similarity(track, cand) + 0.2 * dur_score
-        - version_penalty(track, cand);
+    let s =
+        0.45 * title_similarity(&track.title, &cand.title) + 0.35 * artist_similarity(track, cand) + 0.2 * dur_score
+            - version_penalty(track, cand);
     Some(s.clamp(0.0, 1.0))
 }
 
@@ -258,10 +279,10 @@ pub fn candidates(track: &Track) -> Result<Vec<Candidate>> {
             Err(e) => last_err = Some(e),
         }
     }
-    if found.is_empty() {
-        if let Some(e) = last_err {
-            return Err(e);
-        }
+    if found.is_empty()
+        && let Some(e) = last_err
+    {
+        return Err(e);
     }
     Ok(rank(track, found))
 }
@@ -285,7 +306,14 @@ mod tests {
     }
 
     fn cand(title: &str, artists: &str, dur: f64) -> Candidate {
-        Candidate { video_id: "x".into(), title: title.into(), artists: artists.into(), album: None, duration: Some(dur), score: 0.0 }
+        Candidate {
+            video_id: "x".into(),
+            title: title.into(),
+            artists: artists.into(),
+            album: None,
+            duration: Some(dur),
+            score: 0.0,
+        }
     }
 
     #[test]
@@ -298,8 +326,23 @@ mod tests {
     #[test]
     fn picks_album_version_over_edits_and_namesakes() {
         let t = get_lucky();
-        let album = score(&t, &cand("Get Lucky (feat. Pharrell Williams and Nile Rodgers)", "Daft Punk, Pharrell Williams & Nile Rodgers", 370.0)).unwrap();
-        let radio = score(&t, &cand("Get Lucky (Radio Edit - feat. Pharrell Williams and Nile Rodgers)", "Daft Punk, Pharrell Williams & Nile Rodgers", 249.0));
+        let album = score(
+            &t,
+            &cand(
+                "Get Lucky (feat. Pharrell Williams and Nile Rodgers)",
+                "Daft Punk, Pharrell Williams & Nile Rodgers",
+                370.0,
+            ),
+        )
+        .unwrap();
+        let radio = score(
+            &t,
+            &cand(
+                "Get Lucky (Radio Edit - feat. Pharrell Williams and Nile Rodgers)",
+                "Daft Punk, Pharrell Williams & Nile Rodgers",
+                249.0,
+            ),
+        );
         let other = score(&t, &cand("Get Lucky", "Phoenix Moon", 259.0));
         assert!(album > 0.95, "{album}");
         assert!(radio.is_none(), "radio edit is 2 min shorter");

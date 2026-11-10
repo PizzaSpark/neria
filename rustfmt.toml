@@ -1,0 +1,3 @@
+# Matches how the code was already written (long, readable lines). CI checks it.
+max_width = 120
+use_small_heuristics = "Max"

@@ -3088,7 +3088,7 @@ dependencies = [
 
 [[package]]
 name = "neria"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3104,7 +3104,7 @@ dependencies = [
 
 [[package]]
 name = "neria-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3117,7 +3117,7 @@ dependencies = [
 
 [[package]]
 name = "neria-player"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "libloading 0.9.0",

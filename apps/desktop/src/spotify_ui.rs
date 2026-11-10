@@ -25,7 +25,15 @@ pub struct Pending {
 pub type PendingSlot = Arc<Mutex<Option<Pending>>>;
 
 /// Preview a Spotify link (runs the lookup in the background).
-pub fn preview(ui: &AppWindow, url: String, link: Link, settings: Settings, generation: Arc<AtomicU64>, my_gen: u64, slot: PendingSlot) {
+pub fn preview(
+    ui: &AppWindow,
+    url: String,
+    link: Link,
+    settings: Settings,
+    generation: Arc<AtomicU64>,
+    my_gen: u64,
+    slot: PendingSlot,
+) {
     ui.set_probe_is_spotify(true);
     ui.set_spotify_count(0);
     ui.set_sync_items(ModelRc::from(Rc::new(VecModel::<SyncItem>::default())));
@@ -34,11 +42,8 @@ pub fn preview(ui: &AppWindow, url: String, link: Link, settings: Settings, gene
     let weak = ui.as_weak();
     std::thread::spawn(move || {
         let result = spotify::fetch(&link, settings.spotify_credentials().as_ref());
-        let cover = result
-            .as_ref()
-            .ok()
-            .and_then(|c| c.cover_url.as_deref())
-            .and_then(|u| probe::fetch_thumbnail(u).ok());
+        let cover =
+            result.as_ref().ok().and_then(|c| c.cover_url.as_deref()).and_then(|u| probe::fetch_thumbnail(u).ok());
         let removed = result
             .as_ref()
             .map(|c| music::removed_tracks(&music::collection_dir(&settings.output_dir, c), c))

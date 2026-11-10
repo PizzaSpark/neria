@@ -54,11 +54,7 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
     }
     cmd.arg("--").arg(url);
 
-    let out = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .context("failed to start yt-dlp")?;
+    let out = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().context("failed to start yt-dlp")?;
 
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -91,9 +87,7 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
         duration: v.get("duration").and_then(Value::as_f64),
         thumbnail_url: pick_thumbnail(&v),
         max_height,
-        playlist_count: is_playlist.then(|| {
-            v.get("entries").and_then(Value::as_array).map_or(0, |e| e.len())
-        }),
+        playlist_count: is_playlist.then(|| v.get("entries").and_then(Value::as_array).map_or(0, |e| e.len())),
     })
 }
 
@@ -231,10 +225,7 @@ pub fn explain(msg: &str) -> LinkProblem {
     let raw = msg.trim();
     // Drop the "[extractor] id: " prefix.
     let msg = match raw.strip_prefix('[') {
-        Some(rest) => rest
-            .split_once("] ")
-            .map(|(_, r)| r.split_once(": ").map_or(r, |(_, m)| m))
-            .unwrap_or(raw),
+        Some(rest) => rest.split_once("] ").map(|(_, r)| r.split_once(": ").map_or(r, |(_, m)| m)).unwrap_or(raw),
         None => raw,
     };
     let low = raw.to_lowercase();
@@ -246,10 +237,20 @@ pub fn explain(msg: &str) -> LinkProblem {
         return LinkProblem::new(msg, "", false);
     }
     if has(&["no space left on device", "errno 28", "disk full", "not enough space on the disk"]) {
-        return LinkProblem::new("Your drive ran out of space", "Free some up, or pick another folder in Settings.", false);
+        return LinkProblem::new(
+            "Your drive ran out of space",
+            "Free some up, or pick another folder in Settings.",
+            false,
+        );
     }
     // Reading the browser's cookies failed (before the site was even asked).
-    if has(&["cookie database", "cookies database", "failed to decrypt with dpapi", "app-bound encryption", "app bound encryption"]) {
+    if has(&[
+        "cookie database",
+        "cookies database",
+        "failed to decrypt with dpapi",
+        "app-bound encryption",
+        "app bound encryption",
+    ]) {
         return LinkProblem::new(
             "Neria couldn't read your browser's cookies",
             "Chrome and Edge lock their cookies while open and encrypt them. Sign in to the site in Firefox and pick Firefox under Settings → Network → Cookies.",
@@ -268,7 +269,11 @@ pub fn explain(msg: &str) -> LinkProblem {
         );
     }
     if has(&["is not a valid url"]) {
-        return LinkProblem::new("That doesn't look like a complete link", "Copy the whole address from your browser and paste it again.", true);
+        return LinkProblem::new(
+            "That doesn't look like a complete link",
+            "Copy the whole address from your browser and paste it again.",
+            true,
+        );
     }
     if has(&["private video", "video is private"]) {
         return LinkProblem::new(
@@ -280,11 +285,30 @@ pub fn explain(msg: &str) -> LinkProblem {
     if has(&["account associated with this video has been terminated", "account has been terminated"]) {
         return gone("This video's channel was closed");
     }
-    if has(&["removed by the uploader", "has been removed", "no longer available", "video unavailable", "video is unavailable", "does not exist", "http error 404", "http error 410"]) {
+    if has(&[
+        "removed by the uploader",
+        "has been removed",
+        "no longer available",
+        "video unavailable",
+        "video is unavailable",
+        "does not exist",
+        "http error 404",
+        "http error 410",
+    ]) {
         return gone("This video was removed or doesn't exist");
     }
-    if has(&["not available in your country", "not made this video available in your country", "geo restrict", "geo-restrict", "not available in your region"]) {
-        return LinkProblem::new("This video isn't available in your country", "The uploader limited where it can be watched.", true);
+    if has(&[
+        "not available in your country",
+        "not made this video available in your country",
+        "geo restrict",
+        "geo-restrict",
+        "not available in your region",
+    ]) {
+        return LinkProblem::new(
+            "This video isn't available in your country",
+            "The uploader limited where it can be watched.",
+            true,
+        );
     }
     if has(&["confirm your age", "age-restricted", "age restricted", "inappropriate for some users"]) {
         return LinkProblem::new("This video is age-restricted", cookies, false);
@@ -299,12 +323,26 @@ pub fn explain(msg: &str) -> LinkProblem {
         return LinkProblem::new("This stream hasn't started yet", "Try again once it's live.", false);
     }
     if has(&["http error 429", "too many requests", "rate-limit", "rate limit"]) {
-        return LinkProblem::new("The site is getting too many requests from you", "Wait a few minutes, then try again.", false);
+        return LinkProblem::new(
+            "The site is getting too many requests from you",
+            "Wait a few minutes, then try again.",
+            false,
+        );
     }
-    if has(&["getaddrinfo", "failed to resolve", "unable to download webpage", "timed out", "connection", "network is unreachable", "errno 11001", "ssl"]) {
+    if has(&[
+        "getaddrinfo",
+        "failed to resolve",
+        "unable to download webpage",
+        "timed out",
+        "connection",
+        "network is unreachable",
+        "errno 11001",
+        "ssl",
+    ]) {
         return LinkProblem::new("Couldn't reach the site", "Check your internet connection, then try again.", false);
     }
-    if has(&["signature extraction failed", "nsig extraction failed", "please report this issue", "unable to extract"]) {
+    if has(&["signature extraction failed", "nsig extraction failed", "please report this issue", "unable to extract"])
+    {
         return LinkProblem::new(
             "The site changed and the downloader needs an update",
             "Neria updates it when you download. Fixes usually land within a day or two.",
@@ -363,22 +401,35 @@ mod tests {
         assert_eq!(p.hint, WORKS_WITH);
         assert!(explain("[youtube] aaaaaaaaaaa: This video is unavailable").permanent);
         assert!(explain("[vimeo] 1: Unable to download webpage: HTTP Error 404: Not Found (caused by <HTTPError 404: Not Found>)").permanent);
-        assert!(explain("[DRM] The requested site is known to use DRM protection. It will NOT be supported.").permanent);
+        assert!(
+            explain("[DRM] The requested site is known to use DRM protection. It will NOT be supported.").permanent
+        );
         assert!(explain("[youtube] x: Private video. Sign in if you've been granted access to this video").permanent);
-        let net = explain("[generic] video: Unable to download webpage: HTTPSConnection(host='a.invalid', port=443): Failed to resolve 'a.invalid' ([Errno 11001] getaddrinfo failed)");
+        let net = explain(
+            "[generic] video: Unable to download webpage: HTTPSConnection(host='a.invalid', port=443): Failed to resolve 'a.invalid' ([Errno 11001] getaddrinfo failed)",
+        );
         assert!(!net.permanent);
         assert_eq!(net.title, "Couldn't reach the site");
         assert!(!explain("[youtube] x: Sign in to confirm you’re not a bot. Use --cookies-from-browser").permanent);
-        assert_eq!(explain("[youtube] x: Sign in to confirm your age. This video may be inappropriate for some users.").title, "This video is age-restricted");
+        assert_eq!(
+            explain("[youtube] x: Sign in to confirm your age. This video may be inappropriate for some users.").title,
+            "This video is age-restricted"
+        );
         assert!(!explain("[youtube] x: HTTP Error 429: Too Many Requests").permanent);
         assert_eq!(explain("ERROR: [Errno 28] No space left on device").title, "Your drive ran out of space");
         assert_eq!(
-            explain("ERROR: Could not copy Chrome cookie database. See https://github.com/yt-dlp/yt-dlp/issues/7271").title,
+            explain("ERROR: Could not copy Chrome cookie database. See https://github.com/yt-dlp/yt-dlp/issues/7271")
+                .title,
             "Neria couldn't read your browser's cookies"
         );
-        assert_eq!(explain("ERROR: Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/10927").title, "Neria couldn't read your browser's cookies");
+        assert_eq!(
+            explain("ERROR: Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/10927").title,
+            "Neria couldn't read your browser's cookies"
+        );
         assert!(needs_newer_ytdlp("[youtube] x: nsig extraction failed: You may experience throttling"));
-        assert!(needs_newer_ytdlp("ERROR: [youtube] x: Unable to extract uploader id; please report this issue on https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using yt-dlp -U"));
+        assert!(needs_newer_ytdlp(
+            "ERROR: [youtube] x: Unable to extract uploader id; please report this issue on https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using yt-dlp -U"
+        ));
         assert!(!needs_newer_ytdlp("[youtube] x: Private video. Sign in if you've been granted access to this video"));
         assert!(!needs_newer_ytdlp("ERROR: [youtube] x: Video unavailable"));
         assert!(needs_newer_ytdlp("yt-dlp.exe: error: no such option: --js-runtimes"));

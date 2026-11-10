@@ -44,7 +44,11 @@ impl DownloadRequest {
 pub enum DlEvent {
     /// Video title, how many streams will be downloaded (video+audio = 2)
     /// and the thumbnail URL, if the site has one.
-    Info { title: String, streams: u32, thumbnail: Option<String> },
+    Info {
+        title: String,
+        streams: u32,
+        thumbnail: Option<String>,
+    },
     Progress {
         finished: bool,
         downloaded: Option<f64>,
@@ -212,10 +216,10 @@ pub fn run(
     {
         let mut slot = child_slot.lock().unwrap();
         *slot = Some(child);
-        if cancel.load(Ordering::SeqCst) {
-            if let Some(c) = slot.as_mut() {
-                proc::kill_tree(c);
-            }
+        if cancel.load(Ordering::SeqCst)
+            && let Some(c) = slot.as_mut()
+        {
+            proc::kill_tree(c);
         }
     }
 

@@ -142,11 +142,11 @@ fn ensure_thumb(ui: &AppWindow, url: &str) {
             THUMBS.with(|t| t.borrow_mut().insert(url.clone(), Some(img.clone())));
             let model = ui.get_jobs();
             for i in 0..model.row_count() {
-                if let Some(mut row) = model.row_data(i) {
-                    if row.thumb_url == url.as_str() {
-                        row.thumb = img.clone();
-                        model.set_row_data(i, row);
-                    }
+                if let Some(mut row) = model.row_data(i)
+                    && row.thumb_url == url.as_str()
+                {
+                    row.thumb = img.clone();
+                    model.set_row_data(i, row);
                 }
             }
         });
@@ -163,7 +163,11 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
     }
     // Dev hook for scripted checks: open "pick another match" on the first flagged song.
     static PICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if item.warn && item.state == 3 && std::env::var_os("NERIA_MATCH_PICK").is_some() && !PICKED.swap(true, Ordering::SeqCst) {
+    if item.warn
+        && item.state == 3
+        && std::env::var_os("NERIA_MATCH_PICK").is_some()
+        && !PICKED.swap(true, Ordering::SeqCst)
+    {
         let (weak, id) = (ui.as_weak(), item.id);
         slint::Timer::single_shot(Duration::from_millis(300), move || {
             if let Some(ui) = weak.upgrade() {
@@ -224,7 +228,12 @@ fn windows_prefers_dark() -> bool {
     #[cfg(windows)]
     {
         let out = neria_core::proc::command("reg")
-            .args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "/v", "AppsUseLightTheme"])
+            .args([
+                "query",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                "/v",
+                "AppsUseLightTheme",
+            ])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .output();
@@ -249,24 +258,70 @@ fn apply_theme(ui: &AppWindow) {
 fn demo_rows(ui: &AppWindow) {
     let model = ui.get_jobs();
     let Some(vec) = model.as_any().downcast_ref::<VecModel<JobItem>>() else { return };
-    let row = |id: i32, title: &str, state: i32, progress: f32, status: &str, stats: &str, warn: bool, music: bool| JobItem {
-        id,
-        group: 0,
-        title: title.into(),
-        state,
-        progress,
-        status: status.into(),
-        stats: stats.into(),
-        warn,
-        music,
-        thumb: Default::default(),
-        thumb_url: Default::default(),
-    };
-    vec.push(row(9001, "Lo-fi beats to study to, 3 hour mix", 1, 0.62, "Downloading 1/2", "241.0 MB / 388.0 MB  ·  8.4 MB/s  ·  0:17 left", false, false));
-    vec.push(row(9002, "Daft Punk - Get Lucky (feat. Pharrell Williams and Nile Rodgers)", 2, 1.0, "Checking the sound against the official preview…", "", false, true));
-    vec.push(row(9003, "YOASOBI「アイドル」Official Music Video · Кино — Группа крови · 아이유 · 🎵", 0, 0.0, "Waiting in queue…", "", false, false));
-    vec.push(row(9004, "Mountain timelapse 8K", 3, 1.0, "Mountain timelapse 8K [a1b2c3].mp4", "412.0 MB", false, false));
-    vec.push(row(9005, "Bonnie Tyler - Total Eclipse of the Heart", 3, 1.0, "Doesn't sound like the Spotify preview (58% similar). Pick another?", "", true, true));
+    let row =
+        |id: i32, title: &str, state: i32, progress: f32, status: &str, stats: &str, warn: bool, music: bool| JobItem {
+            id,
+            group: 0,
+            title: title.into(),
+            state,
+            progress,
+            status: status.into(),
+            stats: stats.into(),
+            warn,
+            music,
+            thumb: Default::default(),
+            thumb_url: Default::default(),
+        };
+    vec.push(row(
+        9001,
+        "Lo-fi beats to study to, 3 hour mix",
+        1,
+        0.62,
+        "Downloading 1/2",
+        "241.0 MB / 388.0 MB  ·  8.4 MB/s  ·  0:17 left",
+        false,
+        false,
+    ));
+    vec.push(row(
+        9002,
+        "Daft Punk - Get Lucky (feat. Pharrell Williams and Nile Rodgers)",
+        2,
+        1.0,
+        "Checking the sound against the official preview…",
+        "",
+        false,
+        true,
+    ));
+    vec.push(row(
+        9003,
+        "YOASOBI「アイドル」Official Music Video · Кино — Группа крови · 아이유 · 🎵",
+        0,
+        0.0,
+        "Waiting in queue…",
+        "",
+        false,
+        false,
+    ));
+    vec.push(row(
+        9004,
+        "Mountain timelapse 8K",
+        3,
+        1.0,
+        "Mountain timelapse 8K [a1b2c3].mp4",
+        "412.0 MB",
+        false,
+        false,
+    ));
+    vec.push(row(
+        9005,
+        "Bonnie Tyler - Total Eclipse of the Heart",
+        3,
+        1.0,
+        "Doesn't sound like the Spotify preview (58% similar). Pick another?",
+        "",
+        true,
+        true,
+    ));
     vec.push(row(9006, "https://vimeo.com/1", 4, 0.0, "This video was removed or doesn't exist", "", false, false));
     ui.set_active_count(3);
 }
@@ -279,7 +334,13 @@ static HEADS_UP_OK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBoo
 fn demo_dialog(ui: &AppWindow, which: &str) {
     match which {
         "match" => {
-            let item = |title: &str, detail: &str, score: i32, ruled_out: bool, current: bool, check_state: i32, check_text: &str| MatchItem {
+            let item = |title: &str,
+                        detail: &str,
+                        score: i32,
+                        ruled_out: bool,
+                        current: bool,
+                        check_state: i32,
+                        check_text: &str| MatchItem {
                 title: title.into(),
                 detail: detail.into(),
                 score,
@@ -291,32 +352,73 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             };
             let items = vec![
                 item("Total Eclipse of the Heart (Live)", "Bonnie Tyler · 6:12", 64, false, true, 4, "Different (41%)"),
-                item("Total Eclipse of the Heart", "Bonnie Tyler · Faster Than the Speed of Night · 6:59", 96, false, false, 2, "Same recording"),
-                item("Total Eclipse of the Heart (Single Edit)", "Bonnie Tyler · 4:30", 88, false, false, 3, "Unsure (72%)"),
-                item("Total Eclipse of the Heart (Turn Around)", "Bonnie Tyler · 7:00", 81, false, false, 1, "Checking…"),
+                item(
+                    "Total Eclipse of the Heart",
+                    "Bonnie Tyler · Faster Than the Speed of Night · 6:59",
+                    96,
+                    false,
+                    false,
+                    2,
+                    "Same recording",
+                ),
+                item(
+                    "Total Eclipse of the Heart (Single Edit)",
+                    "Bonnie Tyler · 4:30",
+                    88,
+                    false,
+                    false,
+                    3,
+                    "Unsure (72%)",
+                ),
+                item(
+                    "Total Eclipse of the Heart (Turn Around)",
+                    "Bonnie Tyler · 7:00",
+                    81,
+                    false,
+                    false,
+                    1,
+                    "Checking…",
+                ),
                 item("Total Eclipse of the Heart — Karaoke Version", "Sing King · 6:58", 52, false, false, 0, ""),
                 item("Total Eclipse of the Heart (2015 Remaster)", "Bonnie Tyler · 3:02", 0, true, false, 0, ""),
-                item("Total Eclipse of the Heart (Acoustic)", "Bonnie Tyler · 5:40", 70, false, false, 5, "Couldn't check"),
+                item(
+                    "Total Eclipse of the Heart (Acoustic)",
+                    "Bonnie Tyler · 5:40",
+                    70,
+                    false,
+                    false,
+                    5,
+                    "Couldn't check",
+                ),
             ];
             ui.set_match_heading("Bonnie Tyler – Total Eclipse of the Heart · 6:59".into());
-            ui.set_match_sub("Best matches on YouTube Music. The one in use doesn't sound like Spotify's preview.".into());
+            ui.set_match_sub(
+                "Best matches on YouTube Music. The one in use doesn't sound like Spotify's preview.".into(),
+            );
             ui.set_match_query("Bonnie Tyler Total Eclipse of the Heart".into());
             ui.set_match_can_check(true);
             ui.set_match_items(ModelRc::from(Rc::new(VecModel::from(items))));
             ui.set_match_open(true);
         }
         "sync" => {
-            let items: Vec<SyncItem> = ["Daft Punk - One More Time", "Justice - D.A.N.C.E.", "Kavinsky - Nightcall (feat. Lovefoxxx) [Drive Original Motion Picture Soundtrack]", "Air - La femme d'argent"]
-                .iter()
-                .enumerate()
-                .map(|(i, t)| SyncItem { title: (*t).into(), file: format!("C:\\Music\\{t}.mp3").into(), checked: i == 1 })
-                .collect();
+            let items: Vec<SyncItem> = [
+                "Daft Punk - One More Time",
+                "Justice - D.A.N.C.E.",
+                "Kavinsky - Nightcall (feat. Lovefoxxx) [Drive Original Motion Picture Soundtrack]",
+                "Air - La femme d'argent",
+            ]
+            .iter()
+            .enumerate()
+            .map(|(i, t)| SyncItem { title: (*t).into(), file: format!("C:\\Music\\{t}.mp3").into(), checked: i == 1 })
+            .collect();
             ui.set_sync_items(ModelRc::from(Rc::new(VecModel::from(items))));
             ui.set_sync_ticked(1);
             ui.set_sync_open(true);
         }
         "spotify" => ui.set_spotify_heads_up(true),
-        "toast" => ui.set_toast("Report copied. Paste it in a message to whoever helps you with Neria (Ctrl+V).".into()),
+        "toast" => {
+            ui.set_toast("Report copied. Paste it in a message to whoever helps you with Neria (Ctrl+V).".into())
+        }
         "update" | "update-ready" | "update-failed" => {
             ui.set_update_version("0.2.0".into());
             ui.set_update_banner(true);
@@ -475,11 +577,8 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
             return;
         }
         let result = probe::probe(&url, &settings);
-        let thumb = result
-            .as_ref()
-            .ok()
-            .and_then(|i| i.thumbnail_url.as_deref())
-            .and_then(|u| probe::fetch_thumbnail(u).ok());
+        let thumb =
+            result.as_ref().ok().and_then(|i| i.thumbnail_url.as_deref()).and_then(|u| probe::fetch_thumbnail(u).ok());
 
         let _ = weak.upgrade_in_event_loop(move |ui| {
             if generation.load(Ordering::SeqCst) != my_gen {
@@ -495,10 +594,9 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     }
                 }
                 Err(e) => {
-                    let p = e
-                        .downcast_ref::<probe::LinkProblem>()
-                        .cloned()
-                        .unwrap_or_else(|| probe::LinkProblem::new(format!("{e:#}"), "You can still try downloading it.", false));
+                    let p = e.downcast_ref::<probe::LinkProblem>().cloned().unwrap_or_else(|| {
+                        probe::LinkProblem::new(format!("{e:#}"), "You can still try downloading it.", false)
+                    });
                     show_problem(&ui, &p.title, &p.hint, p.permanent);
                 }
             }
@@ -518,10 +616,10 @@ pub(crate) fn show_toast(ui: &AppWindow, msg: &str) {
     let weak = ui.as_weak();
     slint::Timer::single_shot(Duration::from_secs(4), move || {
         // A newer toast keeps its own full time.
-        if SHOWN.load(Ordering::SeqCst) == me {
-            if let Some(ui) = weak.upgrade() {
-                ui.set_toast("".into());
-            }
+        if SHOWN.load(Ordering::SeqCst) == me
+            && let Some(ui) = weak.upgrade()
+        {
+            ui.set_toast("".into());
         }
     });
 }
@@ -538,9 +636,7 @@ pub(crate) fn reveal(path: &Path) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("explorer")
-            .raw_arg(format!("/select,\"{}\"", path.display()))
-            .spawn();
+        let _ = std::process::Command::new("explorer").raw_arg(format!("/select,\"{}\"", path.display())).spawn();
     }
     #[cfg(not(windows))]
     {
@@ -770,9 +866,13 @@ fn main() -> anyhow::Result<()> {
 
     let (_clipper, _clip_timer) = {
         let (q1, q2) = (queue.clone(), queue.clone());
-        clipper::install(&ui, move |id| q1.file_of(id), move |req| {
-            q2.add(req);
-        })?
+        clipper::install(
+            &ui,
+            move |id| q1.file_of(id),
+            move |req| {
+                q2.add(req);
+            },
+        )?
     };
 
     let _compressor = {

@@ -20,9 +20,8 @@ use slint::{ComponentHandle, GraphicsAPI, Model, ModelRc, RenderingState, VecMod
 
 use crate::{AppWindow, Fmt};
 
-const MEDIA_EXTENSIONS: &[&str] = &[
-    "mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac",
-];
+const MEDIA_EXTENSIONS: &[&str] =
+    &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac"];
 
 struct Target {
     tex: glow::Texture,
@@ -206,11 +205,15 @@ impl Clipper {
             let wave_job = {
                 let path = path.clone();
                 let audio = info.has_audio;
-                std::thread::spawn(move || audio.then(|| media::waveform(&path, 1600, if has_video { 68 } else { 128 }).ok()).flatten())
+                std::thread::spawn(move || {
+                    audio.then(|| media::waveform(&path, 1600, if has_video { 68 } else { 128 }).ok()).flatten()
+                })
             };
             let keyframe_job = {
                 let path = path.clone();
-                std::thread::spawn(move || if has_video { media::keyframes(&path).unwrap_or_default() } else { Vec::new() })
+                std::thread::spawn(
+                    move || if has_video { media::keyframes(&path).unwrap_or_default() } else { Vec::new() },
+                )
             };
             let thumbs = if has_video { media::thumbnails(&path, info.duration, 12, 120) } else { Vec::new() };
             let wave = wave_job.join().ok().flatten();
@@ -221,7 +224,8 @@ impl Clipper {
                 if load_gen.load(Ordering::SeqCst) != generation {
                     return;
                 }
-                let to_model = |v: &[f64]| ModelRc::from(Rc::new(VecModel::from(v.iter().map(|k| *k as f32).collect::<Vec<_>>())));
+                let to_model =
+                    |v: &[f64]| ModelRc::from(Rc::new(VecModel::from(v.iter().map(|k| *k as f32).collect::<Vec<_>>())));
                 ui.set_clip_keyframes(to_model(&keyframes));
                 ui.set_clip_keyframe_ticks(to_model(&ticks));
                 let images: Vec<slint::Image> =
@@ -577,7 +581,11 @@ pub fn install(
                 Some(Source::File(path)) => path,
                 Some(Source::Link(url)) => {
                     // Link mode: download only the selected part, in the chosen quality.
-                    let mut req = DownloadRequest::new(url, Quality::from_index(ui.get_quality()), ui.get_clip_name().to_string());
+                    let mut req = DownloadRequest::new(
+                        url,
+                        Quality::from_index(ui.get_quality()),
+                        ui.get_clip_name().to_string(),
+                    );
                     req.section = Some((ui.get_clip_in() as f64, ui.get_clip_out() as f64));
                     req.exact_cuts = ui.get_clip_mode() == 1;
                     enqueue(req);
