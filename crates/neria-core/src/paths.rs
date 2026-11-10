@@ -39,3 +39,14 @@ pub fn cache_dir() -> PathBuf {
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
+
+/// Can Neria write next to itself? Not when it was unzipped into Program Files or a
+/// read-only drive. Returns the folder and the error when it can't.
+pub fn check_writable() -> Result<(), (PathBuf, std::io::Error)> {
+    let dir = app_dir();
+    let probe = dir.join(".neria-write-test");
+    std::fs::create_dir_all(&dir)
+        .and_then(|_| std::fs::write(&probe, b"ok"))
+        .and_then(|_| std::fs::remove_file(&probe))
+        .map_err(|e| (dir, e))
+}

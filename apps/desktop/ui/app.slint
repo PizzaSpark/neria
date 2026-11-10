@@ -18,6 +18,15 @@ export struct MatchItem {
     check-text: string,
 }
 
+// One tool on the first-run screen. state: 0 waiting, 1 downloading, 2 ready, 3 failed.
+export struct ToolRow {
+    name: string,
+    purpose: string,
+    state: int,
+    progress: float,
+    detail: string,
+}
+
 export struct SyncItem {
     title: string,
     file: string,
@@ -487,9 +496,15 @@ export component AppWindow inherits Window {
 
     // Setup
     in property <bool> tools-ready;
-    in property <string> setup-label: "Checking tools…";
-    in property <float> setup-progress;
-    in property <string> setup-error;
+    in property <string> setup-label;
+    in property <string> setup-error; // plain-language reason the last try failed
+    in property <string> setup-detail; // technical version, for "Copy details"
+    in property <bool> setup-copied;
+    in property <string> setup-blocked-dir; // set when Neria can't write next to itself
+    in property <int> setup-missing; // tools still to download
+    in property <[ToolRow]> setup-tools;
+    property <bool> setup-blocked: setup-blocked-dir != "";
+    property <bool> setup-failed: setup-error != "";
 
     // Link + preview
     in-out property <string> url;
@@ -680,6 +695,8 @@ export component AppWindow inherits Window {
     callback settings-changed();
     callback clear-finished();
     callback retry-setup();
+    callback setup-copy-details();
+    callback setup-show-folder();
     callback report-job(int);
     callback copy-report();
     callback update-check();
@@ -2383,52 +2400,212 @@ export component AppWindow inherits Window {
         height: root.height;
         background: Theme.bg;
         TouchArea { }
-        VerticalLayout {
+        HorizontalLayout {
             alignment: center;
-            padding: 80px;
-            spacing: 14px;
-            Text {
-                text: "neria";
-                color: Theme.accent-hi;
-                font-size: 40px;
-                font-weight: 800;
-                horizontal-alignment: center;
-            }
-            Text {
-                text: root.setup-error != "" ? "Setup hit a snag" : "Getting things ready";
-                color: Theme.text;
-                font-family: Theme.display;
-                font-size: 18px;
-                font-weight: 600;
-                horizontal-alignment: center;
-            }
-            Text {
-                text: root.setup-error != "" ? root.setup-error : root.setup-label;
-                color: root.setup-error != "" ? Theme.danger : Theme.muted;
-                font-size: 13px;
-                wrap: word-wrap;
-                horizontal-alignment: center;
-            }
-            HorizontalLayout {
+            padding: 26px;
+            VerticalLayout {
                 alignment: center;
-                Bar {
-                    width: 380px;
-                    value: root.setup-progress;
+                width: min(560px, root.width - 52px);
+                // Logo mark, same sticker as the nav rail, a size up.
+                HorizontalLayout {
+                    alignment: start;
+                    padding-bottom: 26px;
+                    Rectangle {
+                        width: 47px;
+                        height: 47px;
+                        Rectangle {
+                            x: 3px;
+                            y: 3px;
+                            width: 44px;
+                            height: 44px;
+                            border-radius: 12px;
+                            background: Theme.hard;
+                        }
+                        Rectangle {
+                            width: 44px;
+                            height: 44px;
+                            border-radius: 12px;
+                            background: Theme.pop;
+                            border-width: 2px;
+                            border-color: Theme.hard;
+                            Text {
+                                text: "n";
+                                color: Theme.on-pop;
+                                font-family: Theme.display;
+                                font-size: 25px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
                 }
-            }
-            if root.setup-error != "": HorizontalLayout {
-                alignment: center;
-                PrimaryButton {
-                    text: "Try again";
-                    clicked => { root.retry-setup(); }
+                Text {
+                    text: root.setup-blocked ? "Move Neria somewhere else." : root.setup-failed ? "Setup hit a snag." : "Getting Neria ready.";
+                    color: Theme.ink;
+                    font-family: Theme.display;
+                    font-size: 30px;
+                    font-weight: 700;
+                    letter-spacing: -1px;
+                    wrap: word-wrap;
                 }
-            }
-            Text {
-                text: "First run only: yt-dlp, FFmpeg and Deno go into the bin folder next to Neria. Nothing is installed system-wide.";
-                color: Theme.muted;
-                font-size: 12px;
-                wrap: word-wrap;
-                horizontal-alignment: center;
+                Rectangle { height: 8px; }
+                Text {
+                    text: root.setup-blocked
+                        ? "Windows won't let Neria save files in the folder it's in. Neria keeps its tools and settings right next to itself, so it needs a folder you can write to."
+                        : root.setup-failed ? root.setup-error
+                        : root.setup-missing == 0 ? root.setup-label
+                        : "First start only. Neria downloads " + (root.setup-missing == 1 ? "one free tool" : root.setup-missing + " free tools") + " into the bin folder next to itself. Nothing gets installed on your PC.";
+                    color: root.setup-failed ? Theme.ink : Theme.muted;
+                    font-family: Theme.body;
+                    font-size: 14px;
+                    wrap: word-wrap;
+                }
+
+                // Can't write here: where it is now, and what to do.
+                if root.setup-blocked: VerticalLayout {
+                    padding-top: 18px;
+                    spacing: 18px;
+                    Rectangle {
+                        border-radius: 9px;
+                        background: Theme.panel;
+                        border-width: 1px;
+                        border-color: Theme.line;
+                        HorizontalLayout {
+                            padding: 12px;
+                            padding-left: 14px;
+                            spacing: 10px;
+                            Icon {
+                                text: "\u{E8B7}";
+                                font-size: 14px;
+                                color: Theme.muted;
+                                vertical-alignment: top;
+                            }
+                            Text {
+                                text: root.setup-blocked-dir;
+                                color: Theme.ink;
+                                font-family: Theme.mono;
+                                font-size: 11.5px;
+                                wrap: word-wrap;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                    Text {
+                        text: "Close Neria, move the whole Neria folder to Documents or Desktop, and open it from there.";
+                        color: Theme.ink;
+                        font-family: Theme.body;
+                        font-size: 14px;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        padding-top: 4px;
+                        spacing: 18px;
+                        alignment: start;
+                        PrimaryButton {
+                            text: "Show Neria's folder";
+                            icon: "\u{E838}";
+                            clicked => { root.setup-show-folder(); }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            TextLink {
+                                text: "Check again";
+                                clicked => { root.retry-setup(); }
+                            }
+                        }
+                    }
+                }
+
+                // One calm row per tool, each with its own meter.
+                if !root.setup-blocked: VerticalLayout {
+                    padding-top: 22px;
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.line;
+                    }
+                    for tool in root.setup-tools: Rectangle {
+                        height: 58px;
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Theme.line;
+                        }
+                        HorizontalLayout {
+                            spacing: 16px;
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                horizontal-stretch: 1;
+                                Text {
+                                    text: tool.name;
+                                    color: tool.state == 0 ? Theme.muted : Theme.ink;
+                                    font-family: Theme.body;
+                                    font-size: 14px;
+                                    font-weight: 500;
+                                }
+                                Text {
+                                    text: tool.purpose;
+                                    color: Theme.muted;
+                                    font-family: Theme.body;
+                                    font-size: 12px;
+                                    overflow: elide;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                width: 168px;
+                                spacing: 7px;
+                                HorizontalLayout {
+                                    alignment: end;
+                                    if tool.state == 1: Text {
+                                        text: tool.detail;
+                                        color: Theme.muted;
+                                        font-family: Theme.mono;
+                                        font-size: 11.5px;
+                                    }
+                                    if tool.state != 1: Tag {
+                                        text: tool.state == 2 ? "Ready" : tool.state == 3 ? "Stopped" : "Waiting";
+                                        kind: tool.state == 2 ? 1 : tool.state == 3 ? 3 : 0;
+                                    }
+                                }
+                                if tool.state == 1: Bar {
+                                    value: tool.progress;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !root.setup-blocked && root.setup-failed: HorizontalLayout {
+                    padding-top: 22px;
+                    spacing: 18px;
+                    alignment: start;
+                    PrimaryButton {
+                        text: "Try again";
+                        icon: "\u{E72C}";
+                        clicked => { root.retry-setup(); }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        TextLink {
+                            text: root.setup-copied ? "Copied" : "Copy details";
+                            icon: root.setup-copied ? "\u{E73E}" : "\u{E8C8}";
+                            clicked => { root.setup-copy-details(); }
+                        }
+                    }
+                }
+
+                if !root.setup-blocked && !root.setup-failed: VerticalLayout {
+                    padding-top: 16px;
+                    Text {
+                        text: "Neria is portable: everything stays in its own folder. Delete the folder and it's gone.";
+                        color: Theme.dim;
+                        font-family: Theme.body;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
             }
         }
     }

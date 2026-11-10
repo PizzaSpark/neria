@@ -40,7 +40,8 @@ release" JSON instead of GitHub; test self-update with a local server and a copy
 `NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_DEMO` (sample queue
 rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
-`NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
+`NERIA_WINDOW` (window size in logical px, e.g. `780x580`; resizing from outside with
+MoveWindow/SetWindowPos makes the window jump to 32767px tall), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
 `NERIA_HOME` (override app dir; for UI tests point it at a scratch folder with its own
 `settings.json` and a junction `bin` → `target/debug/bin`, so downloads don't land in the real
 Videos folder).

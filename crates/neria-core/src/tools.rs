@@ -19,6 +19,8 @@ pub enum Source {
 
 pub struct ToolSpec {
     pub label: &'static str,
+    /// What it's for, in a few plain words (first-run screen).
+    pub purpose: &'static str,
     pub url: Source,
     /// For archives: (entry path suffix inside the archive, output file name).
     /// `None` means the URL is the executable itself.
@@ -31,9 +33,10 @@ pub struct ToolSpec {
 }
 
 #[cfg(windows)]
-pub const TOOLS: &[ToolSpec] = &[
+pub static TOOLS: &[ToolSpec] = &[
     ToolSpec {
         label: "yt-dlp",
+        purpose: "Downloads from YouTube and 1,000+ other sites",
         url: Source::Url("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"),
         archive: None,
         files: &["yt-dlp.exe"],
@@ -41,6 +44,7 @@ pub const TOOLS: &[ToolSpec] = &[
     },
     ToolSpec {
         label: "FFmpeg",
+        purpose: "Joins, converts, clips and compresses video",
         url: Source::Url(
             "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
         ),
@@ -50,6 +54,7 @@ pub const TOOLS: &[ToolSpec] = &[
     },
     ToolSpec {
         label: "Deno (needed by yt-dlp for YouTube)",
+        purpose: "Helps yt-dlp read YouTube",
         url: Source::Url("https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"),
         archive: Some(&[("deno.exe", "deno.exe")]),
         files: &["deno.exe"],
@@ -57,6 +62,7 @@ pub const TOOLS: &[ToolSpec] = &[
     },
     ToolSpec {
         label: "libmpv (video player)",
+        purpose: "Plays video on the Clip page",
         url: Source::GithubAsset {
             repo: "shinchiro/mpv-winbuild-cmake",
             prefix: "mpv-dev-x86_64-",
@@ -105,15 +111,29 @@ fn resolve(source: &Source) -> Result<String> {
 }
 
 #[cfg(not(windows))]
-pub const TOOLS: &[ToolSpec] = &[];
+pub static TOOLS: &[ToolSpec] = &[];
 
 #[derive(Clone, Debug)]
 pub struct Progress {
+    /// Index into `TOOLS`.
+    pub tool: usize,
     pub step: usize,
     pub steps: usize,
     pub label: String,
     pub downloaded: u64,
     pub total: Option<u64>,
+}
+
+impl ToolSpec {
+    /// Short name without the explanation in brackets ("Deno").
+    pub fn name(&self) -> &'static str {
+        self.label.split(" (").next().unwrap_or(self.label)
+    }
+
+    pub fn installed(&self) -> bool {
+        let bin = paths::bin_dir();
+        self.files.iter().all(|f| bin.join(f).is_file())
+    }
 }
 
 impl Progress {
@@ -145,11 +165,7 @@ impl Progress {
 }
 
 pub fn missing() -> Vec<&'static ToolSpec> {
-    let bin = paths::bin_dir();
-    TOOLS
-        .iter()
-        .filter(|t| t.files.iter().any(|f| !bin.join(f).is_file()))
-        .collect()
+    TOOLS.iter().filter(|t| !t.installed()).collect()
 }
 
 /// Download every missing tool. Blocking; call from a worker thread.
@@ -168,20 +184,68 @@ pub fn install(tool: &ToolSpec, step: usize, steps: usize, on: &mut impl FnMut(P
     fs::create_dir_all(&bin).with_context(|| format!("cannot create {}", bin.display()))?;
     let tmp = bin.join(format!("{}.download", tool.files[0]));
     let label = tool.label.to_string();
+    let idx = TOOLS.iter().position(|t| std::ptr::eq(t, tool)).unwrap_or(0);
+    let p = |label: String, downloaded, total| Progress { tool: idx, step, steps, label, downloaded, total };
+    on(p(label.clone(), 0, None));
     let url = resolve(&tool.url).with_context(|| format!("finding {}", tool.label))?;
-    download_to(&url, &tmp, |downloaded, total| on(Progress { step, steps, label: label.clone(), downloaded, total }))
+    download_to(&url, &tmp, |downloaded, total| on(p(label.clone(), downloaded, total)))
         .with_context(|| format!("downloading {}", tool.label))?;
 
     match tool.archive {
         None => fs::rename(&tmp, bin.join(tool.files[0]))?,
         Some(entries) => {
-            on(Progress { step, steps, label: format!("{} (extracting)", tool.label), downloaded: 1, total: Some(1) });
+            on(p(format!("{} (extracting)", tool.label), 1, Some(1)));
             let res = if url.ends_with(".7z") { extract_7z(&tmp, &bin, entries) } else { extract_zip(&tmp, &bin, entries) };
             let _ = fs::remove_file(&tmp);
             res.with_context(|| format!("extracting {}", tool.label))?;
         }
     }
     Ok(())
+}
+
+/// Turn a failed tool download into one or two plain sentences for the setup screen.
+/// `tool` is the short name of the tool that failed.
+pub fn explain(err: &anyhow::Error, tool: &str) -> String {
+    for cause in err.chain() {
+        let net = cause.downcast_ref::<reqwest::Error>().or_else(|| {
+            cause.downcast_ref::<std::io::Error>().and_then(|e| e.get_ref()).and_then(|e| e.downcast_ref::<reqwest::Error>())
+        });
+        if let Some(e) = net {
+            if let Some(status) = e.status() {
+                return match status.as_u16() {
+                    403 | 429 => "GitHub is limiting downloads from your connection right now. Wait a few minutes, then try again.".into(),
+                    s if s >= 500 => format!("GitHub had a hiccup while sending {tool} (error {s}). Try again in a minute."),
+                    s => format!("GitHub didn't have {tool} where Neria expected it (error {s}). Try again later; if it keeps happening, copy the details and report it."),
+                };
+            }
+            if e.is_timeout() {
+                return format!("The download of {tool} stalled. Your connection may be slow or dropping; try again.");
+            }
+            if e.is_connect() || e.is_request() && !e.is_body() {
+                return "Neria couldn't reach the internet. Check that you're online, then try again. If you are, a firewall or network filter may be blocking github.com.".into();
+            }
+            return format!("The download of {tool} was cut off. Check your connection, then try again.");
+        }
+        if let Some(e) = cause.downcast_ref::<std::io::Error>() {
+            use std::io::ErrorKind::*;
+            match e.kind() {
+                StorageFull | QuotaExceeded => {
+                    return format!("Your drive is full, so Neria couldn't save {tool}. Free up about 500 MB, then try again.");
+                }
+                PermissionDenied => {
+                    return format!("Windows stopped Neria from saving {tool} in its bin folder. If your antivirus quarantined it, allow Neria there; otherwise move Neria to Documents or Desktop.");
+                }
+                TimedOut | ConnectionReset | ConnectionAborted | UnexpectedEof => {
+                    return format!("The download of {tool} was cut off. Check your connection, then try again.");
+                }
+                _ if e.raw_os_error() == Some(112) => {
+                    return format!("Your drive is full, so Neria couldn't save {tool}. Free up about 500 MB, then try again.");
+                }
+                _ => {}
+            }
+        }
+    }
+    format!("Something went wrong while getting {tool}. Try again; if it keeps happening, copy the details and report it.")
 }
 
 pub(crate) fn download_to(url: &str, dest: &Path, mut on: impl FnMut(u64, Option<u64>)) -> Result<()> {
@@ -292,4 +356,27 @@ pub fn update_ytdlp() -> Result<()> {
         bail!("yt-dlp update failed");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn explains_disk_and_permission_problems() {
+        let full = anyhow::Error::new(Error::from_raw_os_error(112)).context("downloading FFmpeg");
+        assert!(explain(&full, "FFmpeg").starts_with("Your drive is full"));
+        let denied = anyhow::Error::new(Error::from(ErrorKind::PermissionDenied)).context("extracting Deno");
+        assert!(explain(&denied, "Deno").contains("antivirus"));
+        let odd = anyhow::anyhow!("libmpv-2.dll not found in archive");
+        assert!(explain(&odd, "libmpv").starts_with("Something went wrong while getting libmpv"));
+    }
+
+    #[test]
+    fn explains_offline() {
+        // Nothing listens on port 9 locally, so this fails like being offline.
+        let err = http().unwrap().get("http://127.0.0.1:9/").send().unwrap_err();
+        assert!(explain(&anyhow::Error::new(err), "yt-dlp").starts_with("Neria couldn't reach the internet"));
+    }
 }

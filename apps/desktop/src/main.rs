@@ -16,6 +16,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 mod clipper;
 mod compressor;
 mod match_ui;
+mod setup_ui;
 mod spotify_ui;
 mod updates_ui;
 
@@ -272,32 +273,26 @@ fn now_secs() -> u64 {
 }
 
 fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
-    ui.set_setup_error("".into());
-    ui.set_setup_progress(0.0);
+    if !setup_ui::begin(ui) {
+        return;
+    }
     let weak = ui.as_weak();
     std::thread::spawn(move || {
         let w = weak.clone();
         let result = tools::ensure_all(|p| {
-            let (label, frac) = (p.text(), p.fraction());
-            let _ = w.upgrade_in_event_loop(move |ui| {
-                ui.set_setup_label(label.into());
-                ui.set_setup_progress(frac);
-            });
+            let _ = w.upgrade_in_event_loop(move |ui| setup_ui::progress(&ui, &p));
         });
 
         if let Err(e) = result {
-            let msg = format!("{e:#}");
-            let _ = weak.upgrade_in_event_loop(move |ui| ui.set_setup_error(msg.into()));
+            let _ = weak.upgrade_in_event_loop(move |ui| setup_ui::failed(&ui, &e));
             return;
         }
+        let _ = weak.upgrade_in_event_loop(|ui| setup_ui::finished(&ui));
 
         // Sites change constantly; keep yt-dlp fresh (once a day, before any download runs).
         let due = now_secs().saturating_sub(settings.lock().unwrap().last_update_check) > 24 * 3600;
         if due {
-            let _ = weak.upgrade_in_event_loop(|ui| {
-                ui.set_setup_label("Checking for yt-dlp updates…".into());
-                ui.set_setup_progress(1.0);
-            });
+            let _ = weak.upgrade_in_event_loop(|ui| ui.set_setup_label("Checking yt-dlp for updates…".into()));
             let _ = tools::update_ytdlp();
             let mut s = settings.lock().unwrap();
             s.last_update_check = now_secs();
@@ -509,6 +504,13 @@ fn main() -> anyhow::Result<()> {
     if std::env::var_os("NERIA_DEMO").is_some() {
         demo_rows(&ui);
     }
+    // Dev hook for design checks: window size in logical pixels, e.g. "780x580".
+    if let Some((w, h)) = std::env::var("NERIA_WINDOW").ok().and_then(|v| {
+        let (w, h) = v.split_once('x')?;
+        Some((w.trim().parse::<f32>().ok()?, h.trim().parse::<f32>().ok()?))
+    }) {
+        ui.window().set_size(slint::LogicalSize::new(w, h));
+    }
 
     let weak = ui.as_weak();
     let queue = Queue::new(settings.clone(), move |snap| {
@@ -665,6 +667,7 @@ fn main() -> anyhow::Result<()> {
             copy_report(&weak.unwrap(), &text);
         }
     });
+    setup_ui::install(&ui);
     ui.on_retry_setup({
         let (weak, settings) = (ui.as_weak(), settings.clone());
         move || start_setup(&weak.unwrap(), settings.clone())

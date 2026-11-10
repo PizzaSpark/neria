@@ -74,10 +74,14 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   **Needs the repo to be public** (private repos answer 404 to unauthenticated checks)
 - **Auto-retry when YouTube breaks**: on known "needs a newer yt-dlp" errors, update yt-dlp
   right away and retry once instead of waiting for the daily update
-- **Robust first start**: clear progress for each tool download, Retry button, plain error
-  when offline or blocked
-- **Writable folder check**: if Neria can't write next to itself (e.g. unzipped into
-  Program Files), say "Move Neria to a folder like Documents or Desktop"
+- ✅ **Robust first start** (desktop `setup_ui.rs`, `tools::explain`): the setup screen lists
+  each tool (what it's for, Waiting / its own meter with sizes / Ready / Stopped), and failures
+  get one plain sentence (offline or firewall, GitHub rate limit or hiccup, cut-off download,
+  full drive, antivirus/permission) with "Try again" and "Copy details". Retry resumes with
+  what's still missing
+- ✅ **Writable folder check** (`paths::check_writable`): if Neria can't write next to itself
+  (e.g. unzipped into Program Files) the setup screen says "Move Neria somewhere else.", shows
+  the folder, and offers "Show Neria's folder" / "Check again"; nothing gets downloaded
 - **Spotify heads-up dialog**: the first time someone presses Download on a Spotify link,
   explain where the audio comes from: "Spotify doesn't allow downloading its audio. Neria
   reads the song info (title, artist, album, cover) from Spotify and downloads the matching
@@ -108,8 +112,9 @@ Tight / JetBrains Mono, dark and light themes.
   (`ui/widgets.slint`), Download page rebuilt (link box with Download inside, big preview, queue
   as calm rows with labelled actions instead of unlabelled icons, friendlier empty state),
   Clip/Compress/Settings restyled, Settings → Appearance (Same as Windows / Dark / Light)
-- Next: split the pages out of `app.slint`, restyle the match picker, sync review and first-run
-  screens in detail, then the items below
+- ✅ First-run setup screen in the new style (logo sticker, headline, calm tool rows)
+- Next: split the pages out of `app.slint`, restyle the match picker and sync review in
+  detail, then the items below
 - Design system: shared tokens (colors, spacing, radii, type scale) and one component set
   (buttons, chips, rows, dialogs, toasts) instead of per-page variations; split `app.slint`
   into per-page/component files
