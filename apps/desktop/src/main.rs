@@ -214,23 +214,48 @@ struct ProbeState {
     spotify: spotify_ui::PendingSlot,
 }
 
+/// The link to use for `text`: Spotify URIs as they are, web links with
+/// `https://` added if it was left out. `None` if it isn't a link.
+fn link_of(text: &str) -> Option<String> {
+    let text = text.trim();
+    if text.starts_with("spotify:") {
+        return Some(text.to_string());
+    }
+    probe::normalize_url(text)
+}
+
+/// Text someone is probably still typing as a link ("h", "http", "https:/").
+fn partial_link(text: &str) -> bool {
+    let t = text.trim().to_ascii_lowercase();
+    t.is_empty() || "https://".starts_with(&t) || "http://".starts_with(&t) || "spotify:".starts_with(&t)
+}
+
+fn show_problem(ui: &AppWindow, title: &str, hint: &str, permanent: bool) {
+    ui.set_probe_state(3);
+    ui.set_probe_blocked(permanent);
+    ui.set_probe_title(title.into());
+    ui.set_probe_meta(hint.into());
+}
+
 fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settings>>, text: &str) {
-    let url = text.trim().to_string();
-    let spotify_link = neria_core::spotify::parse_link(&url);
-    if !probe::looks_like_url(&url) && spotify_link.is_none() {
+    let Some(url) = link_of(text) else {
         state.generation.fetch_add(1, Ordering::SeqCst);
         state.last_url.borrow_mut().clear();
-        ui.set_probe_state(0);
+        ui.set_probe_blocked(false);
+        ui.set_probe_state(if partial_link(text) { 0 } else { 4 });
         ui.set_probe_is_spotify(false);
         return;
-    }
-    if !ui.get_tools_ready() || *state.last_url.borrow() == url {
+    };
+    // Same link again: keep the preview, but look it up again after an error
+    // (pasting the link once more is how you retry).
+    if !ui.get_tools_ready() || (*state.last_url.borrow() == url && ui.get_probe_state() != 3) {
         return;
     }
     *state.last_url.borrow_mut() = url.clone();
 
     let my_gen = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
     ui.set_probe_state(1);
+    ui.set_probe_blocked(false);
     ui.set_probe_title("".into());
     ui.set_probe_meta(url.as_str().into());
     ui.set_probe_thumb(slint::Image::default());
@@ -238,11 +263,17 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
 
     let generation = state.generation.clone();
     let settings = settings.lock().unwrap().clone();
-    if let Some(link) = spotify_link {
+    if let Some(link) = neria_core::spotify::parse_link(&url) {
         spotify_ui::preview(ui, url, link, settings, generation, my_gen, state.spotify.clone());
         return;
     }
     ui.set_probe_is_spotify(false);
+    // Spotify links we can't handle (podcasts, short links…): say so without asking yt-dlp,
+    // which would only report "DRM" or "unsupported".
+    if let Some((title, hint)) = neria_core::spotify::unsupported_reason(&url) {
+        show_problem(ui, title, hint, true);
+        return;
+    }
     let weak = ui.as_weak();
     std::thread::spawn(move || {
         // Debounce typing: only the latest edit actually runs yt-dlp.
@@ -271,9 +302,11 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     }
                 }
                 Err(e) => {
-                    ui.set_probe_state(3);
-                    ui.set_probe_title(e.to_string().into());
-                    ui.set_probe_meta("You can still try downloading it.".into());
+                    let p = e
+                        .downcast_ref::<probe::LinkProblem>()
+                        .cloned()
+                        .unwrap_or_else(|| probe::LinkProblem::new(format!("{e:#}"), "You can still try downloading it.", false));
+                    show_problem(&ui, &p.title, &p.hint, p.permanent);
                 }
             }
         });
@@ -371,8 +404,9 @@ fn main() -> anyhow::Result<()> {
         let (queue, probe_state, save, settings) = (queue.clone(), probe_state.clone(), save.clone(), settings.clone());
         move || {
             let ui = weak.unwrap();
-            let url = ui.get_url().trim().to_string();
-            if url.is_empty() || !ui.get_tools_ready() {
+            // Enter in the link box gets here too, so re-check what the button checks.
+            let Some(url) = link_of(&ui.get_url()) else { return };
+            if !ui.get_tools_ready() || ui.get_probe_blocked() {
                 return;
             }
             save();
@@ -391,6 +425,7 @@ fn main() -> anyhow::Result<()> {
             probe_state.last_url.borrow_mut().clear();
             ui.set_url("".into());
             ui.set_probe_state(0);
+            ui.set_probe_blocked(false);
             ui.set_probe_is_spotify(false);
         }
     });

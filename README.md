@@ -3,7 +3,7 @@
 A fast, portable desktop app to **download** videos and music, **clip** them, and **compress**
 them. Built with Rust + Slint, powered by yt-dlp, FFmpeg and mpv.
 
-- Download from YouTube, TikTok, X, Instagram, Twitch, Reddit, SoundCloud and 1000+ other sites
+- Download from YouTube, TikTok, X, Instagram, Twitch, Reddit, SoundCloud and 1,800+ other sites
 - Trim any video or audio file on a real timeline, or clip a link *before* downloading it
 - Shrink videos to fit Discord's 20 MB (or any size), using your graphics card when possible
 - Paste Spotify links to get the songs from YouTube Music with full tags, cover art and lyrics

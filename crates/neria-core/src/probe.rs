@@ -68,7 +68,7 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
             .find_map(|l| l.strip_prefix("ERROR: "))
             .unwrap_or("Couldn't read this link")
             .to_string();
-        return Err(anyhow!(clean_error(&msg)));
+        return Err(explain(&msg).into());
     }
 
     let v: Value = serde_json::from_slice(&out.stdout).context("unexpected yt-dlp output")?;
@@ -176,25 +176,168 @@ pub fn fetch_thumbnail(url: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Sites people ask about most, for the "can't download from this site" message.
+pub const WORKS_WITH: &str =
+    "Works with YouTube, Spotify, TikTok, Instagram, X, Twitch, SoundCloud and 1,800+ other sites.";
+
+/// Why a link can't be read, in plain words.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkProblem {
+    /// What's wrong ("This video was removed or doesn't exist.").
+    pub title: String,
+    /// What to do about it, or what does work.
+    pub hint: String,
+    /// Trying again won't help (deleted, private, unsupported site…), so the
+    /// Download button should be greyed out.
+    pub permanent: bool,
+}
+
+impl LinkProblem {
+    pub fn new(title: impl Into<String>, hint: impl Into<String>, permanent: bool) -> Self {
+        Self { title: title.into(), hint: hint.into(), permanent }
+    }
+}
+
+impl std::fmt::Display for LinkProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.title)
+    }
+}
+
+impl std::error::Error for LinkProblem {}
+
+/// Accept links pasted without `https://` (e.g. `youtube.com/watch?v=…`).
+/// Returns `None` for text that isn't a link.
+pub fn normalize_url(s: &str) -> Option<String> {
+    let s = s.trim();
+    if looks_like_url(s) {
+        return Some(s.to_string());
+    }
+    if s.contains(char::is_whitespace) || s.contains("://") {
+        return None;
+    }
+    let host = s.split(['/', '?', '#']).next().unwrap_or("");
+    let tld = host.rsplit('.').next().unwrap_or("");
+    let host_ok = host.contains('.')
+        && !host.starts_with('.')
+        && host.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+        && tld.len() >= 2
+        && tld.bytes().all(|b| b.is_ascii_alphabetic());
+    host_ok.then(|| format!("https://{s}"))
+}
+
 /// Turn yt-dlp's error text into something a person can act on.
-pub fn clean_error(msg: &str) -> String {
-    let msg = msg.trim();
+pub fn explain(msg: &str) -> LinkProblem {
+    let raw = msg.trim();
     // Drop the "[extractor] id: " prefix.
-    let msg = match msg.strip_prefix('[') {
+    let msg = match raw.strip_prefix('[') {
         Some(rest) => rest
             .split_once("] ")
             .map(|(_, r)| r.split_once(": ").map_or(r, |(_, m)| m))
-            .unwrap_or(msg),
-        None => msg,
+            .unwrap_or(raw),
+        None => raw,
     };
-    if msg.contains("Sign in to confirm") {
-        return "YouTube wants a sign-in. Pick a browser under Advanced → Cookies.".into();
+    let low = raw.to_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|n| low.contains(n));
+    let gone = |t: &str| LinkProblem::new(t, "There's nothing left to download at this link.", true);
+    let cookies = "Pick the browser you're signed in with under Advanced → Cookies (Firefox works best).";
+
+    if has(&["unsupported url"]) {
+        return LinkProblem::new("Neria can't download from this site", WORKS_WITH, true);
     }
-    if msg.contains("Unsupported URL") {
-        return "This site isn't supported.".into();
+    if has(&["[drm]", "drm protect"]) {
+        return LinkProblem::new(
+            "This site locks its videos (DRM), so Neria can't download them",
+            "Streaming services like Netflix, Disney+ and Spotify's own audio are protected.",
+            true,
+        );
     }
-    if msg.contains("Private video") {
-        return "This video is private.".into();
+    if has(&["is not a valid url"]) {
+        return LinkProblem::new("That doesn't look like a complete link", "Copy the whole address from your browser and paste it again.", true);
     }
-    msg.to_string()
+    if has(&["private video", "video is private"]) {
+        return LinkProblem::new(
+            "This video is private",
+            "Only the uploader and people they shared it with can watch it.",
+            true,
+        );
+    }
+    if has(&["account associated with this video has been terminated", "account has been terminated"]) {
+        return gone("This video's channel was closed");
+    }
+    if has(&["removed by the uploader", "has been removed", "no longer available", "video unavailable", "video is unavailable", "does not exist", "http error 404", "http error 410"]) {
+        return gone("This video was removed or doesn't exist");
+    }
+    if has(&["not available in your country", "not made this video available in your country", "geo restrict", "geo-restrict", "not available in your region"]) {
+        return LinkProblem::new("This video isn't available in your country", "The uploader limited where it can be watched.", true);
+    }
+    if has(&["confirm your age", "age-restricted", "age restricted", "inappropriate for some users"]) {
+        return LinkProblem::new("This video is age-restricted", cookies, false);
+    }
+    if has(&["members-only", "members only", "join this channel"]) {
+        return LinkProblem::new("This video is for channel members only", cookies, false);
+    }
+    if has(&["sign in to confirm", "login required", "log in", "sign in", "use --cookies", "cookies"]) {
+        return LinkProblem::new("The site wants you to sign in", cookies, false);
+    }
+    if has(&["live event will begin", "premieres in", "this live event", "will begin in"]) {
+        return LinkProblem::new("This stream hasn't started yet", "Try again once it's live.", false);
+    }
+    if has(&["http error 429", "too many requests", "rate-limit", "rate limit"]) {
+        return LinkProblem::new("The site is getting too many requests from you", "Wait a few minutes, then try again.", false);
+    }
+    if has(&["getaddrinfo", "failed to resolve", "unable to download webpage", "timed out", "connection", "network is unreachable", "errno 11001", "ssl"]) {
+        return LinkProblem::new("Couldn't reach the site", "Check your internet connection, then try again.", false);
+    }
+    if has(&["signature extraction failed", "nsig extraction failed", "please report this issue", "unable to extract"]) {
+        return LinkProblem::new(
+            "The site changed and the downloader needs an update",
+            "Neria updates it daily. You can still try downloading it.",
+            false,
+        );
+    }
+    let title = if msg.is_empty() { "Couldn't read this link" } else { msg };
+    LinkProblem::new(title, "You can still try downloading it.", false)
+}
+
+/// One-line version of [`explain`] for queue rows.
+pub fn clean_error(msg: &str) -> String {
+    explain(msg).title
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_links() {
+        assert_eq!(normalize_url("youtube.com/watch?v=abc").as_deref(), Some("https://youtube.com/watch?v=abc"));
+        assert_eq!(normalize_url(" https://x.com/a/status/1 ").as_deref(), Some("https://x.com/a/status/1"));
+        assert_eq!(normalize_url("www.tiktok.com/@a/video/1").as_deref(), Some("https://www.tiktok.com/@a/video/1"));
+        assert_eq!(normalize_url("hello world"), None);
+        assert_eq!(normalize_url("never gonna give you up"), None);
+        assert_eq!(normalize_url("file.mp4"), None);
+        assert_eq!(normalize_url("v1.2"), None);
+        assert_eq!(normalize_url("ftp://a.b/c"), None);
+    }
+
+    #[test]
+    fn sorts_errors() {
+        let p = explain("Unsupported URL: https://example.com/");
+        assert!(p.permanent);
+        assert_eq!(p.hint, WORKS_WITH);
+        assert!(explain("[youtube] aaaaaaaaaaa: This video is unavailable").permanent);
+        assert!(explain("[vimeo] 1: Unable to download webpage: HTTP Error 404: Not Found (caused by <HTTPError 404: Not Found>)").permanent);
+        assert!(explain("[DRM] The requested site is known to use DRM protection. It will NOT be supported.").permanent);
+        assert!(explain("[youtube] x: Private video. Sign in if you've been granted access to this video").permanent);
+        let net = explain("[generic] video: Unable to download webpage: HTTPSConnection(host='a.invalid', port=443): Failed to resolve 'a.invalid' ([Errno 11001] getaddrinfo failed)");
+        assert!(!net.permanent);
+        assert_eq!(net.title, "Couldn't reach the site");
+        assert!(!explain("[youtube] x: Sign in to confirm you’re not a bot. Use --cookies-from-browser").permanent);
+        assert_eq!(explain("[youtube] x: Sign in to confirm your age. This video may be inappropriate for some users.").title, "This video is age-restricted");
+        assert!(!explain("[youtube] x: HTTP Error 429: Too Many Requests").permanent);
+        let other = explain("[foo] 1: something odd");
+        assert_eq!(other.title, "something odd");
+        assert!(!other.permanent);
+    }
 }

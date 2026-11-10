@@ -98,9 +98,20 @@ pub fn preview(ui: &AppWindow, url: String, link: Link, settings: Settings, gene
                     }
                 }
                 Err(e) => {
+                    let text = e.to_string();
+                    let (title, hint, permanent) = if text.contains("private, removed") {
+                        ("This Spotify link is private, removed or not available", "Check that it opens on Spotify and that the playlist is public.", true)
+                    } else if text.contains("couldn't reach") {
+                        ("Couldn't reach Spotify", "Check your internet connection, then paste the link again.", false)
+                    } else if text.contains("format changed") {
+                        ("Spotify changed its page and Neria can't read it yet", "A Neria update will fix this. Try again later.", false)
+                    } else {
+                        (text.as_str(), "Paste the link again to retry.", false)
+                    };
                     ui.set_probe_state(3);
-                    ui.set_probe_title(e.to_string().into());
-                    ui.set_probe_meta("Check that the link is public.".into());
+                    ui.set_probe_blocked(permanent);
+                    ui.set_probe_title(title.into());
+                    ui.set_probe_meta(hint.into());
                 }
             }
         });

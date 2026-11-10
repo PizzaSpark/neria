@@ -559,7 +559,10 @@ export component AppWindow inherits Window {
 
     // Link + preview
     in-out property <string> url;
-    in property <int> probe-state; // 0 none, 1 loading, 2 ok, 3 error
+    in property <int> probe-state; // 0 none, 1 loading, 2 ok, 3 error, 4 text isn't a link
+    // The error won't go away by trying again (deleted, private, unsupported site…):
+    // shown in red and the Download button is greyed out. Otherwise errors are amber.
+    in property <bool> probe-blocked;
     in property <string> probe-title;
     in property <string> probe-meta;
     in property <image> probe-thumb;
@@ -788,7 +791,7 @@ export component AppWindow inherits Window {
                             font-weight: 700;
                         }
                         Text {
-                            text: "Paste a link from YouTube, TikTok, X, Instagram, Twitch, Reddit and 1000+ more sites.";
+                            text: "Paste a link from YouTube, Spotify, TikTok, X, Instagram, Twitch and 1,800+ more sites.";
                             color: Theme.muted;
                             font-size: 13px;
                             overflow: elide;
@@ -834,7 +837,24 @@ export component AppWindow inherits Window {
                             }
                         }
 
-                        if root.probe-state != 0: Rectangle {
+                        if root.probe-state == 4: HorizontalLayout {
+                            spacing: 8px;
+                            Icon {
+                                horizontal-stretch: 0;
+                                text: "\u{E71B}";
+                                font-size: 13px;
+                                color: Theme.muted;
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: "Paste a link from YouTube, Spotify, TikTok, Instagram, X or another site.";
+                                color: Theme.muted;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        if root.probe-state >= 1 && root.probe-state <= 3: Rectangle {
                             height: 84px;
                             border-radius: 10px;
                             background: Theme.surface-hi;
@@ -853,8 +873,8 @@ export component AppWindow inherits Window {
                                         image-fit: cover;
                                     }
                                     if root.probe-state != 2: Icon {
-                                        text: root.probe-state == 1 ? "\u{E895}" : "\u{E783}";
-                                        color: root.probe-state == 3 ? Theme.danger : Theme.muted;
+                                        text: root.probe-state == 1 ? "\u{E895}" : root.probe-blocked ? "\u{E783}" : "\u{E7BA}";
+                                        color: root.probe-state != 3 ? Theme.muted : root.probe-blocked ? Theme.danger : Theme.warn;
                                         font-size: 20px;
                                     }
                                 }
@@ -864,7 +884,7 @@ export component AppWindow inherits Window {
                                     horizontal-stretch: 1;
                                     Text {
                                         text: root.probe-state == 1 ? "Looking up link…" : root.probe-title;
-                                        color: root.probe-state == 3 ? Theme.danger : Theme.text;
+                                        color: root.probe-state != 3 ? Theme.text : root.probe-blocked ? Theme.danger : Theme.warn;
                                         font-size: 14px;
                                         font-weight: 600;
                                         overflow: elide;
@@ -873,6 +893,7 @@ export component AppWindow inherits Window {
                                         text: root.probe-meta;
                                         color: Theme.muted;
                                         font-size: 12px;
+                                        wrap: root.probe-state == 3 ? word-wrap : no-wrap;
                                         overflow: elide;
                                     }
                                 }
@@ -961,7 +982,7 @@ export component AppWindow inherits Window {
                                 horizontal-stretch: 0;
                                 text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs" : "Download";
                                 icon: "\u{E896}";
-                                enabled: root.tools-ready && root.url != "" && (!root.probe-is-spotify || root.spotify-count > 0);
+                                enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0);
                                 clicked => { root.start-download(); }
                             }
                         }

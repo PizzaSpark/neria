@@ -54,19 +54,13 @@ decisions: `docs/SPOTIFY.md`.
 
 ## Now: v0.2 friends test
 Release small and often: this list → v0.2.0 → collect feedback before the big features.
-- **Clear answers for links Neria can't download.** Today every failed preview says "You can
-  still try downloading it." and Download stays clickable, so dead links just fail again in
-  the queue.
-  - Errors that won't change (unsupported site, video unavailable/deleted, private): say it
-    plainly ("Neria can't download from this site"), list what does work ("Works with
-    YouTube, Spotify, TikTok, Instagram, X, Twitch, SoundCloud and 1,800+ other sites") and
-    grey out Download
-  - Errors that might pass (network, rate limit, sign-in needed, age-restricted): keep
-    Download enabled and say what to try (check connection, pick a browser under Cookies…)
-  - Spotify links never show "unsupported". Spotify links Neria can't handle get their own
-    message, e.g. podcasts/episodes/shows, audiobooks, private or deleted playlists,
-    region-locked tracks
-  - Text that isn't a link: a quiet hint ("Paste a link from YouTube, Spotify…")
+- ✅ **Clear answers for links Neria can't download** (`probe::explain`,
+  `spotify::unsupported_reason`). Errors that won't change (unsupported site, removed, private,
+  DRM, wrong country) show in red with what does work, and Download is greyed out. Errors that
+  might pass (offline, rate limit, sign-in, age, members-only, not live yet) show in amber with
+  what to try; pasting the link again retries. Spotify podcasts/audiobooks/profiles/short links
+  get their own message. Text that isn't a link shows a quiet hint; links without `https://`
+  work. Still open: region-locked Spotify tracks (embed page still lists them)
 - **Report a problem** button: copies a short report (Neria version, tool versions, the link,
   last lines of the yt-dlp/ffmpeg log) to paste in a message or issue
 - **Version in the app** (Settings → About), so reports say which build

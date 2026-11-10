@@ -78,6 +78,43 @@ pub fn parse_link(input: &str) -> Option<Link> {
     is_spotify_id(&id).then_some(Link { kind, id })
 }
 
+/// For a Spotify link Neria can't handle (podcast, audiobook, profile, short
+/// link…), say why in plain words. `None` if it isn't a Spotify link or it's
+/// one [`parse_link`] accepts. Returns (what's wrong, what to do).
+pub fn unsupported_reason(input: &str) -> Option<(&'static str, &'static str)> {
+    const WORKS: &str = "Neria downloads Spotify songs, albums, playlists and artists' top songs.";
+    let s = input.trim();
+    if parse_link(s).is_some() {
+        return None;
+    }
+    let kind = if let Some(rest) = s.strip_prefix("spotify:") {
+        rest.split(':').next().unwrap_or("")
+    } else {
+        let rest = s.strip_prefix("https://").or_else(|| s.strip_prefix("http://")).unwrap_or(s);
+        let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+        let host = host.to_ascii_lowercase();
+        if matches!(host.as_str(), "spotify.link" | "spotify.app.link") {
+            return Some((
+                "Short Spotify links can't be opened here",
+                "Open it in your browser, then copy the full open.spotify.com link and paste that.",
+            ));
+        }
+        if !(host == "spotify.com" || host.ends_with(".spotify.com")) {
+            return None;
+        }
+        let path = path.split(['?', '#']).next().unwrap_or("");
+        path.split('/').find(|p| !p.is_empty() && !p.starts_with("intl-") && *p != "embed").unwrap_or("")
+    };
+    Some(match kind {
+        "episode" | "show" => ("Neria can't download Spotify podcasts", WORKS),
+        "audiobook" | "chapter" => ("Neria can't download Spotify audiobooks", WORKS),
+        "track" | "album" | "playlist" | "artist" => ("This Spotify link looks incomplete", "Copy the link again from Spotify (Share → Copy link)."),
+        "user" => ("Spotify profiles can't be downloaded", "Open one of their public playlists and paste that link instead."),
+        "collection" => ("Your Liked Songs can't be read without a login", "Add them to a public playlist and paste that link instead."),
+        _ => ("This kind of Spotify link isn't supported", WORKS),
+    })
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Track {
     pub id: String,
@@ -456,6 +493,20 @@ mod tests {
         );
         assert_eq!(parse_link("https://www.youtube.com/watch?v=x"), None);
         assert_eq!(parse_link("https://open.spotify.com/show/69kOkLUCkxIZYexIgSG8rq"), None);
+    }
+
+    #[test]
+    fn explains_unsupported_links() {
+        let reason = |s| unsupported_reason(s).map(|r| r.0);
+        assert_eq!(reason("https://open.spotify.com/track/69kOkLUCkxIZYexIgSG8rq"), None);
+        assert_eq!(reason("https://www.youtube.com/watch?v=x"), None);
+        assert_eq!(reason("https://open.spotify.com/episode/4rOoJ6Egrf8K2IrywzwOMk"), Some("Neria can't download Spotify podcasts"));
+        assert_eq!(reason("https://open.spotify.com/intl-fr/show/4rOoJ6Egrf8K2IrywzwOMk?si=1"), Some("Neria can't download Spotify podcasts"));
+        assert_eq!(reason("spotify:episode:4rOoJ6Egrf8K2IrywzwOMk"), Some("Neria can't download Spotify podcasts"));
+        assert_eq!(reason("https://open.spotify.com/audiobook/4rOoJ6Egrf8K2IrywzwOMk"), Some("Neria can't download Spotify audiobooks"));
+        assert_eq!(reason("https://spotify.link/ZCkfTK3Tdyb"), Some("Short Spotify links can't be opened here"));
+        assert_eq!(reason("https://open.spotify.com/track/short"), Some("This Spotify link looks incomplete"));
+        assert!(reason("https://open.spotify.com/").is_some());
     }
 
     #[test]
