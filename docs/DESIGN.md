@@ -39,7 +39,7 @@ playful part.
 | `dim` | `#5f5d5a` | `#9a9486` | Hints, inactive nav |
 | `pop` | `#ffd23f` | `#ffd23f` | Main action, progress, counts |
 | `on-pop` | `#1a1405` | `#1a1405` | Text on `pop` |
-| `pop-shadow` | `#ff6b9e` | `#151412` | Hard shadow under the main action |
+| `pop-shadow` | `#9a6f00` | `#151412` | Hard shadow under the main action (deep ochre: same family as the yellow) |
 | `hard` | `#000000` | `#151412` | Outline of `pop` controls |
 | `ok` / `ok-bg` | `#7fd6a4` / `#173326` | `#1d7a4b` / `#d5f2e0` | Saved, done |
 | `warn` / `warn-bg` | `#f5b14a` / `#3a2a12` | `#9a5b00` / `#fbe7c4` | Check match, retryable problems |
@@ -80,7 +80,14 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
 - **Tag**: tinted `*-bg` with `*` text, Space Grotesk 11/600, 6px radius.
 - **Count badge**: `pop` fill, mono 11px ("1 going").
 - **Keyboard hint**: mono 11px, 1px outline with a 2px bottom edge.
-- **Nav**: 64px icon rail; active item gets a `line-strong` outline on `panel`.
+- **Nav**: 80px rail, icon with a small label (Slint has no tooltips, so no bare icons);
+  active item gets a `line-strong` outline on `panel`.
+- **Quality row**: chips under the preview title when the window is wide enough, otherwise in
+  their own row; ends with the format button ("mp4 · H.264") that opens Settings.
+- **Text link**: quiet secondary actions (Clear finished, Open folder): muted text, ink on hover.
+- **Lists**: rows keep a 16px lane on the right for the scrollbar; dividers stop before it.
+- **Narrow windows**: secondary row actions shrink to icons; preview thumbnail shrinks on short
+  windows; long option lists scroll while the main action stays pinned.
 - **Toast / dialog / drawer**: the only floating cards: `panel`, 1px `line-strong`, 12px radius.
 
 ## Themes

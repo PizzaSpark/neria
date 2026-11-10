@@ -70,6 +70,8 @@ pub struct Settings {
     pub spotify_client_secret: String,
     /// Look for a new Neria and newer tools at start-up (GitHub releases).
     pub check_updates: bool,
+    /// "system" (follow Windows), "dark" or "light".
+    pub theme: String,
 }
 
 impl Default for Settings {
@@ -99,6 +101,7 @@ impl Default for Settings {
             spotify_client_id: String::new(),
             spotify_client_secret: String::new(),
             check_updates: true,
+            theme: "system".into(),
         }
     }
 }

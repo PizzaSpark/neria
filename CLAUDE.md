@@ -9,7 +9,8 @@ UI design system: `docs/DESIGN.md` (Studio + Play); follow it for any new or cha
   compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
   `music.rs` tags/lyrics/M3U/sync). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
-- `apps/desktop`: Slint UI (`ui/app.slint`), `main.rs` (download page), `clipper.rs` (clip page;
+- `apps/desktop`: Slint UI (`ui/app.slint` screens, `ui/widgets.slint` shared controls,
+  `ui/theme.slint` tokens + bundled fonts in `ui/fonts/`), `main.rs` (download page), `clipper.rs` (clip page;
   mpv renders into a GL texture shown as a Slint image), `compressor.rs` (compress page).
 
 ## Commands
@@ -36,7 +37,8 @@ Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_C
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
 failed download), `NERIA_SETTINGS` (open the settings drawer), `NERIA_UPDATE_URL` (check this "latest
 release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),
-`NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_SYNC_REVIEW` (open the removed-songs dialog),
+`NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_DEMO` (sample queue
+rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
 `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
 `NERIA_HOME` (override app dir; for UI tests point it at a scratch folder with its own

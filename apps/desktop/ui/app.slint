@@ -1,4 +1,8 @@
-import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider } from "std-widgets.slint";
+import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider, Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, Chip, Bar, NavItem, PageTitle, SectionTitle, Hint, Tag, Kbd, LinkField, TextLink } from "widgets.slint";
+
+export { Theme }
 
 export struct MatchItem {
     title: string,
@@ -33,22 +37,9 @@ export struct JobItem {
     warn: bool,
     // Spotify track: offers "pick another match".
     music: bool,
-}
-
-global Theme {
-    out property <color> bg: #0e1014;
-    out property <color> sidebar: #12151b;
-    out property <color> surface: #171a21;
-    out property <color> surface-hi: #20242e;
-    out property <color> border: #272c37;
-    out property <color> text: #e9ebf1;
-    out property <color> muted: #8a91a3;
-    out property <color> accent: #7c5cff;
-    out property <color> accent-hi: #9a82ff;
-    out property <color> success: #3ecf8e;
-    out property <color> danger: #ff5c7a;
-    out property <color> warn: #f5a524;
-    out property <string> icons: "Segoe Fluent Icons";
+    // Video thumbnail or song cover (empty until fetched, or when there is none).
+    thumb: image,
+    thumb-url: string,
 }
 
 // Formatting helpers implemented in Rust.
@@ -58,173 +49,84 @@ export global Fmt {
     pure callback keyframe-before(float, [float]) -> float;
 }
 
-component Icon inherits Text {
-    font-family: Theme.icons;
-    font-size: 16px;
-    color: Theme.text;
-    vertical-alignment: center;
-    horizontal-alignment: center;
-}
-
-component PrimaryButton inherits Rectangle {
-    in property <string> text;
-    in property <string> icon;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: 44px;
-    border-radius: 10px;
-    background: !root.enabled ? Theme.surface-hi : ta.pressed ? #6a4ae6 : ta.has-hover ? Theme.accent-hi : Theme.accent;
-    animate background { duration: 120ms; }
-    ta := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: root.enabled ? pointer : default;
-        clicked => { root.clicked(); }
+// Quality chips, then what you'll get ("mp4 · H.264", opens Settings). Sits
+// under the preview title on wide windows, in its own row on narrow ones.
+component QualityRow inherits HorizontalLayout {
+    in-out property <int> quality;
+    in property <bool> spotify;
+    in property <string> spotify-text;
+    in property <string> format-text;
+    in property <bool> show-clip;
+    callback changed();
+    callback open-settings();
+    callback clip-first();
+    spacing: 7px;
+    if !root.spotify: Chip {
+        horizontal-stretch: 0;
+        text: "Best";
+        selected: root.quality == 0;
+        clicked => { root.quality = 0; root.changed(); }
     }
-    HorizontalLayout {
-        padding-left: 22px;
-        padding-right: 22px;
-        spacing: 8px;
+    if !root.spotify: Chip {
+        horizontal-stretch: 0;
+        text: "1080p";
+        selected: root.quality == 1;
+        clicked => { root.quality = 1; root.changed(); }
+    }
+    if !root.spotify: Chip {
+        horizontal-stretch: 0;
+        text: "720p";
+        selected: root.quality == 2;
+        clicked => { root.quality = 2; root.changed(); }
+    }
+    if !root.spotify: Chip {
+        horizontal-stretch: 0;
+        text: "480p";
+        selected: root.quality == 3;
+        clicked => { root.quality = 3; root.changed(); }
+    }
+    if !root.spotify: Chip {
+        horizontal-stretch: 0;
+        text: "Audio only";
+        selected: root.quality == 4;
+        clicked => { root.quality = 4; root.changed(); }
+    }
+    if root.spotify: Text {
+        text: root.spotify-text;
+        color: Theme.muted;
+        font-size: 12px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    if root.show-clip && !root.spotify: VerticalLayout {
         alignment: center;
-        if root.icon != "": Icon {
-            text: root.icon;
-            color: root.enabled ? white : Theme.muted;
-        }
-        Text {
-            text: root.text;
-            color: root.enabled ? white : Theme.muted;
-            font-size: 14px;
-            font-weight: 600;
-            vertical-alignment: center;
+        horizontal-stretch: 0;
+        padding-left: 4px;
+        GhostButton {
+            compact: true;
+            text: "Clip first";
+            icon: "\u{E8C6}";
+            clicked => { root.clip-first(); }
         }
     }
-}
-
-component GhostButton inherits Rectangle {
-    in property <string> text;
-    in property <string> icon;
-    callback clicked();
-    height: 44px;
-    border-radius: 10px;
-    background: ta.pressed ? Theme.border : ta.has-hover ? Theme.surface-hi : Theme.surface;
-    border-width: 1px;
-    border-color: Theme.border;
-    animate background { duration: 120ms; }
-    ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-    HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
-        spacing: 8px;
-        alignment: center;
-        if root.icon != "": Icon {
-            text: root.icon;
-            font-size: 14px;
-        }
-        if root.text != "": Text {
-            text: root.text;
-            color: Theme.text;
-            font-size: 13px;
-            vertical-alignment: center;
-        }
-    }
-}
-
-component IconButton inherits Rectangle {
-    in property <string> icon;
-    in property <color> tint: Theme.muted;
-    callback clicked();
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: ta.has-hover ? Theme.surface-hi : transparent;
-    ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-    Icon {
-        text: root.icon;
-        font-size: 13px;
-        color: ta.has-hover ? Theme.text : root.tint;
-    }
-}
-
-component Chip inherits Rectangle {
-    in property <string> text;
-    in property <bool> selected;
-    callback clicked();
-    height: 34px;
-    border-radius: 17px;
-    background: root.selected ? Theme.accent.with-alpha(0.18) : ta.has-hover ? Theme.surface-hi : transparent;
-    border-width: 1px;
-    border-color: root.selected ? Theme.accent : Theme.border;
-    animate background, border-color { duration: 120ms; }
-    ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-    HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
-        Text {
-            text: root.text;
-            color: root.selected ? Theme.accent-hi : Theme.text;
-            font-size: 13px;
-            font-weight: root.selected ? 600 : 400;
-            vertical-alignment: center;
-        }
-    }
-}
-
-component Bar inherits Rectangle {
-    in property <float> value;
-    in property <color> fill: Theme.accent;
-    height: 6px;
-    border-radius: 3px;
-    background: Theme.surface-hi;
-    Rectangle {
-        x: 0;
-        y: 0;
-        height: parent.height;
-        width: parent.width * max(0, min(1, root.value));
-        border-radius: 3px;
-        background: root.fill;
-        animate width { duration: 180ms; }
-    }
-}
-
-component NavItem inherits Rectangle {
-    in property <string> icon;
-    in property <string> label;
-    in property <bool> active;
-    callback clicked();
-    height: 60px;
-    border-radius: 12px;
-    background: root.active ? Theme.accent.with-alpha(0.16) : ta.has-hover ? Theme.surface-hi : transparent;
-    ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
+    Rectangle { horizontal-stretch: 1; }
     VerticalLayout {
         alignment: center;
-        spacing: 5px;
-        Icon {
-            text: root.icon;
-            font-size: 18px;
-            color: root.active ? Theme.accent-hi : Theme.muted;
-        }
-        Text {
-            text: root.label;
-            font-size: 11px;
-            color: root.active ? Theme.text : Theme.muted;
-            horizontal-alignment: center;
+        horizontal-stretch: 0;
+        GhostButton {
+            compact: true;
+            icon: "\u{E713}";
+            text: root.format-text;
+            clicked => { root.open-settings(); }
         }
     }
 }
 
+// One queue row: calm (hairline, no card), with labelled actions on the right.
 component JobRow inherits Rectangle {
     in property <JobItem> job;
+    // Narrow window: Clip / Compress shrink to icons so the title keeps its room.
+    in property <bool> narrow;
     callback cancel();
     callback remove();
     callback retry();
@@ -234,125 +136,156 @@ component JobRow inherits Rectangle {
     callback pick-match();
     callback report();
 
-    property <color> tone: root.job.state == 3 ? Theme.success : root.job.state == 4 ? Theme.danger : root.job.state == 5 ? Theme.muted : Theme.accent;
-    property <string> glyph: root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? "\u{E73E}" : root.job.state == 4 ? "\u{E783}" : "\u{E711}";
     property <bool> active: root.job.state <= 2;
+    property <bool> done: root.job.state == 3;
+    property <bool> failed: root.job.state == 4;
+    property <string> glyph: root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? (root.job.music ? "\u{E8D6}" : "\u{E8B2}") : root.job.state == 4 ? "\u{E783}" : "\u{E711}";
+    property <string> tag: root.job.state == 0 ? "Waiting" : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : "";
+    property <int> tag-kind: root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
 
-    height: 76px;
-    border-radius: 12px;
-    background: Theme.surface;
-    border-width: 1px;
-    border-color: Theme.border;
+    property <bool> moving: root.job.state == 1 || root.job.state == 2;
+    height: root.moving ? 72px : 62px;
+    // Divider stops where the scrollbar lane starts.
+    Rectangle {
+        x: 0;
+        y: parent.height - 1px;
+        width: parent.width - 16px;
+        height: 1px;
+        background: Theme.line;
+    }
 
     HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 10px;
         spacing: 14px;
+        // Room for the list's scrollbar, which is drawn over the right edge.
+        padding-right: 16px;
 
-        VerticalLayout {
-            alignment: center;
+        // Thumbnail (16:9 for videos, square for song covers), or a status icon
+        // until it arrives. Always a 64px slot so every title lines up.
+        Rectangle {
+            width: 64px;
             Rectangle {
-                width: 38px;
-                height: 38px;
-                border-radius: 19px;
-                background: root.tone.with-alpha(0.15);
-                Icon {
+                width: root.job.music ? 40px : 64px;
+                height: root.job.music ? 40px : 36px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: 6px;
+                background: root.job.thumb.width > 0 ? Theme.raised : root.active ? Theme.pop.with-alpha(0.16) : Theme.raised;
+                clip: true;
+                if root.job.thumb.width > 0: Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.job.thumb;
+                    image-fit: cover;
+                    opacity: root.failed || root.job.state == 5 ? 0.45 : 1.0;
+                }
+                if root.job.thumb.width == 0: Icon {
                     text: root.glyph;
-                    color: root.tone;
-                    font-size: 15px;
+                    font-size: 14px;
+                    color: root.active ? Theme.pop-text : root.failed ? Theme.bad : root.done && root.job.warn ? Theme.warn : Theme.muted;
                 }
             }
         }
 
         VerticalLayout {
             alignment: center;
-            spacing: 7px;
+            spacing: 6px;
             horizontal-stretch: 1;
             Text {
                 text: root.job.title;
-                color: Theme.text;
+                color: Theme.ink;
                 font-size: 14px;
-                font-weight: 600;
+                font-weight: 500;
                 overflow: elide;
             }
-            if root.active: Bar {
-                value: root.job.progress;
-                fill: root.tone;
-            }
             HorizontalLayout {
-                spacing: 12px;
+                spacing: 8px;
+                if root.tag != "": VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    Tag {
+                        text: root.tag;
+                        kind: root.tag-kind;
+                    }
+                }
                 Text {
                     text: root.job.status;
-                    color: root.job.state == 4 ? Theme.danger : root.job.state == 3 && root.job.warn ? Theme.warn : Theme.muted;
+                    color: root.failed || (root.done && root.job.warn) ? Theme.ink : Theme.muted;
                     font-size: 12px;
                     overflow: elide;
+                    vertical-alignment: center;
                     horizontal-stretch: 1;
                 }
                 Text {
                     text: root.job.stats;
                     color: Theme.muted;
-                    font-size: 12px;
+                    // Spotify rows say "✓ sounds like Spotify · 11.6 MB": words, so not monospace.
+                    font-family: root.job.music && root.done ? Theme.body : Theme.mono;
+                    font-size: 11px;
+                    vertical-alignment: center;
                     horizontal-stretch: 0;
                 }
             }
+            if root.moving: Bar {
+                value: root.job.progress;
+            }
         }
 
-        HorizontalLayout {
-            spacing: 2px;
-            alignment: center;
-            horizontal-stretch: 0;
-            VerticalLayout {
-                alignment: center;
-                if root.active: IconButton {
-                    icon: "\u{E711}";
-                    clicked => { root.cancel(); }
-                }
-                if root.job.state == 3: IconButton {
-                    icon: "\u{E838}";
-                    clicked => { root.open(); }
-                }
+        VerticalLayout {
+          alignment: center;
+          horizontal-stretch: 0;
+          HorizontalLayout {
+            spacing: 6px;
+            if root.active: GhostButton {
+                compact: true;
+                text: "Cancel";
+                clicked => { root.cancel(); }
             }
-            VerticalLayout {
-                alignment: center;
-                if root.job.state == 3: IconButton {
-                    icon: "\u{E8C6}";
-                    clicked => { root.open-clipper(); }
-                }
+            if root.done: GhostButton {
+                compact: true;
+                text: "Show";
+                clicked => { root.open(); }
             }
-            VerticalLayout {
-                alignment: center;
-                if root.job.state == 3: IconButton {
-                    icon: "\u{E73F}";
-                    clicked => { root.open-compressor(); }
-                }
-                if root.job.state == 4 || root.job.state == 5: IconButton {
-                    icon: "\u{E72C}";
-                    clicked => { root.retry(); }
-                }
+            if root.done && !root.narrow: GhostButton {
+                compact: true;
+                text: "Clip";
+                clicked => { root.open-clipper(); }
             }
-            VerticalLayout {
-                alignment: center;
-                if root.job.music && (root.job.state == 3 || root.job.state == 4): IconButton {
-                    icon: "\u{E8AB}";
-                    tint: root.job.warn || root.job.state == 4 ? Theme.warn : Theme.muted;
-                    clicked => { root.pick-match(); }
-                }
+            if root.done && root.narrow: GhostButton {
+                compact: true;
+                icon: "\u{E8C6}";
+                clicked => { root.open-clipper(); }
             }
-            VerticalLayout {
-                alignment: center;
-                // Failed: copy a problem report to paste in a message.
-                if root.job.state == 4: IconButton {
-                    icon: "\u{EBE8}";
-                    clicked => { root.report(); }
-                }
+            // Songs are already small; compressing is for videos.
+            if root.done && !root.job.music && !root.narrow: GhostButton {
+                compact: true;
+                text: "Compress";
+                clicked => { root.open-compressor(); }
             }
-            VerticalLayout {
-                alignment: center;
-                if !root.active: IconButton {
-                    icon: "\u{E894}";
-                    clicked => { root.remove(); }
-                }
+            if root.done && !root.job.music && root.narrow: GhostButton {
+                compact: true;
+                icon: "\u{E73F}";
+                clicked => { root.open-compressor(); }
             }
+            if root.job.music && (root.done || root.failed): GhostButton {
+                compact: true;
+                text: root.failed || root.job.warn ? "Pick match" : "Other match";
+                clicked => { root.pick-match(); }
+            }
+            if root.failed || root.job.state == 5: GhostButton {
+                compact: true;
+                text: "Retry";
+                clicked => { root.retry(); }
+            }
+            if root.failed: GhostButton {
+                compact: true;
+                text: "Report";
+                clicked => { root.report(); }
+            }
+            if !root.active: IconButton {
+                icon: "\u{E711}";
+                clicked => { root.remove(); }
+            }
+          }
         }
     }
 }
@@ -539,18 +472,6 @@ component Timeline inherits Rectangle {
     }
 }
 
-component SectionTitle inherits Text {
-    color: Theme.text;
-    font-size: 13px;
-    font-weight: 700;
-}
-
-component Hint inherits Text {
-    color: Theme.muted;
-    font-size: 12px;
-    wrap: word-wrap;
-}
-
 export component AppWindow inherits Window {
     title: "Neria";
     preferred-width: 1040px;
@@ -558,7 +479,11 @@ export component AppWindow inherits Window {
     min-width: 780px;
     min-height: 580px;
     background: Theme.bg;
-    default-font-family: "Segoe UI";
+    default-font-family: Theme.body;
+    // Keep the standard widgets (text fields, checkboxes…) in the same light/dark mode.
+    property <bool> theme-dark: Theme.dark;
+    init => { Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light; }
+    changed theme-dark => { Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light; }
 
     // Setup
     in property <bool> tools-ready;
@@ -634,6 +559,7 @@ export component AppWindow inherits Window {
 
     // Updates. update-state: 0 idle, 1 checking, 2 downloading, 3 ready to restart, 4 failed
     in-out property <bool> check-updates: true;
+    in-out property <int> theme-index; // 0 system, 1 dark, 2 light
     in property <int> update-state;
     in property <string> update-version; // "" = no newer Neria found
     in property <string> update-url;
@@ -738,6 +664,8 @@ export component AppWindow inherits Window {
     }
 
     property <[string]> containers: ["mp4", "mkv", "webm"];
+    // Chips go under the preview title when there's room (saves a row for the queue).
+    property <bool> chips-inline: root.probe-state == 2 && root.width >= 960px;
     property <[string]> audio-formats: ["mp3", "m4a", "opus", "flac", "wav"];
 
     callback paste();
@@ -759,23 +687,55 @@ export component AppWindow inherits Window {
     callback update-restart();
     callback update-later();
     callback tools-update();
+    callback theme-changed();
 
     HorizontalLayout {
         // ───────────── Sidebar ─────────────
         Rectangle {
-            width: 88px;
-            background: Theme.sidebar;
+            width: 80px;
+            background: Theme.bg;
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                background: Theme.line;
+            }
             VerticalLayout {
-                padding: 12px;
+                padding: 10px;
+                padding-top: 18px;
                 spacing: 6px;
-                Text {
-                    text: "neria";
-                    height: 56px;
-                    color: Theme.accent-hi;
-                    font-size: 19px;
-                    font-weight: 800;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                // Logo mark: the one sticker that's always on screen.
+                HorizontalLayout {
+                    alignment: center;
+                    padding-bottom: 14px;
+                    Rectangle {
+                        width: 37px;
+                        height: 37px;
+                        Rectangle {
+                            x: 3px;
+                            y: 3px;
+                            width: 34px;
+                            height: 34px;
+                            border-radius: 10px;
+                            background: Theme.hard;
+                        }
+                        Rectangle {
+                            width: 34px;
+                            height: 34px;
+                            border-radius: 10px;
+                            background: Theme.pop;
+                            border-width: 2px;
+                            border-color: Theme.hard;
+                            Text {
+                                text: "n";
+                                color: Theme.on-pop;
+                                font-family: Theme.display;
+                                font-size: 19px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
                 }
                 NavItem {
                     icon: "\u{E896}";
@@ -810,35 +770,19 @@ export component AppWindow inherits Window {
             horizontal-stretch: 1;
 
             if root.page == 0: VerticalLayout {
-                padding: 28px;
-                spacing: 18px;
+                padding: 26px;
+                // Wide windows: keep a readable column instead of stretching edge to edge.
+                padding-left: max(26px, (parent.width - 1240px) / 2);
+                padding-right: max(26px, (parent.width - 1240px) / 2);
+                padding-bottom: 14px;
+                spacing: 16px;
 
                 HorizontalLayout {
                     spacing: 12px;
-                    VerticalLayout {
-                        spacing: 4px;
+                    PageTitle {
                         horizontal-stretch: 1;
-                        Text {
-                            text: "Download";
-                            color: Theme.text;
-                            font-size: 26px;
-                            font-weight: 700;
-                        }
-                        Text {
-                            text: "Paste a link from YouTube, Spotify, TikTok, X, Instagram, Twitch and 1,800+ more sites.";
-                            color: Theme.muted;
-                            font-size: 13px;
-                            overflow: elide;
-                        }
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        horizontal-stretch: 0;
-                        GhostButton {
-                            text: "Advanced";
-                            icon: "\u{E9E9}";
-                            clicked => { root.drawer-open = true; }
-                        }
+                        title: "Grab anything.";
+                        subtitle: "YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.";
                     }
                 }
 
@@ -904,255 +848,219 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // Input card
-                Rectangle {
-                    background: Theme.surface;
-                    border-radius: 14px;
-                    border-width: 1px;
-                    border-color: Theme.border;
-                    VerticalLayout {
-                        padding: 16px;
-                        spacing: 14px;
-
-                        HorizontalLayout {
-                            spacing: 10px;
-                            LineEdit {
-                                horizontal-stretch: 1;
-                                height: 44px;
-                                font-size: 14px;
-                                placeholder-text: "https://…";
-                                text <=> root.url;
-                                edited(t) => { root.url-edited(t); }
-                                accepted(t) => { root.start-download(); }
-                            }
-                            GhostButton {
-                                horizontal-stretch: 0;
-                                text: "Paste";
-                                icon: "\u{E77F}";
-                                clicked => { root.paste(); }
-                            }
-                        }
-
-                        if root.probe-state == 4: HorizontalLayout {
-                            spacing: 8px;
-                            Icon {
-                                horizontal-stretch: 0;
-                                text: "\u{E71B}";
-                                font-size: 13px;
-                                color: Theme.muted;
-                            }
-                            Text {
-                                horizontal-stretch: 1;
-                                text: "Paste a link from YouTube, Spotify, TikTok, Instagram, X or another site.";
-                                color: Theme.muted;
-                                font-size: 12px;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        if root.probe-state >= 1 && root.probe-state <= 3: Rectangle {
-                            height: 84px;
-                            border-radius: 10px;
-                            background: Theme.surface-hi;
-                            HorizontalLayout {
-                                padding: 10px;
-                                spacing: 14px;
-                                Rectangle {
-                                    width: 114px;
-                                    border-radius: 6px;
-                                    background: Theme.bg;
-                                    clip: true;
-                                    Image {
-                                        width: parent.width;
-                                        height: parent.height;
-                                        source: root.probe-thumb;
-                                        image-fit: cover;
-                                    }
-                                    if root.probe-state != 2: Icon {
-                                        text: root.probe-state == 1 ? "\u{E895}" : root.probe-blocked ? "\u{E783}" : "\u{E7BA}";
-                                        color: root.probe-state != 3 ? Theme.muted : root.probe-blocked ? Theme.danger : Theme.warn;
-                                        font-size: 20px;
-                                    }
-                                }
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 5px;
-                                    horizontal-stretch: 1;
-                                    Text {
-                                        text: root.probe-state == 1 ? "Looking up link…" : root.probe-title;
-                                        color: root.probe-state != 3 ? Theme.text : root.probe-blocked ? Theme.danger : Theme.warn;
-                                        font-size: 14px;
-                                        font-weight: 600;
-                                        overflow: elide;
-                                    }
-                                    Text {
-                                        text: root.probe-meta;
-                                        color: Theme.muted;
-                                        font-size: 12px;
-                                        wrap: root.probe-state == 3 ? word-wrap : no-wrap;
-                                        overflow: elide;
-                                    }
-                                }
-                                if root.probe-state == 2 && !root.probe-is-spotify: VerticalLayout {
-                                    alignment: center;
-                                    horizontal-stretch: 0;
-                                    GhostButton {
-                                        text: "Clip first";
-                                        icon: "\u{E8C6}";
-                                        clicked => { root.clip-open-link(root.url, root.probe-title); }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Spotify notices: truncated playlist, API fallback, removed songs.
-                        if root.probe-is-spotify && (root.spotify-note != "" || root.sync-items.length > 0): HorizontalLayout {
-                            spacing: 10px;
-                            Icon {
-                                horizontal-stretch: 0;
-                                text: "\u{E7BA}";
-                                font-size: 14px;
-                                color: Theme.warn;
-                            }
-                            Text {
-                                horizontal-stretch: 1;
-                                text: root.spotify-note != "" ? root.spotify-note
-                                    : root.sync-items.length + " song" + (root.sync-items.length == 1 ? "" : "s") + " in your folder " + (root.sync-items.length == 1 ? "is" : "are") + " no longer in this list on Spotify.";
-                                color: Theme.warn;
-                                font-size: 12px;
-                                wrap: word-wrap;
-                                vertical-alignment: center;
-                            }
-                            if root.sync-items.length > 0: GhostButton {
-                                horizontal-stretch: 0;
-                                text: "Review " + root.sync-items.length + " removed";
-                                clicked => { root.sync-open = true; }
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            if !root.probe-is-spotify: Chip {
-                                horizontal-stretch: 0;
-                                text: "Best";
-                                selected: root.quality == 0;
-                                clicked => { root.quality = 0; root.settings-changed(); }
-                            }
-                            if !root.probe-is-spotify: Chip {
-                                horizontal-stretch: 0;
-                                text: "1080p";
-                                selected: root.quality == 1;
-                                clicked => { root.quality = 1; root.settings-changed(); }
-                            }
-                            if !root.probe-is-spotify: Chip {
-                                horizontal-stretch: 0;
-                                text: "720p";
-                                selected: root.quality == 2;
-                                clicked => { root.quality = 2; root.settings-changed(); }
-                            }
-                            if !root.probe-is-spotify: Chip {
-                                horizontal-stretch: 0;
-                                text: "480p";
-                                selected: root.quality == 3;
-                                clicked => { root.quality = 3; root.settings-changed(); }
-                            }
-                            if !root.probe-is-spotify: Chip {
-                                horizontal-stretch: 0;
-                                text: "Audio only";
-                                selected: root.quality == 4;
-                                clicked => { root.quality = 4; root.settings-changed(); }
-                            }
-                            Text {
-                                horizontal-stretch: 1;
-                                text: root.probe-is-spotify
-                                    ? "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "") + "  ·  change in Settings"
-                                    : root.quality == 4
-                                    ? root.audio-formats[root.audio-format-index]
-                                    : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
-                                color: Theme.muted;
-                                font-size: 12px;
-                                vertical-alignment: center;
-                                horizontal-alignment: root.probe-is-spotify ? left : right;
-                            }
-                            PrimaryButton {
-                                horizontal-stretch: 0;
-                                text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs" : "Download";
-                                icon: "\u{E896}";
-                                enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0);
-                                clicked => { root.start-download(); }
-                            }
-                        }
-                    }
-                }
-
-                // Queue header
-                HorizontalLayout {
-                    spacing: 10px;
-                    Text {
-                        text: "Queue";
-                        color: Theme.text;
-                        font-size: 16px;
-                        font-weight: 700;
-                        vertical-alignment: center;
-                        horizontal-stretch: 0;
-                    }
-                    Text {
-                        text: root.active-count > 0 ? root.active-count + " active" : "";
-                        color: Theme.accent-hi;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-                    if root.jobs.length > root.active-count: Text {
-                        text: "Clear finished";
-                        color: clear-ta.has-hover ? Theme.text : Theme.muted;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        clear-ta := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.clear-finished(); }
-                        }
-                    }
-                    IconButton {
-                        icon: "\u{E838}";
-                        clicked => { root.open-output(); }
-                    }
-                }
-
-                if root.jobs.length == 0: Rectangle {
-                    vertical-stretch: 1;
-                    border-radius: 14px;
-                    border-width: 1px;
-                    border-color: Theme.border;
+                LinkField {
+                    text <=> root.url;
+                    placeholder: "Paste a link here";
+                    edited(t) => { root.url-edited(t); }
+                    accepted => { root.start-download(); }
                     VerticalLayout {
                         alignment: center;
-                        spacing: 8px;
-                        Icon {
-                            text: "\u{E896}";
-                            font-size: 28px;
-                            color: Theme.border;
+                        horizontal-stretch: 0;
+                        GhostButton {
+                            compact: true;
+                            text: "Paste";
+                            icon: "\u{E77F}";
+                            clicked => { root.paste(); }
                         }
-                        Text {
-                            text: "Nothing here yet";
-                            color: Theme.muted;
-                            font-size: 14px;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            text: "Downloads show up here. Press Enter in the link box to start.";
-                            color: Theme.muted;
-                            font-size: 12px;
-                            horizontal-alignment: center;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        PrimaryButton {
+                            text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs" : "Download";
+                            icon: "\u{E896}";
+                            enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0);
+                            clicked => { root.start-download(); }
                         }
                     }
                 }
 
-                if root.jobs.length > 0: ListView {
+                if root.probe-state == 4: HorizontalLayout {
+                    spacing: 8px;
+                    Icon {
+                        horizontal-stretch: 0;
+                        text: "\u{E71B}";
+                        font-size: 13px;
+                        color: Theme.muted;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "That's not a link yet. Copy the address of a video, song or playlist and paste it here.";
+                        color: Theme.muted;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Preview: thumbnail leads; problems get a calm box with a coloured sign.
+                if root.probe-state >= 1 && root.probe-state <= 3: HorizontalLayout {
+                    spacing: 16px;
+                    Rectangle {
+                        width: root.probe-state != 2 ? 120px : root.height < 820px ? 128px : 184px;
+                        height: root.probe-state != 2 ? 68px : root.height < 820px ? 72px : 104px;
+                        border-radius: 10px;
+                        background: Theme.raised;
+                        clip: true;
+                        Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: root.probe-thumb;
+                            image-fit: cover;
+                        }
+                        if root.probe-state != 2: Icon {
+                            text: root.probe-state == 1 ? "\u{E895}" : root.probe-blocked ? "\u{E783}" : "\u{E7BA}";
+                            color: root.probe-state != 3 ? Theme.muted : root.probe-blocked ? Theme.bad : Theme.warn;
+                            font-size: 20px;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 5px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: root.probe-state == 1 ? "Looking up the link…" : root.probe-title;
+                            color: root.probe-state != 3 ? Theme.ink : root.probe-blocked ? Theme.bad : Theme.warn;
+                            font-size: root.height < 820px ? 15px : 17px;
+                            font-weight: 600;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: root.probe-meta;
+                            color: Theme.muted;
+                            font-size: 13px;
+                            wrap: root.probe-state == 3 ? word-wrap : no-wrap;
+                            overflow: elide;
+                        }
+                        if root.chips-inline: VerticalLayout {
+                            padding-top: 8px;
+                            QualityRow {
+                                quality <=> root.quality;
+                                spotify: root.probe-is-spotify;
+                                spotify-text: "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
+                                format-text: root.probe-is-spotify || root.quality == 4
+                                    ? root.audio-formats[root.audio-format-index]
+                                    : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
+                                changed => { root.settings-changed(); }
+                                open-settings => { root.drawer-open = true; }
+                                clip-first => { root.clip-open-link(root.url, root.probe-title); }
+                                show-clip: true;
+                            }
+                        }
+                        if root.probe-state == 2 && !root.probe-is-spotify && !root.chips-inline: HorizontalLayout {
+                            padding-top: 8px;
+                            alignment: start;
+                            GhostButton {
+                                compact: true;
+                                text: "Clip first";
+                                icon: "\u{E8C6}";
+                                clicked => { root.clip-open-link(root.url, root.probe-title); }
+                            }
+                        }
+                    }
+                }
+
+                // Spotify notices: truncated playlist, API fallback, removed songs.
+                if root.probe-is-spotify && (root.spotify-note != "" || root.sync-items.length > 0): HorizontalLayout {
+                    spacing: 10px;
+                    Icon {
+                        horizontal-stretch: 0;
+                        text: "\u{E7BA}";
+                        font-size: 14px;
+                        color: Theme.warn;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.spotify-note != "" ? root.spotify-note
+                            : root.sync-items.length + " song" + (root.sync-items.length == 1 ? "" : "s") + " in your folder " + (root.sync-items.length == 1 ? "is" : "are") + " no longer in this list on Spotify.";
+                        color: Theme.warn;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+                    if root.sync-items.length > 0: GhostButton {
+                        compact: true;
+                        horizontal-stretch: 0;
+                        text: "Review " + root.sync-items.length + " removed";
+                        clicked => { root.sync-open = true; }
+                    }
+                }
+
+                if !root.chips-inline: QualityRow {
+                    quality <=> root.quality;
+                    spotify: root.probe-is-spotify;
+                    spotify-text: "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
+                    format-text: root.probe-is-spotify || root.quality == 4
+                        ? root.audio-formats[root.audio-format-index]
+                        : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
+                    changed => { root.settings-changed(); }
+                    open-settings => { root.drawer-open = true; }
+                    clip-first => { root.clip-open-link(root.url, root.probe-title); }
+                    show-clip: false;
+                }
+
+                // Queue
+                VerticalLayout {
                     vertical-stretch: 1;
-                    for job in root.jobs: VerticalLayout {
-                        padding-bottom: 8px;
-                        JobRow {
+                    spacing: 0px;
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.line;
+                    }
+                    HorizontalLayout {
+                        padding-top: 14px;
+                        padding-bottom: 4px;
+                        spacing: 10px;
+                        SectionTitle {
+                            text: "Queue";
+                            vertical-alignment: center;
+                            horizontal-stretch: 0;
+                        }
+                        if root.active-count > 0: VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 0;
+                            Tag {
+                                text: root.active-count + " going";
+                                kind: 4;
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        if root.jobs.length > root.active-count: TextLink {
+                            text: "Clear finished";
+                            clicked => { root.clear-finished(); }
+                        }
+                        TextLink {
+                            text: "Open folder";
+                            icon: "\u{E838}";
+                            clicked => { root.open-output(); }
+                        }
+                    }
+
+                    if root.jobs.length == 0: VerticalLayout {
+                        vertical-stretch: 1;
+                        alignment: center;
+                        spacing: 8px;
+                        Text {
+                            text: "Your downloads land here";
+                            color: Theme.ink;
+                            font-family: Theme.display;
+                            font-size: 18px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Paste a link above and press Download. Albums and playlists show up song by song.";
+                            color: Theme.muted;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    if root.jobs.length > 0: ListView {
+                        vertical-stretch: 1;
+                        for job in root.jobs: JobRow {
                             job: job;
+                            narrow: root.width < 1000px;
                             cancel => { root.cancel-job(job.id); }
                             remove => { root.remove-job(job.id); }
                             retry => { root.retry-job(job.id); }
@@ -1225,10 +1133,12 @@ export component AppWindow inherits Window {
                             spacing: 4px;
                             horizontal-stretch: 1;
                             Text {
-                                text: "Clip";
-                                color: Theme.text;
-                                font-size: 26px;
+                                text: "Cut the good part.";
+                                color: Theme.ink;
+                                font-family: Theme.display;
+                                font-size: 30px;
                                 font-weight: 700;
+                                letter-spacing: -1px;
                             }
                             Text {
                                 text: root.clip-loaded ? root.clip-name : "Trim a file, or preview a link and download only the part you want.";
@@ -1241,6 +1151,7 @@ export component AppWindow inherits Window {
                             alignment: center;
                             horizontal-stretch: 0;
                             GhostButton {
+                                compact: true;
                                 text: "Paste link";
                                 icon: "\u{E71B}";
                                 clicked => { root.clip-paste-link(); }
@@ -1250,6 +1161,7 @@ export component AppWindow inherits Window {
                             alignment: center;
                             horizontal-stretch: 0;
                             GhostButton {
+                                compact: true;
                                 text: "Open file…";
                                 icon: "\u{E8E5}";
                                 clicked => { root.clip-open(); }
@@ -1259,9 +1171,6 @@ export component AppWindow inherits Window {
 
                     if !root.clip-loaded: Rectangle {
                         vertical-stretch: 1;
-                        border-radius: 14px;
-                        border-width: 1px;
-                        border-color: Theme.border;
                         VerticalLayout {
                             alignment: center;
                             spacing: 12px;
@@ -1271,9 +1180,11 @@ export component AppWindow inherits Window {
                                 color: Theme.accent-hi;
                             }
                             Text {
-                                text: "Open a file, or paste a link to clip before downloading";
-                                color: Theme.text;
-                                font-size: 15px;
+                                text: "Open a video, or paste a link and clip it before downloading";
+                                color: Theme.ink;
+                                font-family: Theme.display;
+                                font-size: 19px;
+                                font-weight: 700;
                                 horizontal-alignment: center;
                             }
                             HorizontalLayout {
@@ -1401,7 +1312,7 @@ export component AppWindow inherits Window {
                         Text {
                             text: Fmt.time(root.clip-position) + "  /  " + Fmt.time(root.clip-duration);
                             color: Theme.text;
-                            font-family: "Consolas";
+                            font-family: Theme.mono;
                             font-size: 13px;
                             vertical-alignment: center;
                             horizontal-stretch: 1;
@@ -1509,6 +1420,9 @@ export component AppWindow inherits Window {
 
             if root.page == 2: VerticalLayout {
                 padding: 28px;
+                // Wide windows: keep a readable column instead of stretching edge to edge.
+                padding-left: max(26px, (parent.width - 1240px) / 2);
+                padding-right: max(26px, (parent.width - 1240px) / 2);
                 spacing: 16px;
 
                 HorizontalLayout {
@@ -1517,13 +1431,15 @@ export component AppWindow inherits Window {
                         spacing: 4px;
                         horizontal-stretch: 1;
                         Text {
-                            text: "Compress";
-                            color: Theme.text;
-                            font-size: 26px;
+                            text: "Make it smaller.";
+                            color: Theme.ink;
+                            font-family: Theme.display;
+                            font-size: 30px;
                             font-weight: 700;
+                            letter-spacing: -1px;
                         }
                         Text {
-                            text: "Shrink a video to fit an upload limit, or just make it smaller.";
+                            text: "Fit Discord, email or any size limit, or just save space.";
                             color: Theme.muted;
                             font-size: 13px;
                             overflow: elide;
@@ -1533,6 +1449,7 @@ export component AppWindow inherits Window {
                         alignment: center;
                         horizontal-stretch: 0;
                         GhostButton {
+                            compact: true;
                             text: "Open file…";
                             icon: "\u{E8E5}";
                             clicked => { root.cmp-open(); }
@@ -1542,9 +1459,6 @@ export component AppWindow inherits Window {
 
                 if !root.cmp-loaded: Rectangle {
                     vertical-stretch: 1;
-                    border-radius: 14px;
-                    border-width: 1px;
-                    border-color: Theme.border;
                     VerticalLayout {
                         alignment: center;
                         spacing: 12px;
@@ -1554,9 +1468,11 @@ export component AppWindow inherits Window {
                             color: Theme.accent-hi;
                         }
                         Text {
-                            text: "Open a video to compress";
-                            color: Theme.text;
-                            font-size: 15px;
+                            text: "Drop in a video to shrink it";
+                            color: Theme.ink;
+                            font-family: Theme.display;
+                            font-size: 19px;
+                            font-weight: 700;
                             horizontal-alignment: center;
                         }
                         HorizontalLayout {
@@ -1578,17 +1494,13 @@ export component AppWindow inherits Window {
 
                 // File card
                 if root.cmp-loaded: Rectangle {
-                    height: 100px;
-                    border-radius: 14px;
-                    background: Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.border;
+                    height: 104px;
                     HorizontalLayout {
-                        padding: 12px;
+                        padding: 0px;
                         spacing: 16px;
                         Rectangle {
-                            width: 136px;
-                            border-radius: 8px;
+                            width: 184px;
+                            border-radius: 10px;
                             background: #000000;
                             clip: true;
                             Image {
@@ -1619,185 +1531,211 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // Options card
-                if root.cmp-loaded: Rectangle {
-                    border-radius: 14px;
-                    background: Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.border;
+                // Options scroll on short windows; the Compress bar stays pinned below.
+                if root.cmp-loaded: ScrollView {
+                    vertical-stretch: 1;
                     VerticalLayout {
-                        padding: 18px;
                         spacing: 16px;
+                        padding-right: 12px;
+                        alignment: start;
+                        // Options card
+                        if root.cmp-loaded: Rectangle {
+                            Rectangle {
+                                y: 0;
+                                height: 1px;
+                                background: Theme.line;
+                            }
+                            VerticalLayout {
+                                padding-top: 18px;
+                                padding-bottom: 4px;
+                                spacing: 16px;
 
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text {
-                                width: 90px;
-                                text: "Goal";
-                                color: Theme.muted;
-                                font-size: 13px;
-                                vertical-alignment: center;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        width: 90px;
+                                        text: "Goal";
+                                        color: Theme.muted;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "Fit a size";
+                                        selected: root.cmp-mode == 0;
+                                        clicked => { root.cmp-mode = 0; root.cmp-options-changed(); }
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "Pick a quality";
+                                        selected: root.cmp-mode == 1;
+                                        clicked => { root.cmp-mode = 1; root.cmp-options-changed(); }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                }
+
+                                if root.cmp-mode == 0: HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        width: 90px;
+                                        text: "Size";
+                                        color: Theme.muted;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "20 MB · Discord";
+                                        selected: root.cmp-size-index == 0;
+                                        clicked => { root.cmp-size-index = 0; root.cmp-options-changed(); }
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "25 MB";
+                                        selected: root.cmp-size-index == 1;
+                                        clicked => { root.cmp-size-index = 1; root.cmp-options-changed(); }
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "50 MB";
+                                        selected: root.cmp-size-index == 2;
+                                        clicked => { root.cmp-size-index = 2; root.cmp-options-changed(); }
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "100 MB";
+                                        selected: root.cmp-size-index == 3;
+                                        clicked => { root.cmp-size-index = 3; root.cmp-options-changed(); }
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "Custom";
+                                        selected: root.cmp-size-index == 4;
+                                        clicked => { root.cmp-size-index = 4; root.cmp-options-changed(); }
+                                    }
+                                    if root.cmp-size-index == 4: LineEdit {
+                                        width: 90px;
+                                        placeholder-text: "MB";
+                                        text <=> root.cmp-custom-mb;
+                                        edited => { root.cmp-options-changed(); }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                }
+
+                                if root.cmp-mode == 1: HorizontalLayout {
+                                    spacing: 12px;
+                                    Text {
+                                        width: 90px;
+                                        text: "Quality";
+                                        color: Theme.muted;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: "Smaller";
+                                        color: Theme.muted;
+                                        font-size: 12px;
+                                        vertical-alignment: center;
+                                    }
+                                    Slider {
+                                        horizontal-stretch: 1;
+                                        minimum: 0;
+                                        maximum: 1;
+                                        value <=> root.cmp-quality;
+                                        changed => { root.cmp-options-changed(); }
+                                    }
+                                    Text {
+                                        text: "Better";
+                                        color: Theme.muted;
+                                        font-size: 12px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        width: 90px;
+                                        text: "Codec";
+                                        color: Theme.muted;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "H.264 · plays everywhere";
+                                        selected: root.cmp-codec == 0;
+                                        clicked => { root.cmp-codec = 0; root.cmp-options-changed(); }
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "H.265 · smaller";
+                                        selected: root.cmp-codec == 1;
+                                        clicked => { root.cmp-codec = 1; root.cmp-options-changed(); }
+                                    }
+                                    Chip {
+                                        horizontal-stretch: 0;
+                                        text: "AV1 · smallest";
+                                        selected: root.cmp-codec == 2;
+                                        clicked => { root.cmp-codec = 2; root.cmp-options-changed(); }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    Text {
+                                        width: 90px;
+                                        text: "Output";
+                                        color: Theme.muted;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                    ComboBox {
+                                        width: 150px;
+                                        model: ["Auto resolution", "Original size", "Max 1080p", "Max 720p", "Max 480p"];
+                                        current-index <=> root.cmp-res-index;
+                                        selected => { root.cmp-options-changed(); }
+                                    }
+                                    ComboBox {
+                                        width: 130px;
+                                        model: ["Original fps", "Max 60 fps", "Max 30 fps"];
+                                        current-index <=> root.cmp-fps-index;
+                                        selected => { root.cmp-options-changed(); }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    Text {
+                                        width: 90px;
+                                        text: "Audio";
+                                        color: Theme.muted;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                    ComboBox {
+                                        width: 150px;
+                                        model: ["128 kbps", "96 kbps", "64 kbps", "No audio"];
+                                        current-index <=> root.cmp-audio-index;
+                                        selected => { root.cmp-options-changed(); }
+                                    }
+                                    Rectangle { width: 6px; }
+                                    CheckBox {
+                                        text: root.cmp-gpu-label;
+                                        enabled: root.cmp-gpu-available;
+                                        checked <=> root.cmp-use-gpu;
+                                        toggled => { root.cmp-options-changed(); }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                }
                             }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "Fit a size";
-                                selected: root.cmp-mode == 0;
-                                clicked => { root.cmp-mode = 0; root.cmp-options-changed(); }
-                            }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "Pick a quality";
-                                selected: root.cmp-mode == 1;
-                                clicked => { root.cmp-mode = 1; root.cmp-options-changed(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
                         }
 
-                        if root.cmp-mode == 0: HorizontalLayout {
-                            spacing: 8px;
-                            Text {
-                                width: 90px;
-                                text: "Size";
-                                color: Theme.muted;
-                                font-size: 13px;
-                                vertical-alignment: center;
-                            }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "20 MB · Discord";
-                                selected: root.cmp-size-index == 0;
-                                clicked => { root.cmp-size-index = 0; root.cmp-options-changed(); }
-                            }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "25 MB";
-                                selected: root.cmp-size-index == 1;
-                                clicked => { root.cmp-size-index = 1; root.cmp-options-changed(); }
-                            }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "50 MB";
-                                selected: root.cmp-size-index == 2;
-                                clicked => { root.cmp-size-index = 2; root.cmp-options-changed(); }
-                            }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "100 MB";
-                                selected: root.cmp-size-index == 3;
-                                clicked => { root.cmp-size-index = 3; root.cmp-options-changed(); }
-                            }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "Custom";
-                                selected: root.cmp-size-index == 4;
-                                clicked => { root.cmp-size-index = 4; root.cmp-options-changed(); }
-                            }
-                            if root.cmp-size-index == 4: LineEdit {
-                                width: 90px;
-                                placeholder-text: "MB";
-                                text <=> root.cmp-custom-mb;
-                                edited => { root.cmp-options-changed(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
-                        }
-
-                        if root.cmp-mode == 1: HorizontalLayout {
-                            spacing: 12px;
-                            Text {
-                                width: 90px;
-                                text: "Quality";
-                                color: Theme.muted;
-                                font-size: 13px;
-                                vertical-alignment: center;
-                            }
-                            Text {
-                                text: "Smaller";
-                                color: Theme.muted;
-                                font-size: 12px;
-                                vertical-alignment: center;
-                            }
-                            Slider {
-                                horizontal-stretch: 1;
-                                minimum: 0;
-                                maximum: 1;
-                                value <=> root.cmp-quality;
-                                changed => { root.cmp-options-changed(); }
-                            }
-                            Text {
-                                text: "Better";
-                                color: Theme.muted;
-                                font-size: 12px;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text {
-                                width: 90px;
-                                text: "Codec";
-                                color: Theme.muted;
-                                font-size: 13px;
-                                vertical-alignment: center;
-                            }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "H.264 · plays everywhere";
-                                selected: root.cmp-codec == 0;
-                                clicked => { root.cmp-codec = 0; root.cmp-options-changed(); }
-                            }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "H.265 · smaller";
-                                selected: root.cmp-codec == 1;
-                                clicked => { root.cmp-codec = 1; root.cmp-options-changed(); }
-                            }
-                            Chip {
-                                horizontal-stretch: 0;
-                                text: "AV1 · smallest";
-                                selected: root.cmp-codec == 2;
-                                clicked => { root.cmp-codec = 2; root.cmp-options-changed(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 10px;
-                            Text {
-                                width: 90px;
-                                text: "Output";
-                                color: Theme.muted;
-                                font-size: 13px;
-                                vertical-alignment: center;
-                            }
-                            ComboBox {
-                                width: 150px;
-                                model: ["Auto resolution", "Original size", "Max 1080p", "Max 720p", "Max 480p"];
-                                current-index <=> root.cmp-res-index;
-                                selected => { root.cmp-options-changed(); }
-                            }
-                            ComboBox {
-                                width: 130px;
-                                model: ["Original fps", "Max 60 fps", "Max 30 fps"];
-                                current-index <=> root.cmp-fps-index;
-                                selected => { root.cmp-options-changed(); }
-                            }
-                            ComboBox {
-                                width: 140px;
-                                model: ["Audio 128 kbps", "Audio 96 kbps", "Audio 64 kbps", "No audio"];
-                                current-index <=> root.cmp-audio-index;
-                                selected => { root.cmp-options-changed(); }
-                            }
-                            CheckBox {
-                                text: root.cmp-gpu-label;
-                                enabled: root.cmp-gpu-available;
-                                checked <=> root.cmp-use-gpu;
-                                toggled => { root.cmp-options-changed(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
-                        }
                     }
                 }
+
 
                 if root.cmp-loaded: HorizontalLayout {
                     spacing: 10px;
@@ -1816,8 +1754,6 @@ export component AppWindow inherits Window {
                         vertical-alignment: center;
                     }
                 }
-
-                if root.cmp-loaded: Rectangle { vertical-stretch: 1; }
 
                 if root.cmp-loaded && root.cmp-running: Bar {
                     value: root.cmp-progress;
@@ -1884,8 +1820,9 @@ export component AppWindow inherits Window {
 
                 HorizontalLayout {
                     Text {
-                        text: "Advanced settings";
+                        text: "Settings";
                         color: Theme.text;
+                        font-family: Theme.display;
                         font-size: 18px;
                         font-weight: 700;
                         vertical-alignment: center;
@@ -2080,6 +2017,25 @@ export component AppWindow inherits Window {
 
                         VerticalLayout {
                             spacing: 8px;
+                            SectionTitle { text: "Appearance"; }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                Hint {
+                                    text: "Theme";
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                }
+                                ComboBox {
+                                    width: 140px;
+                                    model: ["Same as Windows", "Dark", "Light"];
+                                    current-index <=> root.theme-index;
+                                    selected => { root.theme-changed(); root.settings-changed(); }
+                                }
+                            }
+                        }
+
+                        VerticalLayout {
+                            spacing: 8px;
                             SectionTitle { text: "Expert"; }
                             Hint { text: "File name template"; }
                             LineEdit {
@@ -2231,6 +2187,7 @@ export component AppWindow inherits Window {
                         Text {
                             text: "Pick the right song";
                             color: Theme.text;
+                            font-family: Theme.display;
                             font-size: 18px;
                             font-weight: 700;
                         }
@@ -2279,6 +2236,8 @@ export component AppWindow inherits Window {
                     vertical-stretch: 1;
                     for item[i] in root.match-items: VerticalLayout {
                         padding-bottom: 6px;
+                        // Room for the list's scrollbar, which is drawn over the right edge.
+                        padding-right: 14px;
                         Rectangle {
                             height: 64px;
                             border-radius: 10px;
@@ -2382,6 +2341,7 @@ export component AppWindow inherits Window {
                 Text {
                     text: "Removed on Spotify";
                     color: Theme.text;
+                    font-family: Theme.display;
                     font-size: 18px;
                     font-weight: 700;
                 }
@@ -2437,6 +2397,7 @@ export component AppWindow inherits Window {
             Text {
                 text: root.setup-error != "" ? "Setup hit a snag" : "Getting things ready";
                 color: Theme.text;
+                font-family: Theme.display;
                 font-size: 18px;
                 font-weight: 600;
                 horizontal-alignment: center;

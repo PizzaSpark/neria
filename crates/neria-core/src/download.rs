@@ -42,8 +42,9 @@ impl DownloadRequest {
 
 #[derive(Clone, Debug)]
 pub enum DlEvent {
-    /// Video title and how many streams will be downloaded (video+audio = 2).
-    Info { title: String, streams: u32 },
+    /// Video title, how many streams will be downloaded (video+audio = 2)
+    /// and the thumbnail URL, if the site has one.
+    Info { title: String, streams: u32, thumbnail: Option<String> },
     Progress {
         finished: bool,
         downloaded: Option<f64>,
@@ -68,7 +69,8 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
 
     push(&["--encoding", "utf-8", "--newline", "--progress", "--color", "never", "--no-mtime", "--no-simulate"]);
     push(&["--progress-template", DL_TEMPLATE, "--progress-template", PP_TEMPLATE]);
-    push(&["--print", "video:NERIA_INFO %(format_id)s|%(title)s"]);
+    // URLs never contain '|' in practice, titles can: keep the title last.
+    push(&["--print", "video:NERIA_INFO %(format_id)s|%(thumbnail)s|%(title)s"]);
     push(&["--print", "after_move:NERIA_FILE %(filepath)s"]);
     push(&["--ffmpeg-location", &paths::bin_dir().to_string_lossy()]);
     let out_dir = req.music.as_ref().map_or(s.output_dir.clone(), |m| m.dir.clone());
@@ -276,9 +278,11 @@ pub fn parse_line(line: &str) -> Option<DlEvent> {
         return (status == "started").then(|| DlEvent::Postprocess(name.to_string()));
     }
     if let Some(rest) = line.strip_prefix("NERIA_INFO ") {
-        let (fmt, title) = rest.split_once('|').unwrap_or(("", rest));
+        let (fmt, rest) = rest.split_once('|').unwrap_or(("", rest));
+        let (thumb, title) = rest.split_once('|').unwrap_or(("", rest));
         let streams = fmt.split('+').count().max(1) as u32;
-        return Some(DlEvent::Info { title: title.to_string(), streams });
+        let thumbnail = (thumb.starts_with("http")).then(|| thumb.to_string());
+        return Some(DlEvent::Info { title: title.to_string(), streams, thumbnail });
     }
     if let Some(rest) = line.strip_prefix("NERIA_FILE ") {
         return Some(DlEvent::File(PathBuf::from(rest.trim())));
@@ -311,10 +315,18 @@ mod tests {
 
     #[test]
     fn parses_info_with_pipe_in_title() {
-        match parse_line("NERIA_INFO 137+140|A | B").unwrap() {
-            DlEvent::Info { title, streams } => {
+        match parse_line("NERIA_INFO 137+140|https://i.ytimg.com/vi/x/maxresdefault.jpg|A | B").unwrap() {
+            DlEvent::Info { title, streams, thumbnail } => {
                 assert_eq!(title, "A | B");
                 assert_eq!(streams, 2);
+                assert_eq!(thumbnail.as_deref(), Some("https://i.ytimg.com/vi/x/maxresdefault.jpg"));
+            }
+            _ => panic!(),
+        }
+        match parse_line("NERIA_INFO 18|NA|Title").unwrap() {
+            DlEvent::Info { title, thumbnail, .. } => {
+                assert_eq!(title, "Title");
+                assert_eq!(thumbnail, None);
             }
             _ => panic!(),
         }

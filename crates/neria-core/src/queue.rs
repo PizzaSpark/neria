@@ -50,6 +50,8 @@ pub struct JobSnapshot {
     pub file: Option<PathBuf>,
     /// Shown on a finished row, e.g. a Spotify match worth double-checking.
     pub note: Option<String>,
+    /// Thumbnail (video) or cover (Spotify song) URL for the row.
+    pub thumbnail: Option<String>,
     /// A Spotify track (the UI offers "pick another match").
     pub music: bool,
     /// Spotify track audio check: Some(source) when it matched that preview,
@@ -75,6 +77,7 @@ impl JobSnapshot {
             error: None,
             file: None,
             note: None,
+            thumbnail: None,
             music: false,
             verified: None,
         }
@@ -82,9 +85,13 @@ impl JobSnapshot {
 
     fn apply(&mut self, ev: DlEvent) {
         match ev {
-            DlEvent::Info { title, streams } => {
+            DlEvent::Info { title, streams, thumbnail } => {
                 if !title.is_empty() {
                     self.title = title;
+                }
+                // A Spotify cover set up front beats the YouTube thumbnail.
+                if self.thumbnail.is_none() {
+                    self.thumbnail = thumbnail;
                 }
                 self.stages = streams.max(1);
             }
@@ -185,6 +192,7 @@ impl Queue {
         let title = if req.title_hint.is_empty() { req.url.clone() } else { req.title_hint.clone() };
         let mut snap = JobSnapshot::new(id, group, title);
         snap.music = req.music.is_some();
+        snap.thumbnail = req.music.as_ref().and_then(|m| m.track.cover_url.clone());
         (self.inner.notify)(snap.clone());
         self.inner.entries.lock().unwrap().push(Entry {
             snap,
@@ -220,9 +228,10 @@ impl Queue {
             let Some(job) = e.req.music.as_mut() else { return false };
             job.forced = Some(url.clone());
             e.chosen = Some(url);
-            let (title, group) = (e.snap.title.clone(), e.snap.group);
+            let (title, group, thumbnail) = (e.snap.title.clone(), e.snap.group, e.snap.thumbnail.clone());
             e.snap = JobSnapshot::new(id, group, title);
             e.snap.music = true;
+            e.snap.thumbnail = thumbnail;
             e.cancel = Arc::new(AtomicBool::new(false));
             (self.inner.notify)(e.snap.clone());
         }
@@ -302,9 +311,10 @@ impl Queue {
             if e.snap.state.is_active() || e.snap.state == JobState::Done {
                 return;
             }
-            let (title, group, music) = (e.snap.title.clone(), e.snap.group, e.snap.music);
+            let (title, group, music, thumbnail) = (e.snap.title.clone(), e.snap.group, e.snap.music, e.snap.thumbnail.clone());
             e.snap = JobSnapshot::new(id, group, title);
             e.snap.music = music;
+            e.snap.thumbnail = thumbnail;
             e.cancel = Arc::new(AtomicBool::new(false));
             (self.inner.notify)(e.snap.clone());
         }
@@ -506,7 +516,7 @@ impl Queue {
             }
             // Spotify jobs keep "Artist - Title" rather than the YouTube video title.
             let ev = match ev {
-                DlEvent::Info { streams, .. } if keep_title => DlEvent::Info { title: String::new(), streams },
+                DlEvent::Info { streams, thumbnail, .. } if keep_title => DlEvent::Info { title: String::new(), streams, thumbnail },
                 ev => ev,
             };
             // Progress lines arrive very fast; repaint at most ~10x per second.

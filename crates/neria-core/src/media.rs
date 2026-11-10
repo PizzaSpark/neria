@@ -327,12 +327,14 @@ fn thumbnails_into(input: std::ffi::OsString, dir: &Path, duration: f64, count: 
 
 /// Render the audio track as a PNG waveform.
 pub fn waveform(path: &Path, width: u32, height: u32) -> Result<PathBuf> {
-    let out = cache_for(path).join(format!("wave-{width}x{height}.png"));
+    // Warm grey that reads on both themes' timeline (Studio + Play); the name
+    // carries the colour so older cached waveforms aren't reused.
+    let out = cache_for(path).join(format!("wave-8e8c88-{width}x{height}.png"));
     if out.is_file() {
         return Ok(out);
     }
     let filter = format!(
-        "[0:a:0]aformat=channel_layouts=mono,showwavespic=s={width}x{height}:colors=0x9a82ff:scale=sqrt"
+        "[0:a:0]aformat=channel_layouts=mono,showwavespic=s={width}x{height}:colors=0x8e8c88:scale=sqrt"
     );
     let status = proc::command(paths::tool("ffmpeg"))
         .args(["-v", "error", "-y", "-i"])

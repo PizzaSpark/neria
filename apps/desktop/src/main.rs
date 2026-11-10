@@ -24,6 +24,7 @@ slint::include_modules!();
 const CONTAINERS: [&str; 3] = ["mp4", "mkv", "webm"];
 const AUDIO_FORMATS: [&str; 5] = ["mp3", "m4a", "opus", "flac", "wav"];
 const BROWSERS: [&str; 7] = ["", "chrome", "edge", "firefox", "brave", "opera", "vivaldi"];
+const THEMES: [&str; 3] = ["system", "dark", "light"];
 
 fn index_of(list: &[&str], value: &str) -> i32 {
     list.iter().position(|v| *v == value).unwrap_or(0) as i32
@@ -54,6 +55,7 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_spotify_client_id(s.spotify_client_id.as_str().into());
     ui.set_spotify_client_secret(s.spotify_client_secret.as_str().into());
     ui.set_check_updates(s.check_updates);
+    ui.set_theme_index(index_of(&THEMES, &s.theme));
 }
 
 fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
@@ -77,6 +79,7 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.spotify_client_id = ui.get_spotify_client_id().trim().to_string();
     s.spotify_client_secret = ui.get_spotify_client_secret().trim().to_string();
     s.check_updates = ui.get_check_updates();
+    s.theme = pick(&THEMES, ui.get_theme_index());
 }
 
 fn job_item(s: &JobSnapshot) -> JobItem {
@@ -98,7 +101,52 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         stats: stats.into(),
         warn: s.note.is_some(),
         music: s.music,
+        thumb: s.thumbnail.as_deref().and_then(cached_thumb).unwrap_or_default(),
+        thumb_url: s.thumbnail.clone().unwrap_or_default().into(),
     }
+}
+
+thread_local! {
+    // Row thumbnails by URL: loaded once, shared by every row (and retry) that uses them.
+    static THUMBS: RefCell<std::collections::HashMap<String, Option<slint::Image>>> = RefCell::default();
+}
+
+fn cached_thumb(url: &str) -> Option<slint::Image> {
+    THUMBS.with(|t| t.borrow().get(url).cloned().flatten())
+}
+
+/// Fetch a row's thumbnail in the background (once per URL), then show it on
+/// every row that uses it.
+fn ensure_thumb(ui: &AppWindow, url: &str) {
+    let first = THUMBS.with(|t| {
+        let mut t = t.borrow_mut();
+        if t.contains_key(url) {
+            false
+        } else {
+            t.insert(url.to_string(), None);
+            true
+        }
+    });
+    if !first {
+        return;
+    }
+    let (weak, url) = (ui.as_weak(), url.to_string());
+    std::thread::spawn(move || {
+        let path = probe::fetch_thumbnail(&url).ok();
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            let Some(img) = path.and_then(|p| slint::Image::load_from_path(&p).ok()) else { return };
+            THUMBS.with(|t| t.borrow_mut().insert(url.clone(), Some(img.clone())));
+            let model = ui.get_jobs();
+            for i in 0..model.row_count() {
+                if let Some(mut row) = model.row_data(i) {
+                    if row.thumb_url == url.as_str() {
+                        row.thumb = img.clone();
+                        model.set_row_data(i, row);
+                    }
+                }
+            }
+        });
+    });
 }
 
 /// Update (or insert) a job row and refresh the active counter.
@@ -106,6 +154,9 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
     let model = ui.get_jobs();
     let Some(vec) = model.as_any().downcast_ref::<VecModel<JobItem>>() else { return };
     let item = job_item(snap);
+    if let Some(url) = &snap.thumbnail {
+        ensure_thumb(ui, url);
+    }
     // Dev hook for scripted checks: open "pick another match" on the first flagged song.
     static PICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if item.warn && item.state == 3 && std::env::var_os("NERIA_MATCH_PICK").is_some() && !PICKED.swap(true, Ordering::SeqCst) {
@@ -162,6 +213,58 @@ fn remove_rows(ui: &AppWindow, ids: &[u64]) {
         }
     }
     refresh_active(ui);
+}
+
+/// Windows' "app mode" (Settings → Personalisation → Colours). Dark if unknown.
+fn windows_prefers_dark() -> bool {
+    #[cfg(windows)]
+    {
+        let out = neria_core::proc::command("reg")
+            .args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "/v", "AppsUseLightTheme"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output();
+        if let Ok(out) = out {
+            // "    AppsUseLightTheme    REG_DWORD    0x0"
+            return !String::from_utf8_lossy(&out.stdout).contains("0x1");
+        }
+    }
+    true
+}
+
+fn apply_theme(ui: &AppWindow) {
+    let dark = match ui.get_theme_index() {
+        1 => true,
+        2 => false,
+        _ => windows_prefers_dark(),
+    };
+    ui.global::<Theme>().set_dark(dark);
+}
+
+/// Dev hook (`NERIA_DEMO`): sample queue rows in every state, for design checks.
+fn demo_rows(ui: &AppWindow) {
+    let model = ui.get_jobs();
+    let Some(vec) = model.as_any().downcast_ref::<VecModel<JobItem>>() else { return };
+    let row = |id: i32, title: &str, state: i32, progress: f32, status: &str, stats: &str, warn: bool, music: bool| JobItem {
+        id,
+        group: 0,
+        title: title.into(),
+        state,
+        progress,
+        status: status.into(),
+        stats: stats.into(),
+        warn,
+        music,
+        thumb: Default::default(),
+        thumb_url: Default::default(),
+    };
+    vec.push(row(9001, "Lo-fi beats to study to, 3 hour mix", 1, 0.62, "Downloading 1/2", "241.0 MB / 388.0 MB  ·  8.4 MB/s  ·  0:17 left", false, false));
+    vec.push(row(9002, "Daft Punk - Get Lucky (feat. Pharrell Williams and Nile Rodgers)", 2, 1.0, "Checking the sound against the official preview…", "", false, true));
+    vec.push(row(9003, "YOASOBI「アイドル」Official Music Video · Кино — Группа крови · 아이유 · 🎵", 0, 0.0, "Waiting in queue…", "", false, false));
+    vec.push(row(9004, "Mountain timelapse 8K", 3, 1.0, "Mountain timelapse 8K [a1b2c3].mp4", "412.0 MB", false, false));
+    vec.push(row(9005, "Bonnie Tyler - Total Eclipse of the Heart", 3, 1.0, "Doesn't sound like the Spotify preview (58% similar). Pick another?", "", true, true));
+    vec.push(row(9006, "https://vimeo.com/1", 4, 0.0, "This video was removed or doesn't exist", "", false, false));
+    ui.set_active_count(3);
 }
 
 fn now_secs() -> u64 {
@@ -401,7 +504,11 @@ fn main() -> anyhow::Result<()> {
     let ui = AppWindow::new()?;
     settings_to_ui(&ui, &settings.lock().unwrap());
     ui.set_app_version(report::VERSION.into());
+    apply_theme(&ui);
     ui.set_jobs(ModelRc::from(Rc::new(VecModel::<JobItem>::default())));
+    if std::env::var_os("NERIA_DEMO").is_some() {
+        demo_rows(&ui);
+    }
 
     let weak = ui.as_weak();
     let queue = Queue::new(settings.clone(), move |snap| {
@@ -418,6 +525,11 @@ fn main() -> anyhow::Result<()> {
             let _ = s.save();
         }
     };
+
+    ui.on_theme_changed({
+        let weak = ui.as_weak();
+        move || apply_theme(&weak.unwrap())
+    });
 
     ui.on_settings_changed({
         let save = save.clone();

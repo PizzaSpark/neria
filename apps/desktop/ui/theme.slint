@@ -1,0 +1,63 @@
+// Studio + Play design tokens (docs/DESIGN.md). Dark and light share every
+// rule; only these values change. Rust sets `dark` from Settings → Appearance
+// (System follows Windows' app theme).
+
+import "fonts/space-grotesk-latin-500-normal.ttf";
+import "fonts/space-grotesk-latin-700-normal.ttf";
+import "fonts/inter-tight-latin-400-normal.ttf";
+import "fonts/inter-tight-latin-500-normal.ttf";
+import "fonts/inter-tight-latin-600-normal.ttf";
+import "fonts/jetbrains-mono-latin-400-normal.ttf";
+import "fonts/jetbrains-mono-latin-500-normal.ttf";
+
+export global Theme {
+    in-out property <bool> dark: true;
+
+    // Faces
+    out property <string> display: "Space Grotesk"; // headlines, buttons, tags
+    out property <string> body: "Inter Tight";
+    out property <string> mono: "JetBrains Mono"; // sizes, speeds, timecodes
+    out property <string> icons: "Segoe Fluent Icons";
+
+    // Surfaces and lines
+    out property <color> bg: dark ? #141416 : #f4f0e6;
+    out property <color> panel: dark ? #1b1b1e : #fffdf8;
+    out property <color> raised: dark ? #222226 : #ebe5d7; // hover, wells
+    out property <color> line: dark ? #26262a : #e2dccd;
+    out property <color> line-strong: dark ? #34343a : #cfc7b4;
+    out property <color> scrim: dark ? #000000b8 : #2a241860;
+
+    // Text
+    out property <color> ink: dark ? #f1efe9 : #151412;
+    out property <color> muted: dark ? #8e8c88 : #6d685e;
+    out property <color> dim: dark ? #5f5d5a : #9a9486;
+
+    // The playful bits
+    out property <color> pop: #ffd23f;
+    out property <color> pop-hover: #ffdc66;
+    out property <color> on-pop: #1a1405;
+    // Deep ochre in dark (same family as the yellow), ink in light.
+    out property <color> pop-shadow: dark ? #9a6f00 : #151412;
+    out property <color> hard: dark ? #000000 : #151412;
+    // Yellow can't be read on cream, so accent *text* gets its own colour.
+    out property <color> pop-text: dark ? #ffd23f : #8a6500;
+
+    // Status (text / tinted background)
+    out property <color> ok: dark ? #7fd6a4 : #1d7a4b;
+    out property <color> ok-bg: dark ? #173326 : #d5f2e0;
+    out property <color> warn: dark ? #f5b14a : #9a5b00;
+    out property <color> warn-bg: dark ? #3a2a12 : #fbe7c4;
+    out property <color> bad: dark ? #ff7b72 : #c2372e;
+    out property <color> bad-bg: dark ? #3a1a1a : #fde0dc;
+
+    // Older names, kept so every screen picks up the new palette.
+    out property <color> sidebar: bg;
+    out property <color> surface: panel;
+    out property <color> surface-hi: raised;
+    out property <color> border: line;
+    out property <color> text: ink;
+    out property <color> accent: pop;
+    out property <color> accent-hi: pop-text;
+    out property <color> success: ok;
+    out property <color> danger: bad;
+}

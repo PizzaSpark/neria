@@ -104,6 +104,12 @@ features below are built once on it instead of rebuilt later. Friends' feedback 
 Direction chosen: **Studio + Play** (`docs/DESIGN.md`, mockups in `design/download-directions.html`):
 calm where you read and watch, playful where you touch; sticker yellow, Space Grotesk / Inter
 Tight / JetBrains Mono, dark and light themes.
+- ✅ First pass: tokens and bundled fonts (`ui/theme.slint`), shared controls
+  (`ui/widgets.slint`), Download page rebuilt (link box with Download inside, big preview, queue
+  as calm rows with labelled actions instead of unlabelled icons, friendlier empty state),
+  Clip/Compress/Settings restyled, Settings → Appearance (Same as Windows / Dark / Light)
+- Next: split the pages out of `app.slint`, restyle the match picker, sync review and first-run
+  screens in detail, then the items below
 - Design system: shared tokens (colors, spacing, radii, type scale) and one component set
   (buttons, chips, rows, dialogs, toasts) instead of per-page variations; split `app.slint`
   into per-page/component files
