@@ -101,7 +101,7 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   doesn't pass them on yet): a yellow-outlined overlay says what will happen ("Drop to clip it",
   "Drop to compress it", or "Neria opens video and audio files"); dropping on Clip or Compress
   opens it there, a video dropped on Download asks "Clip it / Compress it", audio goes to Clip.
-  Not yet tried with a real mouse drag from Explorer
+  Tried by hand with real drags from Explorer on all three pages
 - ✅ **X GIFs saved as real GIFs** (`gif.rs`): X stores "GIFs" as short silent MP4s served from
   `video.twimg.com/tweet_video/` (real videos come from `amplify_video/` / `ext_tw_video/`).
   Neria spots that address, shows "GIF" in the preview instead of quality chips, and after the
