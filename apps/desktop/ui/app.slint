@@ -1,6 +1,6 @@
 import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, Chip, Bar, NavItem, PageTitle, SectionTitle, Hint, Tag, Kbd, LinkField, TextLink, Tick, Dialog } from "widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, Chip, Bar, NavItem, PageTitle, SectionTitle, Hint, Tag, Kbd, LinkField, TextLink, Tick, Dialog, ChoiceTile } from "widgets.slint";
 
 export { Theme }
 
@@ -483,6 +483,8 @@ component Timeline inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "Neria";
+    // Title bar, taskbar and Alt-Tab. The exe's own icon is embedded by build.rs.
+    icon: @image-url("../assets/neria-256.png");
     preferred-width: 1040px;
     preferred-height: 740px;
     min-width: 780px;
@@ -593,6 +595,13 @@ export component AppWindow inherits Window {
     in property <bool> tools-updating;
 
     in-out property <int> page;
+    // A file dragged in from Explorer. drop-kind: 0 not media, 1 video, 2 audio.
+    in property <bool> drop-hover;
+    in property <string> drop-name;
+    in property <int> drop-kind;
+    in property <string> drop-file;
+    in-out property <bool> drop-choice-open;
+    callback drop-choose(int); // 1 clip, 2 compress
     in-out property <bool> drawer-open;
 
     // Clipper
@@ -748,14 +757,11 @@ export component AppWindow inherits Window {
                             background: Theme.pop;
                             border-width: 2px;
                             border-color: Theme.hard;
-                            Text {
-                                text: "n";
-                                color: Theme.on-pop;
-                                font-family: Theme.display;
-                                font-size: 19px;
-                                font-weight: 700;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
+                            // The app icon's mark: an "N" whose left stem is a download arrow.
+                            Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: @image-url("../assets/neria-mark.png");
                             }
                         }
                     }
@@ -1994,20 +2000,17 @@ export component AppWindow inherits Window {
                             }
                             Hint { text: "Use this for age-restricted, members-only or \"confirm you're not a bot\" videos."; }
                             // Chromium browsers lock their cookie file while open and encrypt it.
+                            // Two separate `if`s: wrapped text nested inside a sub-layout gets
+                            // measured as one line and squashes the next section.
                             if root.cookies-index == 1 || root.cookies-index == 2 || root.cookies-index >= 4: HorizontalLayout {
-                                spacing: 8px;
-                                VerticalLayout {
-                                    alignment: start;
-                                    padding-top: 1px;
-                                    Tag {
-                                        text: "Heads-up";
-                                        kind: 2;
-                                    }
+                                alignment: start;
+                                Tag {
+                                    text: "Heads-up";
+                                    kind: 2;
                                 }
-                                Hint {
-                                    horizontal-stretch: 1;
-                                    text: "This browser usually blocks it: it locks its cookies while open and encrypts them. Firefox works best: sign in there and pick Firefox.";
-                                }
+                            }
+                            if root.cookies-index == 1 || root.cookies-index == 2 || root.cookies-index >= 4: Hint {
+                                text: "This browser usually blocks it: it locks its cookies while open and encrypts them. Firefox works best: sign in there and pick Firefox.";
                             }
                             HorizontalLayout {
                                 spacing: 10px;
@@ -2512,6 +2515,111 @@ export component AppWindow inherits Window {
         }
     }
 
+    // ───────────── Drag a file in from Explorer ─────────────
+    if root.drop-hover: Rectangle {
+        x: 80px;
+        y: 0;
+        width: root.width - 80px;
+        height: root.height;
+        background: Theme.bg.with-alpha(0.94);
+        property <bool> ok: root.drop-kind != 0 && !(root.page == 2 && root.drop-kind == 2);
+        Rectangle {
+            x: 18px;
+            y: 18px;
+            width: parent.width - 36px;
+            height: parent.height - 36px;
+            border-radius: 14px;
+            border-width: 2px;
+            border-color: parent.ok ? Theme.pop : Theme.line-strong;
+            background: parent.ok ? Theme.pop.with-alpha(0.07) : transparent;
+            VerticalLayout {
+                alignment: center;
+                spacing: 10px;
+                padding: 26px;
+                HorizontalLayout {
+                    alignment: center;
+                    padding-bottom: 8px;
+                    Rectangle {
+                        width: 59px;
+                        height: 59px;
+                        Rectangle {
+                            x: 3px;
+                            y: 3px;
+                            width: 56px;
+                            height: 56px;
+                            border-radius: 14px;
+                            background: root.drop-kind != 0 ? Theme.hard : transparent;
+                        }
+                        Rectangle {
+                            width: 56px;
+                            height: 56px;
+                            border-radius: 14px;
+                            border-width: 2px;
+                            border-color: root.drop-kind != 0 ? Theme.hard : Theme.line-strong;
+                            background: root.drop-kind != 0 ? Theme.pop : Theme.raised;
+                            Icon {
+                                text: root.drop-kind == 0 ? "\u{E8A5}" : root.page == 2 ? "\u{E73F}" : root.page == 1 || root.drop-kind == 2 ? "\u{E8C6}" : "\u{E8E5}";
+                                font-size: 22px;
+                                color: root.drop-kind != 0 ? Theme.on-pop : Theme.muted;
+                            }
+                        }
+                    }
+                }
+                Text {
+                    text: root.drop-kind == 0 ? "Neria opens video and audio files"
+                        : root.page == 2 ? (root.drop-kind == 1 ? "Drop to compress it" : "Compress works on videos")
+                        : root.page == 1 || root.drop-kind == 2 ? "Drop to clip it"
+                        : "Drop to clip or compress it";
+                    color: Theme.ink;
+                    font-family: Theme.display;
+                    font-size: 30px;
+                    font-weight: 700;
+                    letter-spacing: -1px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: root.drop-name;
+                    color: Theme.muted;
+                    font-family: Theme.body;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+
+    // ───────────── Dropped a video on the Download page: clip or compress? ─────────────
+    if root.drop-choice-open: Dialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        title: "What should Neria do with it?";
+        subtitle: root.drop-name;
+        card-width: 520px;
+        fit: true;
+        close => { root.drop-choice-open = false; }
+        HorizontalLayout {
+            spacing: 12px;
+            ChoiceTile {
+                horizontal-stretch: 1;
+                icon: "\u{E8C6}";
+                title: "Clip it";
+                text: "Cut out the part you want";
+                clicked => { root.drop-choose(1); }
+            }
+            ChoiceTile {
+                horizontal-stretch: 1;
+                icon: "\u{E73F}";
+                title: "Compress it";
+                text: "Make it small enough to send";
+                clicked => { root.drop-choose(2); }
+            }
+        }
+    }
+
     // ───────────── First-run setup ─────────────
     if !root.tools-ready: Rectangle {
         x: 0;
@@ -2548,14 +2656,11 @@ export component AppWindow inherits Window {
                             background: Theme.pop;
                             border-width: 2px;
                             border-color: Theme.hard;
-                            Text {
-                                text: "n";
-                                color: Theme.on-pop;
-                                font-family: Theme.display;
-                                font-size: 25px;
-                                font-weight: 700;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
+                            // The app icon's mark: an "N" whose left stem is a download arrow.
+                            Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: @image-url("../assets/neria-mark.png");
                             }
                         }
                     }

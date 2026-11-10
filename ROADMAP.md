@@ -97,9 +97,15 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   reports the size (and every 3 s after, so livestreams too) it checks the rest fits, including
   the video+audio merge, and stops with "Not enough space on D: (381 MB free, needs about
   1.5 GB)", removing the partial files. Compress checks room for the result first
-- **Drag and drop files from Explorer** onto the Clip and Compress pages
-- **App icon**: a proper Neria icon for the exe (embedded `.ico`), window title bar, taskbar
-  and Alt-Tab, release zip; sized for 16–256 px so it stays crisp in Explorer
+- ✅ **Drag and drop files from Explorer** (desktop `drop_ui.rs`, winit file events since Slint
+  doesn't pass them on yet): a yellow-outlined overlay says what will happen ("Drop to clip it",
+  "Drop to compress it", or "Neria opens video and audio files"); dropping on Clip or Compress
+  opens it there, a video dropped on Download asks "Clip it / Compress it", audio goes to Clip.
+  Not yet tried with a real mouse drag from Explorer
+- ✅ **App icon**: an "N" whose left stem is a download arrow, on the yellow sticker (picked
+  from side-by-side options, idea from a friend's sketch). `design/icon/make_icon.py` renders
+  16–256 px into `apps/desktop/assets/neria.ico` (small sizes drop the shadow, thicker
+  outline); `build.rs` embeds it in the exe without rc.exe; the window uses `neria-256.png`
 - **Release checks**: the release workflow refuses to build if the tag doesn't match the
   `Cargo.toml` version; CI also runs `cargo clippy` and `cargo fmt --check`
 - Optional: **code signing** to remove the SmartScreen warning (SignPath gives free signing to

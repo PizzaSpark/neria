@@ -15,6 +15,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod clipper;
 mod compressor;
+mod drop_ui;
 mod match_ui;
 mod setup_ui;
 mod spotify_ui;
@@ -384,6 +385,7 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             if let Some(path) = std::env::var_os("NERIA_COMPRESS") {
                 ui.invoke_cmp_open_path(path.to_string_lossy().as_ref().into());
             }
+            drop_ui::dev_hooks(&ui);
             if let Ok(which) = std::env::var("NERIA_DIALOG") {
                 demo_dialog(&ui, &which);
             }
@@ -760,6 +762,7 @@ fn main() -> anyhow::Result<()> {
         }
     });
     setup_ui::install(&ui);
+    drop_ui::install(&ui);
     ui.on_retry_setup({
         let (weak, settings) = (ui.as_weak(), settings.clone());
         move || start_setup(&weak.unwrap(), settings.clone())

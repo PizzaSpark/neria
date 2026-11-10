@@ -487,3 +487,45 @@ export component Dialog inherits Rectangle {
         }
     }
 }
+
+// A big pressable option in a dialog ("Clip it" / "Compress it"): outlined like any
+// control, icon, short title and one muted line.
+export component ChoiceTile inherits Rectangle {
+    in property <string> icon;
+    in property <string> title;
+    in property <string> text;
+    callback clicked();
+    min-height: col.preferred-height;
+    border-radius: 12px;
+    border-width: 2px;
+    border-color: ta.has-hover ? Theme.ink : Theme.line-strong;
+    background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
+    animate background, border-color { duration: 100ms; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    col := VerticalLayout {
+        padding: 16px;
+        spacing: 6px;
+        Icon {
+            text: root.icon;
+            font-size: 20px;
+            horizontal-alignment: left;
+        }
+        Text {
+            text: root.title;
+            color: Theme.ink;
+            font-family: Theme.display;
+            font-size: 16px;
+            font-weight: 700;
+        }
+        Text {
+            text: root.text;
+            color: Theme.muted;
+            font-family: Theme.body;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+    }
+}

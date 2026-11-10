@@ -42,7 +42,8 @@ rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-s
 data: `match`, `sync`, `spotify`, `toast`, `update`, `update-ready`, `update-failed`),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
 `NERIA_WINDOW` (window size in logical px, e.g. `780x580`), `NERIA_FAKE_FREE_MB` (pretend the
-drive has this much free, to test the free-space checks), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
+drive has this much free, to test the free-space checks), `NERIA_DROP_HOVER` / `NERIA_DROP`
+(a file path: show the drag-and-drop overlay for it / act as if it was dropped), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
 `NERIA_HOME` (override app dir; for UI tests point it at a scratch folder with its own
 `settings.json` and a junction `bin` → `target/debug/bin`, so downloads don't land in the real
 Videos folder).
