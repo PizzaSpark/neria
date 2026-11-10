@@ -14,6 +14,7 @@ pub mod paths;
 pub mod probe;
 pub mod proc;
 pub mod queue;
+pub mod report;
 pub mod settings;
 pub mod spotify;
 pub mod tools;

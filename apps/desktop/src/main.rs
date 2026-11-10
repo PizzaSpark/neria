@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use neria_core::download::DownloadRequest;
 use neria_core::queue::{JobSnapshot, JobState, Queue};
 use neria_core::settings::{Quality, Settings};
-use neria_core::{fmt, probe, tools};
+use neria_core::{fmt, probe, report, tools};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod clipper;
@@ -113,6 +113,16 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
             }
         });
     }
+    // Dev hook: copy the report of the first failed download.
+    static REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if item.state == 4 && std::env::var_os("NERIA_REPORT").is_some() && !REPORTED.swap(true, Ordering::SeqCst) {
+        let (weak, id) = (ui.as_weak(), item.id);
+        slint::Timer::single_shot(Duration::from_millis(300), move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.invoke_report_job(id);
+            }
+        });
+    }
     match vec.iter().position(|j| j.id == item.id) {
         Some(i) => vec.set_row_data(i, item),
         // New jobs go on top, except album/playlist tracks, which follow the
@@ -189,8 +199,10 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         }
 
         let version = tools::ytdlp_version().unwrap_or_default();
+        let versions: Vec<String> = report::tool_versions().iter().map(|(n, v)| format!("{n} {v}")).collect();
         let _ = weak.upgrade_in_event_loop(move |ui| {
             ui.set_ytdlp_version(version.into());
+            ui.set_tool_versions(versions.join("\n").into());
             ui.set_tools_ready(true);
             // Dev/automation hook: open a file straight into the clipper.
             if let Some(path) = std::env::var_os("NERIA_OPEN") {
@@ -198,6 +210,9 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             }
             if let Some(path) = std::env::var_os("NERIA_COMPRESS") {
                 ui.invoke_cmp_open_path(path.to_string_lossy().as_ref().into());
+            }
+            if std::env::var_os("NERIA_SETTINGS").is_some() {
+                ui.set_drawer_open(true);
             }
             if let Some(url) = std::env::var_os("NERIA_URL") {
                 let url = url.to_string_lossy().into_owned();
@@ -309,8 +324,36 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     show_problem(&ui, &p.title, &p.hint, p.permanent);
                 }
             }
+            // Dev hook: press Download once the preview is in (if it's allowed).
+            if std::env::var_os("NERIA_URL_START").is_some() && !ui.get_probe_blocked() {
+                ui.invoke_start_download();
+            }
         });
     });
+}
+
+/// Show a short message at the bottom of the window for a few seconds.
+pub(crate) fn show_toast(ui: &AppWindow, msg: &str) {
+    static SHOWN: AtomicU64 = AtomicU64::new(0);
+    let me = SHOWN.fetch_add(1, Ordering::SeqCst) + 1;
+    ui.set_toast(msg.into());
+    let weak = ui.as_weak();
+    slint::Timer::single_shot(Duration::from_secs(4), move || {
+        // A newer toast keeps its own full time.
+        if SHOWN.load(Ordering::SeqCst) == me {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_toast("".into());
+            }
+        }
+    });
+}
+
+/// Put a problem report on the clipboard and say so.
+fn copy_report(ui: &AppWindow, text: &str) {
+    match arboard::Clipboard::new().and_then(|mut c| c.set_text(text.to_string())) {
+        Ok(()) => show_toast(ui, "Report copied. Paste it in a message to whoever helps you with Neria (Ctrl+V)."),
+        Err(_) => show_toast(ui, "Couldn't copy the report to the clipboard. Try again."),
+    }
 }
 
 pub(crate) fn reveal(path: &Path) {
@@ -347,6 +390,7 @@ fn main() -> anyhow::Result<()> {
     let settings = Arc::new(Mutex::new(Settings::load()));
     let ui = AppWindow::new()?;
     settings_to_ui(&ui, &settings.lock().unwrap());
+    ui.set_app_version(report::VERSION.into());
     ui.set_jobs(ModelRc::from(Rc::new(VecModel::<JobItem>::default())));
 
     let weak = ui.as_weak();
@@ -479,6 +523,23 @@ fn main() -> anyhow::Result<()> {
                 ui.set_output_dir(dir.to_string_lossy().as_ref().into());
                 save();
             }
+        }
+    });
+    ui.on_report_job({
+        let (queue, weak) = (queue.clone(), ui.as_weak());
+        move |id| {
+            let ui = weak.unwrap();
+            match queue.report(id as u64) {
+                Some(text) => copy_report(&ui, &text),
+                None => show_toast(&ui, "That download is gone from the list."),
+            }
+        }
+    });
+    ui.on_copy_report({
+        let (weak, settings) = (ui.as_weak(), settings.clone());
+        move || {
+            let text = report::general_report(&settings.lock().unwrap());
+            copy_report(&weak.unwrap(), &text);
         }
     });
     ui.on_retry_setup({

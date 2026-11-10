@@ -55,6 +55,8 @@ pub enum DlEvent {
     Postprocess(String),
     File(PathBuf),
     Error(String),
+    /// A raw output line (everything but progress), kept for "Report a problem".
+    Log(String),
 }
 
 const DL_TEMPLATE: &str = "download:NERIA_DL %(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress.fragment_index)s|%(progress.fragment_count)s";
@@ -166,8 +168,10 @@ pub fn run(
     std::fs::create_dir_all(&settings.output_dir)
         .with_context(|| format!("can't create {}", settings.output_dir.display()))?;
 
+    let args = build_args(req, settings);
+    on(DlEvent::Log(format!("> yt-dlp {}", readable_args(&args))));
     let mut child = proc::command(paths::tool("yt-dlp"))
-        .args(build_args(req, settings))
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -212,6 +216,9 @@ pub fn run(
     }
 
     for line in rx {
+        if !line.starts_with("NERIA_DL ") {
+            on(DlEvent::Log(line.clone()));
+        }
         if let Some(ev) = parse_line(&line) {
             on(ev);
         }
@@ -222,6 +229,23 @@ pub fn run(
         Some(mut c) => Ok(c.wait()?.success()),
         None => Ok(false),
     }
+}
+
+/// The command line for reports, without the fixed plumbing (progress
+/// templates, prints, encoding) that's the same for every download.
+fn readable_args(args: &[String]) -> String {
+    const PAIRS: [&str; 5] = ["--progress-template", "--print", "--ffmpeg-location", "--encoding", "--color"];
+    const SINGLES: [&str; 4] = ["--newline", "--progress", "--no-mtime", "--no-simulate"];
+    let mut out = Vec::new();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if PAIRS.contains(&a.as_str()) {
+            it.next();
+        } else if !SINGLES.contains(&a.as_str()) {
+            out.push(if a.contains(' ') { format!("\"{a}\"") } else { a.clone() });
+        }
+    }
+    out.join(" ")
 }
 
 fn num(s: &str) -> Option<f64> {
@@ -303,6 +327,16 @@ mod tests {
         assert!(args.contains(&"-x".to_string()));
         assert_eq!(args.last().unwrap(), "https://x.y/z");
         assert!(!args.contains(&"--download-sections".to_string()));
+    }
+
+    #[test]
+    fn report_args_skip_plumbing() {
+        let req = DownloadRequest::new("https://x.y/z", Quality::Best, "");
+        let line = readable_args(&build_args(&req, &Settings::default()));
+        assert!(!line.contains("NERIA_"), "{line}");
+        assert!(!line.contains("--newline"));
+        assert!(line.contains("-f bv*+ba/b"));
+        assert!(line.ends_with("-- https://x.y/z"));
     }
 
     #[test]

@@ -1,5 +1,6 @@
 //! Download queue with a concurrency limit, cancel and retry.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -10,7 +11,7 @@ use std::time::{Duration, Instant};
 use crate::download::{self, DlEvent, DownloadRequest};
 use crate::spotify::Track;
 use crate::ytmusic::Candidate;
-use crate::{fingerprint, music, proc};
+use crate::{fingerprint, music, proc, report};
 use crate::settings::Settings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,6 +116,7 @@ impl JobSnapshot {
             }
             DlEvent::File(path) => self.file = Some(path),
             DlEvent::Error(msg) => self.error = Some(msg),
+            DlEvent::Log(_) => {}
         }
     }
 }
@@ -127,6 +129,8 @@ struct Entry {
     /// Spotify jobs: YouTube Music candidates (best first) and the URL used.
     candidates: Vec<Candidate>,
     chosen: Option<String>,
+    /// Last lines of yt-dlp output, for "Report a problem".
+    log: VecDeque<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -189,6 +193,7 @@ impl Queue {
             child: Arc::new(Mutex::new(None)),
             candidates: Vec::new(),
             chosen: None,
+            log: VecDeque::new(),
         });
         self.pump();
         id
@@ -223,6 +228,45 @@ impl Queue {
         }
         self.pump();
         true
+    }
+
+    /// A plain-text problem report for one row (see `report`), ready to paste.
+    pub fn report(&self, id: u64) -> Option<String> {
+        let settings = self.inner.settings.lock().unwrap().clone();
+        let entries = self.inner.entries.lock().unwrap();
+        let e = entries.iter().find(|e| e.snap.id == id)?;
+        let url = e.chosen.as_deref().unwrap_or(&e.req.url);
+        let spotify = e.req.music.as_ref().map(|m| {
+            let t = &m.track;
+            format!("{} - {} (https://open.spotify.com/track/{})", t.artist_line(), t.title, t.id)
+        });
+        let log: Vec<String> = e.log.iter().cloned().collect();
+        let error = e.snap.error.clone().or_else(|| match e.snap.state {
+            JobState::Failed => Some("Failed (no error message)".into()),
+            JobState::Cancelled => Some("Cancelled".into()),
+            _ => None,
+        });
+        Some(report::job_report(
+            &settings,
+            &report::JobDetails {
+                url,
+                title: &e.snap.title,
+                error: error.as_deref(),
+                note: e.snap.note.as_deref(),
+                spotify,
+                log: &log,
+            },
+        ))
+    }
+
+    fn push_log(&self, id: u64, line: String) {
+        let mut entries = self.inner.entries.lock().unwrap();
+        if let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) {
+            if e.log.len() >= report::LOG_LINES {
+                e.log.pop_front();
+            }
+            e.log.push_back(line);
+        }
     }
 
     fn set_match(&self, id: u64, candidates: Vec<Candidate>, chosen: Option<String>) {
@@ -339,6 +383,10 @@ impl Queue {
         cancel: Arc<AtomicBool>,
         child: Arc<Mutex<Option<Child>>>,
     ) {
+        // A retry starts a fresh log.
+        if let Some(e) = self.inner.entries.lock().unwrap().iter_mut().find(|e| e.snap.id == id) {
+            e.log.clear();
+        }
         // Spotify track picked by hand: download that URL, overwriting the old file.
         if let Some(url) = req.music.as_ref().and_then(|m| m.forced.clone()) {
             req.url = url;
@@ -452,6 +500,10 @@ impl Queue {
         let mut last_emit = Instant::now() - Duration::from_secs(1);
         let keep_title = req.music.is_some();
         download::run(req, settings, child, cancel, |ev| {
+            if let DlEvent::Log(line) = ev {
+                self.push_log(id, line);
+                return;
+            }
             // Spotify jobs keep "Artist - Title" rather than the YouTube video title.
             let ev = match ev {
                 DlEvent::Info { streams, .. } if keep_title => DlEvent::Info { title: String::new(), streams },

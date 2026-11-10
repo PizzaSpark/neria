@@ -61,9 +61,11 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   what to try; pasting the link again retries. Spotify podcasts/audiobooks/profiles/short links
   get their own message. Text that isn't a link shows a quiet hint; links without `https://`
   work. Still open: region-locked Spotify tracks (embed page still lists them)
-- **Report a problem** button: copies a short report (Neria version, tool versions, the link,
-  last lines of the yt-dlp/ffmpeg log) to paste in a message or issue
-- **Version in the app** (Settings → About), so reports say which build
+- ✅ **Report a problem** (`report.rs`): a bug button on failed rows copies Neria/Windows/tool
+  versions, the settings that matter (never the Spotify key), the link, the error and the last
+  40 lines of yt-dlp output; the user folder shows as `%USERPROFILE%`. Settings → About has a
+  general "Copy report". A toast confirms. Not yet for Clip/Compress errors
+- ✅ **Version in the app**: Settings → About shows Neria, yt-dlp, FFmpeg, Deno, libmpv
 - **Check for updates**, so testers don't stay on old builds:
   - Neria itself (GitHub releases: "Neria x.y is out" with changelog, download + swap the exe
     next to itself, keep `bin/` and `settings.json`, stays portable)
