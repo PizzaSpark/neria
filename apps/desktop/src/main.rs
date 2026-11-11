@@ -543,6 +543,9 @@ fn show_picker(ui: &AppWindow, state: &ProbeState, info: &probe::MediaInfo, my_g
             detail: it.duration.map(fmt::duration).unwrap_or_default().into(),
             thumb: Default::default(),
             checked: true,
+            quality: 0,
+            // Videos only gallery-dl saw are saved from their file address, as they are.
+            can_quality: it.kind == post::ItemKind::Video && it.direct_url.is_none(),
         })
         .collect();
     ui.set_pick_checked(rows.len() as i32);
@@ -816,6 +819,16 @@ fn main() -> anyhow::Result<()> {
             count_picked(&ui);
         }
     });
+    ui.on_pick_quality({
+        let weak = ui.as_weak();
+        move |i, q| {
+            let model = weak.unwrap().get_pick_items();
+            if let Some(mut row) = model.row_data(i as usize) {
+                row.quality = q;
+                model.set_row_data(i as usize, row);
+            }
+        }
+    });
     ui.on_pick_all({
         let weak = ui.as_weak();
         move |on| {
@@ -881,8 +894,13 @@ fn main() -> anyhow::Result<()> {
                 }
             } else if !probe_state.items.borrow().is_empty() {
                 // A post or playlist: one row per picked item, in one group.
-                let picked: Vec<usize> =
-                    ui.get_pick_items().iter().enumerate().filter(|(_, r)| r.checked).map(|(i, _)| i).collect();
+                let picked: Vec<(usize, Option<Quality>)> = ui
+                    .get_pick_items()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, r)| r.checked)
+                    .map(|(i, r)| (i, (r.quality > 0).then(|| Quality::from_index(r.quality - 1))))
+                    .collect();
                 let items = probe_state.items.borrow().clone();
                 let settings = settings.lock().unwrap().clone();
                 let title = ui.get_probe_title().to_string();

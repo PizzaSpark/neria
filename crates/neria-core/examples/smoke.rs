@@ -40,9 +40,23 @@ fn main() -> anyhow::Result<()> {
         req.exact_cuts = exact_cuts;
         vec![req]
     } else {
-        let picked: Vec<usize> = match std::env::var("NERIA_PICK") {
-            Ok(p) => p.split(',').filter_map(|n| n.trim().parse::<usize>().ok()).map(|n| n - 1).collect(),
-            Err(_) => (0..info.items.len()).collect(),
+        // `NERIA_PICK=1,2:audio,3:480` - an item can carry its own quality.
+        let picked: Vec<(usize, Option<Quality>)> = match std::env::var("NERIA_PICK") {
+            Ok(p) => p
+                .split(',')
+                .filter_map(|part| {
+                    let (n, q) = part.trim().split_once(':').map_or((part.trim(), None), |(n, q)| (n, Some(q)));
+                    let q = q.map(|q| match q {
+                        "audio" => Quality::Audio,
+                        "1080" => Quality::P1080,
+                        "720" => Quality::P720,
+                        "480" => Quality::P480,
+                        _ => Quality::Best,
+                    });
+                    Some((n.parse::<usize>().ok()?.checked_sub(1)?, q))
+                })
+                .collect(),
+            Err(_) => (0..info.items.len()).map(|i| (i, None)).collect(),
         };
         neria_core::post::requests(&info.title, &info.items, &picked, quality, &settings)
     };

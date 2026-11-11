@@ -40,6 +40,10 @@ export struct PickItem {
     detail: string, // length, e.g. "0:05"
     thumb: image,
     checked: bool,
+    // Videos can have their own quality: 0 = as the chips above, 1.. = Best, 1080p, 720p,
+    // 480p, Audio only. Photos and GIFs are saved as they are.
+    quality: int,
+    can-quality: bool,
 }
 
 export struct JobItem {
@@ -543,6 +547,8 @@ export component AppWindow inherits Window {
     in property <string> pick-note;
     callback pick-toggle(int, bool);
     callback pick-all(bool);
+    callback pick-quality(int, int);
+    property <[string]> pick-qualities: ["As above", "Best", "1080p", "720p", "480p", "Audio only"];
     property <bool> picking: root.probe-state == 2 && root.pick-items.length > 1;
     in property <int> spotify-count;
     in property <string> spotify-note;
@@ -1148,6 +1154,18 @@ export component AppWindow inherits Window {
                                     font-family: Theme.mono;
                                     font-size: 11.5px;
                                     vertical-alignment: center;
+                                }
+                                // This video only: another quality, or just its audio.
+                                if item.can-quality: VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 0;
+                                    ComboBox {
+                                        width: 130px;
+                                        enabled: item.checked;
+                                        model: root.pick-qualities;
+                                        current-index: item.quality;
+                                        selected => { root.pick-quality(i, self.current-index); }
+                                    }
                                 }
                             }
                         }

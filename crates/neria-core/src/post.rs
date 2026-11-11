@@ -230,19 +230,27 @@ fn small_photo(url: &str) -> String {
 pub fn requests(
     title: &str,
     items: &[Item],
-    picked: &[usize],
+    picked: &[(usize, Option<Quality>)],
     quality: Quality,
     settings: &Settings,
 ) -> Vec<DownloadRequest> {
     let numbered = settings.number_items;
-    let picked: Vec<(usize, &Item)> = picked.iter().filter_map(|&i| items.get(i).map(|it| (i, it))).collect();
-    let audio = quality == Quality::Audio;
+    // Each item's own quality (set on its row), else the chips above the list. GIFs are
+    // always saved whole, photos and videos only gallery-dl saw are saved as they are.
+    let picked: Vec<(usize, &Item, Quality)> = picked
+        .iter()
+        .filter_map(|&(i, q)| {
+            let it = items.get(i)?;
+            let q = if it.kind == ItemKind::Gif { Quality::Best } else { q.unwrap_or(quality) };
+            Some((i, it, q))
+        })
+        .collect();
     let kinds: Vec<Kind> = picked
         .iter()
-        .map(|(_, it)| match it.kind {
+        .map(|(_, it, q)| match it.kind {
             ItemKind::Photo => Kind::Photo,
             ItemKind::Gif => Kind::Video,
-            ItemKind::Video if audio => Kind::Audio,
+            ItemKind::Video if *q == Quality::Audio && it.direct_url.is_none() => Kind::Audio,
             ItemKind::Video => Kind::Video,
         })
         .collect();
@@ -252,7 +260,7 @@ pub fn requests(
 
     picked
         .iter()
-        .map(|&(i, it)| {
+        .map(|&(i, it, q)| {
             let n = i + 1;
             let stem = match &group {
                 Some(_) if !it.title.is_empty() && numbered => Some(sanitize(&format!("{n:0width$} {}", it.title))),
@@ -266,7 +274,7 @@ pub fn requests(
             let label =
                 if it.title.is_empty() { format!("{} · {} {n}", title, it.kind.label()) } else { it.title.clone() };
             let gif = it.kind == ItemKind::Gif;
-            let mut req = DownloadRequest::new(&it.url, if gif { Quality::Best } else { quality }, label);
+            let mut req = DownloadRequest::new(&it.url, q, label);
             req.playlist_index = it.playlist_index;
             req.dir = group.clone();
             req.stem = stem;
@@ -402,21 +410,33 @@ mod tests {
         let items = vec![photo, yt_video(1), gif];
 
         // All three: one mixed folder next to Audio/Video, numbered by place in the post.
-        let all = requests("seann - Just: testing", &items, &[0, 1, 2], Quality::Best, &s);
+        let all = requests("seann - Just: testing", &items, &[(0, None), (1, None), (2, None)], Quality::Best, &s);
         let dir = std::path::PathBuf::from("C:/N/seann - Just testing");
         assert!(all.iter().all(|r| r.dir.as_ref() == Some(&dir)));
         assert_eq!(all.iter().map(|r| r.stem.clone().unwrap()).collect::<Vec<_>>(), ["01 Photo", "02 Video", "03 GIF"]);
         assert!(all[0].direct.is_some() && all[2].gif && all[2].quality == Quality::Best);
 
         // Video + GIF only: inside Video.
-        let vids = requests("Post", &items, &[1, 2], Quality::P720, &s);
+        let vids = requests("Post", &items, &[(1, None), (2, None)], Quality::P720, &s);
         assert_eq!(vids[0].dir.as_deref(), Some(std::path::Path::new("C:/N/Video/Post")));
 
         // One item: no folder of its own; a photo gets a name from the post.
-        let one = requests("Post", &items, &[0], Quality::Best, &s);
+        let one = requests("Post", &items, &[(0, None)], Quality::Best, &s);
         assert_eq!(one[0].dir, None);
         assert_eq!(one[0].stem.as_deref(), Some("Post (Photo 1)"));
         assert_eq!(crate::download::out_dir(&one[0], &s), std::path::PathBuf::from("C:/N/Photos"));
+
+        // The video as audio on its own row; the GIF stays a GIF even with Audio only above.
+        let mixed = requests("Post", &items, &[(1, Some(Quality::Audio)), (2, None)], Quality::Audio, &s);
+        assert_eq!(mixed[0].quality, Quality::Audio);
+        assert_eq!(mixed[1].quality, Quality::Best);
+        // Audio + GIF are different kinds: their own folder next to Audio/Video.
+        assert_eq!(mixed[0].dir.as_deref(), Some(std::path::Path::new("C:/N/Post")));
+        // Two videos, one overridden to 480p: still all video.
+        let two =
+            requests("Post", &[yt_video(1), yt_video(2)], &[(0, Some(Quality::P480)), (1, None)], Quality::Best, &s);
+        assert_eq!((two[0].quality, two[1].quality), (Quality::P480, Quality::Best));
+        assert_eq!(two[0].dir.as_deref(), Some(std::path::Path::new("C:/N/Video/Post")));
     }
 
     #[test]

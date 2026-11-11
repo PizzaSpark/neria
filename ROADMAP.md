@@ -168,8 +168,10 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
   "Select all" / "None"; the button says "Download 3 items". Each picked item becomes its own
   queue row in one group. Photos come from yt-dlp where it reports them (Instagram) and
   from gallery-dl otherwise (X, Facebook), fetched into `bin/` like the other tools
-  - 🚧 Built (not yet committed): picker, photos, per-item GIFs, Audio / Video / Photos
-    folders with a folder per post/playlist, "Number files in playlist order" tick
+  - ✅ Built: picker, photos, per-item GIFs, Audio / Video / Photos
+    folders with a folder per post/playlist, "Number the files in order" tick, a quality
+    menu on each video row ("As above" / Best / 1080p / 720p / 480p / Audio only)
+  - Later: per-item container/audio format (today Settings' format applies to all)
   - Next: drag rows in the picker into your own order before downloading (numbers follow
     your order); "Reverse" for newest-first playlists; remember the order on re-download
   - Next: one `.m3u8` per playlist folder (like Spotify ones) and a progress card for the
