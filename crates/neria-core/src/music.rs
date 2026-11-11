@@ -19,7 +19,7 @@ pub const CONFIDENT: f64 = 0.8;
 pub const AUDIO_EXTS: &[&str] = &["mp3", "m4a", "opus", "ogg", "flac", "wav", "webm", "aac"];
 
 /// Everything a queue job needs to turn one Spotify track into a tagged file.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MusicJob {
     pub track: Track,
     pub dir: PathBuf,
@@ -305,6 +305,24 @@ pub fn write_m3u(dir: &Path, name: &str, entries: &[(String, f64, String)]) -> R
     let path = dir.join(format!("{}.m3u8", sanitize(name)));
     std::fs::write(&path, s)?;
     Ok(path)
+}
+
+/// The entries of an `.m3u8` written by [`write_m3u`] (display, seconds, file). Empty if
+/// there's none.
+pub fn read_m3u(path: &Path) -> Vec<(String, f64, String)> {
+    let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
+    let mut out = Vec::new();
+    let mut info: Option<(String, f64)> = None;
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        if let Some(rest) = line.strip_prefix("#EXTINF:") {
+            let (secs, display) = rest.split_once(',').unwrap_or((rest, ""));
+            info = Some((display.to_string(), secs.trim().parse().unwrap_or(-1.0)));
+        } else if !line.starts_with('#') {
+            let (display, secs) = info.take().unwrap_or_else(|| (line.to_string(), -1.0));
+            out.push((display, secs, line.to_string()));
+        }
+    }
+    out
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

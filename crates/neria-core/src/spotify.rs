@@ -122,7 +122,8 @@ pub fn unsupported_reason(input: &str) -> Option<(&'static str, &'static str)> {
     })
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Track {
     pub id: String,
     pub title: String,

@@ -77,6 +77,10 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
 - **Input**: `panel` fill, 2px `line-strong` outline, 50px tall; the primary button can sit inside.
 - **Queue row**: no card; 1px `line` under it, thumbnail, title (Inter Tight 14/500), a status
   line (tag + mono stats), a 6px rounded `pop` meter while active, actions on the right.
+  Paused rows keep their meter in `muted`.
+- **Group card** (playlist/post/album): a queue row with a stacked thumbnail, title at 650, a
+  summary ("3 of 12 saved · 1 failed · now: …"), whole-group actions and a chevron; open by
+  default. Its rows hang under it, indented 28px off a 2px `line` guide.
 - **Tag**: tinted `*-bg` with `*` text, Space Grotesk 11/600, 6px radius.
 - **Count badge**: `pop` fill, mono 11px ("1 going").
 - **Keyboard hint**: mono 11px, 1px outline with a 2px bottom edge.

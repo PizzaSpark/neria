@@ -127,7 +127,7 @@ pub fn enqueue(ui: &AppWindow, url: &str, slot: &PendingSlot, settings: &Setting
     let pending = slot.lock().unwrap().take();
     let Some(p) = pending.filter(|p| p.url == url) else { return false };
     match music::prepare(&p.collection, settings) {
-        Ok((_dir, jobs)) => queue.add_batch(jobs.into_iter().map(DownloadRequest::music)),
+        Ok((_dir, jobs)) => queue.add_group(&p.collection.name, false, jobs.into_iter().map(DownloadRequest::music)),
         Err(e) => {
             ui.set_probe_state(3);
             ui.set_probe_title(format!("Couldn't prepare the folder: {e}").into());

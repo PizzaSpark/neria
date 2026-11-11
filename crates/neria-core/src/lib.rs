@@ -11,6 +11,7 @@ pub mod fingerprint;
 pub mod fmt;
 pub mod folders;
 pub mod gif;
+pub mod history;
 pub mod media;
 pub mod music;
 pub mod paths;

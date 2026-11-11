@@ -8,12 +8,14 @@ use std::sync::{Mutex, mpsc};
 use std::thread;
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
 use crate::music::MusicJob;
 use crate::settings::{Quality, Settings};
 use crate::{paths, proc};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DownloadRequest {
     pub url: String,
     pub quality: Quality,
@@ -39,6 +41,18 @@ pub struct DownloadRequest {
     pub gif: bool,
     /// Picture for the queue row until yt-dlp reports one (photos never do).
     pub thumbnail: Option<String>,
+    /// Length in seconds, if known up front (for the playlist file).
+    pub duration: Option<f64>,
+    /// `Extractor:id` (e.g. `Youtube:dQw4w9WgXcQ`), to spot the same video again.
+    pub key: Option<String>,
+    /// "Download again": overwrite a file of the same name instead of keeping it.
+    pub force: bool,
+}
+
+impl Default for DownloadRequest {
+    fn default() -> Self {
+        Self::new("", Quality::Best, "")
+    }
 }
 
 impl DownloadRequest {
@@ -56,6 +70,9 @@ impl DownloadRequest {
             direct: None,
             gif: false,
             thumbnail: None,
+            duration: None,
+            key: None,
+            force: false,
         }
     }
 
@@ -75,6 +92,8 @@ pub enum DlEvent {
         thumbnail: Option<String>,
         /// An X (Twitter) "GIF": really a short silent MP4.
         gif: bool,
+        /// `Extractor:id`, when the site gave both.
+        key: Option<String>,
     },
     Progress {
         finished: bool,
@@ -119,7 +138,7 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     push(&["--encoding", "utf-8", "--newline", "--progress", "--color", "never", "--no-mtime", "--no-simulate"]);
     push(&["--progress-template", DL_TEMPLATE, "--progress-template", PP_TEMPLATE]);
     // URLs never contain '|' in practice, titles can: keep the title last.
-    push(&["--print", "video:NERIA_INFO %(format_id)s|%(url)s|%(thumbnail)s|%(title)s"]);
+    push(&["--print", "video:NERIA_INFO %(format_id)s|%(url)s|%(thumbnail)s|%(extractor_key)s:%(id)s|%(title)s"]);
     push(&["--print", "after_move:NERIA_FILE %(filepath)s"]);
     // Where it will land, so leftovers can be removed if the drive fills up.
     push(&["--print", "video:NERIA_DEST %(filename)s"]);
@@ -145,7 +164,7 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
         None => template,
     };
     push(&["-o", &template]);
-    if req.music.as_ref().is_some_and(|m| m.forced.is_some()) {
+    if req.force || req.music.as_ref().is_some_and(|m| m.forced.is_some()) {
         // Replacing a wrong match: same file name, so overwrite it.
         push(&["--force-overwrites"]);
     }
@@ -317,6 +336,12 @@ fn readable_args(args: &[String]) -> String {
     out.join(" ")
 }
 
+/// `Extractor:id` from yt-dlp's `extractor_key` and `id` ("NA" when missing).
+pub fn media_key(extractor: &str, id: &str) -> Option<String> {
+    let ok = |v: &str| !v.is_empty() && v != "NA";
+    (ok(extractor) && ok(id)).then(|| format!("{extractor}:{id}"))
+}
+
 fn num(s: &str) -> Option<f64> {
     s.trim().parse::<f64>().ok().filter(|v| v.is_finite())
 }
@@ -347,11 +372,13 @@ pub fn parse_line(line: &str) -> Option<DlEvent> {
     if let Some(rest) = line.strip_prefix("NERIA_INFO ") {
         let (fmt, rest) = rest.split_once('|').unwrap_or(("", rest));
         let (url, rest) = rest.split_once('|').unwrap_or(("", rest));
-        let (thumb, title) = rest.split_once('|').unwrap_or(("", rest));
+        let (thumb, rest) = rest.split_once('|').unwrap_or(("", rest));
+        let (key, title) = rest.split_once('|').unwrap_or(("", rest));
         let streams = fmt.split('+').count().max(1) as u32;
         let thumbnail = (thumb.starts_with("http")).then(|| thumb.to_string());
         let gif = crate::gif::is_x_gif_url(url);
-        return Some(DlEvent::Info { title: title.to_string(), streams, thumbnail, gif });
+        let key = media_key(key.split_once(':').map_or("", |k| k.0), key.split_once(':').map_or("", |k| k.1));
+        return Some(DlEvent::Info { title: title.to_string(), streams, thumbnail, gif, key });
     }
     if let Some(rest) = line.strip_prefix("NERIA_FILE ") {
         return Some(DlEvent::File(PathBuf::from(rest.trim())));
@@ -384,18 +411,20 @@ mod tests {
 
     #[test]
     fn parses_info_with_pipe_in_title() {
-        match parse_line("NERIA_INFO 137+140|NA|https://i.ytimg.com/vi/x/maxresdefault.jpg|A | B").unwrap() {
-            DlEvent::Info { title, streams, thumbnail, gif } => {
+        match parse_line("NERIA_INFO 137+140|NA|https://i.ytimg.com/vi/x/maxresdefault.jpg|Youtube:x|A | B").unwrap() {
+            DlEvent::Info { title, streams, thumbnail, gif, key } => {
                 assert_eq!(title, "A | B");
+                assert_eq!(key.as_deref(), Some("Youtube:x"));
                 assert_eq!(streams, 2);
                 assert_eq!(thumbnail.as_deref(), Some("https://i.ytimg.com/vi/x/maxresdefault.jpg"));
                 assert!(!gif);
             }
             _ => panic!(),
         }
-        match parse_line("NERIA_INFO http|https://video.twimg.com/tweet_video/HWyQ.mp4|NA|Cat").unwrap() {
-            DlEvent::Info { title, thumbnail, gif, .. } => {
+        match parse_line("NERIA_INFO http|https://video.twimg.com/tweet_video/HWyQ.mp4|NA|NA:NA|Cat").unwrap() {
+            DlEvent::Info { title, thumbnail, gif, key, .. } => {
                 assert_eq!(title, "Cat");
+                assert_eq!(key, None);
                 assert_eq!(thumbnail, None);
                 assert!(gif);
             }

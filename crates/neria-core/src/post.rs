@@ -50,6 +50,11 @@ pub struct Item {
     pub ext: String,
 }
 
+/// A playlist (its items have titles of their own) rather than a post's photos/videos.
+pub fn is_playlist(items: &[Item]) -> bool {
+    items.iter().any(|i| !i.title.is_empty())
+}
+
 /// Sites where posts often hold photos yt-dlp can't see.
 pub fn wants_gallery(url: &str) -> bool {
     let host = url.split("://").nth(1).unwrap_or(url).split(['/', '?', '#']).next().unwrap_or("").to_lowercase();
@@ -280,6 +285,7 @@ pub fn requests(
             req.stem = stem;
             req.gif = gif;
             req.thumbnail = it.thumbnail.clone();
+            req.duration = it.duration;
             req.direct =
                 it.direct_url.clone().map(|u| (u, if it.ext.is_empty() { "jpg".into() } else { it.ext.clone() }));
             req

@@ -3,6 +3,8 @@
 //! ```text
 //! Neria.exe
 //! settings.json
+//! queue.json    unfinished downloads, brought back on the next start
+//! history.json  finished downloads, for "You downloaded this …"
 //! bin/  yt-dlp.exe, ffmpeg.exe, ffprobe.exe, deno.exe
 //! ```
 

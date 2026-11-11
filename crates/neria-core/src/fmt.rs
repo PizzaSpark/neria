@@ -107,5 +107,14 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
         }
         JobState::Failed => (s.error.clone().unwrap_or_else(|| "Download failed".into()), String::new()),
         JobState::Cancelled => ("Cancelled".into(), String::new()),
+        JobState::Paused => {
+            let status = match (s.downloaded, s.total) {
+                // The row's tag already says "Paused".
+                (Some(d), Some(t)) if t > 0.0 => format!("{} of {} so far", bytes(d), bytes(t)),
+                (Some(d), _) if d > 0.0 => format!("{} so far", bytes(d)),
+                _ => "Resumes where it left off".into(),
+            };
+            (status, String::new())
+        }
     }
 }

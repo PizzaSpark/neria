@@ -1,7 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::cell::RefCell;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -10,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use neria_core::download::DownloadRequest;
 use neria_core::queue::{JobSnapshot, JobState, Queue};
 use neria_core::settings::{Quality, Settings};
-use neria_core::{fmt, post, probe, report, tools};
+use neria_core::{fmt, history, post, probe, report, tools};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod clipper;
@@ -96,18 +97,20 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
 
 fn job_item(s: &JobSnapshot) -> JobItem {
     let (status, stats) = fmt::job_lines(s);
+    let state = match s.state {
+        JobState::Queued => 0,
+        JobState::Downloading => 1,
+        JobState::Processing => 2,
+        JobState::Done => 3,
+        JobState::Failed => 4,
+        JobState::Cancelled => 5,
+        JobState::Paused => 6,
+    };
     JobItem {
         id: s.id as i32,
         group: s.group as i32,
         title: s.title.as_str().into(),
-        state: match s.state {
-            JobState::Queued => 0,
-            JobState::Downloading => 1,
-            JobState::Processing => 2,
-            JobState::Done => 3,
-            JobState::Failed => 4,
-            JobState::Cancelled => 5,
-        },
+        state,
         progress: s.progress,
         status: status.into(),
         stats: stats.into(),
@@ -118,12 +121,54 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         }),
         thumb: s.thumbnail.as_deref().and_then(cached_thumb).unwrap_or_default(),
         thumb_url: s.thumbnail.clone().unwrap_or_default().into(),
+        // Spotify songs are matched and checked in steps: no pausing half-way.
+        can_pause: state == 1 && !s.music,
+        can_resume: state == 6,
+        can_cancel: state <= 2 || state == 6,
+        can_retry: state == 4 || state == 5,
+        can_remove: (3..=5).contains(&state),
+        ..Default::default()
     }
 }
 
 thread_local! {
     // Row thumbnails by URL: loaded once, shared by every row (and retry) that uses them.
-    static THUMBS: RefCell<std::collections::HashMap<String, Option<slint::Image>>> = RefCell::default();
+    static THUMBS: RefCell<HashMap<String, Option<slint::Image>>> = RefCell::default();
+    // Every queue row, group cards included. The UI shows `VIEW`: the same rows minus
+    // those inside closed cards.
+    static ROWS: Rc<VecModel<JobItem>> = Rc::new(VecModel::default());
+    // Group cards the user closed (open by default, so every item is in view).
+    static COLLAPSED: Rc<RefCell<HashSet<i32>>> = Rc::default();
+    static GROUP_TITLES: RefCell<HashMap<i32, String>> = RefCell::default();
+    static RESET_VIEW: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+}
+
+fn rows() -> Rc<VecModel<JobItem>> {
+    ROWS.with(|r| r.clone())
+}
+
+/// Give the queue list its rows: everything but the rows of closed cards.
+fn install_job_view(ui: &AppWindow) {
+    let collapsed = COLLAPSED.with(|c| c.clone());
+    let view =
+        Rc::new(slint::FilterModel::new(rows(), move |j: &JobItem| !j.child || !collapsed.borrow().contains(&j.group)));
+    ui.set_jobs(ModelRc::from(view.clone()));
+    RESET_VIEW.with(|r| *r.borrow_mut() = Some(Box::new(move || view.reset())));
+}
+
+fn toggle_group(group: i32) {
+    COLLAPSED.with(|e| {
+        let mut e = e.borrow_mut();
+        if !e.remove(&group) {
+            e.insert(group);
+        }
+    });
+    refresh_group(group);
+    RESET_VIEW.with(|r| {
+        if let Some(reset) = r.borrow().as_ref() {
+            reset();
+        }
+    });
 }
 
 fn cached_thumb(url: &str) -> Option<slint::Image> {
@@ -148,29 +193,120 @@ fn ensure_thumb(ui: &AppWindow, url: &str) {
     let (weak, url) = (ui.as_weak(), url.to_string());
     std::thread::spawn(move || {
         let path = probe::fetch_thumbnail(&url).ok();
-        let _ = weak.upgrade_in_event_loop(move |ui| {
+        let _ = weak.upgrade_in_event_loop(move |_ui| {
             let Some(img) = path.and_then(|p| slint::Image::load_from_path(&p).ok()) else { return };
             THUMBS.with(|t| t.borrow_mut().insert(url.clone(), Some(img.clone())));
-            let model = ui.get_jobs();
+            let model = rows();
+            let mut groups = HashSet::new();
             for i in 0..model.row_count() {
                 if let Some(mut row) = model.row_data(i)
                     && row.thumb_url == url.as_str()
                 {
                     row.thumb = img.clone();
+                    groups.insert(row.group);
                     model.set_row_data(i, row);
                 }
+            }
+            for g in groups.into_iter().filter(|g| *g != 0) {
+                refresh_group(g);
             }
         });
     });
 }
 
-/// Update (or insert) a job row and refresh the active counter.
+/// A group card summing up its rows ("3 of 12 saved · 1 failed").
+fn group_card(group: i32, m: &[JobItem]) -> JobItem {
+    let n = m.len();
+    let count = |st: i32| m.iter().filter(|j| j.state == st).count();
+    let (queued, running, done, failed, paused) = (count(0), count(1) + count(2), count(3), count(4), count(6));
+    let checks = m.iter().filter(|j| j.state == 3 && j.warn).count();
+    let state = if running > 0 {
+        1
+    } else if queued > 0 {
+        0
+    } else if paused > 0 {
+        6
+    } else if failed > 0 {
+        4
+    } else if done == 0 {
+        5
+    } else {
+        3
+    };
+    let mut parts = vec![format!("{done} of {n} saved")];
+    if failed > 0 {
+        parts.push(format!("{failed} failed"));
+    }
+    if paused > 0 {
+        parts.push(format!("{paused} paused"));
+    }
+    if checks > 0 {
+        parts.push(format!("{checks} to check"));
+    }
+    if let Some(now) = m.iter().find(|j| j.state == 1 || j.state == 2) {
+        parts.push(format!("now: {}", now.title));
+    }
+    let progress = m.iter().map(|j| if j.state == 3 { 1.0 } else { j.progress }).sum::<f32>() / n as f32;
+    let title = GROUP_TITLES.with(|t| t.borrow().get(&group).cloned()).unwrap_or_else(|| m[0].title.to_string());
+    JobItem {
+        id: -group,
+        group,
+        title: title.into(),
+        state,
+        progress,
+        status: parts.join("  ·  ").into(),
+        stats: if state <= 2 || state == 6 { format!("{:.0}%", progress * 100.0).into() } else { Default::default() },
+        warn: checks > 0,
+        music: m.iter().all(|j| j.music),
+        still: true,
+        thumb: m.iter().find(|j| j.thumb.size().width > 0).map(|j| j.thumb.clone()).unwrap_or_default(),
+        header: true,
+        expanded: !COLLAPSED.with(|c| c.borrow().contains(&group)),
+        can_pause: m.iter().any(|j| j.state == 0 || j.can_pause),
+        can_resume: paused > 0,
+        can_cancel: m.iter().any(|j| j.can_cancel),
+        can_retry: m.iter().any(|j| j.can_retry),
+        can_remove: m.iter().all(|j| j.can_remove),
+        ..Default::default()
+    }
+}
+
+/// Add, update or drop a group's card (only groups of two or more get one).
+fn refresh_group(group: i32) {
+    let vec = rows();
+    let members: Vec<(usize, JobItem)> =
+        vec.iter().enumerate().filter(|(_, j)| j.group == group && !j.header).collect();
+    let card = vec.iter().position(|j| j.header && j.group == group);
+    let grouped = members.len() >= 2;
+    for (i, mut j) in members.iter().cloned() {
+        if j.child != grouped {
+            j.child = grouped;
+            vec.set_row_data(i, j);
+        }
+    }
+    if !grouped {
+        if let Some(h) = card {
+            vec.remove(h);
+        }
+        return;
+    }
+    let items: Vec<JobItem> = members.iter().map(|(_, j)| j.clone()).collect();
+    let head = group_card(group, &items);
+    match card {
+        Some(h) => vec.set_row_data(h, head),
+        None => vec.insert(members[0].0, head),
+    }
+}
+
+/// Update (or insert) a job row and refresh the counters.
 fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
-    let model = ui.get_jobs();
-    let Some(vec) = model.as_any().downcast_ref::<VecModel<JobItem>>() else { return };
-    let item = job_item(snap);
+    let vec = rows();
+    let mut item = job_item(snap);
     if let Some(url) = &snap.thumbnail {
         ensure_thumb(ui, url);
+    }
+    if let Some(t) = &snap.group_title {
+        GROUP_TITLES.with(|g| g.borrow_mut().insert(item.group, t.clone()));
     }
     // Dev hook for scripted checks: open "pick another match" on the first flagged song.
     static PICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -196,12 +332,15 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
             }
         });
     }
-    match vec.iter().position(|j| j.id == item.id) {
-        Some(i) => vec.set_row_data(i, item),
-        // New jobs go on top, except album/playlist tracks, which follow the
-        // previous track of their group so they read in order.
-        // Updates for rows the user removed are ignored.
-        None if snap.state == JobState::Queued => {
+    match vec.iter().position(|j| j.id == item.id && !j.header) {
+        Some(i) => {
+            item.child = vec.row_data(i).is_some_and(|r| r.child);
+            vec.set_row_data(i, item)
+        }
+        // New jobs go on top, except playlist/album items, which follow the previous
+        // item of their group so they read in order. Rows from the last session are
+        // added whatever their state. Updates for rows the user removed are ignored.
+        None if snap.state == JobState::Queued || snap.restored => {
             let after = if item.group != 0 {
                 vec.iter().enumerate().filter(|(_, j)| j.group == item.group).map(|(i, _)| i).last()
             } else {
@@ -211,27 +350,41 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
         }
         None => {}
     }
-    refresh_active(ui);
+    if snap.group != 0 {
+        refresh_group(snap.group as i32);
+    }
+    refresh_counts(ui);
 }
 
-fn refresh_active(ui: &AppWindow) {
-    let model = ui.get_jobs();
-    let active = model.iter().filter(|j| j.state <= 2).count();
-    ui.set_active_count(active as i32);
+fn refresh_counts(ui: &AppWindow) {
+    let model = rows();
+    let count = |f: &dyn Fn(i32) -> bool| model.iter().filter(|j| !j.header && f(j.state)).count() as i32;
+    ui.set_active_count(count(&|s| s <= 2));
+    ui.set_paused_count(count(&|s| s == 6));
+    // "Clear finished" leaves playlists that are still going: count what it would remove.
+    let open: HashSet<i32> =
+        model.iter().filter(|j| !j.header && j.group != 0 && !(3..=5).contains(&j.state)).map(|j| j.group).collect();
+    let finished = model.iter().filter(|j| !j.header && (3..=5).contains(&j.state) && !open.contains(&j.group)).count();
+    ui.set_finished_count(finished as i32);
 }
 
 fn remove_rows(ui: &AppWindow, ids: &[u64]) {
-    let model = ui.get_jobs();
-    let Some(vec) = model.as_any().downcast_ref::<VecModel<JobItem>>() else { return };
+    let vec = rows();
+    let mut groups = HashSet::new();
     let mut i = 0;
     while i < vec.row_count() {
-        if ids.contains(&(vec.row_data(i).unwrap().id as u64)) {
+        let row = vec.row_data(i).unwrap();
+        if !row.header && ids.contains(&(row.id as u64)) {
+            groups.insert(row.group);
             vec.remove(i);
         } else {
             i += 1;
         }
     }
-    refresh_active(ui);
+    for g in groups.into_iter().filter(|g| *g != 0) {
+        refresh_group(g);
+    }
+    refresh_counts(ui);
 }
 
 /// Windows' "app mode" (Settings → Personalisation → Colours). Dark if unknown.
@@ -267,12 +420,10 @@ fn apply_theme(ui: &AppWindow) {
 
 /// Dev hook (`NERIA_DEMO`): sample queue rows in every state, for design checks.
 fn demo_rows(ui: &AppWindow) {
-    let model = ui.get_jobs();
-    let Some(vec) = model.as_any().downcast_ref::<VecModel<JobItem>>() else { return };
+    let vec = rows();
     let row =
         |id: i32, title: &str, state: i32, progress: f32, status: &str, stats: &str, warn: bool, music: bool| JobItem {
             id,
-            group: 0,
             title: title.into(),
             state,
             progress,
@@ -280,9 +431,12 @@ fn demo_rows(ui: &AppWindow) {
             stats: stats.into(),
             warn,
             music,
-            still: false,
-            thumb: Default::default(),
-            thumb_url: Default::default(),
+            can_pause: state == 1 && !music,
+            can_resume: state == 6,
+            can_cancel: state <= 2 || state == 6,
+            can_retry: state == 4 || state == 5,
+            can_remove: (3..=5).contains(&state),
+            ..Default::default()
         };
     vec.push(row(
         9001,
@@ -294,6 +448,17 @@ fn demo_rows(ui: &AppWindow) {
         false,
         false,
     ));
+    vec.push(row(9010, "Mountain timelapse 8K (paused)", 6, 0.31, "120.0 MB of 388.0 MB so far", "", false, false));
+    // A playlist card with three songs (open it to see them).
+    GROUP_TITLES.with(|g| g.borrow_mut().insert(77, "A Very 1999 Christmas (Full Album)".into()));
+    for (id, title, state, progress, status) in [
+        (9021, "01 Santa Claus Is Coming To Town", 3, 1.0, "01 Santa Claus Is Coming To Town.mp3"),
+        (9022, "02 The Christmas Song", 1, 0.4, "Downloading"),
+        (9023, "03 Let It Snow! Let It Snow! Let It Snow!", 0, 0.0, "Waiting in queue…"),
+    ] {
+        vec.push(JobItem { group: 77, ..row(id, title, state, progress, status, "", false, false) });
+    }
+    refresh_group(77);
     vec.push(row(
         9002,
         "Daft Punk - Get Lucky (feat. Pharrell Williams and Nile Rodgers)",
@@ -335,7 +500,7 @@ fn demo_rows(ui: &AppWindow) {
         true,
     ));
     vec.push(row(9006, "https://vimeo.com/1", 4, 0.0, "This video was removed or doesn't exist", "", false, false));
-    ui.set_active_count(3);
+    refresh_counts(ui);
 }
 
 /// Set by "Got it, download" so the next Download skips the Spotify heads-up once.
@@ -455,7 +620,7 @@ fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
+fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
     if !setup_ui::begin(ui) {
         return;
     }
@@ -482,6 +647,8 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             let _ = s.save();
         }
 
+        // Tools are in place and fresh: downloads left from last time can carry on.
+        queue.set_ready(true);
         let check_updates = settings.lock().unwrap().check_updates;
         let version = tools::ytdlp_version().unwrap_or_default();
         let versions: Vec<String> = report::tool_versions().iter().map(|(n, v)| format!("{n} {v}")).collect();
@@ -521,6 +688,42 @@ struct ProbeState {
     spotify: spotify_ui::PendingSlot,
     /// Everything in the previewed post/playlist (the picker shows these).
     items: RefCell<Vec<post::Item>>,
+    queue: Queue,
+    /// `Extractor:id` of the previewed video.
+    key: RefCell<Option<String>>,
+    /// The earlier download of it, for "Show file".
+    dup_file: RefCell<Option<PathBuf>>,
+}
+
+/// Forget the duplicate check and playlist offer of the previous link.
+fn clear_link_notes(ui: &AppWindow, state: &ProbeState) {
+    *state.key.borrow_mut() = None;
+    *state.dup_file.borrow_mut() = None;
+    ui.set_dup_text("".into());
+    ui.set_dup_file(false);
+    ui.set_playlist_url("".into());
+}
+
+/// "Already downloaded 3 days ago" from the history, or "Already in the queue".
+fn show_duplicate(ui: &AppWindow, state: &ProbeState, url: &str, earlier: Option<history::Record>) {
+    let key = state.key.borrow().clone();
+    if let Some(job) = state.queue.find_unfinished(key.as_deref(), url) {
+        let what = if job.state == JobState::Paused { "It's paused in the queue" } else { "It's already in the queue" };
+        ui.set_dup_text(what.into());
+        return;
+    }
+    let Some(r) = earlier else { return };
+    let days = now_secs().saturating_sub(r.at) / 86_400;
+    let when = match days {
+        0 => "today".to_string(),
+        1 => "yesterday".to_string(),
+        d => format!("{d} days ago"),
+    };
+    // Say what it was saved as: an earlier mp3 doesn't mean you have the video.
+    let kind = r.file.extension().map(|e| format!(" as {}", e.to_string_lossy().to_lowercase())).unwrap_or_default();
+    ui.set_dup_text(format!("You downloaded this {when}{kind}").into());
+    ui.set_dup_file(true);
+    *state.dup_file.borrow_mut() = Some(r.file);
 }
 
 /// Empty the "what to download" list.
@@ -608,6 +811,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
     let Some(url) = link_of(text) else {
         state.generation.fetch_add(1, Ordering::SeqCst);
         clear_picker(ui, state);
+        clear_link_notes(ui, state);
         state.last_url.borrow_mut().clear();
         ui.set_probe_blocked(false);
         ui.set_probe_state(if partial_link(text) { 0 } else { 4 });
@@ -624,6 +828,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
 
     let my_gen = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
     clear_picker(ui, state);
+    clear_link_notes(ui, state);
     ui.set_probe_state(1);
     ui.set_probe_blocked(false);
     ui.set_probe_title("".into());
@@ -655,6 +860,9 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
         let result = probe::probe(&url, &settings);
         let thumb =
             result.as_ref().ok().and_then(|i| i.thumbnail_url.as_deref()).and_then(|u| probe::fetch_thumbnail(u).ok());
+        // Downloaded before? (Single videos; playlist items already in their folder are skipped.)
+        let earlier =
+            result.as_ref().ok().filter(|i| i.items.is_empty()).and_then(|i| history::find(i.key.as_deref(), &url));
 
         let _ = weak.upgrade_in_event_loop(move |ui| {
             if generation.load(Ordering::SeqCst) != my_gen {
@@ -673,6 +881,13 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     }
                     if let Some(img) = thumb.and_then(|p| slint::Image::load_from_path(&p).ok()) {
                         ui.set_probe_thumb(img);
+                    }
+                    if info.items.is_empty()
+                        && let Some(state) = PICKER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade()))
+                    {
+                        *state.key.borrow_mut() = info.key.clone();
+                        show_duplicate(&ui, &state, &url, earlier);
+                        ui.set_playlist_url(probe::playlist_link(&url).unwrap_or_default().into());
                     }
                 }
                 Err(e) => {
@@ -761,7 +976,7 @@ fn main() -> anyhow::Result<()> {
     settings_to_ui(&ui, &settings.lock().unwrap());
     ui.set_app_version(report::VERSION.into());
     apply_theme(&ui);
-    ui.set_jobs(ModelRc::from(Rc::new(VecModel::<JobItem>::default())));
+    install_job_view(&ui);
     if std::env::var_os("NERIA_DEMO").is_some() {
         demo_rows(&ui);
     }
@@ -777,6 +992,9 @@ fn main() -> anyhow::Result<()> {
     let queue = Queue::new(settings.clone(), move |snap| {
         let _ = weak.upgrade_in_event_loop(move |ui| upsert_job(&ui, &snap));
     });
+    // Bring back last session's queue; it carries on once the tools are checked.
+    queue.set_ready(false);
+    queue.enable_persistence();
 
     let save = {
         let weak = ui.as_weak();
@@ -804,6 +1022,9 @@ fn main() -> anyhow::Result<()> {
         last_url: RefCell::new(String::new()),
         spotify: Arc::new(Mutex::new(None)),
         items: RefCell::new(Vec::new()),
+        queue: queue.clone(),
+        key: RefCell::new(None),
+        dup_file: RefCell::new(None),
     });
     PICKER.with(|p| *p.borrow_mut() = Some(Rc::downgrade(&probe_state)));
 
@@ -908,11 +1129,16 @@ fn main() -> anyhow::Result<()> {
                 if reqs.is_empty() {
                     return;
                 }
-                queue.add_batch(reqs);
+                // Playlists keep a playlist file in their folder; posts don't need one.
+                queue.add_group(&title, post::is_playlist(&items), reqs);
             } else {
                 let title_hint = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { url.clone() };
                 let quality = if ui.get_probe_is_gif() { Quality::Best } else { Quality::from_index(ui.get_quality()) };
-                queue.add(DownloadRequest::new(url, quality, title_hint));
+                let mut req = DownloadRequest::new(url, quality, title_hint);
+                req.key = probe_state.key.borrow().clone();
+                // "Download again": replace a file of the same name.
+                req.force = ui.get_dup_text() != "";
+                queue.add(req);
             }
 
             probe_state.generation.fetch_add(1, Ordering::SeqCst);
@@ -923,6 +1149,29 @@ fn main() -> anyhow::Result<()> {
             ui.set_probe_is_spotify(false);
             ui.set_probe_is_gif(false);
             clear_picker(&ui, &probe_state);
+            clear_link_notes(&ui, &probe_state);
+        }
+    });
+
+    ui.on_dup_show({
+        let probe_state = probe_state.clone();
+        move || {
+            if let Some(f) = probe_state.dup_file.borrow().as_ref() {
+                reveal(f);
+            }
+        }
+    });
+    ui.on_use_playlist({
+        let weak = ui.as_weak();
+        let (probe_state, settings) = (probe_state.clone(), settings.clone());
+        move || {
+            let ui = weak.unwrap();
+            let link = ui.get_playlist_url().to_string();
+            if link.is_empty() {
+                return;
+            }
+            ui.set_url(link.as_str().into());
+            trigger_probe(&ui, &probe_state, &settings, &link);
         }
     });
 
@@ -940,18 +1189,39 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Rows have their job id; group cards the group id, negated.
     ui.on_cancel_job({
         let queue = queue.clone();
-        move |id| queue.cancel(id as u64)
+        move |id| if id < 0 { queue.cancel_group(-id as u64) } else { queue.cancel(id as u64) }
     });
     ui.on_retry_job({
         let queue = queue.clone();
-        move |id| queue.retry(id as u64)
+        move |id| if id < 0 { queue.retry_group(-id as u64) } else { queue.retry(id as u64) }
     });
+    ui.on_pause_job({
+        let queue = queue.clone();
+        move |id| if id < 0 { queue.pause_all(Some(-id as u64)) } else { queue.pause(id as u64) }
+    });
+    ui.on_resume_job({
+        let queue = queue.clone();
+        move |id| if id < 0 { queue.resume_all(Some(-id as u64)) } else { queue.resume(id as u64) }
+    });
+    ui.on_pause_all({
+        let queue = queue.clone();
+        move || queue.pause_all(None)
+    });
+    ui.on_resume_all({
+        let queue = queue.clone();
+        move || queue.resume_all(None)
+    });
+    ui.on_toggle_group(toggle_group);
     ui.on_remove_job({
         let (queue, weak) = (queue.clone(), ui.as_weak());
         move |id| {
-            if queue.remove(id as u64) {
+            if id < 0 {
+                let ids = queue.clear_finished(Some(-id as u64));
+                remove_rows(&weak.unwrap(), &ids);
+            } else if queue.remove(id as u64) {
                 remove_rows(&weak.unwrap(), &[id as u64]);
             }
         }
@@ -959,16 +1229,24 @@ fn main() -> anyhow::Result<()> {
     ui.on_clear_finished({
         let (queue, weak) = (queue.clone(), ui.as_weak());
         move || {
-            let ids = queue.clear_finished();
+            let ids = queue.clear_finished(None);
             remove_rows(&weak.unwrap(), &ids);
         }
     });
     ui.on_open_job({
         let (queue, settings) = (queue.clone(), settings.clone());
-        move |id| match queue.file_of(id as u64).filter(|p| p.exists()) {
-            Some(path) => reveal(&path),
-            None => {
-                let _ = open::that(&settings.lock().unwrap().output_dir);
+        move |id| {
+            if id < 0 {
+                let dir = queue.group_dir(-id as u64).unwrap_or_else(|| settings.lock().unwrap().output_dir.clone());
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = open::that(dir);
+                return;
+            }
+            match queue.file_of(id as u64).filter(|p| p.exists()) {
+                Some(path) => reveal(&path),
+                None => {
+                    let _ = open::that(&settings.lock().unwrap().output_dir);
+                }
             }
         }
     });
@@ -1011,8 +1289,8 @@ fn main() -> anyhow::Result<()> {
     setup_ui::install(&ui);
     drop_ui::install(&ui);
     ui.on_retry_setup({
-        let (weak, settings) = (ui.as_weak(), settings.clone());
-        move || start_setup(&weak.unwrap(), settings.clone())
+        let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());
+        move || start_setup(&weak.unwrap(), settings.clone(), queue.clone())
     });
 
     let (_clipper, _clip_timer) = {
@@ -1031,10 +1309,10 @@ fn main() -> anyhow::Result<()> {
         compressor::install(&ui, move |id| queue.file_of(id))
     };
 
-    start_setup(&ui, settings.clone());
+    start_setup(&ui, settings.clone(), queue.clone());
     ui.run()?;
 
-    // Stop any running downloads so no orphaned yt-dlp/ffmpeg survives the window.
-    queue.cancel_all();
+    // Save the queue for next time, then stop every yt-dlp/ffmpeg so none survives the window.
+    queue.shutdown();
     Ok(())
 }

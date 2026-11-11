@@ -1,6 +1,6 @@
 //! Download queue with a concurrency limit, cancel and retry.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -13,7 +13,8 @@ use crate::settings::Quality;
 use crate::settings::Settings;
 use crate::spotify::Track;
 use crate::ytmusic::Candidate;
-use crate::{disk, fingerprint, gif, music, probe, proc, report, tools};
+use crate::{disk, fingerprint, gif, history, music, paths, probe, proc, report, tools};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JobState {
@@ -23,11 +24,18 @@ pub enum JobState {
     Done,
     Failed,
     Cancelled,
+    /// Stopped by the user; yt-dlp's `.part` files stay so Resume picks up where it left off.
+    Paused,
 }
 
 impl JobState {
     pub fn is_active(self) -> bool {
         matches!(self, Self::Queued | Self::Downloading | Self::Processing)
+    }
+
+    /// Nothing more will happen to it (paused jobs still will).
+    pub fn is_finished(self) -> bool {
+        matches!(self, Self::Done | Self::Failed | Self::Cancelled)
     }
 }
 
@@ -36,6 +44,8 @@ pub struct JobSnapshot {
     pub id: u64,
     /// Jobs added together (an album/playlist) share a group, so the UI can keep them in order.
     pub group: u64,
+    /// The playlist/post/album name of the group (shown on its card).
+    pub group_title: Option<String>,
     pub title: String,
     pub state: JobState,
     /// Overall progress 0..1 across all streams.
@@ -64,6 +74,10 @@ pub struct JobSnapshot {
     /// Spotify track audio check: Some(source) when it matched that preview,
     /// Some("none") when no preview existed anywhere, None when not checked.
     pub verified: Option<&'static str>,
+    /// `Extractor:id` of what's being downloaded, once known.
+    pub key: Option<String>,
+    /// Brought back from the last session (the UI adds it whatever its state).
+    pub restored: bool,
 }
 
 impl JobSnapshot {
@@ -71,6 +85,7 @@ impl JobSnapshot {
         Self {
             id,
             group,
+            group_title: None,
             title,
             state: JobState::Queued,
             progress: 0.0,
@@ -90,13 +105,29 @@ impl JobSnapshot {
             gif_files: Vec::new(),
             pending_gif: false,
             verified: None,
+            key: None,
+            restored: false,
         }
+    }
+
+    /// A fresh start for the same job (retry, resume, rematch), keeping what the row shows.
+    fn restart(&self) -> Self {
+        let mut s = Self::new(self.id, self.group, self.title.clone());
+        s.group_title = self.group_title.clone();
+        s.music = self.music;
+        s.gif = self.gif;
+        s.thumbnail = self.thumbnail.clone();
+        s.key = self.key.clone();
+        s
     }
 
     fn apply(&mut self, ev: DlEvent) {
         match ev {
-            DlEvent::Info { title, streams, thumbnail, gif } => {
+            DlEvent::Info { title, streams, thumbnail, gif, key } => {
                 self.gif |= gif;
+                if key.is_some() {
+                    self.key = key;
+                }
                 self.pending_gif = gif;
                 if !title.is_empty() {
                     self.title = title;
@@ -149,12 +180,32 @@ struct Entry {
     snap: JobSnapshot,
     req: DownloadRequest,
     cancel: Arc<AtomicBool>,
+    /// Set with `cancel` when the user pauses: the job ends as Paused, keeping its files.
+    paused: Arc<AtomicBool>,
     child: Arc<Mutex<Option<Child>>>,
+    /// Files yt-dlp said it would write, so Cancel can remove the half-done pieces.
+    dests: Vec<PathBuf>,
     /// Spotify jobs: YouTube Music candidates (best first) and the URL used.
     candidates: Vec<Candidate>,
     chosen: Option<String>,
     /// Last lines of yt-dlp output, for "Report a problem".
     log: VecDeque<String>,
+}
+
+impl Entry {
+    fn new(snap: JobSnapshot, req: DownloadRequest) -> Self {
+        Self {
+            snap,
+            req,
+            cancel: Arc::new(AtomicBool::new(false)),
+            paused: Arc::new(AtomicBool::new(false)),
+            child: Arc::new(Mutex::new(None)),
+            dests: Vec::new(),
+            candidates: Vec::new(),
+            chosen: None,
+            log: VecDeque::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -187,8 +238,108 @@ fn remove_leftovers(final_path: &std::path::Path) {
     }
 }
 
+/// Jobs added together: a playlist, the items picked from a post, a Spotify album.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Group {
+    title: String,
+    /// Keep `<title>.m3u8` in the group's folder up to date (playlists).
+    m3u: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+enum SavedState {
+    Waiting,
+    Paused,
+    Done,
+    Failed,
+    Cancelled,
+}
+
+/// One row of `queue.json`.
+#[derive(Serialize, Deserialize)]
+struct SavedJob {
+    group: u64,
+    req: DownloadRequest,
+    title: String,
+    state: SavedState,
+    #[serde(default)]
+    downloaded: Option<f64>,
+    #[serde(default)]
+    total: Option<f64>,
+    #[serde(default)]
+    progress: f32,
+    #[serde(default)]
+    file: Option<PathBuf>,
+    #[serde(default)]
+    note: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    thumbnail: Option<String>,
+    #[serde(default)]
+    key: Option<String>,
+    #[serde(default)]
+    dests: Vec<PathBuf>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct SavedQueue {
+    groups: HashMap<u64, Group>,
+    jobs: Vec<SavedJob>,
+}
+
+fn queue_file() -> PathBuf {
+    paths::app_dir().join("queue.json")
+}
+
+/// Video/audio files with this name already in `dir` (a playlist item saved before).
+fn existing_media(dir: &std::path::Path, stem: &str, quality: Quality, gif: bool) -> Option<PathBuf> {
+    const VIDEO: &[&str] = &["mp4", "mkv", "webm", "mov", "m4v"];
+    const AUDIO: &[&str] = &["mp3", "m4a", "opus", "ogg", "flac", "wav", "aac"];
+    let exts: &[&str] = if gif {
+        &["gif", "mp4"]
+    } else if quality == Quality::Audio {
+        AUDIO
+    } else {
+        VIDEO
+    };
+    exts.iter().map(|e| dir.join(format!("{stem}.{e}"))).find(|p| p.is_file())
+}
+
+/// A playlist's file list: this download's items, plus songs listed before that are still
+/// in the folder (an earlier download of other items). Numbered names (`01 …`) sort by
+/// number, which is the playlist order.
+fn merge_m3u(
+    mut files: Vec<(String, f64, String)>,
+    earlier: Vec<(String, f64, String)>,
+    exists: impl Fn(&str) -> bool,
+) -> Vec<(String, f64, String)> {
+    for old in earlier {
+        if !files.iter().any(|f| f.2 == old.2) && exists(&old.2) {
+            files.push(old);
+        }
+    }
+    if files.iter().all(|f| f.2.starts_with(|c: char| c.is_ascii_digit())) {
+        files.sort_by(|a, b| a.2.cmp(&b.2));
+    }
+    files
+}
+
+fn is_picture(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|e| {
+        ["jpg", "jpeg", "png", "webp", "gif", "heic"].contains(&e.to_string_lossy().to_lowercase().as_str())
+    })
+}
+
 struct Inner {
     entries: Mutex<Vec<Entry>>,
+    groups: Mutex<HashMap<u64, Group>>,
+    /// Jobs only start once this is set (the app waits for its tools first).
+    ready: AtomicBool,
+    /// Keep `queue.json` up to date (the app; not the command-line examples).
+    persist: AtomicBool,
+    /// Shutting down: jobs being stopped now are saved as they were, not as cancelled.
+    closing: AtomicBool,
     settings: Arc<Mutex<Settings>>,
     notify: Notify,
     next_id: AtomicU64,
@@ -208,6 +359,10 @@ impl Queue {
         Self {
             inner: Arc::new(Inner {
                 entries: Mutex::new(Vec::new()),
+                groups: Mutex::new(HashMap::new()),
+                ready: AtomicBool::new(true),
+                persist: AtomicBool::new(false),
+                closing: AtomicBool::new(false),
                 settings,
                 notify: Box::new(notify),
                 next_id: AtomicU64::new(1),
@@ -222,31 +377,178 @@ impl Queue {
 
     /// Add several jobs that belong together (kept in order in the UI).
     pub fn add_batch(&self, reqs: impl IntoIterator<Item = DownloadRequest>) {
+        self.add_group("", false, reqs);
+    }
+
+    /// Add a playlist/post/album: its jobs share a card in the UI titled `title`. With `m3u`,
+    /// `<title>.m3u8` in their folder lists the saved files in order.
+    pub fn add_group(&self, title: &str, m3u: bool, reqs: impl IntoIterator<Item = DownloadRequest>) {
         let group = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+        self.inner.groups.lock().unwrap().insert(group, Group { title: title.to_string(), m3u });
         for r in reqs {
             self.add_to_group(r, group);
         }
+        self.save();
     }
 
     fn add_to_group(&self, req: DownloadRequest, group: u64) -> u64 {
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let title = if req.title_hint.is_empty() { req.url.clone() } else { req.title_hint.clone() };
         let mut snap = JobSnapshot::new(id, group, title);
+        snap.group_title = self.group_title(group);
         snap.music = req.music.is_some();
         snap.gif = req.gif;
+        snap.key = req.key.clone();
         snap.thumbnail = req.music.as_ref().and_then(|m| m.track.cover_url.clone()).or_else(|| req.thumbnail.clone());
         (self.inner.notify)(snap.clone());
-        self.inner.entries.lock().unwrap().push(Entry {
-            snap,
-            req,
-            cancel: Arc::new(AtomicBool::new(false)),
-            child: Arc::new(Mutex::new(None)),
-            candidates: Vec::new(),
-            chosen: None,
-            log: VecDeque::new(),
-        });
+        self.inner.entries.lock().unwrap().push(Entry::new(snap, req));
+        if group == 0 {
+            self.save();
+        }
         self.pump();
         id
+    }
+
+    fn group_title(&self, group: u64) -> Option<String> {
+        let groups = self.inner.groups.lock().unwrap();
+        groups.get(&group).map(|g| g.title.clone()).filter(|t| !t.is_empty())
+    }
+
+    /// Where a group's files go (for "Show folder" on its card).
+    pub fn group_dir(&self, group: u64) -> Option<PathBuf> {
+        let settings = self.inner.settings.lock().unwrap().clone();
+        let entries = self.inner.entries.lock().unwrap();
+        let e = entries.iter().find(|e| e.snap.group == group)?;
+        Some(download::out_dir(&e.req, &settings))
+    }
+
+    /// Hold back (false) or start (true) running jobs. Rows can be added either way.
+    pub fn set_ready(&self, ready: bool) {
+        self.inner.ready.store(ready, Ordering::SeqCst);
+        if ready {
+            self.pump();
+        }
+    }
+
+    /// Keep the queue in `queue.json` from now on, and bring back what was left in it
+    /// last time: waiting and interrupted downloads wait again, paused ones stay paused.
+    pub fn enable_persistence(&self) {
+        self.inner.persist.store(true, Ordering::SeqCst);
+        let saved: SavedQueue =
+            std::fs::read(queue_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        let mut new_group: HashMap<u64, u64> = HashMap::new();
+        for job in saved.jobs {
+            let group = match job.group {
+                0 => 0,
+                old => *new_group.entry(old).or_insert_with(|| {
+                    let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+                    let g = saved.groups.get(&old).cloned().unwrap_or(Group { title: String::new(), m3u: false });
+                    self.inner.groups.lock().unwrap().insert(id, g);
+                    id
+                }),
+            };
+            let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+            let mut snap = JobSnapshot::new(id, group, job.title);
+            snap.group_title = self.group_title(group);
+            snap.music = job.req.music.is_some();
+            snap.gif = job.req.gif;
+            snap.thumbnail = job.thumbnail;
+            snap.key = job.key;
+            snap.file = job.file;
+            snap.note = job.note;
+            snap.error = job.error;
+            snap.downloaded = job.downloaded;
+            snap.total = job.total;
+            snap.progress = job.progress;
+            snap.restored = true;
+            snap.state = match job.state {
+                SavedState::Waiting => JobState::Queued,
+                SavedState::Paused => JobState::Paused,
+                SavedState::Done => JobState::Done,
+                SavedState::Failed => JobState::Failed,
+                SavedState::Cancelled => JobState::Cancelled,
+            };
+            if snap.state == JobState::Done {
+                snap.progress = 1.0;
+            }
+            (self.inner.notify)(snap.clone());
+            snap.restored = false;
+            let mut entry = Entry::new(snap, job.req);
+            entry.dests = job.dests;
+            self.inner.entries.lock().unwrap().push(entry);
+        }
+        self.save();
+        self.pump();
+    }
+
+    /// Write `queue.json`: every unfinished job, plus the finished ones of groups that
+    /// still have unfinished jobs (so the playlist comes back whole).
+    fn save(&self) {
+        let entries = self.inner.entries.lock().unwrap();
+        self.save_locked(&entries);
+    }
+
+    fn save_locked(&self, entries: &[Entry]) {
+        if !self.inner.persist.load(Ordering::SeqCst) || self.inner.closing.load(Ordering::SeqCst) {
+            return;
+        }
+        let open: HashSet<u64> =
+            entries.iter().filter(|e| e.snap.group != 0 && !e.snap.state.is_finished()).map(|e| e.snap.group).collect();
+        let jobs: Vec<SavedJob> = entries
+            .iter()
+            .filter(|e| !e.snap.state.is_finished() || open.contains(&e.snap.group))
+            .map(|e| SavedJob {
+                group: e.snap.group,
+                req: e.req.clone(),
+                title: e.snap.title.clone(),
+                state: match e.snap.state {
+                    JobState::Paused => SavedState::Paused,
+                    JobState::Done => SavedState::Done,
+                    JobState::Failed => SavedState::Failed,
+                    JobState::Cancelled => SavedState::Cancelled,
+                    _ => SavedState::Waiting,
+                },
+                downloaded: e.snap.downloaded,
+                total: e.snap.total,
+                progress: e.snap.progress,
+                file: e.snap.file.clone(),
+                note: e.snap.note.clone(),
+                error: e.snap.error.clone(),
+                thumbnail: e.snap.thumbnail.clone(),
+                key: e.snap.key.clone(),
+                dests: e.dests.clone(),
+            })
+            .collect();
+        if jobs.is_empty() {
+            let _ = std::fs::remove_file(queue_file());
+            return;
+        }
+        let used: HashSet<u64> = jobs.iter().map(|j| j.group).collect();
+        let groups = self.inner.groups.lock().unwrap();
+        let saved = SavedQueue {
+            groups: groups.iter().filter(|(id, _)| used.contains(id)).map(|(id, g)| (*id, g.clone())).collect(),
+            jobs,
+        };
+        if let Ok(json) = serde_json::to_vec(&saved) {
+            let tmp = queue_file().with_extension("json.tmp");
+            if std::fs::write(&tmp, json).is_ok() {
+                let _ = std::fs::rename(&tmp, queue_file());
+            }
+        }
+    }
+
+    /// A download of this video (by key, else the same link) that's waiting, running or
+    /// paused, for the duplicate check.
+    pub fn find_unfinished(&self, key: Option<&str>, url: &str) -> Option<JobSnapshot> {
+        let entries = self.inner.entries.lock().unwrap();
+        entries
+            .iter()
+            .filter(|e| !e.snap.state.is_finished() && e.req.section.is_none() && e.req.music.is_none())
+            .find(|e| match key {
+                Some(k) => e.snap.key.as_deref() == Some(k) || e.req.url == url,
+                None => e.req.url == url,
+            })
+            .map(|e| e.snap.clone())
     }
 
     /// For the "pick another match" dialog: the Spotify track, the candidates
@@ -270,11 +572,9 @@ impl Queue {
             let Some(job) = e.req.music.as_mut() else { return false };
             job.forced = Some(url.clone());
             e.chosen = Some(url);
-            let (title, group, thumbnail) = (e.snap.title.clone(), e.snap.group, e.snap.thumbnail.clone());
-            e.snap = JobSnapshot::new(id, group, title);
-            e.snap.music = true;
-            e.snap.thumbnail = thumbnail;
+            e.snap = e.snap.restart();
             e.cancel = Arc::new(AtomicBool::new(false));
+            e.paused = Arc::new(AtomicBool::new(false));
             (self.inner.notify)(e.snap.clone());
         }
         self.pump();
@@ -332,9 +632,18 @@ impl Queue {
         let mut entries = self.inner.entries.lock().unwrap();
         let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
         match e.snap.state {
-            JobState::Queued => {
+            JobState::Queued | JobState::Paused => {
+                if e.snap.state == JobState::Paused {
+                    // Its half-done files were kept for Resume; nobody needs them now.
+                    for path in &e.dests {
+                        remove_leftovers(path);
+                    }
+                }
                 e.snap.state = JobState::Cancelled;
+                e.snap.speed = None;
+                e.snap.eta = None;
                 (self.inner.notify)(e.snap.clone());
+                self.save_locked(&entries);
             }
             JobState::Downloading | JobState::Processing => {
                 e.cancel.store(true, Ordering::SeqCst);
@@ -346,42 +655,135 @@ impl Queue {
         }
     }
 
-    pub fn retry(&self, id: u64) {
+    /// Stop a download but keep what it has so far. Waiting jobs just don't start.
+    /// Spotify songs can't be paused mid-way (small, and matched/checked in steps).
+    pub fn pause(&self, id: u64) {
+        let mut entries = self.inner.entries.lock().unwrap();
+        let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
+        match e.snap.state {
+            JobState::Queued => {
+                e.snap.state = JobState::Paused;
+                (self.inner.notify)(e.snap.clone());
+                self.save_locked(&entries);
+            }
+            // The job's thread sees the flags, ends, and marks it Paused.
+            JobState::Downloading if e.req.music.is_none() => {
+                e.paused.store(true, Ordering::SeqCst);
+                e.cancel.store(true, Ordering::SeqCst);
+                if let Some(child) = e.child.lock().unwrap().as_mut() {
+                    proc::kill_tree(child);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Carry on with a paused job (it waits for a free slot like any other).
+    pub fn resume(&self, id: u64) {
         {
             let mut entries = self.inner.entries.lock().unwrap();
             let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
-            if e.snap.state.is_active() || e.snap.state == JobState::Done {
+            if e.snap.state != JobState::Paused {
                 return;
             }
-            let (title, group, music, thumbnail) =
-                (e.snap.title.clone(), e.snap.group, e.snap.music, e.snap.thumbnail.clone());
-            e.snap = JobSnapshot::new(id, group, title);
-            e.snap.music = music;
-            e.snap.gif = e.req.gif;
-            e.snap.thumbnail = thumbnail;
+            e.snap.state = JobState::Queued;
+            e.snap.stage = 0;
+            e.snap.speed = None;
+            e.snap.eta = None;
             e.cancel = Arc::new(AtomicBool::new(false));
+            e.paused = Arc::new(AtomicBool::new(false));
             (self.inner.notify)(e.snap.clone());
+            self.save_locked(&entries);
         }
         self.pump();
     }
 
-    /// Remove a finished job from the list. Returns false for active jobs.
+    /// Ids of jobs in `group` (all jobs for `None`) matching `pred`.
+    fn ids_where(&self, group: Option<u64>, pred: impl Fn(&JobSnapshot) -> bool) -> Vec<u64> {
+        let entries = self.inner.entries.lock().unwrap();
+        entries.iter().filter(|e| group.is_none_or(|g| e.snap.group == g) && pred(&e.snap)).map(|e| e.snap.id).collect()
+    }
+
+    /// Pause everything (or one group): waiting jobs first, so no new one starts
+    /// when a running one stops.
+    pub fn pause_all(&self, group: Option<u64>) {
+        for id in self.ids_where(group, |s| s.state == JobState::Queued) {
+            self.pause(id);
+        }
+        for id in self.ids_where(group, |s| s.state == JobState::Downloading) {
+            self.pause(id);
+        }
+    }
+
+    pub fn resume_all(&self, group: Option<u64>) {
+        for id in self.ids_where(group, |s| s.state == JobState::Paused) {
+            self.resume(id);
+        }
+    }
+
+    /// Cancel every unfinished job of a group (waiting ones first).
+    pub fn cancel_group(&self, group: u64) {
+        for id in self.ids_where(Some(group), |s| matches!(s.state, JobState::Queued | JobState::Paused)) {
+            self.cancel(id);
+        }
+        for id in self.ids_where(Some(group), |s| s.state.is_active()) {
+            self.cancel(id);
+        }
+    }
+
+    /// Retry a group's failed and cancelled jobs.
+    pub fn retry_group(&self, group: u64) {
+        for id in self.ids_where(Some(group), |s| matches!(s.state, JobState::Failed | JobState::Cancelled)) {
+            self.retry(id);
+        }
+    }
+
+    pub fn retry(&self, id: u64) {
+        {
+            let mut entries = self.inner.entries.lock().unwrap();
+            let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
+            if !matches!(e.snap.state, JobState::Failed | JobState::Cancelled) {
+                return;
+            }
+            e.snap = e.snap.restart();
+            e.snap.gif = e.req.gif;
+            e.cancel = Arc::new(AtomicBool::new(false));
+            e.paused = Arc::new(AtomicBool::new(false));
+            (self.inner.notify)(e.snap.clone());
+            self.save_locked(&entries);
+        }
+        self.pump();
+    }
+
+    /// Remove a finished job from the list. Returns false for unfinished ones.
     pub fn remove(&self, id: u64) -> bool {
         let mut entries = self.inner.entries.lock().unwrap();
         match entries.iter().position(|e| e.snap.id == id) {
-            Some(i) if !entries[i].snap.state.is_active() => {
+            Some(i) if entries[i].snap.state.is_finished() => {
                 entries.remove(i);
+                self.save_locked(&entries);
                 true
             }
             _ => false,
         }
     }
 
-    /// Remove every finished, failed or cancelled job; returns their ids.
-    pub fn clear_finished(&self) -> Vec<u64> {
+    /// Remove every finished, failed or cancelled job (of one group, or all); returns their ids.
+    /// A playlist still downloading keeps its finished rows, so its card stays whole.
+    pub fn clear_finished(&self, group: Option<u64>) -> Vec<u64> {
         let mut entries = self.inner.entries.lock().unwrap();
-        let removed = entries.iter().filter(|e| !e.snap.state.is_active()).map(|e| e.snap.id).collect();
-        entries.retain(|e| e.snap.state.is_active());
+        let open: HashSet<u64> =
+            entries.iter().filter(|e| e.snap.group != 0 && !e.snap.state.is_finished()).map(|e| e.snap.group).collect();
+        let gone = |e: &Entry| {
+            e.snap.state.is_finished()
+                && match group {
+                    Some(g) => e.snap.group == g,
+                    None => !open.contains(&e.snap.group),
+                }
+        };
+        let removed = entries.iter().filter(|e| gone(e)).map(|e| e.snap.id).collect();
+        entries.retain(|e| !gone(e));
+        self.save_locked(&entries);
         removed
     }
 
@@ -390,7 +792,15 @@ impl Queue {
         entries.iter().find(|e| e.snap.id == id).and_then(|e| e.snap.file.clone())
     }
 
-    /// Cancel everything (used on shutdown so no yt-dlp/ffmpeg is left running).
+    /// Closing Neria: save the queue as it is (running jobs come back next time), then
+    /// stop every yt-dlp/ffmpeg so none is left running.
+    pub fn shutdown(&self) {
+        self.save();
+        self.inner.closing.store(true, Ordering::SeqCst);
+        self.cancel_all();
+    }
+
+    /// Cancel everything that's running or waiting.
     pub fn cancel_all(&self) {
         let ids: Vec<u64> = {
             let entries = self.inner.entries.lock().unwrap();
@@ -403,6 +813,9 @@ impl Queue {
 
     /// Start queued jobs while under the concurrency limit.
     fn pump(&self) {
+        if !self.inner.ready.load(Ordering::SeqCst) || self.inner.closing.load(Ordering::SeqCst) {
+            return;
+        }
         let settings = self.inner.settings.lock().unwrap().clone();
         let max = settings.max_concurrent.clamp(1, 8) as usize;
         let mut entries = self.inner.entries.lock().unwrap();
@@ -422,8 +835,9 @@ impl Queue {
 
             let (queue, id, req, cancel, child) =
                 (self.clone(), e.snap.id, e.req.clone(), e.cancel.clone(), e.child.clone());
+            let paused = e.paused.clone();
             let settings = settings.clone();
-            thread::spawn(move || queue.run_job(id, req, settings, cancel, child));
+            thread::spawn(move || queue.run_job(id, req, settings, cancel, paused, child));
         }
     }
 
@@ -433,6 +847,7 @@ impl Queue {
         mut req: DownloadRequest,
         settings: Settings,
         cancel: Arc<AtomicBool>,
+        paused: Arc<AtomicBool>,
         child: Arc<Mutex<Option<Child>>>,
     ) {
         // A retry starts a fresh log.
@@ -472,7 +887,9 @@ impl Queue {
                 }
                 result => {
                     let cancelled = cancel.load(Ordering::SeqCst);
+                    let paused = paused.load(Ordering::SeqCst);
                     self.update(id, true, |s| match result {
+                        _ if paused => s.state = JobState::Paused,
                         _ if cancelled => s.state = JobState::Cancelled,
                         Err(e) => {
                             s.state = JobState::Failed;
@@ -490,6 +907,26 @@ impl Queue {
         }
 
         let dir = download::out_dir(&req, &settings);
+
+        // A playlist/post item that's already in its folder from last time: keep it.
+        if req.music.is_none()
+            && req.direct.is_none()
+            && req.section.is_none()
+            && !req.force
+            && let Some(stem) = &req.stem
+            && let Some(existing) = existing_media(&dir, stem, req.quality, req.gif)
+        {
+            self.update(id, true, |s| {
+                s.state = JobState::Done;
+                s.progress = 1.0;
+                s.file = Some(existing);
+                s.postprocessor = Some("AlreadyHave".into());
+            });
+            self.write_group_m3u(id);
+            self.pump();
+            return;
+        }
+
         let mut result = match disk::check(&dir, 0) {
             Ok(()) if req.direct.is_some() => self.download_direct(id, &req, &dir, &cancel),
             Ok(()) => self.download_once(id, &req, &settings, &dir, &cancel, &child),
@@ -522,6 +959,7 @@ impl Queue {
         }
 
         let cancelled = cancel.load(Ordering::SeqCst);
+        let paused = paused.load(Ordering::SeqCst);
 
         // X "GIF" (really a silent MP4): save it as the .gif people expect.
         let mut gif_error = None;
@@ -596,6 +1034,7 @@ impl Queue {
             s.speed = None;
             s.eta = None;
             match result {
+                _ if paused => s.state = JobState::Paused,
                 _ if cancelled => s.state = JobState::Cancelled,
                 Ok(true) => {
                     s.state = JobState::Done;
@@ -608,7 +1047,79 @@ impl Queue {
                 }
             }
         });
+        if cancelled && !paused && !self.inner.closing.load(Ordering::SeqCst) {
+            // Cancelled for good: remove the half-done pieces (never a finished file).
+            let dests = self.dests_of(id);
+            thread::sleep(Duration::from_millis(300));
+            for path in &dests {
+                remove_leftovers(path);
+            }
+        }
+        if !cancelled {
+            self.remember(id, &req);
+            self.write_group_m3u(id);
+        }
         self.pump();
+    }
+
+    fn dests_of(&self, id: u64) -> Vec<PathBuf> {
+        let entries = self.inner.entries.lock().unwrap();
+        entries.iter().find(|e| e.snap.id == id).map(|e| e.dests.clone()).unwrap_or_default()
+    }
+
+    /// A finished download goes in the history, for the duplicate check.
+    fn remember(&self, id: u64, req: &DownloadRequest) {
+        if req.section.is_some() || req.music.is_some() {
+            return;
+        }
+        let snap = {
+            let entries = self.inner.entries.lock().unwrap();
+            entries.iter().find(|e| e.snap.id == id).map(|e| e.snap.clone())
+        };
+        let Some(s) = snap.filter(|s| s.state == JobState::Done) else { return };
+        let (Some(key), Some(file)) = (s.key.or_else(|| req.key.clone()), s.file) else { return };
+        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        history::record(history::Record { key, url: req.url.clone(), file, title: s.title, at });
+    }
+
+    /// Rewrite the playlist file of this job's group: the saved files, in playlist order.
+    fn write_group_m3u(&self, id: u64) {
+        let (dir, title, files) = {
+            let entries = self.inner.entries.lock().unwrap();
+            let Some(group) = entries.iter().find(|e| e.snap.id == id).map(|e| e.snap.group).filter(|g| *g != 0) else {
+                return;
+            };
+            let Some(title) = self.inner.groups.lock().unwrap().get(&group).filter(|g| g.m3u).map(|g| g.title.clone())
+            else {
+                return;
+            };
+            let Some(dir) = entries.iter().find(|e| e.snap.group == group).and_then(|e| e.req.dir.clone()) else {
+                return;
+            };
+            // Every item of the group that's in the folder: saved now, or kept from before.
+            let files: Vec<(String, f64, String)> = entries
+                .iter()
+                .filter(|e| e.snap.group == group)
+                .filter_map(|e| {
+                    let file = match (&e.snap.file, &e.req.stem) {
+                        (Some(f), _) if e.snap.state == JobState::Done => Some(f.clone()),
+                        (_, Some(stem)) => existing_media(&dir, stem, e.req.quality, e.req.gif),
+                        _ => None,
+                    }
+                    .filter(|f| f.parent() == Some(dir.as_path()) && !is_picture(f) && f.is_file())?;
+                    let name = file.file_name()?.to_string_lossy().into_owned();
+                    Some((e.snap.title.clone(), e.req.duration.unwrap_or(-1.0), name))
+                })
+                .collect();
+            (dir, title, files)
+        };
+        if files.is_empty() {
+            return;
+        }
+        let path = dir.join(format!("{}.m3u8", music::sanitize(&title)));
+        let earlier = music::read_m3u(&path);
+        let files = merge_m3u(files, earlier, |name| dir.join(name).is_file());
+        let _ = music::write_m3u(&dir, &title, &files);
     }
 
     /// Did this attempt fail the way an outdated yt-dlp fails?
@@ -673,7 +1184,9 @@ impl Queue {
         let result = download::run(req, settings, child, cancel, |ev| {
             if let DlEvent::Log(line) = ev {
                 if let Some(path) = line.strip_prefix("NERIA_DEST ") {
-                    written.push(PathBuf::from(path.trim()));
+                    let path = PathBuf::from(path.trim());
+                    self.add_dest(id, path.clone());
+                    written.push(path);
                 }
                 self.push_log(id, line);
                 return;
@@ -702,8 +1215,8 @@ impl Queue {
             }
             // Spotify jobs keep "Artist - Title" rather than the YouTube video title.
             let ev = match ev {
-                DlEvent::Info { streams, thumbnail, gif, .. } if keep_title => {
-                    DlEvent::Info { title: String::new(), streams, thumbnail, gif }
+                DlEvent::Info { streams, thumbnail, gif, key, .. } if keep_title => {
+                    DlEvent::Info { title: String::new(), streams, thumbnail, gif, key }
                 }
                 ev => ev,
             };
@@ -919,6 +1432,15 @@ impl Queue {
         }
     }
 
+    fn add_dest(&self, id: u64, path: PathBuf) {
+        let mut entries = self.inner.entries.lock().unwrap();
+        if let Some(e) = entries.iter_mut().find(|e| e.snap.id == id)
+            && !e.dests.contains(&path)
+        {
+            e.dests.push(path);
+        }
+    }
+
     fn set_chosen(&self, id: u64, url: String) {
         let mut entries = self.inner.entries.lock().unwrap();
         if let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) {
@@ -928,11 +1450,15 @@ impl Queue {
 
     fn update(&self, id: u64, emit: bool, f: impl FnOnce(&mut JobSnapshot)) {
         let mut entries = self.inner.entries.lock().unwrap();
-        if let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) {
-            f(&mut e.snap);
-            if emit {
-                (self.inner.notify)(e.snap.clone());
-            }
+        let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
+        let before = e.snap.state;
+        f(&mut e.snap);
+        if emit {
+            (self.inner.notify)(e.snap.clone());
+        }
+        // Save on state changes only (not on every progress tick).
+        if e.snap.state != before {
+            self.save_locked(&entries);
         }
     }
 }
@@ -963,5 +1489,33 @@ mod tests {
         left.sort();
         assert_eq!(left, ["Clip [abc] (compressed).mp4", "Clip [abcd].f401.mp4.part", "Other.mp4"]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn finds_items_saved_before() {
+        let dir = std::env::temp_dir().join(format!("neria-existing-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("01 Song.mp3"), b"x").unwrap();
+        std::fs::write(dir.join("02 Clip.mp4.part"), b"x").unwrap();
+        std::fs::write(dir.join("03 Clip.mkv"), b"x").unwrap();
+        assert!(existing_media(&dir, "01 Song", Quality::Audio, false).is_some());
+        // The same name as video is a different download.
+        assert!(existing_media(&dir, "01 Song", Quality::Best, false).is_none());
+        // Half-downloaded doesn't count.
+        assert!(existing_media(&dir, "02 Clip", Quality::Best, false).is_none());
+        assert!(existing_media(&dir, "03 Clip", Quality::P720, false).is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn playlist_file_keeps_earlier_songs_in_order() {
+        let e = |n: &str| (n.to_string(), 1.0, format!("{n}.mp3"));
+        // This time only 02 and 04; 01 and 03 were saved before, 05 was deleted since.
+        let merged = merge_m3u(vec![e("04 D"), e("02 B")], vec![e("01 A"), e("03 C"), e("05 E")], |f| f != "05 E.mp3");
+        let names: Vec<&str> = merged.iter().map(|f| f.2.as_str()).collect();
+        assert_eq!(names, ["01 A.mp3", "02 B.mp3", "03 C.mp3", "04 D.mp3"]);
+        // Unnumbered: playlist order as given, earlier ones after.
+        let merged = merge_m3u(vec![e("Song B")], vec![e("Song A")], |_| true);
+        assert_eq!(merged.iter().map(|f| f.2.as_str()).collect::<Vec<_>>(), ["Song B.mp3", "Song A.mp3"]);
     }
 }

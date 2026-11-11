@@ -24,6 +24,8 @@ pub struct MediaInfo {
     pub items: Vec<crate::post::Item>,
     /// Something the user should know about the items (e.g. a video Neria can't reach).
     pub note: Option<String>,
+    /// `Extractor:id` of a single video, for the duplicate check.
+    pub key: Option<String>,
 }
 
 impl MediaInfo {
@@ -133,9 +135,33 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
         max_height,
         playlist_count: is_playlist.then(|| v.get("entries").and_then(Value::as_array).map_or(0, |e| e.len())),
         gif: v.get("url").and_then(Value::as_str).is_some_and(crate::gif::is_x_gif_url),
+        key: (!is_playlist)
+            .then(|| {
+                let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("");
+                crate::download::media_key(s("extractor_key"), s("id"))
+            })
+            .flatten(),
         items,
         note: None,
     })
+}
+
+/// A video link that's also in a playlist (`watch?v=…&list=…`): the playlist's own link,
+/// so the preview can offer "Get the whole playlist". `None` for anything else.
+pub fn playlist_link(url: &str) -> Option<String> {
+    let lower = url.to_ascii_lowercase();
+    let youtube = ["youtube.com/", "youtu.be/", "music.youtube.com/"].iter().any(|h| lower.contains(h));
+    if !youtube || lower.contains("/playlist?") {
+        return None;
+    }
+    let query = url.split_once('?')?.1.split('#').next()?;
+    let list = query.split('&').find_map(|p| p.strip_prefix("list="))?;
+    // Mixes (RD…) are endless radio lists made up per person, not playlists.
+    if list.is_empty() || list.starts_with("RD") {
+        return None;
+    }
+    let host = if lower.contains("music.youtube.com") { "music.youtube.com" } else { "www.youtube.com" };
+    Some(format!("https://{host}/playlist?list={list}"))
 }
 
 fn post_info(
@@ -245,6 +271,9 @@ pub(crate) fn pick_thumbnail(v: &Value) -> Option<String> {
 /// Download a thumbnail into the cache directory and return its path.
 pub fn fetch_thumbnail(url: &str) -> Result<PathBuf> {
     let clean = url.split('?').next().unwrap_or(url);
+    // YouTube playlist thumbnails (`hqdefault.jpg?sqp=…`) come back as WebP despite the
+    // name; without the query it's a real JPEG.
+    let url = if url.contains("i.ytimg.com/") { clean } else { url };
     let ext = match clean.rsplit('.').next() {
         Some(e) if ["jpg", "jpeg", "png", "webp"].contains(&e) => e,
         _ => "jpg",
@@ -254,8 +283,9 @@ pub fn fetch_thumbnail(url: &str) -> Result<PathBuf> {
         hash = (hash ^ b as u64).wrapping_mul(0x100000001b3);
     }
     let path = paths::cache_dir().join(format!("thumb-{hash:016x}.{ext}"));
-    if path.is_file() {
-        return Ok(path);
+    // Saved before, maybe under the type it really turned out to be.
+    if let Some(p) = [path.clone(), path.with_extension("webp")].into_iter().find(|p| p.is_file()) {
+        return Ok(p);
     }
     let bytes = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -264,6 +294,12 @@ pub fn fetch_thumbnail(url: &str) -> Result<PathBuf> {
         .send()?
         .error_for_status()?
         .bytes()?;
+    // Name it by what it is, not what the address says (image loaders go by the name).
+    let path = if bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        path.with_extension("webp")
+    } else {
+        path
+    };
     std::fs::write(&path, &bytes)?;
     Ok(path)
 }
@@ -499,6 +535,19 @@ pub fn clean_error(msg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn playlist_of_a_video_link() {
+        assert_eq!(
+            playlist_link("https://www.youtube.com/watch?v=6JeAnrziLLo&list=PLu2Oeu&index=2").as_deref(),
+            Some("https://www.youtube.com/playlist?list=PLu2Oeu")
+        );
+        assert_eq!(playlist_link("https://www.youtube.com/watch?v=6JeAnrziLLo"), None);
+        assert_eq!(playlist_link("https://www.youtube.com/playlist?list=PLu2Oeu"), None);
+        // Mixes aren't real playlists.
+        assert_eq!(playlist_link("https://www.youtube.com/watch?v=a&list=RDa"), None);
+        assert_eq!(playlist_link("https://vimeo.com/1?list=x"), None);
+    }
 
     #[test]
     fn normalizes_links() {

@@ -47,10 +47,11 @@ export struct PickItem {
 }
 
 export struct JobItem {
+    // Negative for a group's card (the group id, negated).
     id: int,
     group: int,
     title: string,
-    // 0 queued, 1 downloading, 2 processing, 3 done, 4 failed, 5 cancelled
+    // 0 queued, 1 downloading, 2 processing, 3 done, 4 failed, 5 cancelled, 6 paused
     state: int,
     progress: float,
     status: string,
@@ -64,6 +65,17 @@ export struct JobItem {
     // Video thumbnail or song cover (empty until fetched, or when there is none).
     thumb: image,
     thumb-url: string,
+    // The card of a playlist/post/album: sums up its rows, opens to show them.
+    header: bool,
+    expanded: bool,
+    // A row inside a group card (indented; hidden while the card is closed).
+    child: bool,
+    // What the row's buttons can do right now (for a card: any of its rows).
+    can-pause: bool,
+    can-resume: bool,
+    can-cancel: bool,
+    can-retry: bool,
+    can-remove: bool,
 }
 
 // Formatting helpers implemented in Rust.
@@ -160,27 +172,50 @@ component JobRow inherits Rectangle {
     callback open-compressor();
     callback pick-match();
     callback report();
+    callback pause();
+    callback resume();
+    // Open/close a group card.
+    callback toggle();
 
     property <bool> active: root.job.state <= 2;
     property <bool> done: root.job.state == 3;
     property <bool> failed: root.job.state == 4;
-    property <string> glyph: root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? (root.job.music ? "\u{E8D6}" : "\u{E8B2}") : root.job.state == 4 ? "\u{E783}" : "\u{E711}";
-    property <string> tag: root.job.state == 0 ? "Waiting" : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : "";
+    property <bool> paused: root.job.state == 6;
+    property <string> glyph: root.job.header ? "\u{E8F1}" : root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? (root.job.music ? "\u{E8D6}" : "\u{E8B2}") : root.job.state == 4 ? "\u{E783}" : root.paused ? "\u{E769}" : "\u{E711}";
+    property <string> tag: root.job.state == 0 ? "Waiting" : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : root.paused ? "Paused" : "";
     property <int> tag-kind: root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
 
-    property <bool> moving: root.job.state == 1 || root.job.state == 2;
+    // A paused download keeps its bar, greyed, so you see how far it got.
+    property <bool> moving: root.job.state == 1 || root.job.state == 2 || (root.paused && root.job.progress > 0);
     height: root.moving ? 72px : 62px;
-    // Divider stops where the scrollbar lane starts.
+
+    // A group card opens and closes anywhere outside its buttons.
+    if root.job.header: TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggle(); }
+    }
+
+    // Divider stops where the scrollbar lane starts; rows inside a card start theirs
+    // under the indent, so the card reads as one block.
     Rectangle {
-        x: 0;
+        x: root.job.child ? 28px : 0;
         y: parent.height - 1px;
-        width: parent.width - 16px;
+        width: parent.width - 16px - self.x;
         height: 1px;
+        background: Theme.line;
+    }
+    // The card's rows hang off a thin guide line.
+    if root.job.child: Rectangle {
+        x: 11px;
+        y: 0;
+        width: 2px;
+        height: parent.height;
         background: Theme.line;
     }
 
     HorizontalLayout {
         spacing: 14px;
+        padding-left: root.job.child ? 28px : 0;
         // Room for the list's scrollbar, which is drawn over the right edge.
         padding-right: 16px;
 
@@ -188,6 +223,15 @@ component JobRow inherits Rectangle {
         // until it arrives. Always a 64px slot so every title lines up.
         Rectangle {
             width: 64px;
+            // A card shows a little stack: there's more than one thing inside.
+            if root.job.header: Rectangle {
+                width: root.job.music ? 40px : 64px;
+                height: root.job.music ? 40px : 36px;
+                x: (parent.width - self.width) / 2 + 4px;
+                y: (parent.height - self.height) / 2 - 4px;
+                border-radius: 6px;
+                background: Theme.line;
+            }
             Rectangle {
                 width: root.job.music ? 40px : 64px;
                 height: root.job.music ? 40px : 36px;
@@ -206,7 +250,7 @@ component JobRow inherits Rectangle {
                 if root.job.thumb.width == 0: Icon {
                     text: root.glyph;
                     font-size: 14px;
-                    color: root.active ? Theme.pop-text : root.failed ? Theme.bad : root.done && root.job.warn ? Theme.warn : Theme.muted;
+                    color: root.active && !root.job.header ? Theme.pop-text : root.failed ? Theme.bad : root.done && root.job.warn ? Theme.warn : Theme.muted;
                 }
             }
         }
@@ -219,7 +263,7 @@ component JobRow inherits Rectangle {
                 text: root.job.title;
                 color: Theme.ink;
                 font-size: 14px;
-                font-weight: 500;
+                font-weight: root.job.header ? 650 : 500;
                 overflow: elide;
             }
             HorizontalLayout {
@@ -252,6 +296,7 @@ component JobRow inherits Rectangle {
             }
             if root.moving: Bar {
                 value: root.job.progress;
+                fill: root.paused ? Theme.muted : Theme.pop;
             }
         }
 
@@ -260,55 +305,75 @@ component JobRow inherits Rectangle {
           horizontal-stretch: 0;
           HorizontalLayout {
             spacing: 6px;
-            if root.active: GhostButton {
+            if root.job.can-pause && !root.narrow: GhostButton {
+                compact: true;
+                text: root.job.header ? "Pause all" : "Pause";
+                clicked => { root.pause(); }
+            }
+            if root.job.can-pause && root.narrow: GhostButton {
+                compact: true;
+                icon: "\u{E769}";
+                clicked => { root.pause(); }
+            }
+            if root.job.can-resume: GhostButton {
+                compact: true;
+                text: root.job.header && !root.narrow ? "Resume all" : "Resume";
+                clicked => { root.resume(); }
+            }
+            if root.job.can-cancel: GhostButton {
                 compact: true;
                 text: "Cancel";
                 clicked => { root.cancel(); }
             }
-            if root.done: GhostButton {
+            // A card's "Show" opens its folder.
+            if root.done || (root.job.header && root.job.state != 0): GhostButton {
                 compact: true;
                 text: "Show";
                 clicked => { root.open(); }
             }
-            if root.done && !root.job.still && !root.narrow: GhostButton {
+            if root.done && !root.job.header && !root.job.still && !root.narrow: GhostButton {
                 compact: true;
                 text: "Clip";
                 clicked => { root.open-clipper(); }
             }
-            if root.done && !root.job.still && root.narrow: GhostButton {
+            if root.done && !root.job.header && !root.job.still && root.narrow: GhostButton {
                 compact: true;
                 icon: "\u{E8C6}";
                 clicked => { root.open-clipper(); }
             }
             // Songs are already small; compressing is for videos.
-            if root.done && !root.job.music && !root.job.still && !root.narrow: GhostButton {
+            if root.done && !root.job.header && !root.job.music && !root.job.still && !root.narrow: GhostButton {
                 compact: true;
                 text: "Compress";
                 clicked => { root.open-compressor(); }
             }
-            if root.done && !root.job.music && !root.job.still && root.narrow: GhostButton {
+            if root.done && !root.job.header && !root.job.music && !root.job.still && root.narrow: GhostButton {
                 compact: true;
                 icon: "\u{E73F}";
                 clicked => { root.open-compressor(); }
             }
-            if root.job.music && (root.done || root.failed): GhostButton {
+            if root.job.music && !root.job.header && (root.done || root.failed): GhostButton {
                 compact: true;
                 text: root.failed || root.job.warn ? "Pick match" : "Other match";
                 clicked => { root.pick-match(); }
             }
-            if root.failed || root.job.state == 5: GhostButton {
+            if root.job.can-retry: GhostButton {
                 compact: true;
-                text: "Retry";
+                text: root.job.header && !root.narrow ? "Retry failed" : "Retry";
                 clicked => { root.retry(); }
             }
-            if root.failed: GhostButton {
+            if root.failed && !root.job.header: GhostButton {
                 compact: true;
                 text: "Report";
                 clicked => { root.report(); }
             }
-            if !root.active: IconButton {
+            if root.job.can-remove: IconButton {
                 icon: "\u{E711}";
                 clicked => { root.remove(); }
+            }
+            if root.job.header: IconButton {
+                icon: root.job.expanded ? "\u{E70E}" : "\u{E70D}";
+                clicked => { root.toggle(); }
             }
           }
         }
@@ -586,6 +651,21 @@ export component AppWindow inherits Window {
     // Queue
     in property <[JobItem]> jobs;
     in property <int> active-count;
+    in property <int> paused-count;
+    in property <int> finished-count;
+    callback pause-job(int);
+    callback resume-job(int);
+    callback toggle-group(int);
+    callback pause-all();
+    callback resume-all();
+    // Duplicate check on the preview: "" when this link is new.
+    in property <string> dup-text;
+    // ...and whether there's a file to show.
+    in property <bool> dup-file;
+    callback dup-show();
+    // A video link that's also in a playlist: the playlist's own link ("" otherwise).
+    in property <string> playlist-url;
+    callback use-playlist();
 
     // Settings
     in-out property <string> output-dir;
@@ -948,6 +1028,7 @@ export component AppWindow inherits Window {
                         PrimaryButton {
                             text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
                                 : root.picking && root.pick-checked > 1 ? "Download " + root.pick-checked + " items"
+                                : root.dup-text != "" && root.probe-state == 2 ? "Download again"
                                 : "Download";
                             icon: "\u{E896}";
                             enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0)
@@ -1012,6 +1093,53 @@ export component AppWindow inherits Window {
                             font-size: 13px;
                             wrap: root.probe-state == 3 ? word-wrap : no-wrap;
                             overflow: elide;
+                        }
+                        // Already downloaded / already in the queue.
+                        if root.probe-state == 2 && root.dup-text != "": HorizontalLayout {
+                            spacing: 8px;
+                            Icon {
+                                horizontal-stretch: 0;
+                                text: "\u{E7BA}";
+                                font-size: 13px;
+                                color: Theme.warn;
+                            }
+                            Text {
+                                horizontal-stretch: 0;
+                                text: root.dup-text;
+                                color: Theme.warn;
+                                font-size: 12.5px;
+                                overflow: elide;
+                                vertical-alignment: center;
+                            }
+                            if root.dup-file: TextLink {
+                                horizontal-stretch: 0;
+                                text: "Show file";
+                                clicked => { root.dup-show(); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+                        // watch?v=…&list=…: this video, or the playlist it came from?
+                        if root.probe-state == 2 && root.playlist-url != "" && root.pick-items.length == 0: HorizontalLayout {
+                            spacing: 8px;
+                            Icon {
+                                horizontal-stretch: 0;
+                                text: "\u{E8FD}";
+                                font-size: 13px;
+                                color: Theme.muted;
+                            }
+                            Text {
+                                horizontal-stretch: 0;
+                                text: "This video is part of a playlist.";
+                                color: Theme.muted;
+                                font-size: 12.5px;
+                                vertical-alignment: center;
+                            }
+                            TextLink {
+                                horizontal-stretch: 0;
+                                text: "Get the whole playlist";
+                                clicked => { root.use-playlist(); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
                         }
                         if root.chips-inline: VerticalLayout {
                             padding-top: 8px;
@@ -1240,8 +1368,20 @@ export component AppWindow inherits Window {
                                 kind: 4;
                             }
                         }
+                        // Next to the title, so the links on the right don't jump around
+                        // as these come and go.
+                        if root.active-count > 0: TextLink {
+                            text: "Pause all";
+                            icon: "\u{E769}";
+                            clicked => { root.pause-all(); }
+                        }
+                        if root.paused-count > 0: TextLink {
+                            text: "Resume all";
+                            icon: "\u{E768}";
+                            clicked => { root.resume-all(); }
+                        }
                         Rectangle { horizontal-stretch: 1; }
-                        if root.jobs.length > root.active-count: TextLink {
+                        if root.finished-count > 0: TextLink {
                             text: "Clear finished";
                             clicked => { root.clear-finished(); }
                         }
@@ -1265,7 +1405,7 @@ export component AppWindow inherits Window {
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: "Paste a link above and press Download. Albums and playlists show up song by song.";
+                            text: "Paste a link above and press Download. Playlists and albums get one card you can open.";
                             color: Theme.muted;
                             font-size: 13px;
                             horizontal-alignment: center;
@@ -1286,6 +1426,9 @@ export component AppWindow inherits Window {
                             open-compressor => { root.cmp-job(job.id); }
                             pick-match => { root.match-pick(job.id); }
                             report => { root.report-job(job.id); }
+                            pause => { root.pause-job(job.id); }
+                            resume => { root.resume-job(job.id); }
+                            toggle => { root.toggle-group(job.group); }
                         }
                     }
                 }

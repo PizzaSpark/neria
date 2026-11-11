@@ -109,25 +109,38 @@ them; related ideas are merged into one item so they get built together.
   settings); X GIF links say "Saved as a .gif"
 - **The container setting always applies**: single files that need no merge (YouTube format
   18) are remuxed to mp4/mkv; webm picks webm streams where the site has them
+- **Checked on real links**: a single-GIF X post (saved as one .gif), Audio only on a
+  playlist (`Audio\<playlist>\01 …`)
+- **Playlist folders like Spotify ones**: `<playlist>.m3u8` in the folder, kept up to date as
+  items finish (keeps songs saved by an earlier download, numbered files in number order);
+  items already in the folder are skipped ("Already downloaded")
+- **One group card in the queue** per playlist/post/album: stacked thumbnail, "3 of 12 saved ·
+  1 failed · now: …", overall bar, Pause all / Resume all / Cancel / Retry failed / Show
+  folder; open by default, the chevron (or a click on the card) folds it. "Clear finished" leaves playlists that
+  are still going
+- **Pause / resume**: Pause on downloading rows (not Spotify songs, which are matched and
+  checked in steps), "Pause all" / "Resume all" next to the Queue title; yt-dlp keeps its
+  `.part` files and Resume carries on from there; paused rows keep a grey bar ("687 KB of
+  3.0 MB so far") and free their slot. Cancel removes the half-done pieces
+- **The queue survives restarts** (`queue.json`): waiting and interrupted downloads come back
+  and carry on once the tools are checked, paused ones stay paused, a playlist comes back
+  whole (its finished rows too)
+- **Duplicate check**: `history.json` remembers finished downloads by video ID; pasting one
+  again says "You downloaded this today as mp3 · Show file", or "It's already in the queue",
+  and the button becomes "Download again" (overwrites a file of the same name)
+- **"This video is part of a playlist · Get the whole playlist"** on `watch?v=…&list=…`
+  links (with "Allow playlists" off they only fetch the one video)
+- **Queue thumbnails for playlist items**: YouTube sent WebP named `.jpg`, which didn't load
 
 ## Now: v0.3
 Finish and ship what's in `main`, plus the loose ends that make it feel complete.
-1. **Check what's built** on real links: clip a single-GIF X link (untested: needs a post
-   that's just one GIF), an Instagram carousel all the way through with cookies, a long
-   YouTube playlist in the picker (scrolling, thumbnails, 100+ items), Audio only on a
-   playlist (`Audio\<playlist>\01 …`)
-2. **Playlist folders like Spotify ones**: one `.m3u8` per playlist folder, skip items already
-   there on a re-download, and **one group card in the queue** for a playlist/post/album
-   (overall progress, collapsible, "3 of 12 done")
-3. **Pause / resume, and the queue survives restarts**: Pause on each downloading row and
-   "Pause all"; yt-dlp stops but keeps its `.part` files, Resume picks up where it left off
-   (`--continue`), the row says "Paused · 120 MB of 388 MB" and frees its slot. Waiting,
-   paused and interrupted downloads come back after closing Neria (paused stay paused)
-4. **Duplicate check**: warn when a link (or the same video ID) is already in the queue or
-   already downloaded, with "Open existing" / "Download again"
-5. **Code signing** to remove the SmartScreen warning: SignPath Foundation signs open-source
+1. **Check what's left on real links**: an Instagram carousel all the way through with
+   cookies, a long YouTube playlist in the picker and as a group card (scrolling,
+   thumbnails, 100+ items)
+2. **Code signing** to remove the SmartScreen warning: SignPath Foundation signs open-source
    projects for free; the repo is public, so apply and sign in the release workflow
-6. Release notes (`docs/releases/v0.3.0.md`), version bump, friends test round two
+3. Later, not now: release notes (`docs/releases/v0.3.0.md`), version bump, friends test
+   round two
 
 ## Next: UI foundation
 The features grew page by page. Make the UI one coherent system, so the features below are
