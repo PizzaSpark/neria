@@ -148,8 +148,9 @@ Finish and ship what's in `main`, plus the loose ends that make it feel complete
 ## Next: UI foundation
 The features grew page by page. Make the UI one coherent system, so the features below are
 built once on it. Friends' feedback feeds in here.
-1. Split the pages out of `app.slint` into per-page/component files; one component set
-   (buttons, chips, rows, dialogs, toasts) instead of per-page variations
+1. ✅ Split the pages out of `app.slint` into per-page/component files; one component set
+   (buttons, chips, rows, dialogs, toasts) instead of per-page variations (`ui/pages/`,
+   `ui/dialogs/`, `ui/components/`, shared controls in `ui/widgets.slint`)
 2. Settings reorganised into sections that match the pages (Download, Clip, Compress,
    Spotify, Network, About)
 3. Layouts that adapt to window width (wide desktop → narrow), so the same screens can later
