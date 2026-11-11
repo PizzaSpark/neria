@@ -36,6 +36,10 @@ we'll do them.
   ffmpeg reads with 403, so frames from a low-res stream are only a fallback for other sites)
 - Download clip sends only the selected range (`--download-sections`); Exact adds
   `--force-keyframes-at-cuts`
+- The Download page's quality chips and format button show on the Clip page for links (same
+  settings, so both pages agree); hidden for local files, "Saved as a .gif" for X GIFs
+- The container setting now always applies: single files that need no merge (YouTube format
+  18) are remuxed to mp4/mkv, and webm picks webm streams where the site has them
 
 ### Compressor
 - Fit a size (20 MB Discord / 25 / 50 / 100 / custom) or pick a quality (slider → CRF/CQ/QP)

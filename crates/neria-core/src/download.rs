@@ -176,10 +176,20 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
             if let Some(h) = q.max_height() {
                 sort.insert(0, format!("res:{h}"));
             }
+            if s.container == "webm" {
+                // webm only holds VP9/AV1 + Opus: pick webm streams where the site has them.
+                sort.push("ext:webm:webm".to_string());
+            }
             if !sort.is_empty() {
                 push(&["-S", &sort.join(",")]);
             }
             push(&["--merge-output-format", &s.container]);
+            // A single file that already has audio (e.g. YouTube format 18) isn't merged, so
+            // the merge format never applies: remux it. mp4 and mkv take any stream we get;
+            // webm can't hold H.264/AAC, so there it stays as it came.
+            if s.container != "webm" {
+                push(&["--remux-video", &s.container]);
+            }
         }
     }
 
@@ -410,6 +420,21 @@ mod tests {
         assert!(!line.contains("--newline"));
         assert!(line.contains("-f bv*+ba/b"));
         assert!(line.ends_with("-- https://x.y/z"));
+    }
+
+    #[test]
+    fn container_args() {
+        let req = DownloadRequest::new("https://x.y/z", Quality::P720, "");
+        let mut s = Settings { container: "mkv".into(), ..Settings::default() };
+        let args = build_args(&req, &s);
+        assert!(args.windows(2).any(|w| w[0] == "--merge-output-format" && w[1] == "mkv"));
+        assert!(args.windows(2).any(|w| w[0] == "--remux-video" && w[1] == "mkv"));
+        s.container = "webm".into();
+        let args = build_args(&req, &s);
+        assert!(!args.contains(&"--remux-video".to_string()));
+        assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "res:720,ext:webm:webm"));
+        let audio = build_args(&DownloadRequest::new("https://x.y/z", Quality::Audio, ""), &Settings::default());
+        assert!(!audio.contains(&"--remux-video".to_string()));
     }
 
     #[test]
