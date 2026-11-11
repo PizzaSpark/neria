@@ -71,7 +71,7 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
   "Update now", downloads the zip, swaps the exe in place (bin/ and settings.json untouched) and
   "Restart now" (warns about running downloads). FFmpeg, Deno and libmpv get "Update tools" once
   a newer build exists and ours is over 30 days old (old files moved aside, restored on failure).
-  **Needs the repo to be public** (private repos answer 404 to unauthenticated checks)
+  Works because the repo is public (private repos answer 404 to unauthenticated checks)
 - ✅ **Auto-retry when YouTube breaks** (`probe::needs_newer_ytdlp`, queue): when a download
   fails the way an outdated yt-dlp fails ("please report this issue", nsig/signature, "no such
   option"…), the row says "The site changed. Updating the downloader, then trying again…",
@@ -115,8 +115,8 @@ Release small and often: this list → v0.2.0 → collect feedback before the bi
 - ✅ **Release checks**: the release workflow refuses to build if the tag doesn't match the
   `Cargo.toml` version; CI and release run `cargo fmt --check` (`rustfmt.toml`: width 120)
   and `cargo clippy -D warnings`; release notes come from `docs/releases/<tag>.md`
-- Optional: **code signing** to remove the SmartScreen warning (SignPath gives free signing to
-  open-source projects, if the repo goes public)
+- Optional: **code signing** to remove the SmartScreen warning (SignPath Foundation signs
+  open-source projects for free; the repo is public, so apply and sign in the release workflow)
 
 ## Next: UI foundation
 The features grew page by page. Make the UI one coherent system now, while it's small, so the
