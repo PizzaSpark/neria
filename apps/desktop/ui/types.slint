@@ -1,0 +1,89 @@
+// Data shared between the Rust side and the UI. Re-exported from app.slint, so Rust sees
+// every struct and the Fmt global.
+
+export struct MatchItem {
+    title: string,
+    detail: string,
+    // 0..100; 0 with ruled-out = length too different
+    score: int,
+    ruled-out: bool,
+    current: bool,
+    url: string,
+    // Sound check vs the reference preview:
+    // 0 not checked, 1 checking, 2 same recording, 3 unsure, 4 different, 5 failed
+    check-state: int,
+    check-text: string,
+}
+
+// One tool on the first-run screen. state: 0 waiting, 1 downloading, 2 ready, 3 failed.
+export struct ToolRow {
+    name: string,
+    purpose: string,
+    state: int,
+    progress: float,
+    detail: string,
+}
+
+export struct SyncItem {
+    title: string,
+    file: string,
+    checked: bool,
+}
+
+// One thing in a post or playlist, in the "what to download" list.
+export struct PickItem {
+    kind: string, // "Photo", "Video", "GIF"
+    title: string, // own title, or "" for post items
+    detail: string, // length, e.g. "0:05"
+    thumb: image,
+    checked: bool,
+    // Videos can have their own quality: 0 = as the chips above, 1.. = Best, 1080p, 720p,
+    // 480p, Audio only. Photos and GIFs are saved as they are.
+    quality: int,
+    can-quality: bool,
+}
+
+export struct JobItem {
+    // Negative for a group's card (the group id, negated).
+    id: int,
+    group: int,
+    title: string,
+    // 0 queued, 1 downloading, 2 processing, 3 done, 4 failed, 5 cancelled, 6 paused
+    state: int,
+    progress: float,
+    status: string,
+    stats: string,
+    // Finished, but worth a look (e.g. uncertain Spotify match).
+    warn: bool,
+    // Spotify track: offers "pick another match".
+    music: bool,
+    // Saved as a photo or GIF: nothing to clip or compress (yet).
+    still: bool,
+    // Video thumbnail or song cover (empty until fetched, or when there is none).
+    thumb: image,
+    thumb-url: string,
+    // The card of a playlist/post/album: sums up its rows, opens to show them.
+    header: bool,
+    expanded: bool,
+    // A row inside a group card (indented; hidden while the card is closed).
+    child: bool,
+    // What the row's buttons can do right now (for a card: any of its rows).
+    can-pause: bool,
+    can-resume: bool,
+    can-cancel: bool,
+    can-retry: bool,
+    can-remove: bool,
+}
+
+// Formatting helpers implemented in Rust.
+export global Fmt {
+    pure callback time(float) -> string;
+    // Latest keyframe at or before t: where a lossless cut really starts.
+    pure callback keyframe-before(float, [float]) -> float;
+}
+
+// Format names the Settings drawer lists and the pages show ("mp4 · H.264").
+export global Formats {
+    out property <[string]> containers: ["mp4", "mkv", "webm"];
+    out property <[string]> audio: ["mp3", "m4a", "opus", "flac", "wav"];
+}

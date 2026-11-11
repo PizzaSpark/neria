@@ -1,0 +1,74 @@
+import { Theme } from "../theme.slint";
+import { PrimaryButton, GhostButton, Tick, Dialog, Divider, ListRow } from "../widgets.slint";
+
+// First Download of a Spotify link: where the song info and the audio come from.
+export component SpotifyHeadsUp inherits Dialog {
+    in-out property <bool> skip;
+    callback ok(bool);
+    callback cancel();
+
+    title: "Where Spotify songs come from";
+    card-width: 540px;
+    fit: true;
+    close => { root.cancel(); }
+
+    Text {
+        text: "Spotify doesn't allow downloading its audio. So Neria reads each song's details from Spotify and downloads the matching song from YouTube Music.";
+        color: Theme.ink;
+        font-family: Theme.body;
+        font-size: 14px;
+        wrap: word-wrap;
+    }
+    VerticalLayout {
+        Divider { }
+        for fact in [
+            { label: "Song info", text: "From Spotify: title, artist, album, cover and lyrics" },
+            { label: "Audio", text: "From YouTube Music, about 128–160 kbps" },
+            { label: "Checked", text: "Each song is compared with Spotify's preview. Now and then a match is a different version; you can swap it." },
+        ]: ListRow {
+            lane: 0;
+            min-height: fact-row.preferred-height;
+            fact-row := HorizontalLayout {
+                padding-top: 11px;
+                padding-bottom: 11px;
+                spacing: 16px;
+                Text {
+                    width: 84px;
+                    text: fact.label;
+                    color: Theme.muted;
+                    font-family: Theme.display;
+                    font-size: 13px;
+                    font-weight: 700;
+                }
+                Text {
+                    text: fact.text;
+                    color: Theme.ink;
+                    font-family: Theme.body;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-top: 4px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Tick {
+                text: "Don't show this again";
+                checked <=> root.skip;
+            }
+        }
+        GhostButton {
+            text: "Cancel";
+            clicked => { root.cancel(); }
+        }
+        PrimaryButton {
+            text: "Got it, download";
+            clicked => { root.ok(root.skip); }
+        }
+    }
+}

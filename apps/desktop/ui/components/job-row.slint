@@ -1,0 +1,224 @@
+import { Theme } from "../theme.slint";
+import { JobItem } from "../types.slint";
+import { Icon, GhostButton, IconButton, Bar, Tag } from "../widgets.slint";
+
+// One queue row: calm (hairline, no card), with labelled actions on the right.
+export component JobRow inherits Rectangle {
+    in property <JobItem> job;
+    // Narrow window: Clip / Compress shrink to icons so the title keeps its room.
+    in property <bool> narrow;
+    callback cancel();
+    callback remove();
+    callback retry();
+    callback open();
+    callback open-clipper();
+    callback open-compressor();
+    callback pick-match();
+    callback report();
+    callback pause();
+    callback resume();
+    // Open/close a group card.
+    callback toggle();
+
+    property <bool> active: root.job.state <= 2;
+    property <bool> done: root.job.state == 3;
+    property <bool> failed: root.job.state == 4;
+    property <bool> paused: root.job.state == 6;
+    property <string> glyph: root.job.header ? "\u{E8F1}" : root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? (root.job.music ? "\u{E8D6}" : "\u{E8B2}") : root.job.state == 4 ? "\u{E783}" : root.paused ? "\u{E769}" : "\u{E711}";
+    property <string> tag: root.job.state == 0 ? "Waiting" : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : root.paused ? "Paused" : "";
+    property <int> tag-kind: root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
+
+    // A paused download keeps its bar, greyed, so you see how far it got.
+    property <bool> moving: root.job.state == 1 || root.job.state == 2 || (root.paused && root.job.progress > 0);
+    height: root.moving ? 72px : 62px;
+
+    // A group card opens and closes anywhere outside its buttons.
+    if root.job.header: TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggle(); }
+    }
+
+    // Divider stops where the scrollbar lane starts; rows inside a card start theirs
+    // under the indent, so the card reads as one block.
+    Rectangle {
+        x: root.job.child ? 28px : 0;
+        y: parent.height - 1px;
+        width: parent.width - 16px - self.x;
+        height: 1px;
+        background: Theme.line;
+    }
+    // The card's rows hang off a thin guide line.
+    if root.job.child: Rectangle {
+        x: 11px;
+        y: 0;
+        width: 2px;
+        height: parent.height;
+        background: Theme.line;
+    }
+
+    HorizontalLayout {
+        spacing: 14px;
+        padding-left: root.job.child ? 28px : 0;
+        // Room for the list's scrollbar, which is drawn over the right edge.
+        padding-right: 16px;
+
+        // Thumbnail (16:9 for videos, square for song covers), or a status icon
+        // until it arrives. Always a 64px slot so every title lines up.
+        Rectangle {
+            width: 64px;
+            // A card shows a little stack: there's more than one thing inside.
+            if root.job.header: Rectangle {
+                width: root.job.music ? 40px : 64px;
+                height: root.job.music ? 40px : 36px;
+                x: (parent.width - self.width) / 2 + 4px;
+                y: (parent.height - self.height) / 2 - 4px;
+                border-radius: 6px;
+                background: Theme.line;
+            }
+            Rectangle {
+                width: root.job.music ? 40px : 64px;
+                height: root.job.music ? 40px : 36px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: 6px;
+                background: root.job.thumb.width > 0 ? Theme.raised : root.active ? Theme.pop.with-alpha(0.16) : Theme.raised;
+                clip: true;
+                if root.job.thumb.width > 0: Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.job.thumb;
+                    image-fit: cover;
+                    opacity: root.failed || root.job.state == 5 ? 0.45 : 1.0;
+                }
+                if root.job.thumb.width == 0: Icon {
+                    text: root.glyph;
+                    font-size: 14px;
+                    color: root.active && !root.job.header ? Theme.pop-text : root.failed ? Theme.bad : root.done && root.job.warn ? Theme.warn : Theme.muted;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 6px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.job.title;
+                color: Theme.ink;
+                font-size: 14px;
+                font-weight: root.job.header ? 650 : 500;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                if root.tag != "": VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    Tag {
+                        text: root.tag;
+                        kind: root.tag-kind;
+                    }
+                }
+                Text {
+                    text: root.job.status;
+                    color: root.failed || (root.done && root.job.warn) ? Theme.ink : Theme.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: root.job.stats;
+                    color: Theme.muted;
+                    // Spotify rows say "✓ sounds like Spotify · 11.6 MB": words, so not monospace.
+                    font-family: root.job.music && root.done ? Theme.body : Theme.mono;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 0;
+                }
+            }
+            if root.moving: Bar {
+                value: root.job.progress;
+                fill: root.paused ? Theme.muted : Theme.pop;
+            }
+        }
+
+        VerticalLayout {
+          alignment: center;
+          horizontal-stretch: 0;
+          HorizontalLayout {
+            spacing: 6px;
+            if root.job.can-pause && !root.narrow: GhostButton {
+                compact: true;
+                text: root.job.header ? "Pause all" : "Pause";
+                clicked => { root.pause(); }
+            }
+            if root.job.can-pause && root.narrow: GhostButton {
+                compact: true;
+                icon: "\u{E769}";
+                clicked => { root.pause(); }
+            }
+            if root.job.can-resume: GhostButton {
+                compact: true;
+                text: root.job.header && !root.narrow ? "Resume all" : "Resume";
+                clicked => { root.resume(); }
+            }
+            if root.job.can-cancel: GhostButton {
+                compact: true;
+                text: "Cancel";
+                clicked => { root.cancel(); }
+            }
+            // A card's "Show" opens its folder.
+            if root.done || (root.job.header && root.job.state != 0): GhostButton {
+                compact: true;
+                text: "Show";
+                clicked => { root.open(); }
+            }
+            if root.done && !root.job.header && !root.job.still && !root.narrow: GhostButton {
+                compact: true;
+                text: "Clip";
+                clicked => { root.open-clipper(); }
+            }
+            if root.done && !root.job.header && !root.job.still && root.narrow: GhostButton {
+                compact: true;
+                icon: "\u{E8C6}";
+                clicked => { root.open-clipper(); }
+            }
+            // Songs are already small; compressing is for videos.
+            if root.done && !root.job.header && !root.job.music && !root.job.still && !root.narrow: GhostButton {
+                compact: true;
+                text: "Compress";
+                clicked => { root.open-compressor(); }
+            }
+            if root.done && !root.job.header && !root.job.music && !root.job.still && root.narrow: GhostButton {
+                compact: true;
+                icon: "\u{E73F}";
+                clicked => { root.open-compressor(); }
+            }
+            if root.job.music && !root.job.header && (root.done || root.failed): GhostButton {
+                compact: true;
+                text: root.failed || root.job.warn ? "Pick match" : "Other match";
+                clicked => { root.pick-match(); }
+            }
+            if root.job.can-retry: GhostButton {
+                compact: true;
+                text: root.job.header && !root.narrow ? "Retry failed" : "Retry";
+                clicked => { root.retry(); }
+            }
+            if root.failed && !root.job.header: GhostButton {
+                compact: true;
+                text: "Report";
+                clicked => { root.report(); }
+            }
+            if root.job.can-remove: IconButton {
+                icon: "\u{E711}";
+                clicked => { root.remove(); }
+            }
+            if root.job.header: IconButton {
+                icon: root.job.expanded ? "\u{E70E}" : "\u{E70D}";
+                clicked => { root.toggle(); }
+            }
+          }
+        }
+    }
+}

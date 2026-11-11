@@ -1,0 +1,183 @@
+import { Theme } from "../theme.slint";
+
+// Filmstrip + waveform with draggable in/out handles and a playhead.
+export component Timeline inherits Rectangle {
+    in property <float> duration;
+    in property <float> position;
+    in-out property <float> in-time;
+    in-out property <float> out-time;
+    in property <[image]> thumbs;
+    in property <image> wave;
+    in property <bool> has-video;
+    // Lossless mode: keyframe ticks and where the cut will really start.
+    in property <bool> show-keyframes;
+    in property <[float]> keyframe-ticks;
+    in property <float> effective-in;
+    callback seek(float);
+
+    property <float> dur: max(0.001, root.duration);
+    property <length> eff-x: root.width * (root.effective-in / root.dur);
+    property <bool> early-start: root.show-keyframes && root.effective-in < root.in-time - 0.05;
+    property <length> handle-w: 14px;
+    property <length> in-x: root.width * (root.in-time / root.dur);
+    property <length> out-x: root.width * (root.out-time / root.dur);
+    property <length> pos-x: root.width * (root.position / root.dur);
+    property <length> strip-h: root.has-video ? 66px : 0px;
+
+    height: root.has-video ? 100px : 64px;
+    border-radius: 10px;
+    background: Theme.surface-hi;
+    clip: true;
+
+    if root.has-video: HorizontalLayout {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.strip-h;
+        for t in root.thumbs: Image {
+            source: t;
+            image-fit: cover;
+            min-width: 0;
+            horizontal-stretch: 1;
+        }
+    }
+    Image {
+        x: 0;
+        y: root.strip-h;
+        width: root.width;
+        height: root.height - root.strip-h;
+        source: root.wave;
+        image-fit: fill;
+    }
+
+    // Dim everything outside the selection.
+    Rectangle {
+        x: 0;
+        width: root.in-x;
+        height: root.height;
+        background: #0b0d12c8;
+    }
+    Rectangle {
+        x: root.out-x;
+        width: max(0px, root.width - root.out-x);
+        height: root.height;
+        background: #0b0d12c8;
+    }
+    Rectangle {
+        x: root.in-x;
+        width: max(0px, root.out-x - root.in-x);
+        height: root.height;
+        border-width: 2px;
+        border-color: Theme.accent;
+        border-radius: 8px;
+    }
+
+    // Lossless cut starts earlier than the in point: show the extra footage.
+    if root.early-start: Rectangle {
+        x: root.eff-x;
+        width: max(0px, root.in-x - root.eff-x);
+        height: root.height;
+        background: Theme.warn.with-alpha(0.28);
+    }
+    if root.early-start: Rectangle {
+        x: root.eff-x - 1px;
+        width: 2px;
+        height: root.height;
+        background: Theme.warn;
+    }
+
+    // Keyframe ticks along the bottom edge.
+    if root.show-keyframes: Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        for k in root.keyframe-ticks: Rectangle {
+            x: root.width * (k / root.dur) - 1px;
+            y: root.height - 12px;
+            width: 2px;
+            height: 12px;
+            border-radius: 1px;
+            background: #ffffffc0;
+        }
+    }
+
+    // Click or drag anywhere to scrub.
+    TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.seek(max(0, min(1, self.mouse-x / root.width)) * root.duration);
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.seek(max(0, min(1, self.mouse-x / root.width)) * root.duration);
+            }
+        }
+    }
+
+    // Playhead
+    Rectangle {
+        x: root.pos-x - 1px;
+        width: 2px;
+        height: root.height;
+        background: white;
+    }
+    Rectangle {
+        x: root.pos-x - 5px;
+        y: 0;
+        width: 10px;
+        height: 6px;
+        border-radius: 2px;
+        background: white;
+    }
+
+    // In handle (sits just inside the selection)
+    Rectangle {
+        x: root.in-x;
+        width: root.handle-w;
+        height: root.height;
+        border-radius: 6px;
+        background: in-ta.pressed || in-ta.has-hover ? Theme.accent-hi : Theme.accent;
+        Rectangle {
+            width: 2px;
+            height: 24px;
+            border-radius: 1px;
+            background: #ffffffd0;
+        }
+        in-ta := TouchArea {
+            mouse-cursor: ew-resize;
+            moved => {
+                if self.pressed {
+                    root.in-time = max(0, min(root.out-time - 0.1, root.in-time + (self.mouse-x - self.pressed-x) / root.width * root.duration));
+                    root.seek(root.in-time);
+                }
+            }
+        }
+    }
+
+    // Out handle
+    Rectangle {
+        x: root.out-x - root.handle-w;
+        width: root.handle-w;
+        height: root.height;
+        border-radius: 6px;
+        background: out-ta.pressed || out-ta.has-hover ? Theme.accent-hi : Theme.accent;
+        Rectangle {
+            width: 2px;
+            height: 24px;
+            border-radius: 1px;
+            background: #ffffffd0;
+        }
+        out-ta := TouchArea {
+            mouse-cursor: ew-resize;
+            moved => {
+                if self.pressed {
+                    root.out-time = min(root.duration, max(root.in-time + 0.1, root.out-time + (self.mouse-x - self.pressed-x) / root.width * root.duration));
+                    root.seek(root.out-time);
+                }
+            }
+        }
+    }
+}

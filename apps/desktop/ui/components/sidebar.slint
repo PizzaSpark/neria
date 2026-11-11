@@ -1,0 +1,52 @@
+import { Theme } from "../theme.slint";
+import { NavItem, LogoMark } from "../widgets.slint";
+
+// The nav rail on the left: logo mark, the three pages, Settings at the bottom.
+export component Sidebar inherits Rectangle {
+    in-out property <int> page;
+    in property <bool> settings-open;
+    callback open-settings();
+    width: 80px;
+    background: Theme.bg;
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.line;
+    }
+    VerticalLayout {
+        padding: 10px;
+        padding-top: 18px;
+        spacing: 6px;
+        // Logo mark: the one sticker that's always on screen.
+        HorizontalLayout {
+            alignment: center;
+            padding-bottom: 14px;
+            LogoMark { }
+        }
+        NavItem {
+            icon: "\u{E896}";
+            label: "Download";
+            active: root.page == 0;
+            clicked => { root.page = 0; }
+        }
+        NavItem {
+            icon: "\u{E8C6}";
+            label: "Clip";
+            active: root.page == 1;
+            clicked => { root.page = 1; }
+        }
+        NavItem {
+            icon: "\u{E73F}";
+            label: "Compress";
+            active: root.page == 2;
+            clicked => { root.page = 2; }
+        }
+        Rectangle { vertical-stretch: 1; }
+        NavItem {
+            icon: "\u{E713}";
+            label: "Settings";
+            active: root.settings-open;
+            clicked => { root.open-settings(); }
+        }
+    }
+}

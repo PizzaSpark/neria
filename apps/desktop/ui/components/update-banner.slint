@@ -1,0 +1,87 @@
+import { Theme } from "../theme.slint";
+import { GhostButton, IconButton, Bar, Tag, TextLink, Divider } from "../widgets.slint";
+
+// New Neria version (or one downloading / ready to restart), at the top of the Download page.
+// Calm strip, not a card: the Download button keeps the page's one yellow action.
+// state: 0 idle, 1 checking, 2 downloading, 3 ready to restart, 4 failed.
+export component UpdateBanner inherits VerticalLayout {
+    in property <int> state;
+    in property <string> version;
+    in property <string> status;
+    in property <float> progress;
+    // Running downloads, which a restart would stop.
+    in property <int> active-count;
+    callback whats-new();
+    callback install();
+    callback restart();
+    callback later();
+    vertical-stretch: 0;
+    spacing: 10px;
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Tag {
+                text: root.state == 3 ? "Ready" : root.state == 4 ? "Failed" : "New";
+                kind: root.state == 3 ? 1 : root.state == 4 ? 3 : 4;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 6px;
+            Text {
+                text: root.state == 2 || root.state == 3 || root.state == 4
+                    ? root.status
+                    : "Neria " + root.version + " is out.";
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: 13px;
+                font-weight: 500;
+                wrap: word-wrap;
+            }
+            if root.state == 2: Bar {
+                value: root.progress;
+            }
+            if root.state == 3 && root.active-count > 0: Text {
+                text: "Restarting stops " + root.active-count + (root.active-count == 1 ? " running download." : " running downloads.");
+                color: Theme.warn;
+                font-family: Theme.body;
+                font-size: 12px;
+            }
+        }
+        if root.state == 0 || root.state == 4: VerticalLayout {
+            alignment: center;
+            TextLink {
+                text: "What's new";
+                clicked => { root.whats-new(); }
+            }
+        }
+        if root.state == 0 || root.state == 4: VerticalLayout {
+            alignment: center;
+            GhostButton {
+                compact: true;
+                text: root.state == 4 ? "Try again" : "Update now";
+                icon: root.state == 4 ? "\u{E72C}" : "\u{E896}";
+                clicked => { root.install(); }
+            }
+        }
+        if root.state == 3: VerticalLayout {
+            alignment: center;
+            GhostButton {
+                compact: true;
+                text: "Restart now";
+                icon: "\u{E72C}";
+                clicked => { root.restart(); }
+            }
+        }
+        if root.state != 2: VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: "\u{E711}";
+                clicked => { root.later(); }
+            }
+        }
+    }
+    Divider { }
+}

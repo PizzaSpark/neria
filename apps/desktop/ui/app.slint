@@ -1,566 +1,22 @@
-﻿import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider, Palette } from "std-widgets.slint";
+// The window: nav rail, the three pages, the Settings drawer and every overlay. Rust
+// talks only to AppWindow (properties and callbacks below) and the exported structs and
+// globals; the screens themselves live in pages/, dialogs/ and components/.
+import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, Chip, Bar, NavItem, PageTitle, SectionTitle, Hint, Tag, Kbd, LinkField, TextLink, Tick, Dialog, ChoiceTile } from "widgets.slint";
+import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, Fmt, Formats } from "types.slint";
+import { Toast } from "widgets.slint";
+import { Sidebar } from "components/sidebar.slint";
+import { DownloadPage } from "pages/download.slint";
+import { ClipPage } from "pages/clip.slint";
+import { CompressPage } from "pages/compress.slint";
+import { SettingsDrawer } from "pages/settings.slint";
+import { SetupScreen } from "pages/setup.slint";
+import { MatchDialog } from "dialogs/match.slint";
+import { SyncDialog } from "dialogs/sync.slint";
+import { SpotifyHeadsUp } from "dialogs/spotify.slint";
+import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme }
-
-export struct MatchItem {
-    title: string,
-    detail: string,
-    // 0..100; 0 with ruled-out = length too different
-    score: int,
-    ruled-out: bool,
-    current: bool,
-    url: string,
-    // Sound check vs the reference preview:
-    // 0 not checked, 1 checking, 2 same recording, 3 unsure, 4 different, 5 failed
-    check-state: int,
-    check-text: string,
-}
-
-// One tool on the first-run screen. state: 0 waiting, 1 downloading, 2 ready, 3 failed.
-export struct ToolRow {
-    name: string,
-    purpose: string,
-    state: int,
-    progress: float,
-    detail: string,
-}
-
-export struct SyncItem {
-    title: string,
-    file: string,
-    checked: bool,
-}
-
-// One thing in a post or playlist, in the "what to download" list.
-export struct PickItem {
-    kind: string, // "Photo", "Video", "GIF"
-    title: string, // own title, or "" for post items
-    detail: string, // length, e.g. "0:05"
-    thumb: image,
-    checked: bool,
-    // Videos can have their own quality: 0 = as the chips above, 1.. = Best, 1080p, 720p,
-    // 480p, Audio only. Photos and GIFs are saved as they are.
-    quality: int,
-    can-quality: bool,
-}
-
-export struct JobItem {
-    // Negative for a group's card (the group id, negated).
-    id: int,
-    group: int,
-    title: string,
-    // 0 queued, 1 downloading, 2 processing, 3 done, 4 failed, 5 cancelled, 6 paused
-    state: int,
-    progress: float,
-    status: string,
-    stats: string,
-    // Finished, but worth a look (e.g. uncertain Spotify match).
-    warn: bool,
-    // Spotify track: offers "pick another match".
-    music: bool,
-    // Saved as a photo or GIF: nothing to clip or compress (yet).
-    still: bool,
-    // Video thumbnail or song cover (empty until fetched, or when there is none).
-    thumb: image,
-    thumb-url: string,
-    // The card of a playlist/post/album: sums up its rows, opens to show them.
-    header: bool,
-    expanded: bool,
-    // A row inside a group card (indented; hidden while the card is closed).
-    child: bool,
-    // What the row's buttons can do right now (for a card: any of its rows).
-    can-pause: bool,
-    can-resume: bool,
-    can-cancel: bool,
-    can-retry: bool,
-    can-remove: bool,
-}
-
-// Formatting helpers implemented in Rust.
-export global Fmt {
-    pure callback time(float) -> string;
-    // Latest keyframe at or before t: where a lossless cut really starts.
-    pure callback keyframe-before(float, [float]) -> float;
-}
-
-// Quality chips, then what you'll get ("mp4 · H.264", opens Settings). Sits
-// under the preview title on wide windows, in its own row on narrow ones.
-component QualityRow inherits HorizontalLayout {
-    in-out property <int> quality;
-    // No quality to pick (Spotify songs, X GIFs): show `spotify-text` instead of the chips.
-    in property <bool> spotify;
-    in property <string> spotify-text;
-    in property <string> format-text;
-    in property <bool> show-clip;
-    callback changed();
-    callback open-settings();
-    callback clip-first();
-    spacing: 7px;
-    if !root.spotify: Chip {
-        horizontal-stretch: 0;
-        text: "Best";
-        selected: root.quality == 0;
-        clicked => { root.quality = 0; root.changed(); }
-    }
-    if !root.spotify: Chip {
-        horizontal-stretch: 0;
-        text: "1080p";
-        selected: root.quality == 1;
-        clicked => { root.quality = 1; root.changed(); }
-    }
-    if !root.spotify: Chip {
-        horizontal-stretch: 0;
-        text: "720p";
-        selected: root.quality == 2;
-        clicked => { root.quality = 2; root.changed(); }
-    }
-    if !root.spotify: Chip {
-        horizontal-stretch: 0;
-        text: "480p";
-        selected: root.quality == 3;
-        clicked => { root.quality = 3; root.changed(); }
-    }
-    if !root.spotify: Chip {
-        horizontal-stretch: 0;
-        text: "Audio only";
-        selected: root.quality == 4;
-        clicked => { root.quality = 4; root.changed(); }
-    }
-    if root.spotify: Text {
-        text: root.spotify-text;
-        color: Theme.muted;
-        font-size: 12px;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-    if root.show-clip && !root.spotify: VerticalLayout {
-        alignment: center;
-        horizontal-stretch: 0;
-        padding-left: 4px;
-        GhostButton {
-            compact: true;
-            text: "Clip first";
-            icon: "\u{E8C6}";
-            clicked => { root.clip-first(); }
-        }
-    }
-    Rectangle { horizontal-stretch: 1; }
-    VerticalLayout {
-        alignment: center;
-        horizontal-stretch: 0;
-        GhostButton {
-            compact: true;
-            icon: "\u{E713}";
-            text: root.format-text;
-            clicked => { root.open-settings(); }
-        }
-    }
-}
-
-// One queue row: calm (hairline, no card), with labelled actions on the right.
-component JobRow inherits Rectangle {
-    in property <JobItem> job;
-    // Narrow window: Clip / Compress shrink to icons so the title keeps its room.
-    in property <bool> narrow;
-    callback cancel();
-    callback remove();
-    callback retry();
-    callback open();
-    callback open-clipper();
-    callback open-compressor();
-    callback pick-match();
-    callback report();
-    callback pause();
-    callback resume();
-    // Open/close a group card.
-    callback toggle();
-
-    property <bool> active: root.job.state <= 2;
-    property <bool> done: root.job.state == 3;
-    property <bool> failed: root.job.state == 4;
-    property <bool> paused: root.job.state == 6;
-    property <string> glyph: root.job.header ? "\u{E8F1}" : root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? (root.job.music ? "\u{E8D6}" : "\u{E8B2}") : root.job.state == 4 ? "\u{E783}" : root.paused ? "\u{E769}" : "\u{E711}";
-    property <string> tag: root.job.state == 0 ? "Waiting" : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : root.paused ? "Paused" : "";
-    property <int> tag-kind: root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
-
-    // A paused download keeps its bar, greyed, so you see how far it got.
-    property <bool> moving: root.job.state == 1 || root.job.state == 2 || (root.paused && root.job.progress > 0);
-    height: root.moving ? 72px : 62px;
-
-    // A group card opens and closes anywhere outside its buttons.
-    if root.job.header: TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.toggle(); }
-    }
-
-    // Divider stops where the scrollbar lane starts; rows inside a card start theirs
-    // under the indent, so the card reads as one block.
-    Rectangle {
-        x: root.job.child ? 28px : 0;
-        y: parent.height - 1px;
-        width: parent.width - 16px - self.x;
-        height: 1px;
-        background: Theme.line;
-    }
-    // The card's rows hang off a thin guide line.
-    if root.job.child: Rectangle {
-        x: 11px;
-        y: 0;
-        width: 2px;
-        height: parent.height;
-        background: Theme.line;
-    }
-
-    HorizontalLayout {
-        spacing: 14px;
-        padding-left: root.job.child ? 28px : 0;
-        // Room for the list's scrollbar, which is drawn over the right edge.
-        padding-right: 16px;
-
-        // Thumbnail (16:9 for videos, square for song covers), or a status icon
-        // until it arrives. Always a 64px slot so every title lines up.
-        Rectangle {
-            width: 64px;
-            // A card shows a little stack: there's more than one thing inside.
-            if root.job.header: Rectangle {
-                width: root.job.music ? 40px : 64px;
-                height: root.job.music ? 40px : 36px;
-                x: (parent.width - self.width) / 2 + 4px;
-                y: (parent.height - self.height) / 2 - 4px;
-                border-radius: 6px;
-                background: Theme.line;
-            }
-            Rectangle {
-                width: root.job.music ? 40px : 64px;
-                height: root.job.music ? 40px : 36px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                border-radius: 6px;
-                background: root.job.thumb.width > 0 ? Theme.raised : root.active ? Theme.pop.with-alpha(0.16) : Theme.raised;
-                clip: true;
-                if root.job.thumb.width > 0: Image {
-                    width: parent.width;
-                    height: parent.height;
-                    source: root.job.thumb;
-                    image-fit: cover;
-                    opacity: root.failed || root.job.state == 5 ? 0.45 : 1.0;
-                }
-                if root.job.thumb.width == 0: Icon {
-                    text: root.glyph;
-                    font-size: 14px;
-                    color: root.active && !root.job.header ? Theme.pop-text : root.failed ? Theme.bad : root.done && root.job.warn ? Theme.warn : Theme.muted;
-                }
-            }
-        }
-
-        VerticalLayout {
-            alignment: center;
-            spacing: 6px;
-            horizontal-stretch: 1;
-            Text {
-                text: root.job.title;
-                color: Theme.ink;
-                font-size: 14px;
-                font-weight: root.job.header ? 650 : 500;
-                overflow: elide;
-            }
-            HorizontalLayout {
-                spacing: 8px;
-                if root.tag != "": VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    Tag {
-                        text: root.tag;
-                        kind: root.tag-kind;
-                    }
-                }
-                Text {
-                    text: root.job.status;
-                    color: root.failed || (root.done && root.job.warn) ? Theme.ink : Theme.muted;
-                    font-size: 12px;
-                    overflow: elide;
-                    vertical-alignment: center;
-                    horizontal-stretch: 1;
-                }
-                Text {
-                    text: root.job.stats;
-                    color: Theme.muted;
-                    // Spotify rows say "✓ sounds like Spotify · 11.6 MB": words, so not monospace.
-                    font-family: root.job.music && root.done ? Theme.body : Theme.mono;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                    horizontal-stretch: 0;
-                }
-            }
-            if root.moving: Bar {
-                value: root.job.progress;
-                fill: root.paused ? Theme.muted : Theme.pop;
-            }
-        }
-
-        VerticalLayout {
-          alignment: center;
-          horizontal-stretch: 0;
-          HorizontalLayout {
-            spacing: 6px;
-            if root.job.can-pause && !root.narrow: GhostButton {
-                compact: true;
-                text: root.job.header ? "Pause all" : "Pause";
-                clicked => { root.pause(); }
-            }
-            if root.job.can-pause && root.narrow: GhostButton {
-                compact: true;
-                icon: "\u{E769}";
-                clicked => { root.pause(); }
-            }
-            if root.job.can-resume: GhostButton {
-                compact: true;
-                text: root.job.header && !root.narrow ? "Resume all" : "Resume";
-                clicked => { root.resume(); }
-            }
-            if root.job.can-cancel: GhostButton {
-                compact: true;
-                text: "Cancel";
-                clicked => { root.cancel(); }
-            }
-            // A card's "Show" opens its folder.
-            if root.done || (root.job.header && root.job.state != 0): GhostButton {
-                compact: true;
-                text: "Show";
-                clicked => { root.open(); }
-            }
-            if root.done && !root.job.header && !root.job.still && !root.narrow: GhostButton {
-                compact: true;
-                text: "Clip";
-                clicked => { root.open-clipper(); }
-            }
-            if root.done && !root.job.header && !root.job.still && root.narrow: GhostButton {
-                compact: true;
-                icon: "\u{E8C6}";
-                clicked => { root.open-clipper(); }
-            }
-            // Songs are already small; compressing is for videos.
-            if root.done && !root.job.header && !root.job.music && !root.job.still && !root.narrow: GhostButton {
-                compact: true;
-                text: "Compress";
-                clicked => { root.open-compressor(); }
-            }
-            if root.done && !root.job.header && !root.job.music && !root.job.still && root.narrow: GhostButton {
-                compact: true;
-                icon: "\u{E73F}";
-                clicked => { root.open-compressor(); }
-            }
-            if root.job.music && !root.job.header && (root.done || root.failed): GhostButton {
-                compact: true;
-                text: root.failed || root.job.warn ? "Pick match" : "Other match";
-                clicked => { root.pick-match(); }
-            }
-            if root.job.can-retry: GhostButton {
-                compact: true;
-                text: root.job.header && !root.narrow ? "Retry failed" : "Retry";
-                clicked => { root.retry(); }
-            }
-            if root.failed && !root.job.header: GhostButton {
-                compact: true;
-                text: "Report";
-                clicked => { root.report(); }
-            }
-            if root.job.can-remove: IconButton {
-                icon: "\u{E711}";
-                clicked => { root.remove(); }
-            }
-            if root.job.header: IconButton {
-                icon: root.job.expanded ? "\u{E70E}" : "\u{E70D}";
-                clicked => { root.toggle(); }
-            }
-          }
-        }
-    }
-}
-
-// Filmstrip + waveform with draggable in/out handles and a playhead.
-component Timeline inherits Rectangle {
-    in property <float> duration;
-    in property <float> position;
-    in-out property <float> in-time;
-    in-out property <float> out-time;
-    in property <[image]> thumbs;
-    in property <image> wave;
-    in property <bool> has-video;
-    // Lossless mode: keyframe ticks and where the cut will really start.
-    in property <bool> show-keyframes;
-    in property <[float]> keyframe-ticks;
-    in property <float> effective-in;
-    callback seek(float);
-
-    property <float> dur: max(0.001, root.duration);
-    property <length> eff-x: root.width * (root.effective-in / root.dur);
-    property <bool> early-start: root.show-keyframes && root.effective-in < root.in-time - 0.05;
-    property <length> handle-w: 14px;
-    property <length> in-x: root.width * (root.in-time / root.dur);
-    property <length> out-x: root.width * (root.out-time / root.dur);
-    property <length> pos-x: root.width * (root.position / root.dur);
-    property <length> strip-h: root.has-video ? 66px : 0px;
-
-    height: root.has-video ? 100px : 64px;
-    border-radius: 10px;
-    background: Theme.surface-hi;
-    clip: true;
-
-    if root.has-video: HorizontalLayout {
-        x: 0;
-        y: 0;
-        width: root.width;
-        height: root.strip-h;
-        for t in root.thumbs: Image {
-            source: t;
-            image-fit: cover;
-            min-width: 0;
-            horizontal-stretch: 1;
-        }
-    }
-    Image {
-        x: 0;
-        y: root.strip-h;
-        width: root.width;
-        height: root.height - root.strip-h;
-        source: root.wave;
-        image-fit: fill;
-    }
-
-    // Dim everything outside the selection.
-    Rectangle {
-        x: 0;
-        width: root.in-x;
-        height: root.height;
-        background: #0b0d12c8;
-    }
-    Rectangle {
-        x: root.out-x;
-        width: max(0px, root.width - root.out-x);
-        height: root.height;
-        background: #0b0d12c8;
-    }
-    Rectangle {
-        x: root.in-x;
-        width: max(0px, root.out-x - root.in-x);
-        height: root.height;
-        border-width: 2px;
-        border-color: Theme.accent;
-        border-radius: 8px;
-    }
-
-    // Lossless cut starts earlier than the in point: show the extra footage.
-    if root.early-start: Rectangle {
-        x: root.eff-x;
-        width: max(0px, root.in-x - root.eff-x);
-        height: root.height;
-        background: Theme.warn.with-alpha(0.28);
-    }
-    if root.early-start: Rectangle {
-        x: root.eff-x - 1px;
-        width: 2px;
-        height: root.height;
-        background: Theme.warn;
-    }
-
-    // Keyframe ticks along the bottom edge.
-    if root.show-keyframes: Rectangle {
-        x: 0;
-        y: 0;
-        width: root.width;
-        height: root.height;
-        for k in root.keyframe-ticks: Rectangle {
-            x: root.width * (k / root.dur) - 1px;
-            y: root.height - 12px;
-            width: 2px;
-            height: 12px;
-            border-radius: 1px;
-            background: #ffffffc0;
-        }
-    }
-
-    // Click or drag anywhere to scrub.
-    TouchArea {
-        mouse-cursor: pointer;
-        pointer-event(e) => {
-            if e.kind == PointerEventKind.down {
-                root.seek(max(0, min(1, self.mouse-x / root.width)) * root.duration);
-            }
-        }
-        moved => {
-            if self.pressed {
-                root.seek(max(0, min(1, self.mouse-x / root.width)) * root.duration);
-            }
-        }
-    }
-
-    // Playhead
-    Rectangle {
-        x: root.pos-x - 1px;
-        width: 2px;
-        height: root.height;
-        background: white;
-    }
-    Rectangle {
-        x: root.pos-x - 5px;
-        y: 0;
-        width: 10px;
-        height: 6px;
-        border-radius: 2px;
-        background: white;
-    }
-
-    // In handle (sits just inside the selection)
-    Rectangle {
-        x: root.in-x;
-        width: root.handle-w;
-        height: root.height;
-        border-radius: 6px;
-        background: in-ta.pressed || in-ta.has-hover ? Theme.accent-hi : Theme.accent;
-        Rectangle {
-            width: 2px;
-            height: 24px;
-            border-radius: 1px;
-            background: #ffffffd0;
-        }
-        in-ta := TouchArea {
-            mouse-cursor: ew-resize;
-            moved => {
-                if self.pressed {
-                    root.in-time = max(0, min(root.out-time - 0.1, root.in-time + (self.mouse-x - self.pressed-x) / root.width * root.duration));
-                    root.seek(root.in-time);
-                }
-            }
-        }
-    }
-
-    // Out handle
-    Rectangle {
-        x: root.out-x - root.handle-w;
-        width: root.handle-w;
-        height: root.height;
-        border-radius: 6px;
-        background: out-ta.pressed || out-ta.has-hover ? Theme.accent-hi : Theme.accent;
-        Rectangle {
-            width: 2px;
-            height: 24px;
-            border-radius: 1px;
-            background: #ffffffd0;
-        }
-        out-ta := TouchArea {
-            mouse-cursor: ew-resize;
-            moved => {
-                if self.pressed {
-                    root.out-time = min(root.duration, max(root.in-time + 0.1, root.out-time + (self.mouse-x - self.pressed-x) / root.width * root.duration));
-                    root.seek(root.out-time);
-                }
-            }
-        }
-    }
-}
+export { Theme, MatchItem, ToolRow, SyncItem, PickItem, JobItem, Fmt }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -586,8 +42,6 @@ export component AppWindow inherits Window {
     in property <string> setup-blocked-dir; // set when Neria can't write next to itself
     in property <int> setup-missing; // tools still to download
     in property <[ToolRow]> setup-tools;
-    property <bool> setup-blocked: setup-blocked-dir != "";
-    property <bool> setup-failed: setup-error != "";
 
     // Link + preview
     in-out property <string> url;
@@ -613,8 +67,6 @@ export component AppWindow inherits Window {
     callback pick-toggle(int, bool);
     callback pick-all(bool);
     callback pick-quality(int, int);
-    property <[string]> pick-qualities: ["As above", "Best", "1080p", "720p", "480p", "Audio only"];
-    property <bool> picking: root.probe-state == 2 && root.pick-items.length > 1;
     in property <int> spotify-count;
     in property <string> spotify-note;
     in property <[SyncItem]> sync-items;
@@ -745,8 +197,6 @@ export component AppWindow inherits Window {
     // The link is an X GIF (from the Download page's preview): saved as is, no quality to pick.
     in property <bool> clip-is-gif;
     in property <bool> clip-buffering;
-    property <float> clip-effective-in: Fmt.keyframe-before(root.clip-in, root.clip-keyframes);
-    property <bool> clip-early-start: !root.clip-is-link && root.clip-mode == 0 && root.clip-effective-in < root.clip-in - 0.05;
 
     // A stale "Saved · …" message shouldn't hide what the new selection will do.
     changed clip-in => { if !root.clip-exporting { root.clip-status = ""; } }
@@ -797,23 +247,10 @@ export component AppWindow inherits Window {
     callback cmp-cancel();
     callback cmp-show-output();
 
-    function set-in() {
-        root.clip-in = min(root.clip-position, root.clip-duration);
-        if root.clip-out <= root.clip-in + 0.05 {
-            root.clip-out = root.clip-duration;
-        }
-    }
-    function set-out() {
-        root.clip-out = max(root.clip-position, 0);
-        if root.clip-out <= root.clip-in + 0.05 {
-            root.clip-in = 0;
-        }
-    }
 
-    property <[string]> containers: ["mp4", "mkv", "webm"];
-    // Chips go under the preview title when there's room (saves a row for the queue).
-    property <bool> chips-inline: root.probe-state == 2 && root.width >= 960px;
-    property <[string]> audio-formats: ["mp3", "m4a", "opus", "flac", "wav"];
+    // "mp4 · H.264" and "mp3": what the quality rows say you'll get.
+    property <string> video-format: Formats.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
+    property <string> audio-format: Formats.audio[root.audio-format-index];
 
     callback paste();
     callback url-edited(string);
@@ -839,2353 +276,293 @@ export component AppWindow inherits Window {
     callback theme-changed();
 
     HorizontalLayout {
-        // ───────────── Sidebar ─────────────
-        Rectangle {
-            width: 80px;
-            background: Theme.bg;
-            Rectangle {
-                x: parent.width - 1px;
-                width: 1px;
-                background: Theme.line;
-            }
-            VerticalLayout {
-                padding: 10px;
-                padding-top: 18px;
-                spacing: 6px;
-                // Logo mark: the one sticker that's always on screen.
-                HorizontalLayout {
-                    alignment: center;
-                    padding-bottom: 14px;
-                    Rectangle {
-                        width: 37px;
-                        height: 37px;
-                        Rectangle {
-                            x: 3px;
-                            y: 3px;
-                            width: 34px;
-                            height: 34px;
-                            border-radius: 10px;
-                            background: Theme.hard;
-                        }
-                        Rectangle {
-                            width: 34px;
-                            height: 34px;
-                            border-radius: 10px;
-                            background: Theme.pop;
-                            border-width: 2px;
-                            border-color: Theme.hard;
-                            // The app icon's mark: an "N" whose left stem is a download arrow.
-                            Image {
-                                width: parent.width;
-                                height: parent.height;
-                                source: @image-url("../assets/neria-mark.png");
-                            }
-                        }
-                    }
-                }
-                NavItem {
-                    icon: "\u{E896}";
-                    label: "Download";
-                    active: root.page == 0;
-                    clicked => { root.page = 0; }
-                }
-                NavItem {
-                    icon: "\u{E8C6}";
-                    label: "Clip";
-                    active: root.page == 1;
-                    clicked => { root.page = 1; }
-                }
-                NavItem {
-                    icon: "\u{E73F}";
-                    label: "Compress";
-                    active: root.page == 2;
-                    clicked => { root.page = 2; }
-                }
-                Rectangle { vertical-stretch: 1; }
-                NavItem {
-                    icon: "\u{E713}";
-                    label: "Settings";
-                    active: root.drawer-open;
-                    clicked => { root.drawer-open = true; }
-                }
-            }
+        Sidebar {
+            page <=> root.page;
+            settings-open: root.drawer-open;
+            open-settings => { root.drawer-open = true; }
         }
 
-        // ───────────── Main ─────────────
         Rectangle {
             horizontal-stretch: 1;
 
-            if root.page == 0: VerticalLayout {
-                padding: 26px;
-                // Wide windows: keep a readable column instead of stretching edge to edge.
-                padding-left: max(26px, (parent.width - 1240px) / 2);
-                padding-right: max(26px, (parent.width - 1240px) / 2);
-                padding-bottom: 14px;
-                spacing: 16px;
+            if root.page == 0: DownloadPage {
+                window-width: root.width;
+                window-height: root.height;
+                tools-ready: root.tools-ready;
 
-                HorizontalLayout {
-                    spacing: 12px;
-                    PageTitle {
-                        horizontal-stretch: 1;
-                        title: "Grab anything.";
-                        subtitle: "YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.";
-                    }
-                }
+                update-banner: root.update-banner;
+                update-state: root.update-state;
+                update-version: root.update-version;
+                update-status: root.update-status;
+                update-progress: root.update-progress;
+                update-install => { root.update-install(); }
+                update-restart => { root.update-restart(); }
+                update-later => { root.update-later(); }
 
-                // New Neria version (or one downloading / ready to restart). Calm strip, not a
-                // card: the Download button keeps the page's one yellow action.
-                if root.update-banner || root.update-state == 2 || root.update-state == 3: VerticalLayout {
-                    vertical-stretch: 0;
-                    spacing: 10px;
-                    HorizontalLayout {
-                        spacing: 12px;
-                        VerticalLayout {
-                            alignment: center;
-                            Tag {
-                                text: root.update-state == 3 ? "Ready" : root.update-state == 4 ? "Failed" : "New";
-                                kind: root.update-state == 3 ? 1 : root.update-state == 4 ? 3 : 4;
-                            }
-                        }
-                        VerticalLayout {
-                            horizontal-stretch: 1;
-                            alignment: center;
-                            spacing: 6px;
-                            Text {
-                                text: root.update-state == 2 || root.update-state == 3 || root.update-state == 4
-                                    ? root.update-status
-                                    : "Neria " + root.update-version + " is out.";
-                                color: Theme.ink;
-                                font-family: Theme.body;
-                                font-size: 13px;
-                                font-weight: 500;
-                                wrap: word-wrap;
-                            }
-                            if root.update-state == 2: Bar {
-                                value: root.update-progress;
-                            }
-                            if root.update-state == 3 && root.active-count > 0: Text {
-                                text: "Restarting stops " + root.active-count + (root.active-count == 1 ? " running download." : " running downloads.");
-                                color: Theme.warn;
-                                font-family: Theme.body;
-                                font-size: 12px;
-                            }
-                        }
-                        if root.update-state == 0 || root.update-state == 4: VerticalLayout {
-                            alignment: center;
-                            TextLink {
-                                text: "What's new";
-                                clicked => { root.drawer-open = true; }
-                            }
-                        }
-                        if root.update-state == 0 || root.update-state == 4: VerticalLayout {
-                            alignment: center;
-                            GhostButton {
-                                compact: true;
-                                text: root.update-state == 4 ? "Try again" : "Update now";
-                                icon: root.update-state == 4 ? "\u{E72C}" : "\u{E896}";
-                                clicked => { root.update-install(); }
-                            }
-                        }
-                        if root.update-state == 3: VerticalLayout {
-                            alignment: center;
-                            GhostButton {
-                                compact: true;
-                                text: "Restart now";
-                                icon: "\u{E72C}";
-                                clicked => { root.update-restart(); }
-                            }
-                        }
-                        if root.update-state != 2: VerticalLayout {
-                            alignment: center;
-                            IconButton {
-                                icon: "\u{E711}";
-                                clicked => { root.update-later(); }
-                            }
-                        }
-                    }
-                    Rectangle {
-                        height: 1px;
-                        background: Theme.line;
-                    }
-                }
+                url <=> root.url;
+                probe-state: root.probe-state;
+                probe-blocked: root.probe-blocked;
+                probe-title: root.probe-title;
+                probe-meta: root.probe-meta;
+                probe-thumb: root.probe-thumb;
+                probe-is-spotify: root.probe-is-spotify;
+                quality <=> root.quality;
+                gif-mode: root.gif-mode;
+                dup-text: root.dup-text;
+                dup-file: root.dup-file;
+                playlist-url: root.playlist-url;
+                paste => { root.paste(); }
+                url-edited(t) => { root.url-edited(t); }
+                start-download => { root.start-download(); }
+                dup-show => { root.dup-show(); }
+                use-playlist => { root.use-playlist(); }
+                clip-open-link(url, title) => { root.clip-open-link(url, title); }
 
-                LinkField {
-                    text <=> root.url;
-                    placeholder: "Paste a link here";
-                    edited(t) => { root.url-edited(t); }
-                    accepted => { root.start-download(); }
-                    VerticalLayout {
-                        alignment: center;
-                        horizontal-stretch: 0;
-                        GhostButton {
-                            compact: true;
-                            text: "Paste";
-                            icon: "\u{E77F}";
-                            clicked => { root.paste(); }
-                        }
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        horizontal-stretch: 0;
-                        PrimaryButton {
-                            text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
-                                : root.picking && root.pick-checked > 1 ? "Download " + root.pick-checked + " items"
-                                : root.dup-text != "" && root.probe-state == 2 ? "Download again"
-                                : "Download";
-                            icon: "\u{E896}";
-                            enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0)
-                                && (!root.picking || root.pick-checked > 0);
-                            clicked => { root.start-download(); }
-                        }
-                    }
-                }
+                video-format: root.video-format;
+                audio-format: root.audio-format;
+                lyrics: root.lyrics;
+                settings-changed => { root.settings-changed(); }
+                open-settings => { root.drawer-open = true; }
 
-                if root.probe-state == 4: HorizontalLayout {
-                    spacing: 8px;
-                    Icon {
-                        horizontal-stretch: 0;
-                        text: "\u{E71B}";
-                        font-size: 13px;
-                        color: Theme.muted;
-                    }
-                    Text {
-                        horizontal-stretch: 1;
-                        text: "That's not a link yet. Copy the address of a video, song or playlist and paste it here.";
-                        color: Theme.muted;
-                        font-size: 13px;
-                        vertical-alignment: center;
-                    }
-                }
+                pick-items: root.pick-items;
+                pick-checked: root.pick-checked;
+                pick-note: root.pick-note;
+                number-items <=> root.number-items;
+                pick-toggle(i, on) => { root.pick-toggle(i, on); }
+                pick-all(on) => { root.pick-all(on); }
+                pick-quality(i, q) => { root.pick-quality(i, q); }
 
-                // Preview: thumbnail leads; problems get a calm box with a coloured sign.
-                if root.probe-state >= 1 && root.probe-state <= 3: HorizontalLayout {
-                    spacing: 16px;
-                    Rectangle {
-                        width: root.probe-state != 2 ? 120px : root.height < 820px ? 128px : 184px;
-                        height: root.probe-state != 2 ? 68px : root.height < 820px ? 72px : 104px;
-                        border-radius: 10px;
-                        background: Theme.raised;
-                        clip: true;
-                        Image {
-                            width: parent.width;
-                            height: parent.height;
-                            source: root.probe-thumb;
-                            image-fit: cover;
-                        }
-                        if root.probe-state != 2: Icon {
-                            text: root.probe-state == 1 ? "\u{E895}" : root.probe-blocked ? "\u{E783}" : "\u{E7BA}";
-                            color: root.probe-state != 3 ? Theme.muted : root.probe-blocked ? Theme.bad : Theme.warn;
-                            font-size: 20px;
-                        }
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 5px;
-                        horizontal-stretch: 1;
-                        Text {
-                            text: root.probe-state == 1 ? "Looking up the link…" : root.probe-title;
-                            color: root.probe-state != 3 ? Theme.ink : root.probe-blocked ? Theme.bad : Theme.warn;
-                            font-size: root.height < 820px ? 15px : 17px;
-                            font-weight: 600;
-                            overflow: elide;
-                        }
-                        Text {
-                            text: root.probe-meta;
-                            color: Theme.muted;
-                            font-size: 13px;
-                            wrap: root.probe-state == 3 ? word-wrap : no-wrap;
-                            overflow: elide;
-                        }
-                        // Already downloaded / already in the queue.
-                        if root.probe-state == 2 && root.dup-text != "": HorizontalLayout {
-                            spacing: 8px;
-                            Icon {
-                                horizontal-stretch: 0;
-                                text: "\u{E7BA}";
-                                font-size: 13px;
-                                color: Theme.warn;
-                            }
-                            Text {
-                                horizontal-stretch: 0;
-                                text: root.dup-text;
-                                color: Theme.warn;
-                                font-size: 12.5px;
-                                overflow: elide;
-                                vertical-alignment: center;
-                            }
-                            if root.dup-file: TextLink {
-                                horizontal-stretch: 0;
-                                text: "Show file";
-                                clicked => { root.dup-show(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
-                        }
-                        // watch?v=…&list=…: this video, or the playlist it came from?
-                        if root.probe-state == 2 && root.playlist-url != "" && root.pick-items.length == 0: HorizontalLayout {
-                            spacing: 8px;
-                            Icon {
-                                horizontal-stretch: 0;
-                                text: "\u{E8FD}";
-                                font-size: 13px;
-                                color: Theme.muted;
-                            }
-                            Text {
-                                horizontal-stretch: 0;
-                                text: "This video is part of a playlist.";
-                                color: Theme.muted;
-                                font-size: 12.5px;
-                                vertical-alignment: center;
-                            }
-                            TextLink {
-                                horizontal-stretch: 0;
-                                text: "Get the whole playlist";
-                                clicked => { root.use-playlist(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
-                        }
-                        if root.chips-inline: VerticalLayout {
-                            padding-top: 8px;
-                            QualityRow {
-                                quality <=> root.quality;
-                                spotify: root.probe-is-spotify || root.gif-mode;
-                                spotify-text: root.gif-mode ? "Saved as a .gif (X keeps GIFs as short silent videos)"
-                                    : "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
-                                format-text: root.gif-mode ? "gif"
-                                    : root.probe-is-spotify || root.quality == 4
-                                    ? root.audio-formats[root.audio-format-index]
-                                    : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
-                                changed => { root.settings-changed(); }
-                                open-settings => { root.drawer-open = true; }
-                                clip-first => { root.clip-open-link(root.url, root.probe-title); }
-                                show-clip: root.pick-items.length == 0;
-                            }
-                        }
-                        if root.probe-state == 2 && !root.probe-is-spotify && !root.chips-inline && root.pick-items.length == 0: HorizontalLayout {
-                            padding-top: 8px;
-                            alignment: start;
-                            GhostButton {
-                                compact: true;
-                                text: "Clip first";
-                                icon: "\u{E8C6}";
-                                clicked => { root.clip-open-link(root.url, root.probe-title); }
-                            }
-                        }
-                    }
-                }
+                spotify-count: root.spotify-count;
+                spotify-note: root.spotify-note;
+                sync-items: root.sync-items;
+                review-removed => { root.sync-open = true; }
 
-                // Posts and playlists: pick what to download. Calm rows; the ticks are the
-                // playful part.
-                if root.picking: VerticalLayout {
-                    vertical-stretch: 0;
-                    spacing: 6px;
-                    HorizontalLayout {
-                        spacing: 12px;
-                        SectionTitle {
-                            text: root.pick-checked == root.pick-items.length
-                                ? "All " + root.pick-items.length + " items"
-                                : root.pick-checked + " of " + root.pick-items.length + " picked";
-                            vertical-alignment: center;
-                            horizontal-stretch: 0;
-                        }
-                        Rectangle { horizontal-stretch: 1; }
-                        // Only matters when several go into one folder.
-                        if root.pick-checked > 1: Tick {
-                            text: "Number the files in order";
-                            checked <=> root.number-items;
-                            toggled => { root.settings-changed(); }
-                        }
-                        if root.pick-checked < root.pick-items.length: TextLink {
-                            text: "Select all";
-                            clicked => { root.pick-all(true); }
-                        }
-                        if root.pick-checked > 0: TextLink {
-                            text: "None";
-                            clicked => { root.pick-all(false); }
-                        }
-                    }
-                    if root.pick-note != "": HorizontalLayout {
-                        spacing: 8px;
-                        Icon {
-                            horizontal-stretch: 0;
-                            text: "\u{E7BA}";
-                            font-size: 13px;
-                            color: Theme.warn;
-                        }
-                        Text {
-                            horizontal-stretch: 1;
-                            text: root.pick-note;
-                            color: Theme.warn;
-                            font-size: 12px;
-                            wrap: word-wrap;
-                            vertical-alignment: center;
-                        }
-                    }
-                    Rectangle {
-                        height: 1px;
-                        Rectangle {
-                            x: 0;
-                            width: parent.width - 16px;
-                            background: Theme.line;
-                        }
-                    }
-                    ListView {
-                        // Room for about four rows; the queue keeps the rest.
-                        height: min(root.pick-items.length, root.height < 760px ? 3 : 4) * 48px;
-                        for item[i] in root.pick-items: Rectangle {
-                            height: 48px;
-                            ta := TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => { root.pick-toggle(i, !item.checked); }
-                            }
-                            Rectangle {
-                                x: 0;
-                                y: parent.height - 1px;
-                                width: parent.width - 16px;
-                                height: 1px;
-                                background: Theme.line;
-                            }
-                            HorizontalLayout {
-                                padding-left: 4px;
-                                padding-right: 26px;
-                                spacing: 12px;
-                                Tick {
-                                    horizontal-stretch: 0;
-                                    checked: item.checked;
-                                    toggled(on) => { root.pick-toggle(i, on); }
-                                }
-                                VerticalLayout {
-                                    alignment: center;
-                                    horizontal-stretch: 0;
-                                    Rectangle {
-                                        width: 64px;
-                                        height: 36px;
-                                        border-radius: 6px;
-                                        background: Theme.raised;
-                                        clip: true;
-                                        Image {
-                                            width: parent.width;
-                                            height: parent.height;
-                                            source: item.thumb;
-                                            image-fit: cover;
-                                        }
-                                    }
-                                }
-                                Text {
-                                    horizontal-stretch: 1;
-                                    text: item.title != "" ? item.title : item.kind + " " + (i + 1);
-                                    color: item.checked ? Theme.ink : Theme.muted;
-                                    font-size: 14px;
-                                    font-weight: 500;
-                                    overflow: elide;
-                                    vertical-alignment: center;
-                                }
-                                Text {
-                                    horizontal-stretch: 0;
-                                    text: item.detail;
-                                    color: Theme.muted;
-                                    font-family: Theme.mono;
-                                    font-size: 11.5px;
-                                    vertical-alignment: center;
-                                }
-                                // This video only: another quality, or just its audio.
-                                if item.can-quality: VerticalLayout {
-                                    alignment: center;
-                                    horizontal-stretch: 0;
-                                    ComboBox {
-                                        width: 130px;
-                                        enabled: item.checked;
-                                        model: root.pick-qualities;
-                                        current-index: item.quality;
-                                        selected => { root.pick-quality(i, self.current-index); }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Spotify notices: truncated playlist, API fallback, removed songs.
-                if root.probe-is-spotify && (root.spotify-note != "" || root.sync-items.length > 0): HorizontalLayout {
-                    spacing: 10px;
-                    Icon {
-                        horizontal-stretch: 0;
-                        text: "\u{E7BA}";
-                        font-size: 14px;
-                        color: Theme.warn;
-                    }
-                    Text {
-                        horizontal-stretch: 1;
-                        text: root.spotify-note != "" ? root.spotify-note
-                            : root.sync-items.length + " song" + (root.sync-items.length == 1 ? "" : "s") + " in your folder " + (root.sync-items.length == 1 ? "is" : "are") + " no longer in this list on Spotify.";
-                        color: Theme.warn;
-                        font-size: 12px;
-                        wrap: word-wrap;
-                        vertical-alignment: center;
-                    }
-                    if root.sync-items.length > 0: GhostButton {
-                        compact: true;
-                        horizontal-stretch: 0;
-                        text: "Review " + root.sync-items.length + " removed";
-                        clicked => { root.sync-open = true; }
-                    }
-                }
-
-                if !root.chips-inline: QualityRow {
-                    quality <=> root.quality;
-                    spotify: root.probe-is-spotify || root.gif-mode;
-                    spotify-text: root.gif-mode ? "Saved as a .gif (X keeps GIFs as short silent videos)"
-                        : "Saved as " + root.audio-formats[root.audio-format-index] + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
-                    format-text: root.gif-mode ? "gif"
-                        : root.probe-is-spotify || root.quality == 4
-                        ? root.audio-formats[root.audio-format-index]
-                        : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
-                    changed => { root.settings-changed(); }
-                    open-settings => { root.drawer-open = true; }
-                    clip-first => { root.clip-open-link(root.url, root.probe-title); }
-                    show-clip: false;
-                }
-
-                // Queue
-                VerticalLayout {
-                    vertical-stretch: 1;
-                    spacing: 0px;
-                    Rectangle {
-                        height: 1px;
-                        background: Theme.line;
-                    }
-                    HorizontalLayout {
-                        padding-top: 14px;
-                        padding-bottom: 4px;
-                        spacing: 10px;
-                        SectionTitle {
-                            text: "Queue";
-                            vertical-alignment: center;
-                            horizontal-stretch: 0;
-                        }
-                        if root.running-count > 0: VerticalLayout {
-                            alignment: center;
-                            horizontal-stretch: 0;
-                            Tag {
-                                text: root.running-count + " going";
-                                kind: 4;
-                            }
-                        }
-                        // Next to the title, so the links on the right don't jump around
-                        // as these come and go.
-                        if root.active-count > 0: TextLink {
-                            text: "Pause all";
-                            icon: "\u{E769}";
-                            clicked => { root.pause-all(); }
-                        }
-                        if root.paused-count > 0: TextLink {
-                            text: "Resume all";
-                            icon: "\u{E768}";
-                            clicked => { root.resume-all(); }
-                        }
-                        Rectangle { horizontal-stretch: 1; }
-                        if root.finished-count > 0: TextLink {
-                            text: "Clear finished";
-                            clicked => { root.clear-finished(); }
-                        }
-                        TextLink {
-                            text: "Open folder";
-                            icon: "\u{E838}";
-                            clicked => { root.open-output(); }
-                        }
-                    }
-
-                    if root.jobs.length == 0: VerticalLayout {
-                        vertical-stretch: 1;
-                        alignment: center;
-                        spacing: 8px;
-                        Text {
-                            text: "Your downloads land here";
-                            color: Theme.ink;
-                            font-family: Theme.display;
-                            font-size: 18px;
-                            font-weight: 700;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            text: "Paste a link above and press Download. Playlists and albums get one card you can open.";
-                            color: Theme.muted;
-                            font-size: 13px;
-                            horizontal-alignment: center;
-                            wrap: word-wrap;
-                        }
-                    }
-
-                    if root.jobs.length > 0: ListView {
-                        vertical-stretch: 1;
-                        for job in root.jobs: JobRow {
-                            job: job;
-                            narrow: root.width < 1000px;
-                            cancel => { root.cancel-job(job.id); }
-                            remove => { root.remove-job(job.id); }
-                            retry => { root.retry-job(job.id); }
-                            open => { root.open-job(job.id); }
-                            open-clipper => { root.clip-job(job.id); }
-                            open-compressor => { root.cmp-job(job.id); }
-                            pick-match => { root.match-pick(job.id); }
-                            report => { root.report-job(job.id); }
-                            pause => { root.pause-job(job.id); }
-                            resume => { root.resume-job(job.id); }
-                            toggle => { root.toggle-group(job.group); }
-                        }
-                    }
-                }
+                jobs: root.jobs;
+                active-count: root.active-count;
+                running-count: root.running-count;
+                paused-count: root.paused-count;
+                finished-count: root.finished-count;
+                pause-all => { root.pause-all(); }
+                resume-all => { root.resume-all(); }
+                clear-finished => { root.clear-finished(); }
+                open-output => { root.open-output(); }
+                cancel-job(id) => { root.cancel-job(id); }
+                remove-job(id) => { root.remove-job(id); }
+                retry-job(id) => { root.retry-job(id); }
+                open-job(id) => { root.open-job(id); }
+                clip-job(id) => { root.clip-job(id); }
+                cmp-job(id) => { root.cmp-job(id); }
+                match-pick(id) => { root.match-pick(id); }
+                report-job(id) => { root.report-job(id); }
+                pause-job(id) => { root.pause-job(id); }
+                resume-job(id) => { root.resume-job(id); }
+                toggle-group(id) => { root.toggle-group(id); }
             }
 
-            if root.page == 1: clip-fs := FocusScope {
-                init => { self.focus(); }
-                key-pressed(event) => {
-                    if !root.clip-loaded {
-                        return reject;
-                    }
-                    if event.text == " " || event.text == "k" || event.text == "K" {
-                        root.clip-toggle-play();
-                        return accept;
-                    }
-                    if event.text == "i" || event.text == "I" {
-                        root.set-in();
-                        return accept;
-                    }
-                    if event.text == "o" || event.text == "O" {
-                        root.set-out();
-                        return accept;
-                    }
-                    if event.text == Key.LeftArrow || event.text == "j" || event.text == "J" {
-                        root.clip-seek(max(0, root.clip-position - (event.modifiers.shift ? 1 : 5)));
-                        return accept;
-                    }
-                    if event.text == Key.RightArrow || event.text == "l" || event.text == "L" {
-                        root.clip-seek(min(root.clip-duration, root.clip-position + (event.modifiers.shift ? 1 : 5)));
-                        return accept;
-                    }
-                    if event.text == "," {
-                        root.clip-frame-step(-1);
-                        return accept;
-                    }
-                    if event.text == "." {
-                        root.clip-frame-step(1);
-                        return accept;
-                    }
-                    if event.text == "r" || event.text == "R" {
-                        root.clip-loop = !root.clip-loop;
-                        return accept;
-                    }
-                    if event.text == Key.Home {
-                        root.clip-seek(root.clip-in);
-                        return accept;
-                    }
-                    if event.text == Key.End {
-                        root.clip-seek(root.clip-out);
-                        return accept;
-                    }
-                    reject
-                }
-
-                VerticalLayout {
-                    padding: 28px;
-                    spacing: 14px;
-
-                    HorizontalLayout {
-                        spacing: 12px;
-                        VerticalLayout {
-                            spacing: 4px;
-                            horizontal-stretch: 1;
-                            Text {
-                                text: "Cut the good part.";
-                                color: Theme.ink;
-                                font-family: Theme.display;
-                                font-size: 30px;
-                                font-weight: 700;
-                                letter-spacing: -1px;
-                            }
-                            Text {
-                                text: root.clip-loaded ? root.clip-name : "Trim a file, or preview a link and download only the part you want.";
-                                color: Theme.muted;
-                                font-size: 13px;
-                                overflow: elide;
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            horizontal-stretch: 0;
-                            GhostButton {
-                                compact: true;
-                                text: "Paste link";
-                                icon: "\u{E71B}";
-                                clicked => { root.clip-paste-link(); }
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            horizontal-stretch: 0;
-                            GhostButton {
-                                compact: true;
-                                text: "Open file…";
-                                icon: "\u{E8E5}";
-                                clicked => { root.clip-open(); }
-                            }
-                        }
-                    }
-
-                    if !root.clip-loaded: Rectangle {
-                        vertical-stretch: 1;
-                        VerticalLayout {
-                            alignment: center;
-                            spacing: 12px;
-                            Icon {
-                                text: "\u{E8C6}";
-                                font-size: 36px;
-                                color: Theme.accent-hi;
-                            }
-                            Text {
-                                text: "Open a video, or paste a link and clip it before downloading";
-                                color: Theme.ink;
-                                font-family: Theme.display;
-                                font-size: 19px;
-                                font-weight: 700;
-                                horizontal-alignment: center;
-                            }
-                            HorizontalLayout {
-                                alignment: center;
-                                spacing: 10px;
-                                PrimaryButton {
-                                    text: "Paste link";
-                                    icon: "\u{E71B}";
-                                    clicked => { root.clip-paste-link(); }
-                                }
-                                GhostButton {
-                                    text: "Open file…";
-                                    icon: "\u{E8E5}";
-                                    clicked => { root.clip-open(); }
-                                }
-                            }
-                            Text {
-                                text: root.clip-status != "" ? root.clip-status : "Tip: finished downloads and link previews have a scissors button that opens them here.";
-                                color: Theme.muted;
-                                font-size: 12px;
-                                horizontal-alignment: center;
-                            }
-                        }
-                    }
-
-                    // The black box hugs the video's own shape (no side bars in a wide
-                    // window); 16:9 until the first frame arrives or for audio files.
-                    if root.clip-loaded: Rectangle {
-                        vertical-stretch: 1;
-                        min-height: 180px;
-                        // Fixed hints so the inner box (sized from this one) can't feed its
-                        // size back into the page layout.
-                        min-width: 0px;
-                        preferred-width: 0px;
-                        preferred-height: 0px;
-                        property <float> aspect: root.clip-has-video && root.clip-frame.width > 0 && root.clip-frame.height > 0
-                            ? root.clip-frame.width / root.clip-frame.height : 16 / 9;
-                        Rectangle {
-                            width: min(parent.width, parent.height * parent.aspect);
-                            height: min(parent.height, parent.width / parent.aspect);
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            border-radius: 12px;
-                            background: #000000;
-                            clip: true;
-                            Image {
-                                width: parent.width;
-                                height: parent.height;
-                                source: root.clip-frame;
-                                image-fit: contain;
-                            }
-                            if !root.clip-has-video: Icon {
-                                text: "\u{E8D6}";
-                                font-size: 56px;
-                                color: Theme.border;
-                            }
-                            if root.clip-buffering: Rectangle {
-                                width: 150px;
-                                height: 40px;
-                                border-radius: 20px;
-                                background: #000000b0;
-                                HorizontalLayout {
-                                    alignment: center;
-                                    spacing: 8px;
-                                    Icon {
-                                        text: "\u{E895}";
-                                        font-size: 14px;
-                                        color: Theme.accent-hi;
-                                    }
-                                    Text {
-                                        text: "Loading…";
-                                        color: Theme.text;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-                            TouchArea {
-                                clicked => {
-                                    root.clip-toggle-play();
-                                    clip-fs.focus();
-                                }
-                            }
-                        }
-                    }
-
-                    if root.clip-loaded: HorizontalLayout {
-                        spacing: 6px;
-                        VerticalLayout {
-                            alignment: center;
-                            IconButton {
-                                icon: root.clip-playing ? "\u{E769}" : "\u{E768}";
-                                tint: Theme.text;
-                                clicked => { root.clip-toggle-play(); }
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            IconButton {
-                                icon: "\u{E892}";
-                                clicked => { root.clip-frame-step(-1); }
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            IconButton {
-                                icon: "\u{E893}";
-                                clicked => { root.clip-frame-step(1); }
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            Rectangle {
-                                width: 32px;
-                                height: 32px;
-                                border-radius: 8px;
-                                background: root.clip-loop ? Theme.accent.with-alpha(0.2) : transparent;
-                                IconButton {
-                                    icon: "\u{E8EE}";
-                                    tint: root.clip-loop ? Theme.accent-hi : Theme.muted;
-                                    clicked => { root.clip-loop = !root.clip-loop; }
-                                }
-                            }
-                        }
-                        Text {
-                            text: Fmt.time(root.clip-position) + "  /  " + Fmt.time(root.clip-duration);
-                            color: Theme.text;
-                            font-family: Theme.mono;
-                            font-size: 13px;
-                            vertical-alignment: center;
-                            horizontal-stretch: 1;
-                        }
-                        GhostButton {
-                            horizontal-stretch: 0;
-                            text: "In  " + Fmt.time(root.clip-in);
-                            clicked => { root.set-in(); }
-                        }
-                        GhostButton {
-                            horizontal-stretch: 0;
-                            text: "Out  " + Fmt.time(root.clip-out);
-                            clicked => { root.set-out(); }
-                        }
-                    }
-
-                    if root.clip-loaded: Timeline {
-                        duration: root.clip-duration;
-                        position: root.clip-position;
-                        in-time <=> root.clip-in;
-                        out-time <=> root.clip-out;
-                        thumbs: root.clip-thumbs;
-                        wave: root.clip-wave;
-                        has-video: root.clip-has-video;
-                        show-keyframes: root.clip-mode == 0 && !root.clip-is-link;
-                        keyframe-ticks: root.clip-keyframe-ticks;
-                        effective-in: root.clip-effective-in;
-                        seek(t) => {
-                            root.clip-seek(t);
-                            clip-fs.focus();
-                        }
-                    }
-
-                    if root.clip-loaded: Text {
-                        text: "Space play clip  ·  I / O set in / out  ·  R loop " + (root.clip-loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  Home / End jump to in / out";
-                        color: Theme.muted;
-                        font-size: 11px;
-                        overflow: elide;
-                    }
-
-                    // Link mode: the same quality and file type as the Download page
-                    // (shared settings, so both pages always agree). Files keep their own.
-                    if root.clip-loaded && root.clip-is-link: QualityRow {
-                        quality <=> root.quality;
-                        spotify: root.clip-is-gif && root.x-gifs-as-gif;
-                        spotify-text: "Saved as a .gif (X keeps GIFs as short silent videos)";
-                        format-text: root.clip-is-gif && root.x-gifs-as-gif ? "gif"
-                            : root.quality == 4 ? root.audio-formats[root.audio-format-index]
-                            : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
-                        changed => { root.settings-changed(); }
-                        open-settings => { root.drawer-open = true; }
-                        show-clip: false;
-                    }
-
-                    if root.clip-loaded: HorizontalLayout {
-                        spacing: 8px;
-                        Chip {
-                            horizontal-stretch: 0;
-                            text: "Fast · lossless";
-                            selected: root.clip-mode == 0;
-                            clicked => { root.clip-mode = 0; }
-                        }
-                        Chip {
-                            horizontal-stretch: 0;
-                            text: "Exact · re-encode";
-                            selected: root.clip-mode == 1;
-                            clicked => { root.clip-mode = 1; }
-                        }
-                        Text {
-                            horizontal-stretch: 1;
-                            text: root.clip-status != "" ? root.clip-status
-                                : root.clip-is-link ? "Downloads only " + Fmt.time(root.clip-out - root.clip-in)
-                                    + (root.clip-mode == 0 ? "  ·  fast, may start a few seconds early" : "  ·  frame-exact (slower)")
-                                : root.clip-mode == 1 ? "Selection " + Fmt.time(root.clip-out - root.clip-in) + "  ·  frame-exact H.264"
-                                : root.clip-early-start ? "Lossless cut starts earlier, at " + Fmt.time(root.clip-effective-in) + " (keyframe)"
-                                : "Selection " + Fmt.time(root.clip-out - root.clip-in) + "  ·  lossless, starts on a keyframe";
-                            color: root.clip-status == "" && root.clip-early-start ? Theme.warn : Theme.muted;
-                            font-size: 12px;
-                            overflow: elide;
-                            vertical-alignment: center;
-                            horizontal-alignment: right;
-                        }
-                        if root.clip-status == "" && root.clip-early-start: GhostButton {
-                            horizontal-stretch: 0;
-                            text: "Snap to keyframe";
-                            clicked => {
-                                root.clip-in = root.clip-effective-in;
-                                root.clip-seek(root.clip-in);
-                            }
-                        }
-                        if root.clip-has-output && !root.clip-exporting: GhostButton {
-                            horizontal-stretch: 0;
-                            text: "Show file";
-                            icon: "\u{E838}";
-                            clicked => { root.clip-show-output(); }
-                        }
-                        if root.clip-is-link && root.clip-status != "": GhostButton {
-                            horizontal-stretch: 0;
-                            text: "View queue";
-                            clicked => { root.page = 0; }
-                        }
-                        PrimaryButton {
-                            horizontal-stretch: 0;
-                            text: root.clip-exporting ? "Cancel  " + Math.round(root.clip-export-progress * 100) + "%"
-                                : root.clip-is-link ? "Download clip" : "Export clip";
-                            icon: root.clip-exporting ? "" : root.clip-is-link ? "\u{E896}" : "\u{E8C6}";
-                            enabled: root.clip-out > root.clip-in && root.tools-ready;
-                            clicked => {
-                                if root.clip-exporting {
-                                    root.clip-cancel-export();
-                                } else {
-                                    root.clip-export();
-                                }
-                            }
-                        }
-                    }
-                }
+            if root.page == 1: ClipPage {
+                tools-ready: root.tools-ready;
+                loaded: root.clip-loaded;
+                has-video: root.clip-has-video;
+                name: root.clip-name;
+                frame: root.clip-frame;
+                duration: root.clip-duration;
+                position: root.clip-position;
+                playing: root.clip-playing;
+                in-time <=> root.clip-in;
+                out-time <=> root.clip-out;
+                mode <=> root.clip-mode;
+                loop <=> root.clip-loop;
+                thumbs: root.clip-thumbs;
+                wave: root.clip-wave;
+                exporting: root.clip-exporting;
+                export-progress: root.clip-export-progress;
+                status: root.clip-status;
+                has-output: root.clip-has-output;
+                keyframes: root.clip-keyframes;
+                keyframe-ticks: root.clip-keyframe-ticks;
+                is-link: root.clip-is-link;
+                gif: root.clip-is-gif && root.x-gifs-as-gif;
+                buffering: root.clip-buffering;
+                quality <=> root.quality;
+                video-format: root.video-format;
+                audio-format: root.audio-format;
+                open-file => { root.clip-open(); }
+                paste-link => { root.clip-paste-link(); }
+                toggle-play => { root.clip-toggle-play(); }
+                seek(t) => { root.clip-seek(t); }
+                frame-step(n) => { root.clip-frame-step(n); }
+                export-clip => { root.clip-export(); }
+                cancel-export => { root.clip-cancel-export(); }
+                show-output => { root.clip-show-output(); }
+                view-queue => { root.page = 0; }
+                settings-changed => { root.settings-changed(); }
+                open-settings => { root.drawer-open = true; }
             }
 
-            if root.page == 2: VerticalLayout {
-                padding: 28px;
-                // Wide windows: keep a readable column instead of stretching edge to edge.
-                padding-left: max(26px, (parent.width - 1240px) / 2);
-                padding-right: max(26px, (parent.width - 1240px) / 2);
-                spacing: 16px;
-
-                HorizontalLayout {
-                    spacing: 12px;
-                    VerticalLayout {
-                        spacing: 4px;
-                        horizontal-stretch: 1;
-                        Text {
-                            text: "Make it smaller.";
-                            color: Theme.ink;
-                            font-family: Theme.display;
-                            font-size: 30px;
-                            font-weight: 700;
-                            letter-spacing: -1px;
-                        }
-                        Text {
-                            text: "Fit Discord, email or any size limit, or just save space.";
-                            color: Theme.muted;
-                            font-size: 13px;
-                            overflow: elide;
-                        }
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        horizontal-stretch: 0;
-                        GhostButton {
-                            compact: true;
-                            text: "Open file…";
-                            icon: "\u{E8E5}";
-                            clicked => { root.cmp-open(); }
-                        }
-                    }
-                }
-
-                if !root.cmp-loaded: Rectangle {
-                    vertical-stretch: 1;
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 12px;
-                        Icon {
-                            text: "\u{E73F}";
-                            font-size: 36px;
-                            color: Theme.accent-hi;
-                        }
-                        Text {
-                            text: "Drop in a video to shrink it";
-                            color: Theme.ink;
-                            font-family: Theme.display;
-                            font-size: 19px;
-                            font-weight: 700;
-                            horizontal-alignment: center;
-                        }
-                        HorizontalLayout {
-                            alignment: center;
-                            PrimaryButton {
-                                text: "Open file…";
-                                icon: "\u{E8E5}";
-                                clicked => { root.cmp-open(); }
-                            }
-                        }
-                        Text {
-                            text: "Tip: finished downloads have a compress button too.";
-                            color: Theme.muted;
-                            font-size: 12px;
-                            horizontal-alignment: center;
-                        }
-                    }
-                }
-
-                // File card
-                if root.cmp-loaded: Rectangle {
-                    height: 104px;
-                    HorizontalLayout {
-                        padding: 0px;
-                        spacing: 16px;
-                        Rectangle {
-                            width: 184px;
-                            border-radius: 10px;
-                            background: #000000;
-                            clip: true;
-                            Image {
-                                width: parent.width;
-                                height: parent.height;
-                                source: root.cmp-thumb;
-                                image-fit: cover;
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            spacing: 6px;
-                            horizontal-stretch: 1;
-                            Text {
-                                text: root.cmp-name;
-                                color: Theme.text;
-                                font-size: 15px;
-                                font-weight: 600;
-                                overflow: elide;
-                            }
-                            Text {
-                                text: root.cmp-info;
-                                color: Theme.muted;
-                                font-size: 12px;
-                                overflow: elide;
-                            }
-                        }
-                    }
-                }
-
-                // Options scroll on short windows; the Compress bar stays pinned below.
-                if root.cmp-loaded: ScrollView {
-                    vertical-stretch: 1;
-                    VerticalLayout {
-                        spacing: 16px;
-                        padding-right: 12px;
-                        alignment: start;
-                        // Options card
-                        if root.cmp-loaded: Rectangle {
-                            Rectangle {
-                                y: 0;
-                                height: 1px;
-                                background: Theme.line;
-                            }
-                            VerticalLayout {
-                                padding-top: 18px;
-                                padding-bottom: 4px;
-                                spacing: 16px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text {
-                                        width: 90px;
-                                        text: "Goal";
-                                        color: Theme.muted;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "Fit a size";
-                                        selected: root.cmp-mode == 0;
-                                        clicked => { root.cmp-mode = 0; root.cmp-options-changed(); }
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "Pick a quality";
-                                        selected: root.cmp-mode == 1;
-                                        clicked => { root.cmp-mode = 1; root.cmp-options-changed(); }
-                                    }
-                                    Rectangle { horizontal-stretch: 1; }
-                                }
-
-                                if root.cmp-mode == 0: HorizontalLayout {
-                                    spacing: 8px;
-                                    Text {
-                                        width: 90px;
-                                        text: "Size";
-                                        color: Theme.muted;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "20 MB · Discord";
-                                        selected: root.cmp-size-index == 0;
-                                        clicked => { root.cmp-size-index = 0; root.cmp-options-changed(); }
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "25 MB";
-                                        selected: root.cmp-size-index == 1;
-                                        clicked => { root.cmp-size-index = 1; root.cmp-options-changed(); }
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "50 MB";
-                                        selected: root.cmp-size-index == 2;
-                                        clicked => { root.cmp-size-index = 2; root.cmp-options-changed(); }
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "100 MB";
-                                        selected: root.cmp-size-index == 3;
-                                        clicked => { root.cmp-size-index = 3; root.cmp-options-changed(); }
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "Custom";
-                                        selected: root.cmp-size-index == 4;
-                                        clicked => { root.cmp-size-index = 4; root.cmp-options-changed(); }
-                                    }
-                                    if root.cmp-size-index == 4: LineEdit {
-                                        width: 90px;
-                                        placeholder-text: "MB";
-                                        text <=> root.cmp-custom-mb;
-                                        edited => { root.cmp-options-changed(); }
-                                    }
-                                    Rectangle { horizontal-stretch: 1; }
-                                }
-
-                                if root.cmp-mode == 1: HorizontalLayout {
-                                    spacing: 12px;
-                                    Text {
-                                        width: 90px;
-                                        text: "Quality";
-                                        color: Theme.muted;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                    Text {
-                                        text: "Smaller";
-                                        color: Theme.muted;
-                                        font-size: 12px;
-                                        vertical-alignment: center;
-                                    }
-                                    Slider {
-                                        horizontal-stretch: 1;
-                                        minimum: 0;
-                                        maximum: 1;
-                                        value <=> root.cmp-quality;
-                                        changed => { root.cmp-options-changed(); }
-                                    }
-                                    Text {
-                                        text: "Better";
-                                        color: Theme.muted;
-                                        font-size: 12px;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text {
-                                        width: 90px;
-                                        text: "Codec";
-                                        color: Theme.muted;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "H.264 · plays everywhere";
-                                        selected: root.cmp-codec == 0;
-                                        clicked => { root.cmp-codec = 0; root.cmp-options-changed(); }
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "H.265 · smaller";
-                                        selected: root.cmp-codec == 1;
-                                        clicked => { root.cmp-codec = 1; root.cmp-options-changed(); }
-                                    }
-                                    Chip {
-                                        horizontal-stretch: 0;
-                                        text: "AV1 · smallest";
-                                        selected: root.cmp-codec == 2;
-                                        clicked => { root.cmp-codec = 2; root.cmp-options-changed(); }
-                                    }
-                                    Rectangle { horizontal-stretch: 1; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 10px;
-                                    Text {
-                                        width: 90px;
-                                        text: "Output";
-                                        color: Theme.muted;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                    ComboBox {
-                                        width: 150px;
-                                        model: ["Auto resolution", "Original size", "Max 1080p", "Max 720p", "Max 480p"];
-                                        current-index <=> root.cmp-res-index;
-                                        selected => { root.cmp-options-changed(); }
-                                    }
-                                    ComboBox {
-                                        width: 130px;
-                                        model: ["Original fps", "Max 60 fps", "Max 30 fps"];
-                                        current-index <=> root.cmp-fps-index;
-                                        selected => { root.cmp-options-changed(); }
-                                    }
-                                    Rectangle { horizontal-stretch: 1; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 10px;
-                                    Text {
-                                        width: 90px;
-                                        text: "Audio";
-                                        color: Theme.muted;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                    ComboBox {
-                                        width: 150px;
-                                        model: ["128 kbps", "96 kbps", "64 kbps", "No audio"];
-                                        current-index <=> root.cmp-audio-index;
-                                        selected => { root.cmp-options-changed(); }
-                                    }
-                                    Rectangle { width: 6px; }
-                                    CheckBox {
-                                        text: root.cmp-gpu-label;
-                                        enabled: root.cmp-gpu-available;
-                                        checked <=> root.cmp-use-gpu;
-                                        toggled => { root.cmp-options-changed(); }
-                                    }
-                                    Rectangle { horizontal-stretch: 1; }
-                                }
-                            }
-                        }
-
-                    }
-                }
-
-
-                if root.cmp-loaded: HorizontalLayout {
-                    spacing: 10px;
-                    Icon {
-                        horizontal-stretch: 0;
-                        text: root.cmp-warning ? "\u{E7BA}" : "\u{E946}";
-                        font-size: 14px;
-                        color: root.cmp-warning ? Theme.warn : Theme.accent-hi;
-                    }
-                    Text {
-                        horizontal-stretch: 1;
-                        text: root.cmp-estimate;
-                        color: root.cmp-warning ? Theme.warn : Theme.text;
-                        font-size: 13px;
-                        wrap: word-wrap;
-                        vertical-alignment: center;
-                    }
-                }
-
-                if root.cmp-loaded && root.cmp-running: Bar {
-                    value: root.cmp-progress;
-                }
-
-                if root.cmp-loaded: HorizontalLayout {
-                    spacing: 8px;
-                    Text {
-                        horizontal-stretch: 1;
-                        text: root.cmp-status;
-                        color: Theme.muted;
-                        font-size: 13px;
-                        overflow: elide;
-                        vertical-alignment: center;
-                    }
-                    if root.cmp-has-output && !root.cmp-running: GhostButton {
-                        horizontal-stretch: 0;
-                        text: "Show file";
-                        icon: "\u{E838}";
-                        clicked => { root.cmp-show-output(); }
-                    }
-                    PrimaryButton {
-                        horizontal-stretch: 0;
-                        text: root.cmp-running ? "Cancel  " + Math.round(root.cmp-progress * 100) + "%" : "Compress";
-                        icon: root.cmp-running ? "" : "\u{E73F}";
-                        enabled: root.cmp-running || root.cmp-can-start;
-                        clicked => {
-                            if root.cmp-running {
-                                root.cmp-cancel();
-                            } else {
-                                root.cmp-start();
-                            }
-                        }
-                    }
-                }
+            if root.page == 2: CompressPage {
+                loaded: root.cmp-loaded;
+                name: root.cmp-name;
+                info: root.cmp-info;
+                thumb: root.cmp-thumb;
+                mode <=> root.cmp-mode;
+                size-index <=> root.cmp-size-index;
+                custom-mb <=> root.cmp-custom-mb;
+                quality <=> root.cmp-quality;
+                codec <=> root.cmp-codec;
+                use-gpu <=> root.cmp-use-gpu;
+                gpu-available: root.cmp-gpu-available;
+                gpu-label: root.cmp-gpu-label;
+                res-index <=> root.cmp-res-index;
+                fps-index <=> root.cmp-fps-index;
+                audio-index <=> root.cmp-audio-index;
+                estimate: root.cmp-estimate;
+                warning: root.cmp-warning;
+                can-start: root.cmp-can-start;
+                running: root.cmp-running;
+                progress: root.cmp-progress;
+                status: root.cmp-status;
+                has-output: root.cmp-has-output;
+                open-file => { root.cmp-open(); }
+                options-changed => { root.cmp-options-changed(); }
+                start-compress => { root.cmp-start(); }
+                cancel => { root.cmp-cancel(); }
+                show-output => { root.cmp-show-output(); }
             }
         }
     }
 
-    // ───────────── Settings drawer ─────────────
-    if root.drawer-open: Rectangle {
+    if root.drawer-open: SettingsDrawer {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
-        background: #000000a0;
-        TouchArea {
-            clicked => { root.drawer-open = false; }
-        }
-
-        Rectangle {
-            x: parent.width - self.width;
-            y: 0;
-            width: 400px;
-            height: parent.height;
-            background: Theme.surface;
-            border-width: 1px;
-            border-color: Theme.border;
-            TouchArea { }
-
-            VerticalLayout {
-                padding: 22px;
-                spacing: 14px;
-
-                HorizontalLayout {
-                    Text {
-                        text: "Settings";
-                        color: Theme.text;
-                        font-family: Theme.display;
-                        font-size: 18px;
-                        font-weight: 700;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-                    IconButton {
-                        icon: "\u{E711}";
-                        clicked => { root.drawer-open = false; }
-                    }
-                }
-
-                ScrollView {
-                    vertical-stretch: 1;
-                    VerticalLayout {
-                        spacing: 22px;
-                        padding-right: 14px;
-                        alignment: start;
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            SectionTitle { text: "Save to"; }
-                            Text {
-                                text: root.output-dir;
-                                color: Theme.muted;
-                                font-size: 12px;
-                                overflow: elide;
-                            }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                alignment: start;
-                                GhostButton {
-                                    text: "Change…";
-                                    clicked => { root.choose-output(); }
-                                }
-                                GhostButton {
-                                    text: "Open folder";
-                                    clicked => { root.open-output(); }
-                                }
-                            }
-                            CheckBox {
-                                text: "Sort into Audio, Video and Photos folders";
-                                checked <=> root.sort-folders;
-                                toggled => { root.settings-changed(); }
-                            }
-                            Hint {
-                                text: "Playlists and posts get a folder of their own, inside Audio, Video or Photos when everything in it is one kind.";
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            SectionTitle { text: "Video"; }
-                            HorizontalLayout {
-                                spacing: 10px;
-                                Hint {
-                                    text: "Container";
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                }
-                                ComboBox {
-                                    width: 140px;
-                                    model: root.containers;
-                                    current-index <=> root.container-index;
-                                    selected => { root.settings-changed(); }
-                                }
-                            }
-                            CheckBox {
-                                text: "Prefer H.264 (plays everywhere, max 1080p on YouTube)";
-                                checked <=> root.prefer-h264;
-                                toggled => { root.settings-changed(); }
-                            }
-                            CheckBox {
-                                text: "Embed subtitles";
-                                checked <=> root.embed-subs;
-                                toggled => { root.settings-changed(); }
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            SectionTitle { text: "Audio only"; }
-                            HorizontalLayout {
-                                spacing: 10px;
-                                Hint {
-                                    text: "Convert to";
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                }
-                                ComboBox {
-                                    width: 140px;
-                                    model: root.audio-formats;
-                                    current-index <=> root.audio-format-index;
-                                    selected => { root.settings-changed(); }
-                                }
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            SectionTitle { text: "Extras"; }
-                            CheckBox {
-                                text: "Embed thumbnail as cover art";
-                                checked <=> root.embed-thumbnail;
-                                toggled => { root.settings-changed(); }
-                            }
-                            CheckBox {
-                                text: "Also save the thumbnail as a .jpg";
-                                checked <=> root.save-thumbnail;
-                                toggled => { root.settings-changed(); }
-                            }
-                            CheckBox {
-                                text: "Embed title, artist and other metadata";
-                                checked <=> root.embed-metadata;
-                                toggled => { root.settings-changed(); }
-                            }
-                            CheckBox {
-                                text: "Cut out sponsor segments (SponsorBlock)";
-                                checked <=> root.sponsorblock;
-                                toggled => { root.settings-changed(); }
-                            }
-                            CheckBox {
-                                text: "Download whole playlists";
-                                checked <=> root.allow-playlists;
-                                toggled => { root.settings-changed(); }
-                            }
-                            CheckBox {
-                                text: "Save X (Twitter) GIFs as real .gif files";
-                                checked <=> root.x-gifs-as-gif;
-                                toggled => { root.settings-changed(); }
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            SectionTitle { text: "Network"; }
-                            HorizontalLayout {
-                                spacing: 10px;
-                                Hint {
-                                    text: "Cookies from browser";
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                }
-                                ComboBox {
-                                    width: 140px;
-                                    model: ["None", "Chrome", "Edge", "Firefox", "Brave", "Opera", "Vivaldi"];
-                                    current-index <=> root.cookies-index;
-                                    selected => { root.settings-changed(); }
-                                }
-                            }
-                            Hint { text: "Use this for age-restricted, members-only or \"confirm you're not a bot\" videos."; }
-                            // Chromium browsers lock their cookie file while open and encrypt it.
-                            // Two separate `if`s: wrapped text nested inside a sub-layout gets
-                            // measured as one line and squashes the next section.
-                            if root.cookies-index == 1 || root.cookies-index == 2 || root.cookies-index >= 4: HorizontalLayout {
-                                alignment: start;
-                                Tag {
-                                    text: "Heads-up";
-                                    kind: 2;
-                                }
-                            }
-                            if root.cookies-index == 1 || root.cookies-index == 2: Hint {
-                                text: "This browser usually blocks it: it locks its cookies while open and encrypts them. Firefox works best: sign in there and pick Firefox.";
-                            }
-                            if root.cookies-index >= 4: Hint {
-                                text: (root.cookies-index == 4 ? "Brave" : root.cookies-index == 5 ? "Opera" : "Vivaldi")
-                                    + " locks its cookies while it's open: close it fully before downloading. Firefox works even while open.";
-                            }
-                            HorizontalLayout {
-                                spacing: 10px;
-                                Hint {
-                                    text: "Speed limit";
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                }
-                                LineEdit {
-                                    width: 140px;
-                                    placeholder-text: "e.g. 5M";
-                                    text <=> root.rate-limit;
-                                    edited => { root.settings-changed(); }
-                                }
-                            }
-                            HorizontalLayout {
-                                spacing: 10px;
-                                Hint {
-                                    text: "Downloads at once";
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                }
-                                SpinBox {
-                                    width: 140px;
-                                    minimum: 1;
-                                    maximum: 8;
-                                    value <=> root.max-concurrent;
-                                    edited => { root.settings-changed(); }
-                                }
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            SectionTitle { text: "Spotify links"; }
-                            Hint { text: "Song info comes from Spotify, audio from YouTube Music. Format is the \"Audio only\" format above."; }
-                            CheckBox {
-                                text: "Add lyrics (embedded + synced .lrc file)";
-                                checked <=> root.lyrics;
-                                toggled => { root.settings-changed(); }
-                            }
-                            CheckBox {
-                                text: "Check each song against Spotify's 30 s preview";
-                                checked <=> root.verify-audio;
-                                toggled => { root.settings-changed(); }
-                            }
-                            Hint { text: "Catches re-recordings, live and cover versions by their sound, and tries other versions automatically. Adds about a second per song."; }
-                            CheckBox {
-                                text: "Explain where the audio comes from before downloading";
-                                checked <=> root.spotify-explain;
-                                toggled => { root.settings-changed(); }
-                            }
-                            Hint { text: "Optional: your own Spotify app (developer.spotify.com → Create app) unlocks playlists over 100 songs. Never shared, stored only in settings.json next to Neria."; }
-                            LineEdit {
-                                placeholder-text: "Client ID";
-                                text <=> root.spotify-client-id;
-                                edited => { root.settings-changed(); }
-                            }
-                            LineEdit {
-                                placeholder-text: "Client secret";
-                                input-type: password;
-                                text <=> root.spotify-client-secret;
-                                edited => { root.settings-changed(); }
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            SectionTitle { text: "Appearance"; }
-                            HorizontalLayout {
-                                spacing: 10px;
-                                Hint {
-                                    text: "Theme";
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                }
-                                ComboBox {
-                                    width: 140px;
-                                    model: ["Same as Windows", "Dark", "Light"];
-                                    current-index <=> root.theme-index;
-                                    selected => { root.theme-changed(); root.settings-changed(); }
-                                }
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            SectionTitle { text: "Expert"; }
-                            Hint { text: "File name template"; }
-                            LineEdit {
-                                text <=> root.filename-template;
-                                edited => { root.settings-changed(); }
-                            }
-                            Hint { text: "Extra yt-dlp arguments"; }
-                            LineEdit {
-                                placeholder-text: "e.g. --write-description";
-                                text <=> root.extra-args;
-                                edited => { root.settings-changed(); }
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            SectionTitle { text: "About"; }
-                            Text {
-                                text: "Neria " + root.app-version;
-                                color: Theme.text;
-                                font-size: 13px;
-                            }
-                            if root.update-status != "": Text {
-                                text: root.update-status;
-                                color: root.update-state == 4 ? Theme.danger : root.update-version != "" ? Theme.accent-hi : Theme.muted;
-                                font-size: 12px;
-                                wrap: word-wrap;
-                            }
-                            if root.update-version != "" && root.update-notes != "": Rectangle {
-                                border-radius: 8px;
-                                background: Theme.surface-hi;
-                                VerticalLayout {
-                                    padding: 10px;
-                                    Hint { text: root.update-notes; }
-                                }
-                            }
-                            HorizontalLayout {
-                                alignment: start;
-                                spacing: 8px;
-                                if root.update-version != "" && (root.update-state == 0 || root.update-state == 4): PrimaryButton {
-                                    text: "Update to " + root.update-version;
-                                    clicked => { root.update-install(); }
-                                }
-                                if root.update-state == 3: PrimaryButton {
-                                    text: "Restart now";
-                                    clicked => { root.update-restart(); }
-                                }
-                                if root.update-state == 0 || root.update-state == 4: GhostButton {
-                                    text: "Check now";
-                                    icon: "\u{E72C}";
-                                    clicked => { root.update-check(); }
-                                }
-                            }
-                            if root.update-state == 2: Bar { value: root.update-progress; }
-                            CheckBox {
-                                text: "Check for updates when Neria starts";
-                                checked <=> root.check-updates;
-                                toggled => { root.settings-changed(); }
-                            }
-                            Hint { text: root.tool-versions == "" ? "Checking tool versions…" : root.tool-versions; }
-                            Hint { text: "yt-dlp updates itself daily. FFmpeg, Deno and libmpv are offered an update once a newer build exists and yours is over a month old."; }
-                            if root.tools-status != "": Text {
-                                text: root.tools-status;
-                                color: root.tools-outdated != "" ? Theme.accent-hi : Theme.muted;
-                                font-size: 12px;
-                                wrap: word-wrap;
-                            }
-                            if root.tools-outdated != "" && !root.tools-updating: HorizontalLayout {
-                                alignment: start;
-                                GhostButton {
-                                    text: "Update tools";
-                                    icon: "\u{E896}";
-                                    clicked => { root.tools-update(); }
-                                }
-                            }
-                            Hint { text: "Something not working? Copy a report and paste it in a message. It has the versions above and your settings, never your Spotify key. Failed downloads have their own report button (bug icon) with the link and log."; }
-                            HorizontalLayout {
-                                alignment: start;
-                                GhostButton {
-                                    text: "Copy report";
-                                    icon: "\u{EBE8}";
-                                    clicked => { root.copy-report(); }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        output-dir: root.output-dir;
+        sort-folders <=> root.sort-folders;
+        container-index <=> root.container-index;
+        prefer-h264 <=> root.prefer-h264;
+        embed-subs <=> root.embed-subs;
+        audio-format-index <=> root.audio-format-index;
+        embed-thumbnail <=> root.embed-thumbnail;
+        save-thumbnail <=> root.save-thumbnail;
+        embed-metadata <=> root.embed-metadata;
+        sponsorblock <=> root.sponsorblock;
+        allow-playlists <=> root.allow-playlists;
+        x-gifs-as-gif <=> root.x-gifs-as-gif;
+        cookies-index <=> root.cookies-index;
+        rate-limit <=> root.rate-limit;
+        max-concurrent <=> root.max-concurrent;
+        lyrics <=> root.lyrics;
+        verify-audio <=> root.verify-audio;
+        spotify-explain <=> root.spotify-explain;
+        spotify-client-id <=> root.spotify-client-id;
+        spotify-client-secret <=> root.spotify-client-secret;
+        theme-index <=> root.theme-index;
+        filename-template <=> root.filename-template;
+        extra-args <=> root.extra-args;
+        check-updates <=> root.check-updates;
+        app-version: root.app-version;
+        update-state: root.update-state;
+        update-version: root.update-version;
+        update-notes: root.update-notes;
+        update-status: root.update-status;
+        update-progress: root.update-progress;
+        tool-versions: root.tool-versions;
+        tools-outdated: root.tools-outdated;
+        tools-status: root.tools-status;
+        tools-updating: root.tools-updating;
+        close => { root.drawer-open = false; }
+        choose-output => { root.choose-output(); }
+        open-output => { root.open-output(); }
+        settings-changed => { root.settings-changed(); }
+        theme-changed => { root.theme-changed(); }
+        update-install => { root.update-install(); }
+        update-restart => { root.update-restart(); }
+        update-check => { root.update-check(); }
+        tools-update => { root.tools-update(); }
+        copy-report => { root.copy-report(); }
     }
 
-    // ───────────── Toast ─────────────
-    if root.toast != "": Rectangle {
+    if root.toast != "": Toast {
         x: (root.width - self.width) / 2;
         y: root.height - self.height - 26px;
-        width: min(toast-row.preferred-width, root.width - 80px);
-        height: 46px;
-        border-radius: 12px;
-        background: Theme.panel;
-        border-width: 1px;
-        border-color: Theme.line-strong;
-        toast-row := HorizontalLayout {
-            padding-left: 16px;
-            padding-right: 20px;
-            spacing: 10px;
-            VerticalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 20px;
-                    height: 20px;
-                    border-radius: 6px;
-                    background: Theme.ok-bg;
-                    Icon {
-                        text: "\u{E73E}";
-                        font-size: 11px;
-                        color: Theme.ok;
-                    }
-                }
-            }
-            Text {
-                text: root.toast;
-                color: Theme.ink;
-                font-family: Theme.body;
-                font-size: 13px;
-                vertical-alignment: center;
-                overflow: elide;
-            }
-        }
+        widest: root.width - 80px;
+        text: root.toast;
     }
 
-    // ───────────── Pick another match ─────────────
-    if root.match-open: Dialog {
+    if root.match-open: MatchDialog {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
-        title: "Pick the right song";
-        subtitle: root.match-heading;
-        card-width: 720px;
-        card-height: 640px;
+        heading: root.match-heading;
+        sub: root.match-sub;
+        items: root.match-items;
+        loading: root.match-loading;
+        status: root.match-status;
+        can-check: root.match-can-check;
+        query <=> root.match-query;
         close => { root.match-open = false; }
-
-        LinkField {
-            height: 46px;
-            text <=> root.match-query;
-            placeholder: "Search YouTube Music";
-            accepted => { root.match-search(); }
-            VerticalLayout {
-                alignment: center;
-                GhostButton {
-                    compact: true;
-                    text: "Search";
-                    icon: "\u{E721}";
-                    clicked => { root.match-search(); }
-                }
-            }
-        }
-
-        Text {
-            text: root.match-loading ? "Searching YouTube Music…" : root.match-status != "" ? root.match-status : root.match-sub;
-            color: Theme.muted;
-            font-family: Theme.body;
-            font-size: 12px;
-            overflow: elide;
-        }
-
-        VerticalLayout {
-            vertical-stretch: 1;
-            Rectangle {
-                height: 1px;
-                Rectangle {
-                    x: 0;
-                    width: parent.width - 16px;
-                    background: Theme.line;
-                }
-            }
-            ListView {
-                vertical-stretch: 1;
-                for item[i] in root.match-items: Rectangle {
-                    height: 64px;
-                    // Calm rows; the one in use sits on a slightly raised band.
-                    Rectangle {
-                        x: 0;
-                        width: parent.width - 16px;
-                        background: item.current ? Theme.raised : transparent;
-                    }
-                    Rectangle {
-                        x: 0;
-                        y: parent.height - 1px;
-                        width: parent.width - 16px;
-                        height: 1px;
-                        background: Theme.line;
-                    }
-                    HorizontalLayout {
-                        padding-left: 12px;
-                        // 16px lane for the scrollbar, plus breathing room.
-                        padding-right: 26px;
-                        spacing: 8px;
-                        VerticalLayout {
-                            alignment: center;
-                            spacing: 5px;
-                            horizontal-stretch: 1;
-                            Text {
-                                text: item.title;
-                                color: Theme.ink;
-                                font-family: Theme.body;
-                                font-size: 14px;
-                                font-weight: 500;
-                                overflow: elide;
-                            }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                if item.current: Text {
-                                    text: "In use";
-                                    color: Theme.ink;
-                                    font-family: Theme.display;
-                                    font-size: 11px;
-                                    font-weight: 700;
-                                    vertical-alignment: center;
-                                }
-                                Tag {
-                                    text: item.ruled-out ? "Length differs" : item.score + "% match";
-                                    kind: item.ruled-out ? 0 : item.score >= 80 ? 1 : item.score >= 60 ? 2 : 0;
-                                }
-                                if item.check-state > 0: Tag {
-                                    text: item.check-text;
-                                    kind: item.check-state == 2 ? 1 : item.check-state == 3 ? 2 : item.check-state == 4 ? 3 : 0;
-                                }
-                                Text {
-                                    text: item.detail;
-                                    color: Theme.muted;
-                                    font-family: Theme.body;
-                                    font-size: 12px;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    horizontal-stretch: 1;
-                                }
-                            }
-                        }
-                        if item.check-state == 0 && root.match-can-check: VerticalLayout {
-                            alignment: center;
-                            GhostButton {
-                                compact: true;
-                                text: "Check";
-                                icon: "\u{E8D6}";
-                                clicked => { root.match-check(i); }
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            IconButton {
-                                icon: "\u{E8A7}";
-                                clicked => { root.match-open-url(item.url); }
-                            }
-                        }
-                        if !item.current: VerticalLayout {
-                            alignment: center;
-                            GhostButton {
-                                compact: true;
-                                text: "Use this";
-                                clicked => { root.match-use(i); }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Hint {
-            text: "Check plays it against Spotify's preview. Use this re-downloads that version and keeps Spotify's tags, cover and lyrics. The arrow opens it in your browser.";
-        }
+        search => { root.match-search(); }
+        check(i) => { root.match-check(i); }
+        open-url(url) => { root.match-open-url(url); }
+        use(i) => { root.match-use(i); }
     }
 
-    // ───────────── Sync review: songs removed from a playlist ─────────────
-    if root.sync-open: Dialog {
+    if root.sync-open: SyncDialog {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
-        title: "Removed on Spotify";
-        subtitle: root.sync-items.length == 1 ? "1 song is still in your folder" : root.sync-items.length + " songs are still in your folder";
-        card-width: 560px;
-        card-height: 540px;
-        // Closing decides nothing: the files stay.
-        close => { root.sync-keep-all(); }
-
-        Hint {
-            text: "These are no longer in the playlist or album on Spotify. Nothing is deleted unless you tick it, and ticked songs go to the Recycle Bin.";
-        }
-        VerticalLayout {
-            vertical-stretch: 1;
-            Rectangle {
-                height: 1px;
-                Rectangle {
-                    x: 0;
-                    width: parent.width - 16px;
-                    background: Theme.line;
-                }
-            }
-            ListView {
-                vertical-stretch: 1;
-                for item[i] in root.sync-items: Rectangle {
-                    height: 52px;
-                    Rectangle {
-                        x: 0;
-                        y: parent.height - 1px;
-                        width: parent.width - 16px;
-                        height: 1px;
-                        background: Theme.line;
-                    }
-                    HorizontalLayout {
-                        padding-left: 4px;
-                        padding-right: 26px;
-                        Tick {
-                            text: item.title;
-                            checked: item.checked;
-                            toggled(on) => { root.sync-toggle(i, on); }
-                        }
-                    }
-                }
-            }
-        }
-        HorizontalLayout {
-            spacing: 12px;
-            alignment: end;
-            GhostButton {
-                text: "Keep all";
-                clicked => { root.sync-keep-all(); }
-            }
-            PrimaryButton {
-                enabled: root.sync-ticked > 0;
-                text: root.sync-ticked == 0 ? "Move to Recycle Bin" : "Move " + root.sync-ticked + " to Recycle Bin";
-                icon: "\u{E74D}";
-                clicked => { root.sync-delete-selected(); }
-            }
-        }
+        items: root.sync-items;
+        ticked: root.sync-ticked;
+        toggle(i, on) => { root.sync-toggle(i, on); }
+        delete-selected => { root.sync-delete-selected(); }
+        keep-all => { root.sync-keep-all(); }
     }
 
-    // ───────────── Spotify heads-up: where the audio comes from ─────────────
-    if root.spotify-heads-up: Dialog {
+    if root.spotify-heads-up: SpotifyHeadsUp {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
-        title: "Where Spotify songs come from";
-        card-width: 540px;
-        fit: true;
-        close => { root.spotify-heads-up = false; }
-
-        Text {
-            text: "Spotify doesn't allow downloading its audio. So Neria reads each song's details from Spotify and downloads the matching song from YouTube Music.";
-            color: Theme.ink;
-            font-family: Theme.body;
-            font-size: 14px;
-            wrap: word-wrap;
-        }
-        VerticalLayout {
-            Rectangle {
-                height: 1px;
-                background: Theme.line;
-            }
-            for fact in [
-                { label: "Song info", text: "From Spotify: title, artist, album, cover and lyrics" },
-                { label: "Audio", text: "From YouTube Music, about 128–160 kbps" },
-                { label: "Checked", text: "Each song is compared with Spotify's preview. Now and then a match is a different version; you can swap it." },
-            ]: Rectangle {
-                min-height: fact-row.preferred-height;
-                Rectangle {
-                    y: parent.height - 1px;
-                    height: 1px;
-                    background: Theme.line;
-                }
-                fact-row := HorizontalLayout {
-                    padding-top: 11px;
-                    padding-bottom: 11px;
-                    spacing: 16px;
-                    Text {
-                        width: 84px;
-                        text: fact.label;
-                        color: Theme.muted;
-                        font-family: Theme.display;
-                        font-size: 13px;
-                        font-weight: 700;
-                    }
-                    Text {
-                        text: fact.text;
-                        color: Theme.ink;
-                        font-family: Theme.body;
-                        font-size: 13px;
-                        wrap: word-wrap;
-                        horizontal-stretch: 1;
-                    }
-                }
-            }
-        }
-        HorizontalLayout {
-            padding-top: 4px;
-            spacing: 12px;
-            VerticalLayout {
-                alignment: center;
-                horizontal-stretch: 1;
-                Tick {
-                    text: "Don't show this again";
-                    checked <=> root.spotify-heads-up-skip;
-                }
-            }
-            GhostButton {
-                text: "Cancel";
-                clicked => { root.spotify-heads-up = false; }
-            }
-            PrimaryButton {
-                text: "Got it, download";
-                clicked => { root.spotify-heads-up-ok(root.spotify-heads-up-skip); }
-            }
-        }
+        skip <=> root.spotify-heads-up-skip;
+        ok(skip) => { root.spotify-heads-up-ok(skip); }
+        cancel => { root.spotify-heads-up = false; }
     }
 
-    // ───────────── Drag a file in from Explorer ─────────────
-    if root.drop-hover: Rectangle {
+    if root.drop-hover: DropOverlay {
         x: 80px;
         y: 0;
         width: root.width - 80px;
         height: root.height;
-        background: Theme.bg.with-alpha(0.94);
-        property <bool> ok: root.drop-kind != 0 && !(root.page == 2 && root.drop-kind == 2);
-        Rectangle {
-            x: 18px;
-            y: 18px;
-            width: parent.width - 36px;
-            height: parent.height - 36px;
-            border-radius: 14px;
-            border-width: 2px;
-            border-color: parent.ok ? Theme.pop : Theme.line-strong;
-            background: parent.ok ? Theme.pop.with-alpha(0.07) : transparent;
-            VerticalLayout {
-                alignment: center;
-                spacing: 10px;
-                padding: 26px;
-                HorizontalLayout {
-                    alignment: center;
-                    padding-bottom: 8px;
-                    Rectangle {
-                        width: 59px;
-                        height: 59px;
-                        Rectangle {
-                            x: 3px;
-                            y: 3px;
-                            width: 56px;
-                            height: 56px;
-                            border-radius: 14px;
-                            background: root.drop-kind != 0 ? Theme.hard : transparent;
-                        }
-                        Rectangle {
-                            width: 56px;
-                            height: 56px;
-                            border-radius: 14px;
-                            border-width: 2px;
-                            border-color: root.drop-kind != 0 ? Theme.hard : Theme.line-strong;
-                            background: root.drop-kind != 0 ? Theme.pop : Theme.raised;
-                            Icon {
-                                text: root.drop-kind == 0 ? "\u{E8A5}" : root.page == 2 ? "\u{E73F}" : root.page == 1 || root.drop-kind == 2 ? "\u{E8C6}" : "\u{E8E5}";
-                                font-size: 22px;
-                                color: root.drop-kind != 0 ? Theme.on-pop : Theme.muted;
-                            }
-                        }
-                    }
-                }
-                Text {
-                    text: root.drop-kind == 0 ? "Neria opens video and audio files"
-                        : root.page == 2 ? (root.drop-kind == 1 ? "Drop to compress it" : "Compress works on videos")
-                        : root.page == 1 || root.drop-kind == 2 ? "Drop to clip it"
-                        : "Drop to clip or compress it";
-                    color: Theme.ink;
-                    font-family: Theme.display;
-                    font-size: 30px;
-                    font-weight: 700;
-                    letter-spacing: -1px;
-                    horizontal-alignment: center;
-                    wrap: word-wrap;
-                }
-                Text {
-                    text: root.drop-name;
-                    color: Theme.muted;
-                    font-family: Theme.body;
-                    font-size: 13px;
-                    horizontal-alignment: center;
-                    overflow: elide;
-                }
-            }
-        }
+        kind: root.drop-kind;
+        name: root.drop-name;
+        page: root.page;
     }
 
-    // ───────────── Dropped a video on the Download page: clip or compress? ─────────────
-    if root.drop-choice-open: Dialog {
+    if root.drop-choice-open: DropChoice {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
-        title: "What should Neria do with it?";
-        subtitle: root.drop-name;
-        card-width: 520px;
-        fit: true;
+        name: root.drop-name;
         close => { root.drop-choice-open = false; }
-        HorizontalLayout {
-            spacing: 12px;
-            ChoiceTile {
-                horizontal-stretch: 1;
-                icon: "\u{E8C6}";
-                title: "Clip it";
-                text: "Cut out the part you want";
-                clicked => { root.drop-choose(1); }
-            }
-            ChoiceTile {
-                horizontal-stretch: 1;
-                icon: "\u{E73F}";
-                title: "Compress it";
-                text: "Make it small enough to send";
-                clicked => { root.drop-choose(2); }
-            }
-        }
+        choose(kind) => { root.drop-choose(kind); }
     }
 
-    // ───────────── First-run setup ─────────────
-    if !root.tools-ready: Rectangle {
+    if !root.tools-ready: SetupScreen {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
-        background: Theme.bg;
-        TouchArea { }
-        HorizontalLayout {
-            alignment: center;
-            padding: 26px;
-            VerticalLayout {
-                alignment: center;
-                width: min(560px, root.width - 52px);
-                // Logo mark, same sticker as the nav rail, a size up.
-                HorizontalLayout {
-                    alignment: start;
-                    padding-bottom: 26px;
-                    Rectangle {
-                        width: 47px;
-                        height: 47px;
-                        Rectangle {
-                            x: 3px;
-                            y: 3px;
-                            width: 44px;
-                            height: 44px;
-                            border-radius: 12px;
-                            background: Theme.hard;
-                        }
-                        Rectangle {
-                            width: 44px;
-                            height: 44px;
-                            border-radius: 12px;
-                            background: Theme.pop;
-                            border-width: 2px;
-                            border-color: Theme.hard;
-                            // The app icon's mark: an "N" whose left stem is a download arrow.
-                            Image {
-                                width: parent.width;
-                                height: parent.height;
-                                source: @image-url("../assets/neria-mark.png");
-                            }
-                        }
-                    }
-                }
-                Text {
-                    text: root.setup-blocked ? "Move Neria somewhere else." : root.setup-failed ? "Setup hit a snag." : "Getting Neria ready.";
-                    color: Theme.ink;
-                    font-family: Theme.display;
-                    font-size: 30px;
-                    font-weight: 700;
-                    letter-spacing: -1px;
-                    wrap: word-wrap;
-                }
-                Rectangle { height: 8px; }
-                Text {
-                    text: root.setup-blocked
-                        ? "Windows won't let Neria save files in the folder it's in. Neria keeps its tools and settings right next to itself, so it needs a folder you can write to."
-                        : root.setup-failed ? root.setup-error
-                        : root.setup-missing == 0 ? root.setup-label
-                        : "First start only. Neria downloads " + (root.setup-missing == 1 ? "one free tool" : root.setup-missing + " free tools") + " into the bin folder next to itself. Nothing gets installed on your PC.";
-                    color: root.setup-failed ? Theme.ink : Theme.muted;
-                    font-family: Theme.body;
-                    font-size: 14px;
-                    wrap: word-wrap;
-                }
-
-                // Can't write here: where it is now, and what to do.
-                if root.setup-blocked: VerticalLayout {
-                    padding-top: 18px;
-                    spacing: 18px;
-                    Rectangle {
-                        border-radius: 9px;
-                        background: Theme.panel;
-                        border-width: 1px;
-                        border-color: Theme.line;
-                        HorizontalLayout {
-                            padding: 12px;
-                            padding-left: 14px;
-                            spacing: 10px;
-                            Icon {
-                                text: "\u{E8B7}";
-                                font-size: 14px;
-                                color: Theme.muted;
-                                vertical-alignment: top;
-                            }
-                            Text {
-                                text: root.setup-blocked-dir;
-                                color: Theme.ink;
-                                font-family: Theme.mono;
-                                font-size: 11.5px;
-                                wrap: word-wrap;
-                                horizontal-stretch: 1;
-                            }
-                        }
-                    }
-                    Text {
-                        text: "Close Neria, move the whole Neria folder to Documents or Desktop, and open it from there.";
-                        color: Theme.ink;
-                        font-family: Theme.body;
-                        font-size: 14px;
-                        wrap: word-wrap;
-                    }
-                    HorizontalLayout {
-                        padding-top: 4px;
-                        spacing: 18px;
-                        alignment: start;
-                        PrimaryButton {
-                            text: "Show Neria's folder";
-                            icon: "\u{E838}";
-                            clicked => { root.setup-show-folder(); }
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            TextLink {
-                                text: "Check again";
-                                clicked => { root.retry-setup(); }
-                            }
-                        }
-                    }
-                }
-
-                // One calm row per tool, each with its own meter.
-                if !root.setup-blocked: VerticalLayout {
-                    padding-top: 22px;
-                    Rectangle {
-                        height: 1px;
-                        background: Theme.line;
-                    }
-                    for tool in root.setup-tools: Rectangle {
-                        height: 58px;
-                        Rectangle {
-                            y: parent.height - 1px;
-                            height: 1px;
-                            background: Theme.line;
-                        }
-                        HorizontalLayout {
-                            spacing: 16px;
-                            VerticalLayout {
-                                alignment: center;
-                                spacing: 2px;
-                                horizontal-stretch: 1;
-                                Text {
-                                    text: tool.name;
-                                    color: tool.state == 0 ? Theme.muted : Theme.ink;
-                                    font-family: Theme.body;
-                                    font-size: 14px;
-                                    font-weight: 500;
-                                }
-                                Text {
-                                    text: tool.purpose;
-                                    color: Theme.muted;
-                                    font-family: Theme.body;
-                                    font-size: 12px;
-                                    overflow: elide;
-                                }
-                            }
-                            VerticalLayout {
-                                alignment: center;
-                                width: 168px;
-                                spacing: 7px;
-                                HorizontalLayout {
-                                    alignment: end;
-                                    if tool.state == 1: Text {
-                                        text: tool.detail;
-                                        color: Theme.muted;
-                                        font-family: Theme.mono;
-                                        font-size: 11.5px;
-                                    }
-                                    if tool.state != 1: Tag {
-                                        text: tool.state == 2 ? "Ready" : tool.state == 3 ? "Stopped" : "Waiting";
-                                        kind: tool.state == 2 ? 1 : tool.state == 3 ? 3 : 0;
-                                    }
-                                }
-                                if tool.state == 1: Bar {
-                                    value: tool.progress;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !root.setup-blocked && root.setup-failed: HorizontalLayout {
-                    padding-top: 22px;
-                    spacing: 18px;
-                    alignment: start;
-                    PrimaryButton {
-                        text: "Try again";
-                        icon: "\u{E72C}";
-                        clicked => { root.retry-setup(); }
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        TextLink {
-                            text: root.setup-copied ? "Copied" : "Copy details";
-                            icon: root.setup-copied ? "\u{E73E}" : "\u{E8C8}";
-                            clicked => { root.setup-copy-details(); }
-                        }
-                    }
-                }
-
-                if !root.setup-blocked && !root.setup-failed: VerticalLayout {
-                    padding-top: 16px;
-                    Text {
-                        text: "Neria is portable: everything stays in its own folder. Delete the folder and it's gone.";
-                        color: Theme.dim;
-                        font-family: Theme.body;
-                        font-size: 12px;
-                        wrap: word-wrap;
-                    }
-                }
-            }
-        }
+        label: root.setup-label;
+        error: root.setup-error;
+        copied: root.setup-copied;
+        blocked-dir: root.setup-blocked-dir;
+        missing: root.setup-missing;
+        tools: root.setup-tools;
+        retry => { root.retry-setup(); }
+        copy-details => { root.setup-copy-details(); }
+        show-folder => { root.setup-show-folder(); }
     }
 }

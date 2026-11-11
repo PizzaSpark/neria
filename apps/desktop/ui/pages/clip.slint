@@ -1,0 +1,379 @@
+import { Theme } from "../theme.slint";
+import { Fmt } from "../types.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, PageTitle, EmptyState } from "../widgets.slint";
+import { QualityRow } from "../components/quality-row.slint";
+import { Timeline } from "../components/timeline.slint";
+
+// Trim a file, or preview a link and download only the selection. Takes the keyboard
+// (Space, I/O, J/L, arrows, `,` `.`, R, Home/End) while it's open.
+export component ClipPage inherits FocusScope {
+    in property <bool> tools-ready;
+    in property <bool> loaded;
+    in property <bool> has-video;
+    in property <string> name;
+    in property <image> frame;
+    in property <float> duration;
+    in property <float> position;
+    in property <bool> playing;
+    in-out property <float> in-time;
+    in-out property <float> out-time;
+    // 0 fast (lossless), 1 exact (re-encode)
+    in-out property <int> mode;
+    // Play the selection on repeat instead of stopping at Out.
+    in-out property <bool> loop;
+    in property <[image]> thumbs;
+    in property <image> wave;
+    in property <bool> exporting;
+    in property <float> export-progress;
+    in property <string> status;
+    in property <bool> has-output;
+    in property <[float]> keyframes;
+    in property <[float]> keyframe-ticks;
+    // Link mode: streaming a URL; export downloads just the selection.
+    in property <bool> is-link;
+    // The link is an X GIF saved as a real .gif: no quality to pick.
+    in property <bool> gif;
+    in property <bool> buffering;
+
+    // Link mode's quality row (shared with the Download page).
+    in-out property <int> quality;
+    in property <string> video-format;
+    in property <string> audio-format;
+
+    callback open-file();
+    callback paste-link();
+    callback toggle-play();
+    callback seek(float);
+    callback frame-step(int);
+    callback export-clip();
+    callback cancel-export();
+    callback show-output();
+    callback view-queue();
+    callback settings-changed();
+    callback open-settings();
+
+    property <float> effective-in: Fmt.keyframe-before(root.in-time, root.keyframes);
+    property <bool> early-start: !root.is-link && root.mode == 0 && root.effective-in < root.in-time - 0.05;
+
+    function set-in() {
+        root.in-time = min(root.position, root.duration);
+        if root.out-time <= root.in-time + 0.05 {
+            root.out-time = root.duration;
+        }
+    }
+    function set-out() {
+        root.out-time = max(root.position, 0);
+        if root.out-time <= root.in-time + 0.05 {
+            root.in-time = 0;
+        }
+    }
+
+    init => { self.focus(); }
+    key-pressed(event) => {
+        if !root.loaded {
+            return reject;
+        }
+        if event.text == " " || event.text == "k" || event.text == "K" {
+            root.toggle-play();
+            return accept;
+        }
+        if event.text == "i" || event.text == "I" {
+            root.set-in();
+            return accept;
+        }
+        if event.text == "o" || event.text == "O" {
+            root.set-out();
+            return accept;
+        }
+        if event.text == Key.LeftArrow || event.text == "j" || event.text == "J" {
+            root.seek(max(0, root.position - (event.modifiers.shift ? 1 : 5)));
+            return accept;
+        }
+        if event.text == Key.RightArrow || event.text == "l" || event.text == "L" {
+            root.seek(min(root.duration, root.position + (event.modifiers.shift ? 1 : 5)));
+            return accept;
+        }
+        if event.text == "," {
+            root.frame-step(-1);
+            return accept;
+        }
+        if event.text == "." {
+            root.frame-step(1);
+            return accept;
+        }
+        if event.text == "r" || event.text == "R" {
+            root.loop = !root.loop;
+            return accept;
+        }
+        if event.text == Key.Home {
+            root.seek(root.in-time);
+            return accept;
+        }
+        if event.text == Key.End {
+            root.seek(root.out-time);
+            return accept;
+        }
+        reject
+    }
+
+    VerticalLayout {
+        padding: 28px;
+        spacing: 14px;
+
+        HorizontalLayout {
+            spacing: 12px;
+            PageTitle {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                title: "Cut the good part.";
+                subtitle: root.loaded ? root.name : "Trim a file, or preview a link and download only the part you want.";
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                GhostButton {
+                    compact: true;
+                    text: "Paste link";
+                    icon: "\u{E71B}";
+                    clicked => { root.paste-link(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                GhostButton {
+                    compact: true;
+                    text: "Open file…";
+                    icon: "\u{E8E5}";
+                    clicked => { root.open-file(); }
+                }
+            }
+        }
+
+        if !root.loaded: EmptyState {
+            icon: "\u{E8C6}";
+            title: "Open a video, or paste a link and clip it before downloading";
+            tip: root.status != "" ? root.status : "Tip: finished downloads and link previews have a scissors button that opens them here.";
+            PrimaryButton {
+                text: "Paste link";
+                icon: "\u{E71B}";
+                clicked => { root.paste-link(); }
+            }
+            GhostButton {
+                text: "Open file…";
+                icon: "\u{E8E5}";
+                clicked => { root.open-file(); }
+            }
+        }
+
+        // The black box hugs the video's own shape (no side bars in a wide
+        // window); 16:9 until the first frame arrives or for audio files.
+        if root.loaded: Rectangle {
+            vertical-stretch: 1;
+            min-height: 180px;
+            // Fixed hints so the inner box (sized from this one) can't feed its
+            // size back into the page layout.
+            min-width: 0px;
+            preferred-width: 0px;
+            preferred-height: 0px;
+            property <float> aspect: root.has-video && root.frame.width > 0 && root.frame.height > 0
+                ? root.frame.width / root.frame.height : 16 / 9;
+            Rectangle {
+                width: min(parent.width, parent.height * parent.aspect);
+                height: min(parent.height, parent.width / parent.aspect);
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: 12px;
+                background: #000000;
+                clip: true;
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.frame;
+                    image-fit: contain;
+                }
+                if !root.has-video: Icon {
+                    text: "\u{E8D6}";
+                    font-size: 56px;
+                    color: Theme.border;
+                }
+                if root.buffering: Rectangle {
+                    width: 150px;
+                    height: 40px;
+                    border-radius: 20px;
+                    background: #000000b0;
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 8px;
+                        Icon {
+                            text: "\u{E895}";
+                            font-size: 14px;
+                            color: Theme.accent-hi;
+                        }
+                        Text {
+                            text: "Loading…";
+                            color: Theme.text;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                TouchArea {
+                    clicked => {
+                        root.toggle-play();
+                        root.focus();
+                    }
+                }
+            }
+        }
+
+        if root.loaded: HorizontalLayout {
+            spacing: 6px;
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    icon: root.playing ? "\u{E769}" : "\u{E768}";
+                    tint: Theme.text;
+                    clicked => { root.toggle-play(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    icon: "\u{E892}";
+                    clicked => { root.frame-step(-1); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    icon: "\u{E893}";
+                    clicked => { root.frame-step(1); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 8px;
+                    background: root.loop ? Theme.accent.with-alpha(0.2) : transparent;
+                    IconButton {
+                        icon: "\u{E8EE}";
+                        tint: root.loop ? Theme.accent-hi : Theme.muted;
+                        clicked => { root.loop = !root.loop; }
+                    }
+                }
+            }
+            Text {
+                text: Fmt.time(root.position) + "  /  " + Fmt.time(root.duration);
+                color: Theme.text;
+                font-family: Theme.mono;
+                font-size: 13px;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            GhostButton {
+                horizontal-stretch: 0;
+                text: "In  " + Fmt.time(root.in-time);
+                clicked => { root.set-in(); }
+            }
+            GhostButton {
+                horizontal-stretch: 0;
+                text: "Out  " + Fmt.time(root.out-time);
+                clicked => { root.set-out(); }
+            }
+        }
+
+        if root.loaded: Timeline {
+            duration: root.duration;
+            position: root.position;
+            in-time <=> root.in-time;
+            out-time <=> root.out-time;
+            thumbs: root.thumbs;
+            wave: root.wave;
+            has-video: root.has-video;
+            show-keyframes: root.mode == 0 && !root.is-link;
+            keyframe-ticks: root.keyframe-ticks;
+            effective-in: root.effective-in;
+            seek(t) => {
+                root.seek(t);
+                root.focus();
+            }
+        }
+
+        if root.loaded: Text {
+            text: "Space play clip  ·  I / O set in / out  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  Home / End jump to in / out";
+            color: Theme.muted;
+            font-size: 11px;
+            overflow: elide;
+        }
+
+        // Link mode: the same quality and file type as the Download page
+        // (shared settings, so both pages always agree). Files keep their own.
+        if root.loaded && root.is-link: QualityRow {
+            quality <=> root.quality;
+            spotify: root.gif;
+            spotify-text: "Saved as a .gif (X keeps GIFs as short silent videos)";
+            format-text: root.gif ? "gif" : root.quality == 4 ? root.audio-format : root.video-format;
+            changed => { root.settings-changed(); }
+            open-settings => { root.open-settings(); }
+            show-clip: false;
+        }
+
+        if root.loaded: HorizontalLayout {
+            spacing: 8px;
+            ChoiceChips {
+                options: ["Fast · lossless", "Exact · re-encode"];
+                current <=> root.mode;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.status != "" ? root.status
+                    : root.is-link ? "Downloads only " + Fmt.time(root.out-time - root.in-time)
+                        + (root.mode == 0 ? "  ·  fast, may start a few seconds early" : "  ·  frame-exact (slower)")
+                    : root.mode == 1 ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  frame-exact H.264"
+                    : root.early-start ? "Lossless cut starts earlier, at " + Fmt.time(root.effective-in) + " (keyframe)"
+                    : "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  lossless, starts on a keyframe";
+                color: root.status == "" && root.early-start ? Theme.warn : Theme.muted;
+                font-size: 12px;
+                overflow: elide;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+            }
+            if root.status == "" && root.early-start: GhostButton {
+                horizontal-stretch: 0;
+                text: "Snap to keyframe";
+                clicked => {
+                    root.in-time = root.effective-in;
+                    root.seek(root.in-time);
+                }
+            }
+            if root.has-output && !root.exporting: GhostButton {
+                horizontal-stretch: 0;
+                text: "Show file";
+                icon: "\u{E838}";
+                clicked => { root.show-output(); }
+            }
+            if root.is-link && root.status != "": GhostButton {
+                horizontal-stretch: 0;
+                text: "View queue";
+                clicked => { root.view-queue(); }
+            }
+            PrimaryButton {
+                horizontal-stretch: 0;
+                text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%"
+                    : root.is-link ? "Download clip" : "Export clip";
+                icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
+                enabled: root.out-time > root.in-time && root.tools-ready;
+                clicked => {
+                    if root.exporting {
+                        root.cancel-export();
+                    } else {
+                        root.export-clip();
+                    }
+                }
+            }
+        }
+    }
+}

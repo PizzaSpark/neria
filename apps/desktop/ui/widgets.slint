@@ -529,3 +529,209 @@ export component ChoiceTile inherits Rectangle {
         }
     }
 }
+
+// A row of chips where one is picked (quality, clip mode, compress goal…).
+export component ChoiceChips inherits HorizontalLayout {
+    in property <[string]> options;
+    in-out property <int> current;
+    callback changed();
+    horizontal-stretch: 0;
+    spacing: 8px;
+    for option[i] in root.options: Chip {
+        horizontal-stretch: 0;
+        text: option;
+        selected: root.current == i;
+        clicked => {
+            root.current = i;
+            root.changed();
+        }
+    }
+}
+
+// 1px hairline between sections. `inset-right` stops it short of a list's scrollbar lane.
+export component Divider inherits Rectangle {
+    in property <length> inset-right;
+    height: 1px;
+    Rectangle {
+        x: 0;
+        width: parent.width - root.inset-right;
+        background: Theme.line;
+    }
+}
+
+// A calm list row with a hairline at the bottom. The hairline stops short of the
+// ListView's scrollbar lane (`lane`; 0 outside a ListView).
+export component ListRow inherits Rectangle {
+    in property <length> lane: 16px;
+    @children
+    Rectangle {
+        x: 0;
+        y: root.height - 1px;
+        width: root.width - root.lane;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// Rounded picture box: thumbnails, covers, file previews. Children sit on top (status icons).
+export component Thumb inherits Rectangle {
+    in property <image> source;
+    border-radius: 6px;
+    background: Theme.raised;
+    clip: true;
+    Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.source;
+        image-fit: cover;
+    }
+    @children
+}
+
+// The sticker: a rounded face with a hard outline and a hard shadow down-right. Children
+// go on the face. Used for the logo mark and the drop target.
+export component Sticker inherits Rectangle {
+    in property <length> size: 34px;
+    in property <length> radius: 10px;
+    in property <color> face: Theme.pop;
+    in property <color> edge: Theme.hard;
+    in property <color> shadow: Theme.hard;
+    width: root.size + 3px;
+    height: root.size + 3px;
+    Rectangle {
+        x: 3px;
+        y: 3px;
+        width: root.size;
+        height: root.size;
+        border-radius: root.radius;
+        background: root.shadow;
+    }
+    Rectangle {
+        width: root.size;
+        height: root.size;
+        border-radius: root.radius;
+        background: root.face;
+        border-width: 2px;
+        border-color: root.edge;
+        @children
+    }
+}
+
+// Neria's logo mark: an "N" whose left stem is a download arrow, on the sticker.
+export component LogoMark inherits Sticker {
+    // Sized from `size`: it sits on the face, which isn't its `parent` here.
+    Image {
+        width: root.size;
+        height: root.size;
+        source: @image-url("../assets/neria-mark.png");
+    }
+}
+
+// One line of status next to an icon: "That's not a link yet", "Already downloaded",
+// warnings. Children (a link, a button) follow the text.
+export component Notice inherits HorizontalLayout {
+    in property <string> icon: "\u{E7BA}";
+    in property <string> text;
+    in property <color> color: Theme.warn;
+    in property <color> icon-color: root.color;
+    in property <length> icon-size: 13px;
+    in property <length> font-size: 12px;
+    in property <bool> wrap;
+    // false: the text takes only its own width (children then end with a spacer).
+    in property <bool> fill: true;
+    // Cut long text with "…" instead of wrapping.
+    in property <bool> elide;
+    spacing: 8px;
+    Icon {
+        horizontal-stretch: 0;
+        text: root.icon;
+        font-size: root.icon-size;
+        color: root.icon-color;
+    }
+    Text {
+        horizontal-stretch: root.fill ? 1 : 0;
+        text: root.text;
+        color: root.color;
+        font-size: root.font-size;
+        wrap: root.wrap ? word-wrap : no-wrap;
+        overflow: root.elide ? TextOverflow.elide : TextOverflow.clip;
+        vertical-alignment: center;
+    }
+    @children
+}
+
+// An empty page: big icon, one display line, the actions (children), a muted tip.
+export component EmptyState inherits Rectangle {
+    in property <string> icon;
+    in property <string> title;
+    in property <string> tip;
+    vertical-stretch: 1;
+    VerticalLayout {
+        alignment: center;
+        spacing: 12px;
+        Icon {
+            text: root.icon;
+            font-size: 36px;
+            color: Theme.accent-hi;
+        }
+        Text {
+            text: root.title;
+            color: Theme.ink;
+            font-family: Theme.display;
+            font-size: 19px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 10px;
+            @children
+        }
+        Text {
+            text: root.tip;
+            color: Theme.muted;
+            font-size: 12px;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+// Short message at the bottom of the window ("Report copied…"). Sizes itself to the
+// text, up to `widest`; the window centres it.
+export component Toast inherits Rectangle {
+    in property <string> text;
+    in property <length> widest;
+    width: min(row.preferred-width, root.widest);
+    height: 46px;
+    border-radius: 12px;
+    background: Theme.panel;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    row := HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 20px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                border-radius: 6px;
+                background: Theme.ok-bg;
+                Icon {
+                    text: "\u{E73E}";
+                    font-size: 11px;
+                    color: Theme.ok;
+                }
+            }
+        }
+        Text {
+            text: root.text;
+            color: Theme.ink;
+            font-family: Theme.body;
+            font-size: 13px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}

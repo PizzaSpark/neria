@@ -1,0 +1,381 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { JobItem, PickItem, SyncItem } from "../types.slint";
+import { Icon, PrimaryButton, GhostButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, Notice, Divider, Thumb } from "../widgets.slint";
+import { QualityRow } from "../components/quality-row.slint";
+import { JobRow } from "../components/job-row.slint";
+import { PickList } from "../components/pick-list.slint";
+import { UpdateBanner } from "../components/update-banner.slint";
+
+// Paste a link, see what it is, pick the quality (or the items of a post/playlist), and
+// follow the queue.
+export component DownloadPage inherits Rectangle {
+    // The window's size: chips go inline and the preview grows on big windows.
+    in property <length> window-width;
+    in property <length> window-height;
+    in property <bool> tools-ready;
+
+    // Update banner
+    in property <bool> update-banner;
+    in property <int> update-state;
+    in property <string> update-version;
+    in property <string> update-status;
+    in property <float> update-progress;
+    callback update-install();
+    callback update-restart();
+    callback update-later();
+
+    // Link + preview
+    in-out property <string> url;
+    in property <int> probe-state; // 0 none, 1 loading, 2 ok, 3 error, 4 text isn't a link
+    in property <bool> probe-blocked;
+    in property <string> probe-title;
+    in property <string> probe-meta;
+    in property <image> probe-thumb;
+    in property <bool> probe-is-spotify;
+    in-out property <int> quality;
+    // An X GIF that will be saved as a real .gif.
+    in property <bool> gif-mode;
+    in property <string> dup-text;
+    in property <bool> dup-file;
+    in property <string> playlist-url;
+    callback paste();
+    callback url-edited(string);
+    callback start-download();
+    callback dup-show();
+    callback use-playlist();
+    callback clip-open-link(string, string);
+
+    // Format line under the preview
+    in property <string> video-format; // "mp4 · H.264"
+    in property <string> audio-format; // "mp3"
+    in property <bool> lyrics;
+    callback settings-changed();
+    callback open-settings();
+
+    // Posts and playlists
+    in property <[PickItem]> pick-items;
+    in property <int> pick-checked;
+    in property <string> pick-note;
+    in-out property <bool> number-items;
+    callback pick-toggle(int, bool);
+    callback pick-all(bool);
+    callback pick-quality(int, int);
+
+    // Spotify
+    in property <int> spotify-count;
+    in property <string> spotify-note;
+    in property <[SyncItem]> sync-items;
+    callback review-removed();
+
+    // Queue
+    in property <[JobItem]> jobs;
+    in property <int> active-count;
+    in property <int> running-count;
+    in property <int> paused-count;
+    in property <int> finished-count;
+    callback pause-all();
+    callback resume-all();
+    callback clear-finished();
+    callback open-output();
+    callback cancel-job(int);
+    callback remove-job(int);
+    callback retry-job(int);
+    callback open-job(int);
+    callback clip-job(int);
+    callback cmp-job(int);
+    callback match-pick(int);
+    callback report-job(int);
+    callback pause-job(int);
+    callback resume-job(int);
+    callback toggle-group(int);
+
+    property <bool> picking: root.probe-state == 2 && root.pick-items.length > 1;
+    // Chips go under the preview title when there's room (saves a row for the queue).
+    property <bool> chips-inline: root.probe-state == 2 && root.window-width >= 960px;
+    property <bool> short: root.window-height < 820px;
+    property <bool> no-quality: root.probe-is-spotify || root.gif-mode;
+    property <string> no-quality-text: root.gif-mode ? "Saved as a .gif (X keeps GIFs as short silent videos)"
+        : "Saved as " + root.audio-format + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
+    property <string> format-text: root.gif-mode ? "gif"
+        : root.probe-is-spotify || root.quality == 4 ? root.audio-format : root.video-format;
+
+    VerticalLayout {
+        padding: 26px;
+        // Wide windows: keep a readable column instead of stretching edge to edge.
+        padding-left: max(26px, (parent.width - 1240px) / 2);
+        padding-right: max(26px, (parent.width - 1240px) / 2);
+        padding-bottom: 14px;
+        spacing: 16px;
+
+        HorizontalLayout {
+            spacing: 12px;
+            PageTitle {
+                horizontal-stretch: 1;
+                title: "Grab anything.";
+                subtitle: "YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.";
+            }
+        }
+
+        if root.update-banner || root.update-state == 2 || root.update-state == 3: UpdateBanner {
+            state: root.update-state;
+            version: root.update-version;
+            status: root.update-status;
+            progress: root.update-progress;
+            active-count: root.active-count;
+            whats-new => { root.open-settings(); }
+            install => { root.update-install(); }
+            restart => { root.update-restart(); }
+            later => { root.update-later(); }
+        }
+
+        LinkField {
+            text <=> root.url;
+            placeholder: "Paste a link here";
+            edited(t) => { root.url-edited(t); }
+            accepted => { root.start-download(); }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                GhostButton {
+                    compact: true;
+                    text: "Paste";
+                    icon: "\u{E77F}";
+                    clicked => { root.paste(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                PrimaryButton {
+                    text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
+                        : root.picking && root.pick-checked > 1 ? "Download " + root.pick-checked + " items"
+                        : root.dup-text != "" && root.probe-state == 2 ? "Download again"
+                        : "Download";
+                    icon: "\u{E896}";
+                    enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0)
+                        && (!root.picking || root.pick-checked > 0);
+                    clicked => { root.start-download(); }
+                }
+            }
+        }
+
+        if root.probe-state == 4: Notice {
+            icon: "\u{E71B}";
+            text: "That's not a link yet. Copy the address of a video, song or playlist and paste it here.";
+            color: Theme.muted;
+            font-size: 13px;
+        }
+
+        // Preview: thumbnail leads; problems get a calm box with a coloured sign.
+        if root.probe-state >= 1 && root.probe-state <= 3: HorizontalLayout {
+            spacing: 16px;
+            Thumb {
+                width: root.probe-state != 2 ? 120px : root.short ? 128px : 184px;
+                height: root.probe-state != 2 ? 68px : root.short ? 72px : 104px;
+                border-radius: 10px;
+                source: root.probe-thumb;
+                if root.probe-state != 2: Icon {
+                    text: root.probe-state == 1 ? "\u{E895}" : root.probe-blocked ? "\u{E783}" : "\u{E7BA}";
+                    color: root.probe-state != 3 ? Theme.muted : root.probe-blocked ? Theme.bad : Theme.warn;
+                    font-size: 20px;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 5px;
+                horizontal-stretch: 1;
+                Text {
+                    text: root.probe-state == 1 ? "Looking up the link…" : root.probe-title;
+                    color: root.probe-state != 3 ? Theme.ink : root.probe-blocked ? Theme.bad : Theme.warn;
+                    font-size: root.short ? 15px : 17px;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.probe-meta;
+                    color: Theme.muted;
+                    font-size: 13px;
+                    wrap: root.probe-state == 3 ? word-wrap : no-wrap;
+                    overflow: elide;
+                }
+                // Already downloaded / already in the queue.
+                if root.probe-state == 2 && root.dup-text != "": Notice {
+                    text: root.dup-text;
+                    font-size: 12.5px;
+                    fill: false;
+                    elide: true;
+                    if root.dup-file: TextLink {
+                        horizontal-stretch: 0;
+                        text: "Show file";
+                        clicked => { root.dup-show(); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                // watch?v=…&list=…: this video, or the playlist it came from?
+                if root.probe-state == 2 && root.playlist-url != "" && root.pick-items.length == 0: Notice {
+                    icon: "\u{E8FD}";
+                    text: "This video is part of a playlist.";
+                    color: Theme.muted;
+                    font-size: 12.5px;
+                    fill: false;
+                    TextLink {
+                        horizontal-stretch: 0;
+                        text: "Get the whole playlist";
+                        clicked => { root.use-playlist(); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                if root.chips-inline: VerticalLayout {
+                    padding-top: 8px;
+                    QualityRow {
+                        quality <=> root.quality;
+                        spotify: root.no-quality;
+                        spotify-text: root.no-quality-text;
+                        format-text: root.format-text;
+                        changed => { root.settings-changed(); }
+                        open-settings => { root.open-settings(); }
+                        clip-first => { root.clip-open-link(root.url, root.probe-title); }
+                        show-clip: root.pick-items.length == 0;
+                    }
+                }
+                if root.probe-state == 2 && !root.probe-is-spotify && !root.chips-inline && root.pick-items.length == 0: HorizontalLayout {
+                    padding-top: 8px;
+                    alignment: start;
+                    GhostButton {
+                        compact: true;
+                        text: "Clip first";
+                        icon: "\u{E8C6}";
+                        clicked => { root.clip-open-link(root.url, root.probe-title); }
+                    }
+                }
+            }
+        }
+
+        if root.picking: PickList {
+            items: root.pick-items;
+            checked: root.pick-checked;
+            note: root.pick-note;
+            number-items <=> root.number-items;
+            // Room for about four rows; the queue keeps the rest.
+            visible-rows: root.window-height < 760px ? 3 : 4;
+            toggle(i, on) => { root.pick-toggle(i, on); }
+            all(on) => { root.pick-all(on); }
+            quality(i, q) => { root.pick-quality(i, q); }
+            number-items-toggled => { root.settings-changed(); }
+        }
+
+        // Spotify notices: truncated playlist, API fallback, removed songs.
+        if root.probe-is-spotify && (root.spotify-note != "" || root.sync-items.length > 0): Notice {
+            spacing: 10px;
+            icon-size: 14px;
+            wrap: true;
+            text: root.spotify-note != "" ? root.spotify-note
+                : root.sync-items.length + " song" + (root.sync-items.length == 1 ? "" : "s") + " in your folder " + (root.sync-items.length == 1 ? "is" : "are") + " no longer in this list on Spotify.";
+            if root.sync-items.length > 0: GhostButton {
+                compact: true;
+                horizontal-stretch: 0;
+                text: "Review " + root.sync-items.length + " removed";
+                clicked => { root.review-removed(); }
+            }
+        }
+
+        if !root.chips-inline: QualityRow {
+            quality <=> root.quality;
+            spotify: root.no-quality;
+            spotify-text: root.no-quality-text;
+            format-text: root.format-text;
+            changed => { root.settings-changed(); }
+            open-settings => { root.open-settings(); }
+            clip-first => { root.clip-open-link(root.url, root.probe-title); }
+            show-clip: false;
+        }
+
+        // Queue
+        VerticalLayout {
+            vertical-stretch: 1;
+            spacing: 0px;
+            Divider { }
+            HorizontalLayout {
+                padding-top: 14px;
+                padding-bottom: 4px;
+                spacing: 10px;
+                SectionTitle {
+                    text: "Queue";
+                    vertical-alignment: center;
+                    horizontal-stretch: 0;
+                }
+                if root.running-count > 0: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    Tag {
+                        text: root.running-count + " going";
+                        kind: 4;
+                    }
+                }
+                // Next to the title, so the links on the right don't jump around
+                // as these come and go.
+                if root.active-count > 0: TextLink {
+                    text: "Pause all";
+                    icon: "\u{E769}";
+                    clicked => { root.pause-all(); }
+                }
+                if root.paused-count > 0: TextLink {
+                    text: "Resume all";
+                    icon: "\u{E768}";
+                    clicked => { root.resume-all(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if root.finished-count > 0: TextLink {
+                    text: "Clear finished";
+                    clicked => { root.clear-finished(); }
+                }
+                TextLink {
+                    text: "Open folder";
+                    icon: "\u{E838}";
+                    clicked => { root.open-output(); }
+                }
+            }
+
+            if root.jobs.length == 0: VerticalLayout {
+                vertical-stretch: 1;
+                alignment: center;
+                spacing: 8px;
+                Text {
+                    text: "Your downloads land here";
+                    color: Theme.ink;
+                    font-family: Theme.display;
+                    font-size: 18px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Paste a link above and press Download. Playlists and albums get one card you can open.";
+                    color: Theme.muted;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+
+            if root.jobs.length > 0: ListView {
+                vertical-stretch: 1;
+                for job in root.jobs: JobRow {
+                    job: job;
+                    narrow: root.window-width < 1000px;
+                    cancel => { root.cancel-job(job.id); }
+                    remove => { root.remove-job(job.id); }
+                    retry => { root.retry-job(job.id); }
+                    open => { root.open-job(job.id); }
+                    open-clipper => { root.clip-job(job.id); }
+                    open-compressor => { root.cmp-job(job.id); }
+                    pick-match => { root.match-pick(job.id); }
+                    report => { root.report-job(job.id); }
+                    pause => { root.pause-job(job.id); }
+                    resume => { root.resume-job(job.id); }
+                    toggle => { root.toggle-group(job.group); }
+                }
+            }
+        }
+    }
+}

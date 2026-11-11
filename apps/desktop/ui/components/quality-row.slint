@@ -1,0 +1,52 @@
+import { Theme } from "../theme.slint";
+import { ChoiceChips, GhostButton } from "../widgets.slint";
+
+// Quality chips, then what you'll get ("mp4 · H.264", opens Settings). Sits
+// under the preview title on wide windows, in its own row on narrow ones.
+export component QualityRow inherits HorizontalLayout {
+    in-out property <int> quality;
+    // No quality to pick (Spotify songs, X GIFs): show `spotify-text` instead of the chips.
+    in property <bool> spotify;
+    in property <string> spotify-text;
+    in property <string> format-text;
+    in property <bool> show-clip;
+    callback changed();
+    callback open-settings();
+    callback clip-first();
+    spacing: 7px;
+    if !root.spotify: ChoiceChips {
+        spacing: 7px;
+        options: ["Best", "1080p", "720p", "480p", "Audio only"];
+        current <=> root.quality;
+        changed => { root.changed(); }
+    }
+    if root.spotify: Text {
+        text: root.spotify-text;
+        color: Theme.muted;
+        font-size: 12px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    if root.show-clip && !root.spotify: VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 0;
+        padding-left: 4px;
+        GhostButton {
+            compact: true;
+            text: "Clip first";
+            icon: "\u{E8C6}";
+            clicked => { root.clip-first(); }
+        }
+    }
+    Rectangle { horizontal-stretch: 1; }
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 0;
+        GhostButton {
+            compact: true;
+            icon: "\u{E713}";
+            text: root.format-text;
+            clicked => { root.open-settings(); }
+        }
+    }
+}

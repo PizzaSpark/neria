@@ -1,0 +1,56 @@
+import { ListView } from "std-widgets.slint";
+import { SyncItem } from "../types.slint";
+import { PrimaryButton, GhostButton, Hint, Tick, Dialog, Divider, ListRow } from "../widgets.slint";
+
+// Songs removed from a Spotify playlist/album that are still in your folder. Closing
+// decides nothing: the files stay.
+export component SyncDialog inherits Dialog {
+    in property <[SyncItem]> items;
+    in property <int> ticked;
+    callback toggle(int, bool);
+    callback delete-selected();
+    callback keep-all();
+
+    title: "Removed on Spotify";
+    subtitle: root.items.length == 1 ? "1 song is still in your folder" : root.items.length + " songs are still in your folder";
+    card-width: 560px;
+    card-height: 540px;
+    close => { root.keep-all(); }
+
+    Hint {
+        text: "These are no longer in the playlist or album on Spotify. Nothing is deleted unless you tick it, and ticked songs go to the Recycle Bin.";
+    }
+    VerticalLayout {
+        vertical-stretch: 1;
+        Divider { inset-right: 16px; }
+        ListView {
+            vertical-stretch: 1;
+            for item[i] in root.items: ListRow {
+                height: 52px;
+                HorizontalLayout {
+                    padding-left: 4px;
+                    padding-right: 26px;
+                    Tick {
+                        text: item.title;
+                        checked: item.checked;
+                        toggled(on) => { root.toggle(i, on); }
+                    }
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: end;
+        GhostButton {
+            text: "Keep all";
+            clicked => { root.keep-all(); }
+        }
+        PrimaryButton {
+            enabled: root.ticked > 0;
+            text: root.ticked == 0 ? "Move to Recycle Bin" : "Move " + root.ticked + " to Recycle Bin";
+            icon: "\u{E74D}";
+            clicked => { root.delete-selected(); }
+        }
+    }
+}

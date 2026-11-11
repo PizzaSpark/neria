@@ -1,0 +1,198 @@
+import { Theme } from "../theme.slint";
+import { ToolRow } from "../types.slint";
+import { Icon, PrimaryButton, Bar, Tag, TextLink, Divider, ListRow, LogoMark } from "../widgets.slint";
+
+// First start: the tools download into bin/ next to the exe. Covers the whole window
+// until they're ready (or says why they can't be).
+export component SetupScreen inherits Rectangle {
+    in property <string> label;
+    in property <string> error; // plain-language reason the last try failed
+    in property <bool> copied;
+    in property <string> blocked-dir; // set when Neria can't write next to itself
+    in property <int> missing; // tools still to download
+    in property <[ToolRow]> tools;
+    callback retry();
+    callback copy-details();
+    callback show-folder();
+    property <bool> blocked: root.blocked-dir != "";
+    property <bool> failed: root.error != "";
+
+    background: Theme.bg;
+    TouchArea { }
+    HorizontalLayout {
+        alignment: center;
+        padding: 26px;
+        VerticalLayout {
+            alignment: center;
+            width: min(560px, root.width - 52px);
+            // Logo mark, same sticker as the nav rail, a size up.
+            HorizontalLayout {
+                alignment: start;
+                padding-bottom: 26px;
+                LogoMark {
+                    size: 44px;
+                    radius: 12px;
+                }
+            }
+            Text {
+                text: root.blocked ? "Move Neria somewhere else." : root.failed ? "Setup hit a snag." : "Getting Neria ready.";
+                color: Theme.ink;
+                font-family: Theme.display;
+                font-size: 30px;
+                font-weight: 700;
+                letter-spacing: -1px;
+                wrap: word-wrap;
+            }
+            Rectangle { height: 8px; }
+            Text {
+                text: root.blocked
+                    ? "Windows won't let Neria save files in the folder it's in. Neria keeps its tools and settings right next to itself, so it needs a folder you can write to."
+                    : root.failed ? root.error
+                    : root.missing == 0 ? root.label
+                    : "First start only. Neria downloads " + (root.missing == 1 ? "one free tool" : root.missing + " free tools") + " into the bin folder next to itself. Nothing gets installed on your PC.";
+                color: root.failed ? Theme.ink : Theme.muted;
+                font-family: Theme.body;
+                font-size: 14px;
+                wrap: word-wrap;
+            }
+
+            // Can't write here: where it is now, and what to do.
+            if root.blocked: VerticalLayout {
+                padding-top: 18px;
+                spacing: 18px;
+                Rectangle {
+                    border-radius: 9px;
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    HorizontalLayout {
+                        padding: 12px;
+                        padding-left: 14px;
+                        spacing: 10px;
+                        Icon {
+                            text: "\u{E8B7}";
+                            font-size: 14px;
+                            color: Theme.muted;
+                            vertical-alignment: top;
+                        }
+                        Text {
+                            text: root.blocked-dir;
+                            color: Theme.ink;
+                            font-family: Theme.mono;
+                            font-size: 11.5px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+                Text {
+                    text: "Close Neria, move the whole Neria folder to Documents or Desktop, and open it from there.";
+                    color: Theme.ink;
+                    font-family: Theme.body;
+                    font-size: 14px;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    padding-top: 4px;
+                    spacing: 18px;
+                    alignment: start;
+                    PrimaryButton {
+                        text: "Show Neria's folder";
+                        icon: "\u{E838}";
+                        clicked => { root.show-folder(); }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        TextLink {
+                            text: "Check again";
+                            clicked => { root.retry(); }
+                        }
+                    }
+                }
+            }
+
+            // One calm row per tool, each with its own meter.
+            if !root.blocked: VerticalLayout {
+                padding-top: 22px;
+                Divider { }
+                for tool in root.tools: ListRow {
+                    height: 58px;
+                    lane: 0;
+                    HorizontalLayout {
+                        spacing: 16px;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 2px;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: tool.name;
+                                color: tool.state == 0 ? Theme.muted : Theme.ink;
+                                font-family: Theme.body;
+                                font-size: 14px;
+                                font-weight: 500;
+                            }
+                            Text {
+                                text: tool.purpose;
+                                color: Theme.muted;
+                                font-family: Theme.body;
+                                font-size: 12px;
+                                overflow: elide;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            width: 168px;
+                            spacing: 7px;
+                            HorizontalLayout {
+                                alignment: end;
+                                if tool.state == 1: Text {
+                                    text: tool.detail;
+                                    color: Theme.muted;
+                                    font-family: Theme.mono;
+                                    font-size: 11.5px;
+                                }
+                                if tool.state != 1: Tag {
+                                    text: tool.state == 2 ? "Ready" : tool.state == 3 ? "Stopped" : "Waiting";
+                                    kind: tool.state == 2 ? 1 : tool.state == 3 ? 3 : 0;
+                                }
+                            }
+                            if tool.state == 1: Bar {
+                                value: tool.progress;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !root.blocked && root.failed: HorizontalLayout {
+                padding-top: 22px;
+                spacing: 18px;
+                alignment: start;
+                PrimaryButton {
+                    text: "Try again";
+                    icon: "\u{E72C}";
+                    clicked => { root.retry(); }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    TextLink {
+                        text: root.copied ? "Copied" : "Copy details";
+                        icon: root.copied ? "\u{E73E}" : "\u{E8C8}";
+                        clicked => { root.copy-details(); }
+                    }
+                }
+            }
+
+            if !root.blocked && !root.failed: VerticalLayout {
+                padding-top: 16px;
+                Text {
+                    text: "Neria is portable: everything stays in its own folder. Delete the folder and it's gone.";
+                    color: Theme.dim;
+                    font-family: Theme.body;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

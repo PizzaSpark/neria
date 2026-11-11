@@ -1,0 +1,141 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { MatchItem } from "../types.slint";
+import { GhostButton, IconButton, Hint, Tag, LinkField, Dialog, Divider, ListRow } from "../widgets.slint";
+
+// "Pick another match" for a Spotify track: search YouTube Music, check a candidate
+// against Spotify's preview, use it.
+export component MatchDialog inherits Dialog {
+    in property <string> heading;
+    in property <string> sub;
+    in property <[MatchItem]> items;
+    in property <bool> loading;
+    in property <string> status;
+    in property <bool> can-check;
+    in-out property <string> query;
+    callback search();
+    callback check(int);
+    callback open-url(string);
+    callback use(int);
+
+    title: "Pick the right song";
+    subtitle: root.heading;
+    card-width: 720px;
+    card-height: 640px;
+
+    LinkField {
+        height: 46px;
+        text <=> root.query;
+        placeholder: "Search YouTube Music";
+        accepted => { root.search(); }
+        VerticalLayout {
+            alignment: center;
+            GhostButton {
+                compact: true;
+                text: "Search";
+                icon: "\u{E721}";
+                clicked => { root.search(); }
+            }
+        }
+    }
+
+    Text {
+        text: root.loading ? "Searching YouTube Music…" : root.status != "" ? root.status : root.sub;
+        color: Theme.muted;
+        font-family: Theme.body;
+        font-size: 12px;
+        overflow: elide;
+    }
+
+    VerticalLayout {
+        vertical-stretch: 1;
+        Divider { inset-right: 16px; }
+        ListView {
+            vertical-stretch: 1;
+            for item[i] in root.items: ListRow {
+                height: 64px;
+                // Calm rows; the one in use sits on a slightly raised band.
+                Rectangle {
+                    x: 0;
+                    width: parent.width - 16px;
+                    background: item.current ? Theme.raised : transparent;
+                }
+                HorizontalLayout {
+                    padding-left: 12px;
+                    // 16px lane for the scrollbar, plus breathing room.
+                    padding-right: 26px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 5px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: item.title;
+                            color: Theme.ink;
+                            font-family: Theme.body;
+                            font-size: 14px;
+                            font-weight: 500;
+                            overflow: elide;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            if item.current: Text {
+                                text: "In use";
+                                color: Theme.ink;
+                                font-family: Theme.display;
+                                font-size: 11px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                            Tag {
+                                text: item.ruled-out ? "Length differs" : item.score + "% match";
+                                kind: item.ruled-out ? 0 : item.score >= 80 ? 1 : item.score >= 60 ? 2 : 0;
+                            }
+                            if item.check-state > 0: Tag {
+                                text: item.check-text;
+                                kind: item.check-state == 2 ? 1 : item.check-state == 3 ? 2 : item.check-state == 4 ? 3 : 0;
+                            }
+                            Text {
+                                text: item.detail;
+                                color: Theme.muted;
+                                font-family: Theme.body;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                    if item.check-state == 0 && root.can-check: VerticalLayout {
+                        alignment: center;
+                        GhostButton {
+                            compact: true;
+                            text: "Check";
+                            icon: "\u{E8D6}";
+                            clicked => { root.check(i); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        IconButton {
+                            icon: "\u{E8A7}";
+                            clicked => { root.open-url(item.url); }
+                        }
+                    }
+                    if !item.current: VerticalLayout {
+                        alignment: center;
+                        GhostButton {
+                            compact: true;
+                            text: "Use this";
+                            clicked => { root.use(i); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Hint {
+        text: "Check plays it against Spotify's preview. Use this re-downloads that version and keeps Spotify's tags, cover and lyrics. The arrow opens it in your browser.";
+    }
+}

@@ -10,9 +10,20 @@ UI design system: `docs/DESIGN.md` (Studio + Play); follow it for any new or cha
   `music.rs` tags/lyrics/M3U/sync, `post.rs` items of posts/playlists for the picker,
   `folders.rs` Audio/Video/Photos folders). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
-- `apps/desktop`: Slint UI (`ui/app.slint` screens, `ui/widgets.slint` shared controls,
-  `ui/theme.slint` tokens + bundled fonts in `ui/fonts/`), `main.rs` (download page), `clipper.rs` (clip page;
-  mpv renders into a GL texture shown as a Slint image), `compressor.rs` (compress page).
+- `apps/desktop`: Slint UI in `ui/`:
+  - `app.slint`: `AppWindow` only, the one API Rust sees (all properties/callbacks); wires them
+    into the pages and overlays. Re-exports the structs and `Fmt` from `types.slint`.
+  - `pages/`: `download`, `clip`, `compress`, `settings` (drawer), `setup` (first run).
+  - `dialogs/`: `match` (pick another match), `sync` (removed songs), `spotify` (heads-up),
+    `drop` (drag-and-drop overlay + clip/compress choice).
+  - `components/`: `job-row`, `quality-row`, `pick-list`, `timeline`, `sidebar`, `update-banner`.
+  - `widgets.slint`: the one shared control set (buttons, chips, `ChoiceChips`, `Tick`, `Tag`,
+    `Notice`, `Divider`, `ListRow`, `Thumb`, `Sticker`/`LogoMark`, `EmptyState`, `Dialog`, `Toast`…).
+    Reuse these instead of restyling per page. `theme.slint`: tokens + bundled fonts in `ui/fonts/`.
+  - Pages take plain properties (no `clip-`/`cmp-` prefixes) and are bound in `app.slint`.
+
+  Rust: `main.rs` (download page), `clipper.rs` (clip page; mpv renders into a GL texture shown
+  as a Slint image), `compressor.rs` (compress page).
 
 ## Commands
 ```bash

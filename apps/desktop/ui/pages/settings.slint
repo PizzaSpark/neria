@@ -1,0 +1,407 @@
+import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { Formats } from "../types.slint";
+import { PrimaryButton, GhostButton, IconButton, Bar, SectionTitle, Hint, Tag } from "../widgets.slint";
+
+// One group of settings under a heading.
+component Section inherits VerticalLayout {
+    in property <string> title;
+    spacing: 8px;
+    SectionTitle { text: root.title; }
+    @children
+}
+
+// A label on the left, its control (140px wide) on the right.
+component SettingRow inherits HorizontalLayout {
+    in property <string> label;
+    spacing: 10px;
+    Hint {
+        text: root.label;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+    @children
+}
+
+// The Settings drawer, sliding over the right edge of the window. Put it over the whole
+// window: clicking the dimmed part closes it.
+export component SettingsDrawer inherits Rectangle {
+    in property <string> output-dir;
+    in-out property <bool> sort-folders;
+    in-out property <int> container-index;
+    in-out property <bool> prefer-h264;
+    in-out property <bool> embed-subs;
+    in-out property <int> audio-format-index;
+    in-out property <bool> embed-thumbnail;
+    in-out property <bool> save-thumbnail;
+    in-out property <bool> embed-metadata;
+    in-out property <bool> sponsorblock;
+    in-out property <bool> allow-playlists;
+    in-out property <bool> x-gifs-as-gif;
+    in-out property <int> cookies-index;
+    in-out property <string> rate-limit;
+    in-out property <int> max-concurrent;
+    in-out property <bool> lyrics;
+    in-out property <bool> verify-audio;
+    in-out property <bool> spotify-explain;
+    in-out property <string> spotify-client-id;
+    in-out property <string> spotify-client-secret;
+    in-out property <int> theme-index;
+    in-out property <string> filename-template;
+    in-out property <string> extra-args;
+    in-out property <bool> check-updates;
+
+    // About and updates (update-state: 0 idle, 1 checking, 2 downloading, 3 ready, 4 failed)
+    in property <string> app-version;
+    in property <int> update-state;
+    in property <string> update-version;
+    in property <string> update-notes;
+    in property <string> update-status;
+    in property <float> update-progress;
+    in property <string> tool-versions;
+    in property <string> tools-outdated;
+    in property <string> tools-status;
+    in property <bool> tools-updating;
+
+    callback close();
+    callback choose-output();
+    callback open-output();
+    callback settings-changed();
+    callback theme-changed();
+    callback update-install();
+    callback update-restart();
+    callback update-check();
+    callback tools-update();
+    callback copy-report();
+
+    background: #000000a0;
+    TouchArea {
+        clicked => { root.close(); }
+    }
+
+    Rectangle {
+        x: parent.width - self.width;
+        y: 0;
+        width: 400px;
+        height: parent.height;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border;
+        TouchArea { }
+
+        VerticalLayout {
+            padding: 22px;
+            spacing: 14px;
+
+            HorizontalLayout {
+                Text {
+                    text: "Settings";
+                    color: Theme.text;
+                    font-family: Theme.display;
+                    font-size: 18px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                IconButton {
+                    icon: "\u{E711}";
+                    clicked => { root.close(); }
+                }
+            }
+
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 22px;
+                    padding-right: 14px;
+                    alignment: start;
+
+                    Section {
+                        title: "Save to";
+                        Text {
+                            text: root.output-dir;
+                            color: Theme.muted;
+                            font-size: 12px;
+                            overflow: elide;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            GhostButton {
+                                text: "Change…";
+                                clicked => { root.choose-output(); }
+                            }
+                            GhostButton {
+                                text: "Open folder";
+                                clicked => { root.open-output(); }
+                            }
+                        }
+                        CheckBox {
+                            text: "Sort into Audio, Video and Photos folders";
+                            checked <=> root.sort-folders;
+                            toggled => { root.settings-changed(); }
+                        }
+                        Hint {
+                            text: "Playlists and posts get a folder of their own, inside Audio, Video or Photos when everything in it is one kind.";
+                        }
+                    }
+
+                    Section {
+                        title: "Video";
+                        SettingRow {
+                            label: "Container";
+                            ComboBox {
+                                width: 140px;
+                                model: Formats.containers;
+                                current-index <=> root.container-index;
+                                selected => { root.settings-changed(); }
+                            }
+                        }
+                        CheckBox {
+                            text: "Prefer H.264 (plays everywhere, max 1080p on YouTube)";
+                            checked <=> root.prefer-h264;
+                            toggled => { root.settings-changed(); }
+                        }
+                        CheckBox {
+                            text: "Embed subtitles";
+                            checked <=> root.embed-subs;
+                            toggled => { root.settings-changed(); }
+                        }
+                    }
+
+                    Section {
+                        title: "Audio only";
+                        SettingRow {
+                            label: "Convert to";
+                            ComboBox {
+                                width: 140px;
+                                model: Formats.audio;
+                                current-index <=> root.audio-format-index;
+                                selected => { root.settings-changed(); }
+                            }
+                        }
+                    }
+
+                    Section {
+                        title: "Extras";
+                        CheckBox {
+                            text: "Embed thumbnail as cover art";
+                            checked <=> root.embed-thumbnail;
+                            toggled => { root.settings-changed(); }
+                        }
+                        CheckBox {
+                            text: "Also save the thumbnail as a .jpg";
+                            checked <=> root.save-thumbnail;
+                            toggled => { root.settings-changed(); }
+                        }
+                        CheckBox {
+                            text: "Embed title, artist and other metadata";
+                            checked <=> root.embed-metadata;
+                            toggled => { root.settings-changed(); }
+                        }
+                        CheckBox {
+                            text: "Cut out sponsor segments (SponsorBlock)";
+                            checked <=> root.sponsorblock;
+                            toggled => { root.settings-changed(); }
+                        }
+                        CheckBox {
+                            text: "Download whole playlists";
+                            checked <=> root.allow-playlists;
+                            toggled => { root.settings-changed(); }
+                        }
+                        CheckBox {
+                            text: "Save X (Twitter) GIFs as real .gif files";
+                            checked <=> root.x-gifs-as-gif;
+                            toggled => { root.settings-changed(); }
+                        }
+                    }
+
+                    Section {
+                        title: "Network";
+                        SettingRow {
+                            label: "Cookies from browser";
+                            ComboBox {
+                                width: 140px;
+                                model: ["None", "Chrome", "Edge", "Firefox", "Brave", "Opera", "Vivaldi"];
+                                current-index <=> root.cookies-index;
+                                selected => { root.settings-changed(); }
+                            }
+                        }
+                        Hint { text: "Use this for age-restricted, members-only or \"confirm you're not a bot\" videos."; }
+                        // Chromium browsers lock their cookie file while open and encrypt it.
+                        // Two separate `if`s: wrapped text nested inside a sub-layout gets
+                        // measured as one line and squashes the next section.
+                        if root.cookies-index == 1 || root.cookies-index == 2 || root.cookies-index >= 4: HorizontalLayout {
+                            alignment: start;
+                            Tag {
+                                text: "Heads-up";
+                                kind: 2;
+                            }
+                        }
+                        if root.cookies-index == 1 || root.cookies-index == 2: Hint {
+                            text: "This browser usually blocks it: it locks its cookies while open and encrypts them. Firefox works best: sign in there and pick Firefox.";
+                        }
+                        if root.cookies-index >= 4: Hint {
+                            text: (root.cookies-index == 4 ? "Brave" : root.cookies-index == 5 ? "Opera" : "Vivaldi")
+                                + " locks its cookies while it's open: close it fully before downloading. Firefox works even while open.";
+                        }
+                        SettingRow {
+                            label: "Speed limit";
+                            LineEdit {
+                                width: 140px;
+                                placeholder-text: "e.g. 5M";
+                                text <=> root.rate-limit;
+                                edited => { root.settings-changed(); }
+                            }
+                        }
+                        SettingRow {
+                            label: "Downloads at once";
+                            SpinBox {
+                                width: 140px;
+                                minimum: 1;
+                                maximum: 8;
+                                value <=> root.max-concurrent;
+                                edited => { root.settings-changed(); }
+                            }
+                        }
+                    }
+
+                    Section {
+                        title: "Spotify links";
+                        Hint { text: "Song info comes from Spotify, audio from YouTube Music. Format is the \"Audio only\" format above."; }
+                        CheckBox {
+                            text: "Add lyrics (embedded + synced .lrc file)";
+                            checked <=> root.lyrics;
+                            toggled => { root.settings-changed(); }
+                        }
+                        CheckBox {
+                            text: "Check each song against Spotify's 30 s preview";
+                            checked <=> root.verify-audio;
+                            toggled => { root.settings-changed(); }
+                        }
+                        Hint { text: "Catches re-recordings, live and cover versions by their sound, and tries other versions automatically. Adds about a second per song."; }
+                        CheckBox {
+                            text: "Explain where the audio comes from before downloading";
+                            checked <=> root.spotify-explain;
+                            toggled => { root.settings-changed(); }
+                        }
+                        Hint { text: "Optional: your own Spotify app (developer.spotify.com → Create app) unlocks playlists over 100 songs. Never shared, stored only in settings.json next to Neria."; }
+                        LineEdit {
+                            placeholder-text: "Client ID";
+                            text <=> root.spotify-client-id;
+                            edited => { root.settings-changed(); }
+                        }
+                        LineEdit {
+                            placeholder-text: "Client secret";
+                            input-type: password;
+                            text <=> root.spotify-client-secret;
+                            edited => { root.settings-changed(); }
+                        }
+                    }
+
+                    Section {
+                        title: "Appearance";
+                        SettingRow {
+                            label: "Theme";
+                            ComboBox {
+                                width: 140px;
+                                model: ["Same as Windows", "Dark", "Light"];
+                                current-index <=> root.theme-index;
+                                selected => {
+                                    root.theme-changed();
+                                    root.settings-changed();
+                                }
+                            }
+                        }
+                    }
+
+                    Section {
+                        title: "Expert";
+                        Hint { text: "File name template"; }
+                        LineEdit {
+                            text <=> root.filename-template;
+                            edited => { root.settings-changed(); }
+                        }
+                        Hint { text: "Extra yt-dlp arguments"; }
+                        LineEdit {
+                            placeholder-text: "e.g. --write-description";
+                            text <=> root.extra-args;
+                            edited => { root.settings-changed(); }
+                        }
+                    }
+
+                    Section {
+                        title: "About";
+                        Text {
+                            text: "Neria " + root.app-version;
+                            color: Theme.text;
+                            font-size: 13px;
+                        }
+                        if root.update-status != "": Text {
+                            text: root.update-status;
+                            color: root.update-state == 4 ? Theme.danger : root.update-version != "" ? Theme.accent-hi : Theme.muted;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                        if root.update-version != "" && root.update-notes != "": Rectangle {
+                            border-radius: 8px;
+                            background: Theme.surface-hi;
+                            VerticalLayout {
+                                padding: 10px;
+                                Hint { text: root.update-notes; }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 8px;
+                            if root.update-version != "" && (root.update-state == 0 || root.update-state == 4): PrimaryButton {
+                                text: "Update to " + root.update-version;
+                                clicked => { root.update-install(); }
+                            }
+                            if root.update-state == 3: PrimaryButton {
+                                text: "Restart now";
+                                clicked => { root.update-restart(); }
+                            }
+                            if root.update-state == 0 || root.update-state == 4: GhostButton {
+                                text: "Check now";
+                                icon: "\u{E72C}";
+                                clicked => { root.update-check(); }
+                            }
+                        }
+                        if root.update-state == 2: Bar { value: root.update-progress; }
+                        CheckBox {
+                            text: "Check for updates when Neria starts";
+                            checked <=> root.check-updates;
+                            toggled => { root.settings-changed(); }
+                        }
+                        Hint { text: root.tool-versions == "" ? "Checking tool versions…" : root.tool-versions; }
+                        Hint { text: "yt-dlp updates itself daily. FFmpeg, Deno and libmpv are offered an update once a newer build exists and yours is over a month old."; }
+                        if root.tools-status != "": Text {
+                            text: root.tools-status;
+                            color: root.tools-outdated != "" ? Theme.accent-hi : Theme.muted;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                        if root.tools-outdated != "" && !root.tools-updating: HorizontalLayout {
+                            alignment: start;
+                            GhostButton {
+                                text: "Update tools";
+                                icon: "\u{E896}";
+                                clicked => { root.tools-update(); }
+                            }
+                        }
+                        Hint { text: "Something not working? Copy a report and paste it in a message. It has the versions above and your settings, never your Spotify key. Failed downloads have their own report button (bug icon) with the link and log."; }
+                        HorizontalLayout {
+                            alignment: start;
+                            GhostButton {
+                                text: "Copy report";
+                                icon: "\u{EBE8}";
+                                clicked => { root.copy-report(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,92 @@
+import { Theme } from "../theme.slint";
+import { Icon, Dialog, ChoiceTile, Sticker } from "../widgets.slint";
+
+// A file dragged in from Explorer, over the page it would land on (not the nav rail).
+// kind: 0 not media, 1 video, 2 audio.
+export component DropOverlay inherits Rectangle {
+    in property <int> kind;
+    in property <string> name;
+    in property <int> page;
+    property <bool> ok: root.kind != 0 && !(root.page == 2 && root.kind == 2);
+    background: Theme.bg.with-alpha(0.94);
+    Rectangle {
+        x: 18px;
+        y: 18px;
+        width: parent.width - 36px;
+        height: parent.height - 36px;
+        border-radius: 14px;
+        border-width: 2px;
+        border-color: root.ok ? Theme.pop : Theme.line-strong;
+        background: root.ok ? Theme.pop.with-alpha(0.07) : transparent;
+        VerticalLayout {
+            alignment: center;
+            spacing: 10px;
+            padding: 26px;
+            HorizontalLayout {
+                alignment: center;
+                padding-bottom: 8px;
+                Sticker {
+                    size: 56px;
+                    radius: 14px;
+                    shadow: root.kind != 0 ? Theme.hard : transparent;
+                    edge: root.kind != 0 ? Theme.hard : Theme.line-strong;
+                    face: root.kind != 0 ? Theme.pop : Theme.raised;
+                    Icon {
+                        text: root.kind == 0 ? "\u{E8A5}" : root.page == 2 ? "\u{E73F}" : root.page == 1 || root.kind == 2 ? "\u{E8C6}" : "\u{E8E5}";
+                        font-size: 22px;
+                        color: root.kind != 0 ? Theme.on-pop : Theme.muted;
+                    }
+                }
+            }
+            Text {
+                text: root.kind == 0 ? "Neria opens video and audio files"
+                    : root.page == 2 ? (root.kind == 1 ? "Drop to compress it" : "Compress works on videos")
+                    : root.page == 1 || root.kind == 2 ? "Drop to clip it"
+                    : "Drop to clip or compress it";
+                color: Theme.ink;
+                font-family: Theme.display;
+                font-size: 30px;
+                font-weight: 700;
+                letter-spacing: -1px;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+            Text {
+                text: root.name;
+                color: Theme.muted;
+                font-family: Theme.body;
+                font-size: 13px;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+// A video dropped on the Download page: clip it or compress it?
+export component DropChoice inherits Dialog {
+    in property <string> name;
+    callback choose(int); // 1 clip, 2 compress
+
+    title: "What should Neria do with it?";
+    subtitle: root.name;
+    card-width: 520px;
+    fit: true;
+    HorizontalLayout {
+        spacing: 12px;
+        ChoiceTile {
+            horizontal-stretch: 1;
+            icon: "\u{E8C6}";
+            title: "Clip it";
+            text: "Cut out the part you want";
+            clicked => { root.choose(1); }
+        }
+        ChoiceTile {
+            horizontal-stretch: 1;
+            icon: "\u{E73F}";
+            title: "Compress it";
+            text: "Make it small enough to send";
+            clicked => { root.choose(2); }
+        }
+    }
+}

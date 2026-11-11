@@ -1,0 +1,111 @@
+import { ComboBox, ListView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { PickItem } from "../types.slint";
+import { SectionTitle, TextLink, Tick, Notice, Divider, ListRow, Thumb } from "../widgets.slint";
+
+// Posts and playlists: pick what to download, under the link preview. Calm rows; the
+// ticks are the playful part.
+export component PickList inherits VerticalLayout {
+    in property <[PickItem]> items;
+    in property <int> checked;
+    // Said about the items, e.g. a video Neria can't reach in this post.
+    in property <string> note;
+    in-out property <bool> number-items;
+    // Rows shown before the list scrolls.
+    in property <int> visible-rows: 4;
+    callback toggle(int, bool);
+    callback all(bool);
+    callback quality(int, int);
+    callback number-items-toggled();
+    property <[string]> qualities: ["As above", "Best", "1080p", "720p", "480p", "Audio only"];
+    vertical-stretch: 0;
+    spacing: 6px;
+    HorizontalLayout {
+        spacing: 12px;
+        SectionTitle {
+            text: root.checked == root.items.length
+                ? "All " + root.items.length + " items"
+                : root.checked + " of " + root.items.length + " picked";
+            vertical-alignment: center;
+            horizontal-stretch: 0;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        // Only matters when several go into one folder.
+        if root.checked > 1: Tick {
+            text: "Number the files in order";
+            checked <=> root.number-items;
+            toggled => { root.number-items-toggled(); }
+        }
+        if root.checked < root.items.length: TextLink {
+            text: "Select all";
+            clicked => { root.all(true); }
+        }
+        if root.checked > 0: TextLink {
+            text: "None";
+            clicked => { root.all(false); }
+        }
+    }
+    if root.note != "": Notice {
+        text: root.note;
+        wrap: true;
+    }
+    Divider { inset-right: 16px; }
+    ListView {
+        height: min(root.items.length, root.visible-rows) * 48px;
+        for item[i] in root.items: ListRow {
+            height: 48px;
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.toggle(i, !item.checked); }
+            }
+            HorizontalLayout {
+                padding-left: 4px;
+                padding-right: 26px;
+                spacing: 12px;
+                Tick {
+                    horizontal-stretch: 0;
+                    checked: item.checked;
+                    toggled(on) => { root.toggle(i, on); }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    Thumb {
+                        width: 64px;
+                        height: 36px;
+                        source: item.thumb;
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: item.title != "" ? item.title : item.kind + " " + (i + 1);
+                    color: item.checked ? Theme.ink : Theme.muted;
+                    font-size: 14px;
+                    font-weight: 500;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 0;
+                    text: item.detail;
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 11.5px;
+                    vertical-alignment: center;
+                }
+                // This video only: another quality, or just its audio.
+                if item.can-quality: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    ComboBox {
+                        width: 130px;
+                        enabled: item.checked;
+                        model: root.qualities;
+                        current-index: item.quality;
+                        selected => { root.quality(i, self.current-index); }
+                    }
+                }
+            }
+        }
+    }
+}
