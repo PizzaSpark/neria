@@ -157,7 +157,41 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
 - **Queue order**: drag rows to reorder waiting downloads; "Move to top" / "Move to bottom"
   in each row's menu (and Ctrl+↑ / Ctrl+↓); jobs already downloading stay put, the next free
   slot takes the top waiting row. Albums/playlists move as one group (and can be reordered
-  inside). Optional pause/resume per row, "Pause all"
+  inside)
+- **Pause / resume**: a Pause button on each downloading row and "Pause all" in the queue
+  header. Pausing stops yt-dlp but keeps its `.part` files; Resume picks up where it left
+  off (yt-dlp `--continue`), and the row says "Paused · 120 MB of 388 MB". Paused rows don't
+  take a download slot. Ties in with "Queue survives restarts" (paused rows come back paused)
+- **Pick what to download from multi-item links** (posts and playlists): X, Instagram and
+  Facebook posts with several photos/videos/GIFs, and playlists, show a list of every item
+  under the preview (thumbnail, Photo / Video / GIF tag, title or length) with ticks and
+  "Select all" / "None"; the button says "Download 3 items". Each picked item becomes its own
+  queue row in one group. Photos come from yt-dlp where it reports them (Instagram) and
+  from gallery-dl otherwise (X, Facebook), fetched into `bin/` like the other tools
+  - 🚧 Built (not yet committed): picker, photos, per-item GIFs, Audio / Video / Photos
+    folders with a folder per post/playlist, "Number files in playlist order" tick
+  - Next: drag rows in the picker into your own order before downloading (numbers follow
+    your order); "Reverse" for newest-first playlists; remember the order on re-download
+  - Next: one `.m3u8` per playlist folder (like Spotify ones) and a progress card for the
+    group in the queue
+- **Private and signed-in downloads**: content you can see when signed in: private and
+  unlisted-to-you videos, age-restricted videos, members-only, friends-only and group posts,
+  your own Liked/Watch later lists. Today this only works through Settings → Network →
+  Cookies (borrowing a browser's cookies), which fails on Chrome/Edge. Better: a "Sign in to
+  this site" button on sign-in errors that opens a small sign-in window inside Neria and
+  keeps that site's cookies in Neria's folder (portable, per site, "Sign out" in Settings);
+  a `cookies.txt` import for power users. Sign-in errors then say which site and offer it.
+  Cookies stay on this PC and are only sent to the site they belong to
+- **Audio tracks (languages)**: YouTube videos with several audio tracks (dubbed languages,
+  descriptive audio, original): an "Audio" picker on the preview listing each track by
+  language with "Original" marked, default = original. Tick one or several: several are
+  kept as separate tracks in one MKV/MP4 (`--audio-multistreams`), named by language so
+  players show a track menu. Audio only + several tracks = one file per language
+  (`Title (Spanish).mp3`). Shown only when a video actually has more than one track
+- **Schedule downloads**: "Download later" on the Download button's menu: pick a time (or
+  "when I'm on Wi-Fi without a metered limit", "overnight") and the row waits as
+  "Starts at 02:00"; works while Neria is open (in the tray). Also scheduled premieres and
+  streams wait for their start (see Livestreams)
 - **Folders and order** (today: everything goes to `Videos\Neria`; Spotify albums/playlists
   get their own folder + numbered names/M3U, but YouTube playlists land loose in the main
   folder, unnumbered, so their order is lost)
@@ -200,13 +234,27 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
   - Save as separate files next to the video (`Title.en.srt`), embed into the video, or both
   - **Captions only**: download just the captions, no video (`--skip-download`)
   - Remember the last picked languages; "No captions on this video" shown plainly when none
-- **Chapters**: show a video's chapters on the preview; "Split by chapters" saves one file
-  per chapter (`--split-chapters`), and the clipper shows chapter marks on the timeline
+- **Chapters**: videos with chapters get a "Chapters" picker on the preview and in the
+  clipper (chapter marks on the timeline, click one to select it)
+  - Tick any chapters (list with title, start and length; "All" / "None"); only those parts
+    are downloaded (`--download-sections` per chapter, no full download first)
+  - **Separate files** (one per chapter, `03 Chapter title.mp4`, in a folder named after the
+    video) or **One file**: picked chapters joined in video order. Neighbours (2 + 3) become
+    one continuous range; gaps (2 + 4) are joined with a clean cut, and the UI says
+    "skips chapter 3"
+  - In the clipper, picking chapters sets In/Out (neighbours) or makes a clip per chapter in
+    the clip render queue (gaps), so Fast/Exact and the export options still apply
+  - Audio only works the same (e.g. one song per chapter from a full album upload, numbered
+    and tagged with the chapter title)
 - **Watch the link before downloading**: a play button on the link preview that streams it
   (same player as "Clip first", without the trimming)
 - **Tray + notifications**: closing to the tray keeps downloads running (optional);
-  a Windows notification when a download/compress/export finishes or fails
-- Later: follow a channel/playlist and download new uploads; schedule downloads
+  a Windows notification when a download/compress/export finishes or fails (thumbnail,
+  title, "Open" / "Show in folder" buttons; a group sends one "12 songs saved", not 12).
+  Settings: notifications on/off, only when Neria isn't the focused window, and an optional
+  sound on completion (a short Neria chime, Windows' default sound, or none; separate
+  "failed" sound)
+- Later: follow a channel/playlist and download new uploads on a schedule
 
 ### Music (Spotify and lyrics)
 - **Synced lyrics from more sources (Musixmatch first).** Musixmatch is where Spotify's own
@@ -234,6 +282,9 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
   - Spotify playlists > 100 songs without a key: no workaround yet beyond the notice
 
 ### Clip / edit
+- **Clip GIFs**: open a `.gif` in the clipper (today only video and audio files open; audio
+  already clips, with a waveform instead of the picture). Trim it and save as a GIF again
+  (same palette approach as X GIFs), or as MP4/WebP, which are much smaller
 - **Audio controls**, two separate things so it's clear what ends up in the file:
   - **Preview volume**: a volume slider + mute for listening while you edit (mpv `volume`);
     never changes the exported clip
@@ -297,6 +348,13 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
 - Clipping a live stream: pick a range from the rewindable window
 
 ## Later: bigger ideas (keep UX simple)
+- **Browser extension (Chrome, Edge, Firefox)**: a Neria button on video pages and posts, and
+  "Download with Neria" when right-clicking a link, image or video. It hands the link to the
+  desktop app (a `neria://` link handler registered by Neria, or a localhost port only Neria
+  listens on), which comes to the front with the preview ready; "Download now" queues it with
+  your defaults. Can also hand over the page's cookies for that one site (with a clear
+  "Use my sign-in for this download" switch), which answers Chrome's locked cookies for
+  private downloads. Portable: registering the handler is a button in Settings, not an installer
 - **Audio tools page**:
   - **Convert** audio: MP3, M4A/AAC, Opus, FLAC, WAV; bitrate (128–320), mono/stereo, sample
     rate under Advanced. Also "Extract audio" from videos. Batch for many files
@@ -325,7 +383,11 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
 On hold until the desktop app has every feature we want; no Android work before then.
 - Same `neria-core`; Slint Android UI (built on the adaptive layouts from the UI foundation);
   embedded Python for yt-dlp; ffmpeg + libmpv as `.so`
-- Share-sheet target ("Share → Neria"); APK via GitHub / F-Droid (Play Store bans downloaders)
+- **"Download with Neria" in the share sheet**: in YouTube, Instagram, X, TikTok, Spotify or
+  the browser, Share → Neria opens Neria with the link already pasted and the preview
+  loading (the same picker for posts and playlists). A long-press option "Download now"
+  skips the app and queues it with your defaults, showing progress in a notification
+- APK via GitHub / F-Droid (Play Store bans downloaders)
 
 ## Not planned
 - Zotify-style downloading of Spotify's own encrypted streams, or streamrip-style downloading

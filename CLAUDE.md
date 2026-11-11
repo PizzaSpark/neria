@@ -1,13 +1,14 @@
 # Neria
 
 Fast, portable, UX-first downloader / clipper / compressor. Rust + Slint, driving yt-dlp, ffmpeg,
-Deno and libmpv, all auto-fetched into `bin/` next to the exe. Plan and status: `ROADMAP.md`.
+Deno, gallery-dl (photos in posts) and libmpv, all auto-fetched into `bin/` next to the exe. Plan and status: `ROADMAP.md`.
 UI design system: `docs/DESIGN.md` (Studio + Play); follow it for any new or changed screen.
 
 ## Layout
 - `crates/neria-core`: everything non-UI (tool fetch, yt-dlp probe/download queue, clip export,
   compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
-  `music.rs` tags/lyrics/M3U/sync). Shared with the future Android app, so no UI code here.
+  `music.rs` tags/lyrics/M3U/sync, `post.rs` items of posts/playlists for the picker,
+  `folders.rs` Audio/Video/Photos folders). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI (`ui/app.slint` screens, `ui/widgets.slint` shared controls,
   `ui/theme.slint` tokens + bundled fonts in `ui/fonts/`), `main.rs` (download page), `clipper.rs` (clip page;
@@ -23,6 +24,7 @@ Rust isn't on PATH in fresh shells here: prefix with `$env:Path += ";$env:USERPR
 
 Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example smoke -- <url> [audio|video] [out] [start end [exact]]`
+  (posts/playlists: lists the items and downloads them all, or `NERIA_PICK=1,3`)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example clip -- <file> <start> <end> [fast|exact]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example compress -- <file> <mb|q0.0-1.0> [h264|hevc|av1] [cpu|gpu]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`

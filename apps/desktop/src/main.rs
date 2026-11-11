@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use neria_core::download::DownloadRequest;
 use neria_core::queue::{JobSnapshot, JobState, Queue};
 use neria_core::settings::{Quality, Settings};
-use neria_core::{fmt, probe, report, tools};
+use neria_core::{fmt, post, probe, report, tools};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod clipper;
@@ -38,6 +38,9 @@ fn pick(list: &[&str], i: i32) -> String {
 
 fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_output_dir(s.output_dir.to_string_lossy().as_ref().into());
+    ui.set_sort_folders(s.sort_folders);
+    ui.set_number_items(s.number_items);
+    ui.set_save_thumbnail(s.save_thumbnail);
     ui.set_quality(s.quality.index());
     ui.set_container_index(index_of(&CONTAINERS, &s.container));
     ui.set_audio_format_index(index_of(&AUDIO_FORMATS, &s.audio_format));
@@ -64,6 +67,9 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
 
 fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.output_dir = ui.get_output_dir().as_str().into();
+    s.sort_folders = ui.get_sort_folders();
+    s.number_items = ui.get_number_items();
+    s.save_thumbnail = ui.get_save_thumbnail();
     s.quality = Quality::from_index(ui.get_quality());
     s.container = pick(&CONTAINERS, ui.get_container_index());
     s.audio_format = pick(&AUDIO_FORMATS, ui.get_audio_format_index());
@@ -107,6 +113,9 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         stats: stats.into(),
         warn: s.note.is_some(),
         music: s.music,
+        still: s.file.as_ref().and_then(|f| f.extension()).is_some_and(|e| {
+            ["jpg", "jpeg", "png", "webp", "gif", "heic"].contains(&e.to_string_lossy().to_lowercase().as_str())
+        }),
         thumb: s.thumbnail.as_deref().and_then(cached_thumb).unwrap_or_default(),
         thumb_url: s.thumbnail.clone().unwrap_or_default().into(),
     }
@@ -271,6 +280,7 @@ fn demo_rows(ui: &AppWindow) {
             stats: stats.into(),
             warn,
             music,
+            still: false,
             thumb: Default::default(),
             thumb_url: Default::default(),
         };
@@ -509,6 +519,63 @@ struct ProbeState {
     generation: Arc<AtomicU64>,
     last_url: RefCell<String>,
     spotify: spotify_ui::PendingSlot,
+    /// Everything in the previewed post/playlist (the picker shows these).
+    items: RefCell<Vec<post::Item>>,
+}
+
+/// Empty the "what to download" list.
+fn clear_picker(ui: &AppWindow, state: &ProbeState) {
+    state.items.borrow_mut().clear();
+    ui.set_pick_items(ModelRc::from(Rc::new(VecModel::<PickItem>::default())));
+    ui.set_pick_checked(0);
+    ui.set_pick_note("".into());
+}
+
+/// Fill the picker (everything ticked) and fetch the item pictures in the background.
+fn show_picker(ui: &AppWindow, state: &ProbeState, info: &probe::MediaInfo, my_gen: u64) {
+    *state.items.borrow_mut() = info.items.clone();
+    let rows: Vec<PickItem> = info
+        .items
+        .iter()
+        .map(|it| PickItem {
+            kind: it.kind.label().into(),
+            title: it.title.as_str().into(),
+            detail: it.duration.map(fmt::duration).unwrap_or_default().into(),
+            thumb: Default::default(),
+            checked: true,
+        })
+        .collect();
+    ui.set_pick_checked(rows.len() as i32);
+    ui.set_pick_items(ModelRc::from(Rc::new(VecModel::from(rows))));
+    ui.set_pick_note(info.note.clone().unwrap_or_default().into());
+
+    let urls: Vec<(usize, String)> =
+        info.items.iter().enumerate().filter_map(|(i, it)| Some((i, it.thumbnail.clone()?))).collect();
+    let (weak, generation) = (ui.as_weak(), state.generation.clone());
+    std::thread::spawn(move || {
+        for (i, url) in urls {
+            if generation.load(Ordering::SeqCst) != my_gen {
+                return;
+            }
+            let Ok(path) = probe::fetch_thumbnail(&url) else { continue };
+            let generation = generation.clone();
+            let _ = weak.upgrade_in_event_loop(move |ui| {
+                if generation.load(Ordering::SeqCst) != my_gen {
+                    return;
+                }
+                let model = ui.get_pick_items();
+                if let (Some(mut row), Ok(img)) = (model.row_data(i), slint::Image::load_from_path(&path)) {
+                    row.thumb = img;
+                    model.set_row_data(i, row);
+                }
+            });
+        }
+    });
+}
+
+fn count_picked(ui: &AppWindow) {
+    let n = ui.get_pick_items().iter().filter(|r| r.checked).count();
+    ui.set_pick_checked(n as i32);
 }
 
 /// The link to use for `text`: Spotify URIs as they are, web links with
@@ -537,6 +604,7 @@ fn show_problem(ui: &AppWindow, title: &str, hint: &str, permanent: bool) {
 fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settings>>, text: &str) {
     let Some(url) = link_of(text) else {
         state.generation.fetch_add(1, Ordering::SeqCst);
+        clear_picker(ui, state);
         state.last_url.borrow_mut().clear();
         ui.set_probe_blocked(false);
         ui.set_probe_state(if partial_link(text) { 0 } else { 4 });
@@ -552,6 +620,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
     *state.last_url.borrow_mut() = url.clone();
 
     let my_gen = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    clear_picker(ui, state);
     ui.set_probe_state(1);
     ui.set_probe_blocked(false);
     ui.set_probe_title("".into());
@@ -593,7 +662,12 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     ui.set_probe_state(2);
                     ui.set_probe_title(info.title.as_str().into());
                     ui.set_probe_meta(info.meta_line().into());
-                    ui.set_probe_is_gif(info.gif);
+                    ui.set_probe_is_gif(info.gif || is_single_gif(&info));
+                    if info.items.len() > 1
+                        && let Some(state) = PICKER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade()))
+                    {
+                        show_picker(&ui, &state, &info, my_gen);
+                    }
                     if let Some(img) = thumb.and_then(|p| slint::Image::load_from_path(&p).ok()) {
                         ui.set_probe_thumb(img);
                     }
@@ -611,6 +685,16 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
             }
         });
     });
+}
+
+thread_local! {
+    // The probe state, for filling the picker from a finished lookup (UI thread only).
+    static PICKER: RefCell<Option<std::rc::Weak<ProbeState>>> = const { RefCell::new(None) };
+}
+
+/// A post that is just one GIF (and photos gallery-dl saw are absent).
+fn is_single_gif(info: &probe::MediaInfo) -> bool {
+    info.items.len() == 1 && info.items[0].kind == post::ItemKind::Gif
 }
 
 /// Show a short message at the bottom of the window for a few seconds.
@@ -716,6 +800,35 @@ fn main() -> anyhow::Result<()> {
         generation: Arc::new(AtomicU64::new(0)),
         last_url: RefCell::new(String::new()),
         spotify: Arc::new(Mutex::new(None)),
+        items: RefCell::new(Vec::new()),
+    });
+    PICKER.with(|p| *p.borrow_mut() = Some(Rc::downgrade(&probe_state)));
+
+    ui.on_pick_toggle({
+        let weak = ui.as_weak();
+        move |i, on| {
+            let ui = weak.unwrap();
+            let model = ui.get_pick_items();
+            if let Some(mut row) = model.row_data(i as usize) {
+                row.checked = on;
+                model.set_row_data(i as usize, row);
+            }
+            count_picked(&ui);
+        }
+    });
+    ui.on_pick_all({
+        let weak = ui.as_weak();
+        move |on| {
+            let ui = weak.unwrap();
+            let model = ui.get_pick_items();
+            for i in 0..model.row_count() {
+                if let Some(mut row) = model.row_data(i) {
+                    row.checked = on;
+                    model.set_row_data(i, row);
+                }
+            }
+            count_picked(&ui);
+        }
     });
     spotify_ui::install_sync_review(&ui);
     match_ui::install(&ui, queue.clone());
@@ -766,6 +879,18 @@ fn main() -> anyhow::Result<()> {
                 if !spotify_ui::enqueue(&ui, &url, &probe_state.spotify, &settings, &queue) {
                     return; // still looking it up (or the lookup failed)
                 }
+            } else if !probe_state.items.borrow().is_empty() {
+                // A post or playlist: one row per picked item, in one group.
+                let picked: Vec<usize> =
+                    ui.get_pick_items().iter().enumerate().filter(|(_, r)| r.checked).map(|(i, _)| i).collect();
+                let items = probe_state.items.borrow().clone();
+                let settings = settings.lock().unwrap().clone();
+                let title = ui.get_probe_title().to_string();
+                let reqs = post::requests(&title, &items, &picked, Quality::from_index(ui.get_quality()), &settings);
+                if reqs.is_empty() {
+                    return;
+                }
+                queue.add_batch(reqs);
             } else {
                 let title_hint = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { url.clone() };
                 let quality = if ui.get_probe_is_gif() { Quality::Best } else { Quality::from_index(ui.get_quality()) };
@@ -779,6 +904,7 @@ fn main() -> anyhow::Result<()> {
             ui.set_probe_blocked(false);
             ui.set_probe_is_spotify(false);
             ui.set_probe_is_gif(false);
+            clear_picker(&ui, &probe_state);
         }
     });
 

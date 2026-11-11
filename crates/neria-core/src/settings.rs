@@ -40,6 +40,10 @@ impl Quality {
 #[serde(default)]
 pub struct Settings {
     pub output_dir: PathBuf,
+    /// Sort downloads into Audio / Video / Photos folders inside `output_dir`.
+    pub sort_folders: bool,
+    /// Number items of a playlist/post by their place in it (`01 Title`).
+    pub number_items: bool,
     pub quality: Quality,
     /// Container for video downloads: mp4, mkv or webm.
     pub container: String,
@@ -48,6 +52,8 @@ pub struct Settings {
     /// Prefer H.264/AAC so files play on anything (caps YouTube at 1080p).
     pub prefer_h264: bool,
     pub embed_thumbnail: bool,
+    /// Also keep the thumbnail as a .jpg next to the video.
+    pub save_thumbnail: bool,
     pub embed_metadata: bool,
     pub embed_subs: bool,
     pub sponsorblock: bool,
@@ -83,11 +89,14 @@ impl Default for Settings {
         let base = dirs::video_dir().or_else(dirs::download_dir).unwrap_or_else(paths::app_dir);
         Self {
             output_dir: base.join("Neria"),
+            sort_folders: true,
+            number_items: true,
             quality: Quality::Best,
             container: "mp4".into(),
             audio_format: "mp3".into(),
             prefer_h264: false,
             embed_thumbnail: true,
+            save_thumbnail: false,
             embed_metadata: true,
             embed_subs: false,
             sponsorblock: false,

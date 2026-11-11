@@ -66,6 +66,20 @@ pub static TOOLS: &[ToolSpec] = &[
         release: Some(("denoland/deno", None)),
     },
     ToolSpec {
+        label: "gallery-dl (photos)",
+        purpose: "Saves the photos in X and Facebook posts",
+        // The author's official builds; the main repo's releases no longer carry an exe.
+        url: Source::GithubAsset {
+            repo: "gdl-org/builds",
+            prefix: "gallery-dl_windows",
+            suffix: ".exe",
+            exclude: "x86",
+        },
+        archive: None,
+        files: &["gallery-dl.exe"],
+        release: Some(("gdl-org/builds", None)),
+    },
+    ToolSpec {
         label: "libmpv (video player)",
         purpose: "Plays video on the Clip page",
         url: Source::GithubAsset {
@@ -251,7 +265,17 @@ pub fn explain(err: &anyhow::Error, tool: &str) -> String {
     )
 }
 
-pub(crate) fn download_to(url: &str, dest: &Path, mut on: impl FnMut(u64, Option<u64>)) -> Result<()> {
+pub(crate) fn download_to(url: &str, dest: &Path, on: impl FnMut(u64, Option<u64>)) -> Result<()> {
+    download_to_cancellable(url, dest, &std::sync::atomic::AtomicBool::new(false), on)
+}
+
+/// [`download_to`] that stops (with an error) once `cancel` is set.
+pub(crate) fn download_to_cancellable(
+    url: &str,
+    dest: &Path,
+    cancel: &std::sync::atomic::AtomicBool,
+    mut on: impl FnMut(u64, Option<u64>),
+) -> Result<()> {
     let mut resp = http()?.get(url).send()?.error_for_status()?;
     let total = resp.content_length();
 
@@ -261,6 +285,9 @@ pub(crate) fn download_to(url: &str, dest: &Path, mut on: impl FnMut(u64, Option
     let mut last = Instant::now();
     on(0, total);
     loop {
+        if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            bail!("cancelled");
+        }
         let n = resp.read(&mut buf)?;
         if n == 0 {
             break;

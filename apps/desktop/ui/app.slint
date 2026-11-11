@@ -1,4 +1,4 @@
-import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider, Palette } from "std-widgets.slint";
+﻿import { LineEdit, CheckBox, ComboBox, SpinBox, ScrollView, ListView, Slider, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icon, PrimaryButton, GhostButton, IconButton, Chip, Bar, NavItem, PageTitle, SectionTitle, Hint, Tag, Kbd, LinkField, TextLink, Tick, Dialog, ChoiceTile } from "widgets.slint";
 
@@ -33,6 +33,15 @@ export struct SyncItem {
     checked: bool,
 }
 
+// One thing in a post or playlist, in the "what to download" list.
+export struct PickItem {
+    kind: string, // "Photo", "Video", "GIF"
+    title: string, // own title, or "" for post items
+    detail: string, // length, e.g. "0:05"
+    thumb: image,
+    checked: bool,
+}
+
 export struct JobItem {
     id: int,
     group: int,
@@ -46,6 +55,8 @@ export struct JobItem {
     warn: bool,
     // Spotify track: offers "pick another match".
     music: bool,
+    // Saved as a photo or GIF: nothing to clip or compress (yet).
+    still: bool,
     // Video thumbnail or song cover (empty until fetched, or when there is none).
     thumb: image,
     thumb-url: string,
@@ -255,23 +266,23 @@ component JobRow inherits Rectangle {
                 text: "Show";
                 clicked => { root.open(); }
             }
-            if root.done && !root.narrow: GhostButton {
+            if root.done && !root.job.still && !root.narrow: GhostButton {
                 compact: true;
                 text: "Clip";
                 clicked => { root.open-clipper(); }
             }
-            if root.done && root.narrow: GhostButton {
+            if root.done && !root.job.still && root.narrow: GhostButton {
                 compact: true;
                 icon: "\u{E8C6}";
                 clicked => { root.open-clipper(); }
             }
             // Songs are already small; compressing is for videos.
-            if root.done && !root.job.music && !root.narrow: GhostButton {
+            if root.done && !root.job.music && !root.job.still && !root.narrow: GhostButton {
                 compact: true;
                 text: "Compress";
                 clicked => { root.open-compressor(); }
             }
-            if root.done && !root.job.music && root.narrow: GhostButton {
+            if root.done && !root.job.music && !root.job.still && root.narrow: GhostButton {
                 compact: true;
                 icon: "\u{E73F}";
                 clicked => { root.open-compressor(); }
@@ -525,6 +536,14 @@ export component AppWindow inherits Window {
     // An X GIF that will be saved as a real .gif: no quality chips, just say so.
     in property <bool> probe-is-gif;
     property <bool> gif-mode: probe-is-gif && x-gifs-as-gif;
+    // Posts and playlists: every item, ticked ones get downloaded.
+    in property <[PickItem]> pick-items;
+    in property <int> pick-checked;
+    // Said about the items, e.g. a video Neria can't reach in this post.
+    in property <string> pick-note;
+    callback pick-toggle(int, bool);
+    callback pick-all(bool);
+    property <bool> picking: root.probe-state == 2 && root.pick-items.length > 1;
     in property <int> spotify-count;
     in property <string> spotify-note;
     in property <[SyncItem]> sync-items;
@@ -568,6 +587,9 @@ export component AppWindow inherits Window {
     in-out property <int> audio-format-index;
     in-out property <bool> prefer-h264;
     in-out property <bool> embed-thumbnail;
+    in-out property <bool> save-thumbnail;
+    in-out property <bool> sort-folders: true;
+    in-out property <bool> number-items: true;
     in-out property <bool> embed-metadata;
     in-out property <bool> embed-subs;
     in-out property <bool> sponsorblock;
@@ -916,9 +938,12 @@ export component AppWindow inherits Window {
                         alignment: center;
                         horizontal-stretch: 0;
                         PrimaryButton {
-                            text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs" : "Download";
+                            text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
+                                : root.picking && root.pick-checked > 1 ? "Download " + root.pick-checked + " items"
+                                : "Download";
                             icon: "\u{E896}";
-                            enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0);
+                            enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0)
+                                && (!root.picking || root.pick-checked > 0);
                             clicked => { root.start-download(); }
                         }
                     }
@@ -994,10 +1019,10 @@ export component AppWindow inherits Window {
                                 changed => { root.settings-changed(); }
                                 open-settings => { root.drawer-open = true; }
                                 clip-first => { root.clip-open-link(root.url, root.probe-title); }
-                                show-clip: true;
+                                show-clip: root.pick-items.length == 0;
                             }
                         }
-                        if root.probe-state == 2 && !root.probe-is-spotify && !root.chips-inline: HorizontalLayout {
+                        if root.probe-state == 2 && !root.probe-is-spotify && !root.chips-inline && root.pick-items.length == 0: HorizontalLayout {
                             padding-top: 8px;
                             alignment: start;
                             GhostButton {
@@ -1005,6 +1030,125 @@ export component AppWindow inherits Window {
                                 text: "Clip first";
                                 icon: "\u{E8C6}";
                                 clicked => { root.clip-open-link(root.url, root.probe-title); }
+                            }
+                        }
+                    }
+                }
+
+                // Posts and playlists: pick what to download. Calm rows; the ticks are the
+                // playful part.
+                if root.picking: VerticalLayout {
+                    vertical-stretch: 0;
+                    spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        SectionTitle {
+                            text: root.pick-checked == root.pick-items.length
+                                ? "All " + root.pick-items.length + " items"
+                                : root.pick-checked + " of " + root.pick-items.length + " picked";
+                            vertical-alignment: center;
+                            horizontal-stretch: 0;
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        // Only matters when several go into one folder.
+                        if root.pick-checked > 1: Tick {
+                            text: "Number the files in order";
+                            checked <=> root.number-items;
+                            toggled => { root.settings-changed(); }
+                        }
+                        if root.pick-checked < root.pick-items.length: TextLink {
+                            text: "Select all";
+                            clicked => { root.pick-all(true); }
+                        }
+                        if root.pick-checked > 0: TextLink {
+                            text: "None";
+                            clicked => { root.pick-all(false); }
+                        }
+                    }
+                    if root.pick-note != "": HorizontalLayout {
+                        spacing: 8px;
+                        Icon {
+                            horizontal-stretch: 0;
+                            text: "\u{E7BA}";
+                            font-size: 13px;
+                            color: Theme.warn;
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: root.pick-note;
+                            color: Theme.warn;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            vertical-alignment: center;
+                        }
+                    }
+                    Rectangle {
+                        height: 1px;
+                        Rectangle {
+                            x: 0;
+                            width: parent.width - 16px;
+                            background: Theme.line;
+                        }
+                    }
+                    ListView {
+                        // Room for about four rows; the queue keeps the rest.
+                        height: min(root.pick-items.length, root.height < 760px ? 3 : 4) * 48px;
+                        for item[i] in root.pick-items: Rectangle {
+                            height: 48px;
+                            ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.pick-toggle(i, !item.checked); }
+                            }
+                            Rectangle {
+                                x: 0;
+                                y: parent.height - 1px;
+                                width: parent.width - 16px;
+                                height: 1px;
+                                background: Theme.line;
+                            }
+                            HorizontalLayout {
+                                padding-left: 4px;
+                                padding-right: 26px;
+                                spacing: 12px;
+                                Tick {
+                                    horizontal-stretch: 0;
+                                    checked: item.checked;
+                                    toggled(on) => { root.pick-toggle(i, on); }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 0;
+                                    Rectangle {
+                                        width: 64px;
+                                        height: 36px;
+                                        border-radius: 6px;
+                                        background: Theme.raised;
+                                        clip: true;
+                                        Image {
+                                            width: parent.width;
+                                            height: parent.height;
+                                            source: item.thumb;
+                                            image-fit: cover;
+                                        }
+                                    }
+                                }
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: item.title != "" ? item.title : item.kind + " " + (i + 1);
+                                    color: item.checked ? Theme.ink : Theme.muted;
+                                    font-size: 14px;
+                                    font-weight: 500;
+                                    overflow: elide;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    horizontal-stretch: 0;
+                                    text: item.detail;
+                                    color: Theme.muted;
+                                    font-family: Theme.mono;
+                                    font-size: 11.5px;
+                                    vertical-alignment: center;
+                                }
                             }
                         }
                     }
@@ -1915,6 +2059,14 @@ export component AppWindow inherits Window {
                                     clicked => { root.open-output(); }
                                 }
                             }
+                            CheckBox {
+                                text: "Sort into Audio, Video and Photos folders";
+                                checked <=> root.sort-folders;
+                                toggled => { root.settings-changed(); }
+                            }
+                            Hint {
+                                text: "Playlists and posts get a folder of their own, inside Audio, Video or Photos when everything in it is one kind.";
+                            }
                         }
 
                         VerticalLayout {
@@ -1971,6 +2123,11 @@ export component AppWindow inherits Window {
                             CheckBox {
                                 text: "Embed thumbnail as cover art";
                                 checked <=> root.embed-thumbnail;
+                                toggled => { root.settings-changed(); }
+                            }
+                            CheckBox {
+                                text: "Also save the thumbnail as a .jpg";
+                                checked <=> root.save-thumbnail;
                                 toggled => { root.settings-changed(); }
                             }
                             CheckBox {

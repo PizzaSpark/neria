@@ -44,10 +44,8 @@ pub fn preview(
         let result = spotify::fetch(&link, settings.spotify_credentials().as_ref());
         let cover =
             result.as_ref().ok().and_then(|c| c.cover_url.as_deref()).and_then(|u| probe::fetch_thumbnail(u).ok());
-        let removed = result
-            .as_ref()
-            .map(|c| music::removed_tracks(&music::collection_dir(&settings.output_dir, c), c))
-            .unwrap_or_default();
+        let removed =
+            result.as_ref().map(|c| music::removed_tracks(&music::collection_dir(&settings, c), c)).unwrap_or_default();
 
         let _ = weak.upgrade_in_event_loop(move |ui| {
             if generation.load(Ordering::SeqCst) != my_gen {

@@ -27,11 +27,36 @@ pub struct DownloadRequest {
     /// Spotify track: matched on YouTube Music first (`url` is filled in then),
     /// saved under a fixed name, and tagged afterwards.
     pub music: Option<Box<MusicJob>>,
+    /// One item of a post/playlist: its 1-based position (`--playlist-items`).
+    pub playlist_index: Option<usize>,
+    /// Save here instead of the Audio/Video folder (items picked together share a folder).
+    pub dir: Option<PathBuf>,
+    /// Fixed file name without extension (`02 Video`), instead of the filename template.
+    pub stem: Option<String>,
+    /// A photo (or a video yt-dlp can't see): this file address is saved as is, with `ext`.
+    pub direct: Option<(String, String)>,
+    /// Known up front to be an X GIF (from the item picker).
+    pub gif: bool,
+    /// Picture for the queue row until yt-dlp reports one (photos never do).
+    pub thumbnail: Option<String>,
 }
 
 impl DownloadRequest {
     pub fn new(url: impl Into<String>, quality: Quality, title_hint: impl Into<String>) -> Self {
-        Self { url: url.into(), quality, title_hint: title_hint.into(), section: None, exact_cuts: false, music: None }
+        Self {
+            url: url.into(),
+            quality,
+            title_hint: title_hint.into(),
+            section: None,
+            exact_cuts: false,
+            music: None,
+            playlist_index: None,
+            dir: None,
+            stem: None,
+            direct: None,
+            gif: false,
+            thumbnail: None,
+        }
     }
 
     pub fn music(job: MusicJob) -> Self {
@@ -69,6 +94,24 @@ pub enum DlEvent {
 const DL_TEMPLATE: &str = "download:NERIA_DL %(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress.fragment_index)s|%(progress.fragment_count)s";
 const PP_TEMPLATE: &str = "postprocess:NERIA_PP %(progress.postprocessor)s|%(progress.status)s";
 
+/// Where this download is saved.
+pub fn out_dir(req: &DownloadRequest, s: &Settings) -> PathBuf {
+    if let Some(m) = &req.music {
+        return m.dir.clone();
+    }
+    if let Some(d) = &req.dir {
+        return d.clone();
+    }
+    let kind = if req.direct.is_some() && !req.gif {
+        crate::folders::Kind::Photo
+    } else if req.quality == Quality::Audio {
+        crate::folders::Kind::Audio
+    } else {
+        crate::folders::Kind::Video
+    };
+    crate::folders::for_kind(s, kind)
+}
+
 pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     let mut a: Vec<String> = Vec::new();
     let mut push = |items: &[&str]| a.extend(items.iter().map(|x| x.to_string()));
@@ -81,11 +124,11 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     // Where it will land, so leftovers can be removed if the drive fills up.
     push(&["--print", "video:NERIA_DEST %(filename)s"]);
     push(&["--ffmpeg-location", &paths::bin_dir().to_string_lossy()]);
-    let out_dir = req.music.as_ref().map_or(s.output_dir.clone(), |m| m.dir.clone());
-    push(&["-P", &out_dir.to_string_lossy()]);
-    let template = if let Some(m) = &req.music {
+    push(&["-P", &out_dir(req, s).to_string_lossy()]);
+    let stem = req.music.as_ref().map(|m| &m.stem).or(req.stem.as_ref());
+    let template = if let Some(stem) = stem {
         // Fixed, predictable name so resume/M3U/sync can find the file. `%` must be escaped.
-        format!("{}.%(ext)s", m.stem.replace('%', "%%"))
+        format!("{}.%(ext)s", stem.replace('%', "%%"))
     } else if s.filename_template.trim().is_empty() {
         "%(title)s [%(id)s].%(ext)s".to_string()
     } else {
@@ -114,7 +157,10 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
             push(&["--force-keyframes-at-cuts"]);
         }
     }
-    push(&[if s.allow_playlists { "--yes-playlist" } else { "--no-playlist" }]);
+    match req.playlist_index {
+        Some(i) => push(&["--yes-playlist", "--playlist-items", &i.to_string()]),
+        None => push(&[if s.allow_playlists { "--yes-playlist" } else { "--no-playlist" }]),
+    }
 
     match req.quality {
         Quality::Audio => {
@@ -141,6 +187,9 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     let thumb_ok = req.quality == Quality::Audio || s.container != "webm";
     if s.embed_thumbnail && thumb_ok {
         push(&["--embed-thumbnail"]);
+    }
+    if s.save_thumbnail && req.music.is_none() {
+        push(&["--write-thumbnail", "--convert-thumbnails", "jpg"]);
     }
     if s.embed_metadata {
         push(&["--embed-metadata"]);
@@ -175,8 +224,8 @@ pub fn run(
     cancel: &AtomicBool,
     mut on: impl FnMut(DlEvent),
 ) -> Result<bool> {
-    std::fs::create_dir_all(&settings.output_dir)
-        .with_context(|| format!("can't create {}", settings.output_dir.display()))?;
+    let dir = out_dir(req, settings);
+    std::fs::create_dir_all(&dir).with_context(|| format!("can't create {}", dir.display()))?;
 
     let args = build_args(req, settings);
     on(DlEvent::Log(format!("> yt-dlp {}", readable_args(&args))));

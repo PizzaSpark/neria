@@ -19,6 +19,23 @@ pub fn duration(secs: f64) -> String {
     if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
 }
 
+/// "3 items · 1 photo, 1 video, 1 GIF" (or "12 videos" when they're all one kind).
+pub fn item_counts(items: &[crate::post::Item]) -> String {
+    use crate::post::ItemKind::*;
+    let count = |k| items.iter().filter(|i| i.kind == k).count();
+    let word = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    let parts: Vec<String> =
+        [(count(Photo), "photo", "photos"), (count(Video), "video", "videos"), (count(Gif), "GIF", "GIFs")]
+            .into_iter()
+            .filter(|(n, _, _)| *n > 0)
+            .map(|(n, one, many)| word(n, one, many))
+            .collect();
+    match parts.as_slice() {
+        [only] => only.clone(),
+        _ => format!("{}  ·  {}", word(items.len(), "item", "items"), parts.join(", ")),
+    }
+}
+
 pub fn postprocessor(name: &str) -> &'static str {
     match name {
         "Merger" => "Merging video and audio…",

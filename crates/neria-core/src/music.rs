@@ -57,11 +57,18 @@ pub fn file_stem(track: &Track, kind: Kind) -> String {
     }
 }
 
-/// Folder for a collection: the output dir itself for single songs.
-pub fn collection_dir(output: &Path, col: &Collection) -> PathBuf {
+/// Folder for a collection: the Audio folder itself for single songs, else a folder per
+/// album/playlist inside it. Albums/playlists synced before the Audio folder existed keep
+/// their old place (straight in the output folder), so resume and sync still find them.
+pub fn collection_dir(settings: &crate::settings::Settings, col: &Collection) -> PathBuf {
+    let audio = crate::folders::for_kind(settings, crate::folders::Kind::Audio);
     match col.kind {
-        Kind::Track => output.to_path_buf(),
-        _ => output.join(sanitize(&col.name)),
+        Kind::Track => audio,
+        _ => {
+            let name = sanitize(&col.name);
+            let old = settings.output_dir.join(&name);
+            if old.join(MANIFEST).is_file() { old } else { audio.join(name) }
+        }
     }
 }
 
@@ -240,7 +247,7 @@ fn write_tags(
 /// Turn a collection into queue jobs: makes the folder, writes the M3U and
 /// the sync manifest, and returns one job per track (in playlist order).
 pub fn prepare(col: &Collection, settings: &crate::settings::Settings) -> Result<(PathBuf, Vec<MusicJob>)> {
-    let dir = collection_dir(&settings.output_dir, col);
+    let dir = collection_dir(settings, col);
     std::fs::create_dir_all(&dir).with_context(|| format!("can't create {}", dir.display()))?;
 
     let jobs: Vec<MusicJob> = col

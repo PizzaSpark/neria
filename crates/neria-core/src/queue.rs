@@ -57,6 +57,10 @@ pub struct JobSnapshot {
     pub music: bool,
     /// An X (Twitter) "GIF" (a short silent MP4), saved as a real .gif when the setting is on.
     pub gif: bool,
+    /// Every X GIF this job saved (a whole post can hold several), to convert afterwards.
+    pub gif_files: Vec<PathBuf>,
+    /// The item yt-dlp is on right now is a GIF (its file follows).
+    pending_gif: bool,
     /// Spotify track audio check: Some(source) when it matched that preview,
     /// Some("none") when no preview existed anywhere, None when not checked.
     pub verified: Option<&'static str>,
@@ -83,6 +87,8 @@ impl JobSnapshot {
             thumbnail: None,
             music: false,
             gif: false,
+            gif_files: Vec::new(),
+            pending_gif: false,
             verified: None,
         }
     }
@@ -90,7 +96,8 @@ impl JobSnapshot {
     fn apply(&mut self, ev: DlEvent) {
         match ev {
             DlEvent::Info { title, streams, thumbnail, gif } => {
-                self.gif = gif;
+                self.gif |= gif;
+                self.pending_gif = gif;
                 if !title.is_empty() {
                     self.title = title;
                 }
@@ -126,7 +133,12 @@ impl JobSnapshot {
                 self.progress = 1.0;
                 self.postprocessor = Some(name);
             }
-            DlEvent::File(path) => self.file = Some(path),
+            DlEvent::File(path) => {
+                if self.pending_gif && !self.gif_files.contains(&path) {
+                    self.gif_files.push(path.clone());
+                }
+                self.file = Some(path);
+            }
             DlEvent::Error(msg) => self.error = Some(msg),
             DlEvent::Log(_) => {}
         }
@@ -221,7 +233,8 @@ impl Queue {
         let title = if req.title_hint.is_empty() { req.url.clone() } else { req.title_hint.clone() };
         let mut snap = JobSnapshot::new(id, group, title);
         snap.music = req.music.is_some();
-        snap.thumbnail = req.music.as_ref().and_then(|m| m.track.cover_url.clone());
+        snap.gif = req.gif;
+        snap.thumbnail = req.music.as_ref().and_then(|m| m.track.cover_url.clone()).or_else(|| req.thumbnail.clone());
         (self.inner.notify)(snap.clone());
         self.inner.entries.lock().unwrap().push(Entry {
             snap,
@@ -344,6 +357,7 @@ impl Queue {
                 (e.snap.title.clone(), e.snap.group, e.snap.music, e.snap.thumbnail.clone());
             e.snap = JobSnapshot::new(id, group, title);
             e.snap.music = music;
+            e.snap.gif = e.req.gif;
             e.snap.thumbnail = thumbnail;
             e.cancel = Arc::new(AtomicBool::new(false));
             (self.inner.notify)(e.snap.clone());
@@ -475,8 +489,9 @@ impl Queue {
             }
         }
 
-        let dir = req.music.as_ref().map(|m| m.dir.clone()).unwrap_or_else(|| settings.output_dir.clone());
+        let dir = download::out_dir(&req, &settings);
         let mut result = match disk::check(&dir, 0) {
+            Ok(()) if req.direct.is_some() => self.download_direct(id, &req, &dir, &cancel),
             Ok(()) => self.download_once(id, &req, &settings, &dir, &cancel, &child),
             Err(msg) => Err(anyhow::anyhow!("{msg} {SPACE_ADVICE}")),
         };
@@ -484,6 +499,7 @@ impl Queue {
         // The site changed under yt-dlp: get a newer one right away and try once more,
         // instead of failing until tomorrow's daily update.
         if !matches!(result, Ok(true))
+            && req.direct.is_none()
             && !cancel.load(Ordering::SeqCst)
             && self.broke_ytdlp(id, &result)
             && self.update_ytdlp(id)
@@ -515,11 +531,26 @@ impl Queue {
             && settings.x_gifs_as_gif
             && req.quality != Quality::Audio
         {
-            let file = {
+            // Each GIF the job saved; a GIF picked by itself counts even if yt-dlp didn't say.
+            let videos: Vec<PathBuf> = {
                 let entries = self.inner.entries.lock().unwrap();
-                entries.iter().find(|e| e.snap.id == id).filter(|e| e.snap.gif).and_then(|e| e.snap.file.clone())
+                entries
+                    .iter()
+                    .find(|e| e.snap.id == id)
+                    .map(|e| {
+                        let mut v = e.snap.gif_files.clone();
+                        if e.req.gif
+                            && let Some(f) = &e.snap.file
+                            && !v.contains(f)
+                        {
+                            v.push(f.clone());
+                        }
+                        v.retain(|f| f.extension().is_some_and(|x| !x.eq_ignore_ascii_case("gif")));
+                        v
+                    })
+                    .unwrap_or_default()
             };
-            if let Some(video) = file {
+            for video in videos {
                 self.update(id, true, |s| {
                     s.state = JobState::Processing;
                     s.postprocessor = Some("MakingGif".into());
@@ -527,7 +558,11 @@ impl Queue {
                 match gif::from_video(&video) {
                     Ok(out) => {
                         let _ = std::fs::remove_file(&video);
-                        self.update(id, false, |s| s.file = Some(out));
+                        self.update(id, false, |s| {
+                            if s.file.as_ref() == Some(&video) {
+                                s.file = Some(out);
+                            }
+                        });
                     }
                     Err(e) => gif_error = Some(format!("Saved as MP4: couldn't make the GIF ({e})")),
                 }
@@ -627,7 +662,8 @@ impl Queue {
         child: &Mutex<Option<Child>>,
     ) -> anyhow::Result<bool> {
         let mut last_emit = Instant::now() - Duration::from_secs(1);
-        let keep_title = req.music.is_some();
+        // Post items ("Post title #2" from yt-dlp) keep the picker's "Post · Video 2".
+        let keep_title = req.music.is_some() || req.playlist_index.is_some();
         // Once yt-dlp knows the size, make sure it fits; keep checking for livestreams.
         let mut last_space_check: Option<Instant> = None;
         let mut no_space: Option<String> = None;
@@ -690,6 +726,58 @@ impl Queue {
             }
             None => result,
         }
+    }
+
+    /// Save a file address as is (photos, and videos only gallery-dl saw).
+    fn download_direct(
+        &self,
+        id: u64,
+        req: &DownloadRequest,
+        dir: &std::path::Path,
+        cancel: &AtomicBool,
+    ) -> anyhow::Result<bool> {
+        let Some((url, ext)) = &req.direct else { return Ok(false) };
+        std::fs::create_dir_all(dir)?;
+        let stem = req.stem.clone().unwrap_or_else(|| music::sanitize(&req.title_hint));
+        let dest = dir.join(format!("{stem}.{ext}"));
+        // Same post again: keep what's there. (A GIF's MP4 became a .gif.)
+        let done = if req.gif { dest.with_extension("gif") } else { dest.clone() };
+        if done.is_file() {
+            self.update(id, true, |s| {
+                s.file = Some(done.clone());
+                s.postprocessor = Some("AlreadyHave".into());
+            });
+            return Ok(true);
+        }
+        self.push_log(id, format!("> download {url}"));
+        let part = dir.join(format!("{stem}.{ext}.part"));
+        let mut last = Instant::now() - Duration::from_secs(1);
+        let started = Instant::now();
+        let result = tools::download_to_cancellable(url, &part, cancel, |done, total| {
+            let emit = last.elapsed() >= Duration::from_millis(100);
+            if emit {
+                last = Instant::now();
+            }
+            let secs = started.elapsed().as_secs_f64().max(0.1);
+            self.update(id, emit, |s| {
+                s.state = JobState::Downloading;
+                s.downloaded = Some(done as f64);
+                s.total = total.map(|t| t as f64);
+                s.speed = Some(done as f64 / secs);
+                s.progress = total.filter(|t| *t > 0).map_or(0.0, |t| done as f32 / t as f32);
+            });
+        });
+        if let Err(e) = result {
+            let _ = std::fs::remove_file(&part);
+            if cancel.load(Ordering::SeqCst) {
+                return Ok(false);
+            }
+            self.push_log(id, format!("{e:#}"));
+            return Err(anyhow::anyhow!("Couldn't save this file. Check your connection, then try again."));
+        }
+        std::fs::rename(&part, &dest)?;
+        self.update(id, true, |s| s.file = Some(dest));
+        Ok(true)
     }
 
     fn current_file(&self, id: u64, job: &music::MusicJob) -> Option<PathBuf> {

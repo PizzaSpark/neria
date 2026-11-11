@@ -26,25 +26,50 @@ fn main() -> anyhow::Result<()> {
 
     let info = probe::probe(&url, &settings)?;
     println!("probe: {} | {}", info.title, info.meta_line());
+    if let Some(note) = &info.note {
+        println!("note: {note}");
+    }
+    for (i, it) in info.items.iter().enumerate() {
+        println!("  {:>2} {:<5} {} {}", i + 1, it.kind.label(), it.title, it.direct_url.as_deref().unwrap_or(""));
+    }
+
+    // Posts/playlists: NERIA_PICK="1,3" picks items (1-based); default all of them.
+    let reqs = if info.items.is_empty() {
+        let mut req = DownloadRequest::new(url, quality, info.title.clone());
+        req.section = section;
+        req.exact_cuts = exact_cuts;
+        vec![req]
+    } else {
+        let picked: Vec<usize> = match std::env::var("NERIA_PICK") {
+            Ok(p) => p.split(',').filter_map(|n| n.trim().parse::<usize>().ok()).map(|n| n - 1).collect(),
+            Err(_) => (0..info.items.len()).collect(),
+        };
+        neria_core::post::requests(&info.title, &info.items, &picked, quality, &settings)
+    };
 
     let settings = Arc::new(Mutex::new(settings));
     let (tx, rx) = std::sync::mpsc::channel();
     let queue = Queue::new(settings, move |s| {
         let _ = tx.send(s);
     });
-    let mut req = DownloadRequest::new(url, quality, info.title);
-    req.section = section;
-    req.exact_cuts = exact_cuts;
-    queue.add(req);
+    let mut left = reqs.len();
+    queue.add_batch(reqs);
 
+    let mut failed = 0;
     while let Ok(s) = rx.recv_timeout(Duration::from_secs(120)) {
         let (status, stats) = fmt::job_lines(&s);
-        println!("[{:?} {:>3.0}%] {status}  {stats}", s.state, s.progress * 100.0);
+        println!("#{} [{:?} {:>3.0}%] {status}  {stats}", s.id, s.state, s.progress * 100.0);
         if !s.state.is_active() {
-            anyhow::ensure!(s.state == JobState::Done, "job ended as {:?}", s.state);
+            if s.state != JobState::Done {
+                failed += 1;
+            }
             println!("file: {:?}", s.file);
-            break;
+            left -= 1;
+            if left == 0 {
+                break;
+            }
         }
     }
+    anyhow::ensure!(failed == 0, "{failed} job(s) didn't finish");
     Ok(())
 }

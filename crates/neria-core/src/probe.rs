@@ -20,6 +20,10 @@ pub struct MediaInfo {
     pub playlist_count: Option<usize>,
     /// An X (Twitter) "GIF" (a short silent MP4).
     pub gif: bool,
+    /// Everything in a post or playlist, for the picker. Empty for a single video.
+    pub items: Vec<crate::post::Item>,
+    /// Something the user should know about the items (e.g. a video Neria can't reach).
+    pub note: Option<String>,
 }
 
 impl MediaInfo {
@@ -29,7 +33,9 @@ impl MediaInfo {
         if self.gif {
             parts.push("GIF".to_string());
         }
-        if let Some(n) = self.playlist_count {
+        if !self.items.is_empty() {
+            parts.push(crate::fmt::item_counts(&self.items));
+        } else if let Some(n) = self.playlist_count {
             parts.push(format!("Playlist · {n} items"));
         }
         if let Some(u) = &self.uploader {
@@ -51,8 +57,117 @@ pub fn looks_like_url(s: &str) -> bool {
 }
 
 pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
+    // Photos in X/Facebook posts: ask gallery-dl at the same time.
+    let gallery = crate::post::wants_gallery(url).then(|| {
+        let (url, settings) = (url.to_string(), settings.clone());
+        std::thread::spawn(move || crate::post::gallery(&url, &settings))
+    });
+    let ytdlp = ytdlp_json(url, settings);
+    let mut gallery = gallery.and_then(|h| h.join().ok()).unwrap_or_default();
+    // gallery-dl doesn't follow Facebook `share/` links; yt-dlp knows where they lead.
+    if gallery.items.is_empty()
+        && url.contains("/share/")
+        && let Some(real) = ytdlp.as_ref().ok().and_then(|v| v.get("webpage_url")?.as_str())
+    {
+        let real = real.split('?').next().unwrap_or(real);
+        if real != url && crate::post::wants_gallery(real) {
+            gallery = crate::post::gallery(real, settings);
+        }
+    }
+
+    let v = match ytdlp {
+        Ok(v) => v,
+        // yt-dlp found no video, but there are photos.
+        Err(_) if !gallery.items.is_empty() => {
+            let title = gallery.title.clone().unwrap_or_else(|| "Post".into());
+            return Ok(post_info(title, None, gallery.items, None));
+        }
+        Err(e) => return Err(e),
+    };
+    let is_playlist = v.get("_type").and_then(Value::as_str) == Some("playlist");
+
+    let title = v.get("title").and_then(Value::as_str).unwrap_or("Untitled").to_string();
+    let uploader = ["uploader", "channel", "playlist_uploader"]
+        .iter()
+        .find_map(|k| v.get(*k).and_then(Value::as_str))
+        .map(str::to_string);
+    let formats = v.get("formats").and_then(Value::as_array);
+    let max_height = formats.and_then(|fs| fs.iter().filter_map(|f| f.get("height")?.as_u64()).max()).map(|h| h as u32);
+
+    // A single "video" without any formats: yt-dlp looked at a post and found no video.
+    let no_video = !is_playlist && formats.is_none_or(|f| f.is_empty()) && v.get("url").is_none();
+    if no_video {
+        if gallery.items.is_empty() {
+            return Err(no_video_problem().into());
+        }
+        let title = gallery.title.clone().unwrap_or(title);
+        let note = "Neria couldn't get a video from this post, only its photos. If it has a video, open the video itself and copy its link.";
+        return Ok(post_info(title, uploader, gallery.items, Some(note.into())));
+    }
+
+    let items =
+        crate::post::from_ytdlp(&v, url).map(|y| crate::post::merge(y, gallery.items.clone())).unwrap_or_default();
+    // One video plus photos only gallery-dl saw (X post with a photo and a video).
+    let items = if items.is_empty() && gallery.items.iter().any(|i| i.kind == crate::post::ItemKind::Photo) {
+        let gif = v.get("url").and_then(Value::as_str).is_some_and(crate::gif::is_x_gif_url);
+        let single = crate::post::Item {
+            kind: if gif { crate::post::ItemKind::Gif } else { crate::post::ItemKind::Video },
+            title: String::new(),
+            duration: v.get("duration").and_then(Value::as_f64),
+            thumbnail: pick_thumbnail(&v),
+            url: url.to_string(),
+            playlist_index: None,
+            direct_url: None,
+            ext: String::new(),
+        };
+        crate::post::merge(vec![single], gallery.items)
+    } else {
+        items
+    };
+
+    Ok(MediaInfo {
+        title,
+        uploader,
+        duration: v.get("duration").and_then(Value::as_f64),
+        thumbnail_url: pick_thumbnail(&v).or_else(|| items.iter().find_map(|i| i.thumbnail.clone())),
+        max_height,
+        playlist_count: is_playlist.then(|| v.get("entries").and_then(Value::as_array).map_or(0, |e| e.len())),
+        gif: v.get("url").and_then(Value::as_str).is_some_and(crate::gif::is_x_gif_url),
+        items,
+        note: None,
+    })
+}
+
+fn post_info(
+    title: String,
+    uploader: Option<String>,
+    items: Vec<crate::post::Item>,
+    note: Option<String>,
+) -> MediaInfo {
+    MediaInfo {
+        title,
+        uploader,
+        thumbnail_url: items.iter().find_map(|i| i.thumbnail.clone()),
+        playlist_count: Some(items.len()),
+        items,
+        note,
+        ..MediaInfo::default()
+    }
+}
+
+fn no_video_problem() -> LinkProblem {
+    LinkProblem::new(
+        "Neria couldn't find a video in this post",
+        "If it has one, open the video itself and copy its link. Posts you only see when signed in need Settings → Network → Cookies.",
+        false,
+    )
+}
+
+/// yt-dlp's `-J` for the link. Photos (Instagram) and posts without a video come back as
+/// items without formats instead of failing the whole lookup.
+fn ytdlp_json(url: &str, settings: &Settings) -> Result<Value> {
     let mut cmd = proc::command(paths::tool("yt-dlp"));
-    cmd.args(["-J", "--encoding", "utf-8", "--no-warnings", "--flat-playlist"]);
+    cmd.args(["-J", "--encoding", "utf-8", "--no-warnings", "--flat-playlist", "--ignore-no-formats-error"]);
     cmd.arg(if settings.allow_playlists { "--yes-playlist" } else { "--no-playlist" });
     if !settings.cookies_browser.is_empty() {
         cmd.args(["--cookies-from-browser", &settings.cookies_browser]);
@@ -71,30 +186,7 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
             .to_string();
         return Err(explain(&msg).into());
     }
-
-    let v: Value = serde_json::from_slice(&out.stdout).context("unexpected yt-dlp output")?;
-    let is_playlist = v.get("_type").and_then(Value::as_str) == Some("playlist");
-
-    let title = v.get("title").and_then(Value::as_str).unwrap_or("Untitled").to_string();
-    let uploader = ["uploader", "channel", "playlist_uploader"]
-        .iter()
-        .find_map(|k| v.get(*k).and_then(Value::as_str))
-        .map(str::to_string);
-    let max_height = v
-        .get("formats")
-        .and_then(Value::as_array)
-        .and_then(|fs| fs.iter().filter_map(|f| f.get("height")?.as_u64()).max())
-        .map(|h| h as u32);
-
-    Ok(MediaInfo {
-        title,
-        uploader,
-        duration: v.get("duration").and_then(Value::as_f64),
-        thumbnail_url: pick_thumbnail(&v),
-        max_height,
-        playlist_count: is_playlist.then(|| v.get("entries").and_then(Value::as_array).map_or(0, |e| e.len())),
-        gif: v.get("url").and_then(Value::as_str).is_some_and(crate::gif::is_x_gif_url),
-    })
+    serde_json::from_slice(&out.stdout).context("unexpected yt-dlp output")
 }
 
 pub struct PreviewStream {
@@ -127,7 +219,7 @@ pub fn preview_stream(url: &str, settings: &Settings) -> Result<PreviewStream> {
 }
 
 /// Prefer a JPEG around 320–640px wide: small, fast, and decodable everywhere.
-fn pick_thumbnail(v: &Value) -> Option<String> {
+pub(crate) fn pick_thumbnail(v: &Value) -> Option<String> {
     let list = v.get("thumbnails").and_then(Value::as_array);
     if let Some(list) = list {
         let mut jpgs: Vec<(u64, &str)> = list
@@ -322,6 +414,14 @@ pub fn explain(msg: &str) -> LinkProblem {
     if has(&["members-only", "members only", "join this channel"]) {
         return LinkProblem::new("This video is for channel members only", cookies, false);
     }
+    // Instagram after a few lookups without an account: it sends you to the login page.
+    if has(&["exceeded the rate-limit", "rate-limit for accessing"]) {
+        return LinkProblem::new(
+            "The site is limiting how much you can see without signing in",
+            "Wait an hour or so, or sign in: Settings → Network → Cookies.",
+            false,
+        );
+    }
     if has(&["sign in to confirm", "login required", "log in", "sign in", "use --cookies", "cookies"]) {
         return LinkProblem::new("The site wants you to sign in", cookies, false);
     }
@@ -347,6 +447,9 @@ pub fn explain(msg: &str) -> LinkProblem {
     ]) {
         return LinkProblem::new("Couldn't reach the site", "Check your internet connection, then try again.", false);
     }
+    if is_no_video(&low) {
+        return no_video_problem();
+    }
     if has(&["signature extraction failed", "nsig extraction failed", "please report this issue", "unable to extract"])
     {
         return LinkProblem::new(
@@ -362,6 +465,10 @@ pub fn explain(msg: &str) -> LinkProblem {
 /// yt-dlp output that usually means the site changed and a newer yt-dlp fixes it.
 pub fn needs_newer_ytdlp(text: &str) -> bool {
     let low = text.to_lowercase();
+    // A post without a video says "please report this issue" too; a new yt-dlp won't help.
+    if is_no_video(&low) {
+        return false;
+    }
     [
         "signature extraction failed",
         "nsig extraction failed",
@@ -377,6 +484,11 @@ pub fn needs_newer_ytdlp(text: &str) -> bool {
     ]
     .iter()
     .any(|n| low.contains(n))
+}
+
+/// yt-dlp looked at a post and found no video in it (photos only, or a video it can't reach).
+fn is_no_video(low: &str) -> bool {
+    ["no video formats found", "no video could be found", "no media found"].iter().any(|n| low.contains(n))
 }
 
 /// One-line version of [`explain`] for queue rows.
