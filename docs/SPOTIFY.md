@@ -15,7 +15,7 @@ Tested on Random Access Memories (13/13 matched at 1.00, whole album in 83 s) an
   preview with cover, song count, length; "Download N songs" queues one row per song, in order
 - Metadata like Sunnify: public embed pages, no login, no API key. Limits shown to the user:
   playlists show the first 100 songs, artists their top 10, playlist tracks have no album name
-  (filled from YouTube Music). Optional **own** Client ID/secret in Settings → Spotify links
+  (filled from YouTube Music). Optional **own** Client ID/secret in Settings → Spotify
   uses the Web API (full playlists, ISRC, track/disc numbers) and falls back to embed pages
 
 ## Matching
@@ -31,7 +31,7 @@ Tested on Random Access Memories (13/13 matched at 1.00, whole album in 83 s) an
   fail with "Pick one yourself" instead of silently skipping
 
 ## Audio check
-- `fingerprint.rs`, on by default, Settings → Spotify links: after each download, Spotify's
+- `fingerprint.rs`, on by default, Settings → Spotify: after each download, Spotify's
   public 30 s preview (`audioPreview.url` in the embed data) and the file are fingerprinted with
   ffmpeg's Chromaprint muxer; the preview is slid along the song for the best bit agreement.
   Measured: same master 0.98, same recording edited 0.95, same recording other master/length

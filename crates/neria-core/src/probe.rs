@@ -373,7 +373,7 @@ pub fn explain(msg: &str) -> LinkProblem {
     if has(&["no space left on device", "errno 28", "disk full", "not enough space on the disk"]) {
         return LinkProblem::new(
             "Your drive ran out of space",
-            "Free some up, or pick another folder in Settings.",
+            "Free some up, or pick another folder in Settings → Download.",
             false,
         );
     }

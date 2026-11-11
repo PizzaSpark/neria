@@ -151,8 +151,10 @@ built once on it. Friends' feedback feeds in here.
 1. ✅ Split the pages out of `app.slint` into per-page/component files; one component set
    (buttons, chips, rows, dialogs, toasts) instead of per-page variations (`ui/pages/`,
    `ui/dialogs/`, `ui/components/`, shared controls in `ui/widgets.slint`)
-2. Settings reorganised into sections that match the pages (Download, Clip, Compress,
-   Spotify, Network, About)
+2. ✅ Settings reorganised into sections: Download, Spotify, Network, Appearance, About, listed
+   on the left of the drawer. Clip and Compress have no settings of their own (you pick
+   everything per file there), so no empty sections. The format button and "What's new"
+   open the drawer at Download / About; `NERIA_SETTINGS=<section>` for checks
 3. Layouts that adapt to window width (wide desktop → narrow), so the same screens can later
    become the Android layouts
 4. Queue filters (active / done / needs attention) and clearer flagged-match states

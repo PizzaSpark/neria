@@ -170,6 +170,8 @@ export component AppWindow inherits Window {
     in-out property <bool> drop-choice-open;
     callback drop-choose(int); // 1 clip, 2 compress
     in-out property <bool> drawer-open;
+    // Settings section to show: 0 Download, 1 Spotify, 2 Network, 3 Appearance, 4 About.
+    in-out property <int> settings-section;
 
     // Clipper
     in property <bool> clip-loaded;
@@ -322,7 +324,14 @@ export component AppWindow inherits Window {
                 audio-format: root.audio-format;
                 lyrics: root.lyrics;
                 settings-changed => { root.settings-changed(); }
-                open-settings => { root.drawer-open = true; }
+                open-settings => {
+                    root.settings-section = 0;
+                    root.drawer-open = true;
+                }
+                whats-new => {
+                    root.settings-section = 4;
+                    root.drawer-open = true;
+                }
 
                 pick-items: root.pick-items;
                 pick-checked: root.pick-checked;
@@ -396,7 +405,10 @@ export component AppWindow inherits Window {
                 show-output => { root.clip-show-output(); }
                 view-queue => { root.page = 0; }
                 settings-changed => { root.settings-changed(); }
-                open-settings => { root.drawer-open = true; }
+                open-settings => {
+                    root.settings-section = 0;
+                    root.drawer-open = true;
+                }
             }
 
             if root.page == 2: CompressPage {
@@ -436,8 +448,10 @@ export component AppWindow inherits Window {
         y: 0;
         width: root.width;
         height: root.height;
+        section <=> root.settings-section;
         output-dir: root.output-dir;
         sort-folders <=> root.sort-folders;
+        number-items <=> root.number-items;
         container-index <=> root.container-index;
         prefer-h264 <=> root.prefer-h264;
         embed-subs <=> root.embed-subs;

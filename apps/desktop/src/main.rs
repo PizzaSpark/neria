@@ -712,7 +712,11 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             if let Ok(which) = std::env::var("NERIA_DIALOG") {
                 demo_dialog(&ui, &which);
             }
-            if std::env::var_os("NERIA_SETTINGS").is_some() {
+            if let Ok(section) = std::env::var("NERIA_SETTINGS") {
+                let names = ["download", "spotify", "network", "appearance", "about"];
+                if let Some(i) = names.iter().position(|n| section.eq_ignore_ascii_case(n)) {
+                    ui.set_settings_section(i as i32);
+                }
                 ui.set_drawer_open(true);
             }
             if let Some(url) = std::env::var_os("NERIA_URL") {

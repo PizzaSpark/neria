@@ -217,7 +217,7 @@ pub struct MatchInfo {
 
 type Notify = Box<dyn Fn(JobSnapshot) + Send + Sync>;
 
-const SPACE_ADVICE: &str = "Free some up or change the folder in Settings.";
+const SPACE_ADVICE: &str = "Free some up or change the folder in Settings → Download.";
 
 /// Remove what an interrupted download of `final_path` left behind: `.part`/`.ytdl`
 /// files, per-format pieces (`name.f401.mp4`) and the thumbnail. Never the finished file.

@@ -1,7 +1,7 @@
 //! Where downloads land.
 //!
 //! ```text
-//! Videos\Neria\              <- Settings → Save to (the root)
+//! Videos\Neria\              <- Settings → Download → Save to (the root)
 //! ├─ Audio\                  audio-only downloads and Spotify songs
 //! │  └─ Chill Mix\           a playlist/album downloaded as audio
 //! ├─ Video\                  videos and GIFs

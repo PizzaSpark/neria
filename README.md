@@ -75,7 +75,7 @@ has buttons to:
 | ↙↗ | Open it in the compressor |
 | ✕ | Remove it from the list (the file stays) |
 
-Files are saved to **Videos\Neria** by default. Change that under **Settings → Save to**.
+Files are saved to **Videos\Neria** by default. Change that under **Settings → Download → Save to**.
 
 ### Download songs from Spotify
 
@@ -164,21 +164,22 @@ The result is saved next to the original, e.g. `video (compressed 20MB).mp4`.
 
 ## Settings
 
-Open **Settings** (bottom of the sidebar) or **Advanced** (top right of the Download page).
+Open **Settings** at the bottom of the sidebar (or the format button, e.g. "mp4", under a link
+preview). The sections are listed on the left:
 
 | Section | What's there |
 |---|---|
-| Save to | Where downloads go |
-| Video | Container (mp4 / mkv / webm), prefer H.264, embed subtitles |
-| Audio only | Format for audio downloads: mp3, m4a, opus, flac, wav (also used for Spotify songs) |
-| Extras | Embed thumbnail and metadata, cut out sponsor segments (SponsorBlock), download whole playlists |
-| Network | Cookies from your browser, speed limit, how many downloads run at once |
-| Spotify links | Lyrics on/off, sound check on/off, your own Spotify key |
-| Expert | File name template, extra yt-dlp options |
+| Download | Where files go (and the Audio / Video / Photos folders, numbering), video container (mp4 / mkv / webm), prefer H.264, subtitles, the audio format (mp3, m4a, opus, flac, wav; also used for Spotify songs), thumbnail and metadata, SponsorBlock, whole playlists, X GIFs, the file name template |
+| Spotify | Lyrics on/off, sound check on/off, the heads-up, your own Spotify key |
+| Network | Cookies from your browser, speed limit, how many downloads run at once, extra yt-dlp options |
+| Appearance | Same as Windows, dark or light |
+| About | Versions, updates for Neria and its tools, copy a report |
+
+Clip and Compress have no settings: you pick everything per file on those pages.
 
 ### Cookies (age-restricted or "confirm you're not a bot" videos)
 
-Under **Network → Cookies from browser**, pick the browser you're logged in to YouTube with.
+Under **Network → Cookies**, pick the browser you're logged in to YouTube with.
 Neria borrows its cookies for downloads.
 
 ### Optional: your own Spotify key
@@ -188,7 +189,7 @@ keys to **Premium** accounts.
 
 1. Go to <https://developer.spotify.com/dashboard> and log in.
 2. Press **Create app**, give it any name, and set the redirect URI to `http://127.0.0.1`.
-3. Copy the **Client ID** and **Client secret** into **Settings → Spotify links**.
+3. Copy the **Client ID** and **Client secret** into **Settings → Spotify**.
 
 The key is stored only in `settings.json` next to Neria. If it stops working, Neria falls
 back to the public page automatically.
@@ -200,7 +201,7 @@ back to the public page automatically.
 | Problem | Try |
 |---|---|
 | "Setup hit a snag" on first start | Check your internet connection and press **Try again** |
-| "YouTube wants a sign-in" | Settings → Network → Cookies from browser |
+| "YouTube wants a sign-in" | Settings → Network → Cookies |
 | A site stopped working | Restart Neria: yt-dlp updates itself once a day |
 | A Spotify song is the wrong version | Press ⇄ on its row and pick the one marked ✓ Same recording |
 | A Spotify song failed with "Pick one yourself" | Press ⇄ and search for it in the box at the top |

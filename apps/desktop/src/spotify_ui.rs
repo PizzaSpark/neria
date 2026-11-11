@@ -68,7 +68,7 @@ pub fn preview(
                     if col.truncated {
                         note = match col.kind {
                             Kind::Artist => "Spotify's public page only lists an artist's top 10. Paste album links for more.".into(),
-                            _ => "Spotify's public page shows the first 100 songs. Add your own Spotify key in Settings for all of them.".into(),
+                            _ => "Spotify's public page shows the first 100 songs. Add your own Spotify key in Settings → Spotify for all of them.".into(),
                         };
                     }
                     if let Some(n) = &col.notice {

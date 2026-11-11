@@ -52,6 +52,8 @@ export component DownloadPage inherits Rectangle {
     in property <bool> lyrics;
     callback settings-changed();
     callback open-settings();
+    // "What's new" on the update banner: Settings → About.
+    callback whats-new();
 
     // Posts and playlists
     in property <[PickItem]> pick-items;
@@ -123,7 +125,7 @@ export component DownloadPage inherits Rectangle {
             status: root.update-status;
             progress: root.update-progress;
             active-count: root.active-count;
-            whats-new => { root.open-settings(); }
+            whats-new => { root.whats-new(); }
             install => { root.update-install(); }
             restart => { root.update-restart(); }
             later => { root.update-later(); }
