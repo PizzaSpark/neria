@@ -340,6 +340,8 @@ struct Inner {
     persist: AtomicBool,
     /// Shutting down: jobs being stopped now are saved as they were, not as cancelled.
     closing: AtomicBool,
+    /// The queue changed since `queue.json` was last written (written at most twice a second).
+    dirty: AtomicBool,
     settings: Arc<Mutex<Settings>>,
     notify: Notify,
     next_id: AtomicU64,
@@ -363,6 +365,7 @@ impl Queue {
                 ready: AtomicBool::new(true),
                 persist: AtomicBool::new(false),
                 closing: AtomicBool::new(false),
+                dirty: AtomicBool::new(false),
                 settings,
                 notify: Box::new(notify),
                 next_id: AtomicU64::new(1),
@@ -434,6 +437,17 @@ impl Queue {
     /// last time: waiting and interrupted downloads wait again, paused ones stay paused.
     pub fn enable_persistence(&self) {
         self.inner.persist.store(true, Ordering::SeqCst);
+        // A 300-song playlist changes state several times a second; writing the whole file
+        // each time would keep a core busy. Write the latest state now and then instead.
+        let queue = self.clone();
+        thread::spawn(move || {
+            while !queue.inner.closing.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(500));
+                if queue.inner.dirty.swap(false, Ordering::SeqCst) {
+                    queue.write_saved();
+                }
+            }
+        });
         let saved: SavedQueue =
             std::fs::read(queue_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         let mut new_group: HashMap<u64, u64> = HashMap::new();
@@ -484,14 +498,19 @@ impl Queue {
     /// Write `queue.json`: every unfinished job, plus the finished ones of groups that
     /// still have unfinished jobs (so the playlist comes back whole).
     fn save(&self) {
-        let entries = self.inner.entries.lock().unwrap();
-        self.save_locked(&entries);
+        self.inner.dirty.store(true, Ordering::SeqCst);
     }
 
-    fn save_locked(&self, entries: &[Entry]) {
+    /// The queue changed (called with the entries locked; the writer thread saves it soon).
+    fn save_locked(&self, _entries: &[Entry]) {
+        self.inner.dirty.store(true, Ordering::SeqCst);
+    }
+
+    fn write_saved(&self) {
         if !self.inner.persist.load(Ordering::SeqCst) || self.inner.closing.load(Ordering::SeqCst) {
             return;
         }
+        let entries = self.inner.entries.lock().unwrap();
         let open: HashSet<u64> =
             entries.iter().filter(|e| e.snap.group != 0 && !e.snap.state.is_finished()).map(|e| e.snap.group).collect();
         let jobs: Vec<SavedJob> = entries
@@ -795,7 +814,7 @@ impl Queue {
     /// Closing Neria: save the queue as it is (running jobs come back next time), then
     /// stop every yt-dlp/ffmpeg so none is left running.
     pub fn shutdown(&self) {
-        self.save();
+        self.write_saved();
         self.inner.closing.store(true, Ordering::SeqCst);
         self.cancel_all();
     }

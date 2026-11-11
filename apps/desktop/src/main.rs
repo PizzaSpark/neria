@@ -299,7 +299,52 @@ fn refresh_group(group: i32) {
 }
 
 /// Update (or insert) a job row and refresh the counters.
-fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
+/// Job updates waiting for the UI thread: the newest per job, and whether it may add a row.
+/// A big playlist sends dozens of updates a second; the UI applies them in one pass.
+#[derive(Default)]
+struct PendingJobs {
+    snaps: Vec<(JobSnapshot, bool)>,
+    scheduled: bool,
+}
+
+/// Called by the queue (any thread): keep the update, and wake the UI once.
+fn queue_update(weak: &slint::Weak<AppWindow>, pending: &Arc<Mutex<PendingJobs>>, snap: JobSnapshot) {
+    let mut p = pending.lock().unwrap();
+    // New rows only come from new or restored jobs (updates for removed rows are dropped).
+    let insertable = snap.state == JobState::Queued || snap.restored;
+    match p.snaps.iter_mut().find(|(s, _)| s.id == snap.id) {
+        Some(slot) => {
+            slot.1 |= insertable;
+            slot.0 = snap;
+        }
+        None => p.snaps.push((snap, insertable)),
+    }
+    if !p.scheduled {
+        p.scheduled = true;
+        let pending = pending.clone();
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            let snaps = {
+                let mut p = pending.lock().unwrap();
+                p.scheduled = false;
+                std::mem::take(&mut p.snaps)
+            };
+            let mut groups = HashSet::new();
+            for (snap, insertable) in &snaps {
+                upsert_job(&ui, snap, *insertable);
+                if snap.group != 0 {
+                    groups.insert(snap.group as i32);
+                }
+            }
+            for g in groups {
+                refresh_group(g);
+            }
+            refresh_counts(&ui);
+        });
+    }
+}
+
+/// Update (or insert) a job row. The caller refreshes group cards and counters.
+fn upsert_job(ui: &AppWindow, snap: &JobSnapshot, insertable: bool) {
     let vec = rows();
     let mut item = job_item(snap);
     if let Some(url) = &snap.thumbnail {
@@ -340,7 +385,7 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
         // New jobs go on top, except playlist/album items, which follow the previous
         // item of their group so they read in order. Rows from the last session are
         // added whatever their state. Updates for rows the user removed are ignored.
-        None if snap.state == JobState::Queued || snap.restored => {
+        None if insertable => {
             let after = if item.group != 0 {
                 vec.iter().enumerate().filter(|(_, j)| j.group == item.group).map(|(i, _)| i).last()
             } else {
@@ -350,16 +395,13 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot) {
         }
         None => {}
     }
-    if snap.group != 0 {
-        refresh_group(snap.group as i32);
-    }
-    refresh_counts(ui);
 }
 
 fn refresh_counts(ui: &AppWindow) {
     let model = rows();
     let count = |f: &dyn Fn(i32) -> bool| model.iter().filter(|j| !j.header && f(j.state)).count() as i32;
     ui.set_active_count(count(&|s| s <= 2));
+    ui.set_running_count(count(&|s| s == 1 || s == 2));
     ui.set_paused_count(count(&|s| s == 6));
     // "Clear finished" leaves playlists that are still going: count what it would remove.
     let open: HashSet<i32> =
@@ -989,9 +1031,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     let weak = ui.as_weak();
-    let queue = Queue::new(settings.clone(), move |snap| {
-        let _ = weak.upgrade_in_event_loop(move |ui| upsert_job(&ui, &snap));
-    });
+    let pending = Arc::new(Mutex::new(PendingJobs::default()));
+    let queue = Queue::new(settings.clone(), move |snap| queue_update(&weak, &pending, snap));
     // Bring back last session's queue; it carries on once the tools are checked.
     queue.set_ready(false);
     queue.enable_persistence();

@@ -387,7 +387,7 @@ pub fn explain(msg: &str) -> LinkProblem {
     ]) {
         return LinkProblem::new(
             "Neria couldn't read your browser's cookies",
-            "Chrome and Edge lock their cookies while open and encrypt them. Sign in to the site in Firefox and pick Firefox under Settings → Network → Cookies.",
+            "Brave, Opera and Vivaldi lock them while they're open: close the browser fully, then paste the link again. Chrome and Edge also encrypt them, so for those sign in with Firefox and pick it under Settings → Network → Cookies.",
             false,
         );
     }

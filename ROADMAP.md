@@ -110,14 +110,17 @@ them; related ideas are merged into one item so they get built together.
 - **The container setting always applies**: single files that need no merge (YouTube format
   18) are remuxed to mp4/mkv; webm picks webm streams where the site has them
 - **Checked on real links**: a single-GIF X post (saved as one .gif), Audio only on a
-  playlist (`Audio\<playlist>\01 …`)
+  playlist (`Audio\<playlist>\01 …`), a 315-video playlist (picker, one card, numbered
+  `001 …` files, private/closed-channel videos fail with a clear reason, closing mid-way and
+  reopening carries on). Queue updates reach the UI in batches, so big playlists don't flood
+  it (closing used to hang behind them), and `queue.json` is written at most twice a second
 - **Playlist folders like Spotify ones**: `<playlist>.m3u8` in the folder, kept up to date as
   items finish (keeps songs saved by an earlier download, numbered files in number order);
   items already in the folder are skipped ("Already downloaded")
 - **One group card in the queue** per playlist/post/album: stacked thumbnail, "3 of 12 saved ·
   1 failed · now: …", overall bar, Pause all / Resume all / Cancel / Retry failed / Show
-  folder; open by default, the chevron (or a click on the card) folds it. "Clear finished" leaves playlists that
-  are still going
+  folder; open by default, the chevron (or a click on the card) folds it. "Clear finished"
+  leaves playlists that are still going; the "3 going" badge counts only what's running
 - **Pause / resume**: Pause on downloading rows (not Spotify songs, which are matched and
   checked in steps), "Pause all" / "Resume all" next to the Queue title; yt-dlp keeps its
   `.part` files and Resume carries on from there; paused rows keep a grey bar ("687 KB of
@@ -135,8 +138,8 @@ them; related ideas are merged into one item so they get built together.
 ## Now: v0.3
 Finish and ship what's in `main`, plus the loose ends that make it feel complete.
 1. **Check what's left on real links**: an Instagram carousel all the way through with
-   cookies, a long YouTube playlist in the picker and as a group card (scrolling,
-   thumbnails, 100+ items)
+   cookies. Brave locks its cookies while open (the error and Settings now say "close it
+   fully"); not yet checked whether it reads them once closed
 2. **Code signing** to remove the SmartScreen warning: SignPath Foundation signs open-source
    projects for free; the repo is public, so apply and sign in the release workflow
 3. Later, not now: release notes (`docs/releases/v0.3.0.md`), version bump, friends test

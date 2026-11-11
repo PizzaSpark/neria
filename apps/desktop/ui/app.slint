@@ -651,6 +651,8 @@ export component AppWindow inherits Window {
     // Queue
     in property <[JobItem]> jobs;
     in property <int> active-count;
+    // Downloading or processing right now (waiting ones not counted): the "3 going" badge.
+    in property <int> running-count;
     in property <int> paused-count;
     in property <int> finished-count;
     callback pause-job(int);
@@ -1360,11 +1362,11 @@ export component AppWindow inherits Window {
                             vertical-alignment: center;
                             horizontal-stretch: 0;
                         }
-                        if root.active-count > 0: VerticalLayout {
+                        if root.running-count > 0: VerticalLayout {
                             alignment: center;
                             horizontal-stretch: 0;
                             Tag {
-                                text: root.active-count + " going";
+                                text: root.running-count + " going";
                                 kind: 4;
                             }
                         }
@@ -2357,8 +2359,12 @@ export component AppWindow inherits Window {
                                     kind: 2;
                                 }
                             }
-                            if root.cookies-index == 1 || root.cookies-index == 2 || root.cookies-index >= 4: Hint {
+                            if root.cookies-index == 1 || root.cookies-index == 2: Hint {
                                 text: "This browser usually blocks it: it locks its cookies while open and encrypts them. Firefox works best: sign in there and pick Firefox.";
+                            }
+                            if root.cookies-index >= 4: Hint {
+                                text: (root.cookies-index == 4 ? "Brave" : root.cookies-index == 5 ? "Opera" : "Vivaldi")
+                                    + " locks its cookies while it's open: close it fully before downloading. Firefox works even while open.";
                             }
                             HorizontalLayout {
                                 spacing: 10px;
