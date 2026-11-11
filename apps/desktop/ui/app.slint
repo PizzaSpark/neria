@@ -660,6 +660,8 @@ export component AppWindow inherits Window {
     in property <[float]> clip-keyframe-ticks;
     // Link mode: streaming a URL; export downloads just the selection.
     in property <bool> clip-is-link;
+    // The link is an X GIF (from the Download page's preview): saved as is, no quality to pick.
+    in property <bool> clip-is-gif;
     in property <bool> clip-buffering;
     property <float> clip-effective-in: Fmt.keyframe-before(root.clip-in, root.clip-keyframes);
     property <bool> clip-early-start: !root.clip-is-link && root.clip-mode == 0 && root.clip-effective-in < root.clip-in - 0.05;
@@ -1566,6 +1568,20 @@ export component AppWindow inherits Window {
                         color: Theme.muted;
                         font-size: 11px;
                         overflow: elide;
+                    }
+
+                    // Link mode: the same quality and file type as the Download page
+                    // (shared settings, so both pages always agree). Files keep their own.
+                    if root.clip-loaded && root.clip-is-link: QualityRow {
+                        quality <=> root.quality;
+                        spotify: root.clip-is-gif && root.x-gifs-as-gif;
+                        spotify-text: "Saved as a .gif (X keeps GIFs as short silent videos)";
+                        format-text: root.clip-is-gif && root.x-gifs-as-gif ? "gif"
+                            : root.quality == 4 ? root.audio-formats[root.audio-format-index]
+                            : root.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
+                        changed => { root.settings-changed(); }
+                        open-settings => { root.drawer-open = true; }
+                        show-clip: false;
                     }
 
                     if root.clip-loaded: HorizontalLayout {

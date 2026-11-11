@@ -88,6 +88,8 @@ impl Clipper {
         let known = !title.is_empty();
         let name = if known { title } else { url };
         self.open_source(ui, Source::Link(url.to_string()), name.to_string(), known);
+        // Only the Download page's preview knows a link is an X GIF.
+        ui.set_clip_is_gif(ui.get_probe_is_gif() && ui.get_url().trim() == url);
     }
 
     fn open_source(&mut self, ui: &AppWindow, source: Source, name: String, title_known: bool) {
@@ -104,6 +106,7 @@ impl Clipper {
 
         ui.set_clip_loaded(true);
         ui.set_clip_is_link(matches!(source, Source::Link(_)));
+        ui.set_clip_is_gif(false);
         ui.set_clip_buffering(matches!(source, Source::Link(_)));
         ui.set_clip_name(name.into());
         ui.set_clip_status("".into());
@@ -581,11 +584,11 @@ pub fn install(
                 Some(Source::File(path)) => path,
                 Some(Source::Link(url)) => {
                     // Link mode: download only the selected part, in the chosen quality.
-                    let mut req = DownloadRequest::new(
-                        url,
-                        Quality::from_index(ui.get_quality()),
-                        ui.get_clip_name().to_string(),
-                    );
+                    // Same rules as the Download page: GIFs come as they are; container,
+                    // H.264 and audio format come from Settings when the job starts.
+                    let quality =
+                        if ui.get_clip_is_gif() { Quality::Best } else { Quality::from_index(ui.get_quality()) };
+                    let mut req = DownloadRequest::new(url, quality, ui.get_clip_name().to_string());
                     req.section = Some((ui.get_clip_in() as f64, ui.get_clip_out() as f64));
                     req.exact_cuts = ui.get_clip_mode() == 1;
                     enqueue(req);
