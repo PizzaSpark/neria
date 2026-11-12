@@ -113,6 +113,8 @@ export component DownloadPage inherits Rectangle {
     callback pick-toggle(int, bool);
     callback pick-all(bool);
     callback pick-quality(int, int);
+    callback pick-move(int, int);
+    callback pick-reverse();
 
     // Spotify
     in property <int> spotify-count;
@@ -388,6 +390,8 @@ export component DownloadPage inherits Rectangle {
             toggle(i, on) => { root.pick-toggle(i, on); }
             all(on) => { root.pick-all(on); }
             quality(i, q) => { root.pick-quality(i, q); }
+            move(from, to) => { root.pick-move(from, to); }
+            reverse => { root.pick-reverse(); }
             number-items-toggled => { root.settings-changed(); }
         }
 

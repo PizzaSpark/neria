@@ -63,6 +63,8 @@ pub struct DownloadRequest {
     /// "Download later": waits until this time (Unix seconds), shown as `start_label`.
     pub start_at: Option<u64>,
     pub start_label: String,
+    /// This item's own container (video) or audio format, instead of Settings' (picker).
+    pub format: Option<String>,
 }
 
 impl Default for DownloadRequest {
@@ -97,6 +99,7 @@ impl DownloadRequest {
             track: None,
             start_at: None,
             start_label: String::new(),
+            format: None,
         }
     }
 
@@ -161,6 +164,21 @@ pub fn out_dir(req: &DownloadRequest, s: &Settings) -> PathBuf {
 }
 
 pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
+    // An item picked with its own format: as if Settings said so, for this one.
+    let own;
+    let s = match req.format.as_deref().filter(|f| !f.is_empty()) {
+        Some(f) => {
+            let mut c = s.clone();
+            if req.quality == Quality::Audio {
+                c.audio_format = f.to_string();
+            } else {
+                c.container = f.to_string();
+            }
+            own = c;
+            &own
+        }
+        None => s,
+    };
     let mut a: Vec<String> = Vec::new();
     let mut push = |items: &[&str]| a.extend(items.iter().map(|x| x.to_string()));
 

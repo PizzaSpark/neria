@@ -230,19 +230,25 @@ fn small_photo(url: &str) -> String {
 /// one kind), files numbered by their place in the post so they sort in order:
 /// `01 Photo.jpg`, `02 Video.mp4` for posts, `01 Title.mp4` for playlists. With
 /// "Number files in playlist order" off: `Photo 1.jpg`, `Title.mp4`.
+/// One picked item: its index in `items` (the order the picker shows, which is also the
+/// numbering), its own quality and format if set on its row.
+pub type Pick = (usize, Option<Quality>, Option<String>);
+
 pub fn requests(
     title: &str,
     items: &[Item],
-    picked: &[(usize, Option<Quality>)],
+    picked: &[Pick],
     quality: Quality,
     settings: &Settings,
 ) -> Vec<DownloadRequest> {
+    let formats: std::collections::HashMap<usize, String> =
+        picked.iter().filter_map(|(i, _, f)| Some((*i, f.clone()?))).collect();
     let numbered = settings.number_items;
     // Each item's own quality (set on its row), else the chips above the list. GIFs are
     // always saved whole, photos and videos only gallery-dl saw are saved as they are.
     let picked: Vec<(usize, &Item, Quality)> = picked
         .iter()
-        .filter_map(|&(i, q)| {
+        .filter_map(|&(i, q, _)| {
             let it = items.get(i)?;
             let q = if it.kind == ItemKind::Gif { Quality::Best } else { q.unwrap_or(quality) };
             Some((i, it, q))
@@ -284,11 +290,43 @@ pub fn requests(
             req.gif = gif;
             req.thumbnail = it.thumbnail.clone();
             req.duration = it.duration;
+            req.format = formats.get(&i).cloned();
             req.direct =
                 it.direct_url.clone().map(|u| (u, if it.ext.is_empty() { "jpg".into() } else { it.ext.clone() }));
             req
         })
         .collect()
+}
+
+fn orders_file() -> std::path::PathBuf {
+    crate::paths::app_dir().join("orders.json")
+}
+
+/// The order the user put a playlist's items in (their links), for the next time.
+pub fn save_order(list_url: &str, item_urls: Vec<String>) {
+    let mut all: Vec<(String, Vec<String>)> =
+        std::fs::read(orders_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    all.retain(|(u, _)| u != list_url);
+    all.insert(0, (list_url.to_string(), item_urls));
+    all.truncate(50);
+    if let Ok(json) = serde_json::to_vec(&all) {
+        let _ = std::fs::write(orders_file(), json);
+    }
+}
+
+/// Put `items` in the order saved for this playlist: known items in that order, new ones
+/// after them in the site's order. Returns whether a saved order was used.
+pub fn apply_order(list_url: &str, items: &mut [Item]) -> bool {
+    let all: Vec<(String, Vec<String>)> =
+        std::fs::read(orders_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    let Some((_, order)) = all.iter().find(|(u, _)| u == list_url) else { return false };
+    sort_by_order(items, order);
+    true
+}
+
+fn sort_by_order(items: &mut [Item], order: &[String]) {
+    let rank = |it: &Item| order.iter().position(|u| *u == it.url).unwrap_or(usize::MAX);
+    items.sort_by_key(rank);
 }
 
 /// Line up yt-dlp's and gallery-dl's lists. gallery-dl's order wins (it sees photos too);
@@ -414,31 +452,42 @@ mod tests {
         let items = vec![photo, yt_video(1), gif];
 
         // All three: one mixed folder next to Audio/Video, numbered by place in the post.
-        let all = requests("seann - Just: testing", &items, &[(0, None), (1, None), (2, None)], Quality::Best, &s);
+        let all = requests(
+            "seann - Just: testing",
+            &items,
+            &[(0, None, None), (1, None, None), (2, None, None)],
+            Quality::Best,
+            &s,
+        );
         let dir = std::path::PathBuf::from("C:/N/seann - Just testing");
         assert!(all.iter().all(|r| r.dir.as_ref() == Some(&dir)));
         assert_eq!(all.iter().map(|r| r.stem.clone().unwrap()).collect::<Vec<_>>(), ["01 Photo", "02 Video", "03 GIF"]);
         assert!(all[0].direct.is_some() && all[2].gif && all[2].quality == Quality::Best);
 
         // Video + GIF only: inside Video.
-        let vids = requests("Post", &items, &[(1, None), (2, None)], Quality::P720, &s);
+        let vids = requests("Post", &items, &[(1, None, None), (2, None, None)], Quality::P720, &s);
         assert_eq!(vids[0].dir.as_deref(), Some(std::path::Path::new("C:/N/Video/Post")));
 
         // One item: no folder of its own; a photo gets a name from the post.
-        let one = requests("Post", &items, &[(0, None)], Quality::Best, &s);
+        let one = requests("Post", &items, &[(0, None, None)], Quality::Best, &s);
         assert_eq!(one[0].dir, None);
         assert_eq!(one[0].stem.as_deref(), Some("Post (Photo 1)"));
         assert_eq!(crate::download::out_dir(&one[0], &s), std::path::PathBuf::from("C:/N/Photos"));
 
         // The video as audio on its own row; the GIF stays a GIF even with Audio only above.
-        let mixed = requests("Post", &items, &[(1, Some(Quality::Audio)), (2, None)], Quality::Audio, &s);
+        let mixed = requests("Post", &items, &[(1, Some(Quality::Audio), None), (2, None, None)], Quality::Audio, &s);
         assert_eq!(mixed[0].quality, Quality::Audio);
         assert_eq!(mixed[1].quality, Quality::Best);
         // Audio + GIF are different kinds: their own folder next to Audio/Video.
         assert_eq!(mixed[0].dir.as_deref(), Some(std::path::Path::new("C:/N/Post")));
         // Two videos, one overridden to 480p: still all video.
-        let two =
-            requests("Post", &[yt_video(1), yt_video(2)], &[(0, Some(Quality::P480)), (1, None)], Quality::Best, &s);
+        let two = requests(
+            "Post",
+            &[yt_video(1), yt_video(2)],
+            &[(0, Some(Quality::P480), None), (1, None, None)],
+            Quality::Best,
+            &s,
+        );
         assert_eq!((two[0].quality, two[1].quality), (Quality::P480, Quality::Best));
         assert_eq!(two[0].dir.as_deref(), Some(std::path::Path::new("C:/N/Video/Post")));
     }

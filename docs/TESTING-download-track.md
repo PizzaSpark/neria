@@ -96,3 +96,13 @@ Design choices: `design/download-track.html` (all the recommended options were p
       with 22.30 and 22:30; a bad time says "Type a time like 22:30".
 - [ ] A scheduled row survives a restart (still waits); Start now starts it at once.
 - [ ] A playlist downloaded later: every item waits; the card's Start now starts all.
+
+## 6. Picker: order, Reverse, format per item
+- [ ] A YouTube playlist: drag a row by ≡ up/down; a line shows where it lands; numbers
+      follow. Tab to a handle, ↑ / ↓ moves the row.
+- [ ] Reverse flips the list (numbers follow); Download: files are numbered in your order
+      (`01 …` is the one you put first) and the `.m3u8` lists them that way.
+- [ ] Paste the same playlist again: it opens in your order; new videos come after.
+- [ ] A row set to "Audio · m4a" saves an .m4a while the others stay video; "Best · mkv"
+      saves that one as .mkv.
+- [ ] Thumbnails still land on the right rows after moving rows while they load.

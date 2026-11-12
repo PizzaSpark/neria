@@ -1,10 +1,11 @@
 import { ComboBox, ListView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { PickItem } from "../types.slint";
-import { SectionTitle, TextLink, Tick, Notice, Divider, ListRow, Thumb } from "../widgets.slint";
+import { SectionTitle, TextLink, Tick, Notice, Divider, ListRow, Thumb, DragHandle } from "../widgets.slint";
 
 // Posts and playlists: pick what to download, under the link preview. Calm rows; the
-// ticks are the playful part.
+// ticks and handles are the playful part. Drag a row by its handle (or ↑ / ↓ on it) to put
+// the items in your own order; the numbers follow.
 export component PickList inherits VerticalLayout {
     in property <[PickItem]> items;
     in property <int> checked;
@@ -17,7 +18,15 @@ export component PickList inherits VerticalLayout {
     callback all(bool);
     callback quality(int, int);
     callback number-items-toggled();
-    property <[string]> qualities: ["As above", "Best", "1080p", "720p", "480p", "Audio only"];
+    callback move(int, int);
+    callback reverse();
+    // Each row's own quality and format (Rust maps the index, see `pick_choice`).
+    property <[string]> qualities: ["As above", "Best", "1080p", "720p", "480p", "Best · mkv", "Best · webm",
+        "Audio · mp3", "Audio · m4a", "Audio · opus", "Audio · flac", "Audio · wav"];
+    // Dragging: the row held and where it would land (-1 = not dragging).
+    property <int> drag-from: -1;
+    property <int> drag-to: -1;
+    property <length> row-h: 48px;
     vertical-stretch: 0;
     spacing: 6px;
     HorizontalLayout {
@@ -36,8 +45,14 @@ export component PickList inherits VerticalLayout {
             checked <=> root.number-items;
             toggled => { root.number-items-toggled(); }
         }
+        // Newest-first playlists: oldest first (or back).
+        if root.items.length > 1: TextLink {
+            text: "Reverse";
+            icon: "\u{E8CB}";
+            clicked => { root.reverse(); }
+        }
         if root.checked < root.items.length: TextLink {
-            text: "Select all";
+            text: Screen.compact ? "All" : "Select all";
             clicked => { root.all(true); }
         }
         if root.checked > 0: TextLink {
@@ -59,22 +74,63 @@ export component PickList inherits VerticalLayout {
     }
     Divider { inset-right: Theme.lane; }
     ListView {
-        height: min(root.items.length, root.visible-rows) * 48px;
+        height: min(root.items.length, root.visible-rows) * root.row-h;
         for item[i] in root.items: ListRow {
-            height: 48px;
+            height: root.row-h;
+            background: i == root.drag-from ? Theme.raised : transparent;
             // keyboard: the row's tick does the same.
             TouchArea {
                 mouse-cursor: pointer;
                 clicked => { root.toggle(i, !item.checked); }
             }
+            // Where a dragged row would land.
+            if root.drag-from >= 0 && i == root.drag-to && root.drag-to != root.drag-from: Rectangle {
+                x: 0;
+                y: root.drag-to < root.drag-from ? 0px : parent.height - 2px;
+                width: parent.width - Theme.lane;
+                height: 2px;
+                background: Theme.ink;
+            }
             HorizontalLayout {
-                padding-left: 4px;
+                padding-left: 0px;
                 padding-right: Theme.lane;
-                spacing: Screen.compact ? 10px : 12px;
+                spacing: Screen.compact ? 8px : 10px;
+                if root.items.length > 1: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    DragHandle {
+                        label: "Move " + (item.title != "" ? item.title : item.kind + " " + (i + 1));
+                        step(d) => {
+                            if i + d >= 0 && i + d < root.items.length {
+                                root.move(i, i + d);
+                            }
+                        }
+                        dragging(dy) => {
+                            root.drag-from = i;
+                            root.drag-to = max(0, min(root.items.length - 1, i + round(dy / root.row-h)));
+                        }
+                        dropped => {
+                            if root.drag-from >= 0 && root.drag-to != root.drag-from {
+                                root.move(root.drag-from, root.drag-to);
+                            }
+                            root.drag-from = -1;
+                            root.drag-to = -1;
+                        }
+                    }
+                }
                 Tick {
                     horizontal-stretch: 0;
                     checked: item.checked;
                     toggled(on) => { root.toggle(i, on); }
+                }
+                // The number the file gets (your order).
+                if root.number-items && !Screen.compact: Text {
+                    horizontal-stretch: 0;
+                    text: item.number;
+                    color: item.checked ? Theme.muted : Theme.dim;
+                    font-family: Theme.mono;
+                    font-size: 11.5px;
+                    vertical-alignment: center;
                 }
                 VerticalLayout {
                     alignment: center;
@@ -103,12 +159,12 @@ export component PickList inherits VerticalLayout {
                     font-size: 11.5px;
                     vertical-alignment: center;
                 }
-                // This video only: another quality, or just its audio.
+                // This video only: another quality or format, or just its audio.
                 if item.can-quality: VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 0;
                     ComboBox {
-                        width: Screen.compact ? 112px : 130px;
+                        width: Screen.compact ? 112px : 136px;
                         enabled: item.checked;
                         model: root.qualities;
                         current-index: item.quality;

@@ -77,6 +77,8 @@ export component AppWindow inherits Window {
     callback pick-toggle(int, bool);
     callback pick-all(bool);
     callback pick-quality(int, int);
+    callback pick-move(int, int);
+    callback pick-reverse();
     in property <int> spotify-count;
     in property <string> spotify-note;
     in property <[SyncItem]> sync-items;
@@ -381,6 +383,8 @@ export component AppWindow inherits Window {
                     pick-toggle(i, on) => { root.pick-toggle(i, on); }
                     pick-all(on) => { root.pick-all(on); }
                     pick-quality(i, q) => { root.pick-quality(i, q); }
+                    pick-move(from, to) => { root.pick-move(from, to); }
+                    pick-reverse => { root.pick-reverse(); }
 
                     spotify-count: root.spotify-count;
                     spotify-note: root.spotify-note;

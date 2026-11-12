@@ -994,3 +994,59 @@ export component Toast inherits Rectangle {
         }
     }
 }
+
+// A handle to drag a row up or down a list (≡). With the keyboard: Tab to it, ↑ / ↓ move
+// the row one place. `dragging` reports how far the pointer is from where it was pressed.
+export component DragHandle inherits Rectangle {
+    in property <string> label: "Move";
+    callback step(int);
+    callback dragging(length);
+    callback dropped();
+    width: 24px;
+    height: 30px;
+    border-radius: 6px;
+    background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
+    accessible-role: button;
+    accessible-label: root.label + " (up and down arrows)";
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.UpArrow {
+                root.step(-1);
+                return accept;
+            }
+            if event.text == Key.DownArrow {
+                root.step(1);
+                return accept;
+            }
+            reject
+        }
+    }
+    if fs.has-focus: Rectangle {
+        x: -4px;
+        y: -4px;
+        width: root.width + 8px;
+        height: root.height + 8px;
+        border-radius: 10px;
+        border-width: 2px;
+        border-color: Theme.focus;
+    }
+    ta := TouchArea {
+        mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+        moved => {
+            if self.pressed {
+                root.dragging(self.mouse-y - self.pressed-y);
+            }
+        }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up {
+                root.dropped();
+            }
+        }
+    }
+    Icon {
+        text: "\u{E700}";
+        font-size: 13px;
+        color: ta.has-hover || ta.pressed ? Theme.ink : Theme.dim;
+    }
+}

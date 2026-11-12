@@ -740,6 +740,7 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
                 checked,
                 quality: 0,
                 can_quality,
+                number: Default::default(),
             };
             let rows = vec![
                 item("Video", "Sunset over the harbour, long take", "2:41", true, true),
@@ -753,6 +754,7 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             ui.set_probe_title("A post with photos and videos".into());
             ui.set_probe_meta("@someone · 5 items".into());
             ui.set_pick_items(ModelRc::from(Rc::new(VecModel::from(rows))));
+            renumber_picker(ui);
             ui.set_pick_checked(checked);
             ui.set_pick_note("One video in this post couldn't be reached.".into());
         }
@@ -986,11 +988,61 @@ fn clear_picker(ui: &AppWindow, state: &ProbeState) {
     ui.set_pick_note("".into());
 }
 
+/// A picker row's menu entry as (quality, format): 0 = as the chips above.
+fn pick_choice(i: i32) -> (Option<Quality>, Option<String>) {
+    const AUDIO: [&str; 5] = ["mp3", "m4a", "opus", "flac", "wav"];
+    match i {
+        1 => (Some(Quality::Best), None),
+        2 => (Some(Quality::P1080), None),
+        3 => (Some(Quality::P720), None),
+        4 => (Some(Quality::P480), None),
+        5 => (Some(Quality::Best), Some("mkv".into())),
+        6 => (Some(Quality::Best), Some("webm".into())),
+        7..=11 => (Some(Quality::Audio), Some(AUDIO[(i - 7) as usize].into())),
+        _ => (None, None),
+    }
+}
+
+/// Number the picker's rows in their order ("01", "02"…).
+fn renumber_picker(ui: &AppWindow) {
+    let model = ui.get_pick_items();
+    let width = model.row_count().to_string().len().max(2);
+    for i in 0..model.row_count() {
+        if let Some(mut row) = model.row_data(i) {
+            let n = format!("{:0width$}", i + 1);
+            if row.number != n.as_str() {
+                row.number = n.into();
+                model.set_row_data(i, row);
+            }
+        }
+    }
+}
+
+/// Move a picker row (and its item) from one place to another.
+fn move_pick(ui: &AppWindow, state: &ProbeState, from: usize, to: usize) {
+    let mut items = state.items.borrow_mut();
+    let model = ui.get_pick_items();
+    if from >= items.len() || to >= items.len() || from == to {
+        return;
+    }
+    let item = items.remove(from);
+    items.insert(to, item);
+    let rows: Vec<PickItem> = model.iter().collect();
+    let mut rows = rows;
+    let row = rows.remove(from);
+    rows.insert(to, row);
+    drop(items);
+    ui.set_pick_items(ModelRc::from(Rc::new(VecModel::from(rows))));
+    renumber_picker(ui);
+}
+
 /// Fill the picker (everything ticked) and fetch the item pictures in the background.
 fn show_picker(ui: &AppWindow, state: &ProbeState, info: &probe::MediaInfo, my_gen: u64) {
-    *state.items.borrow_mut() = info.items.clone();
-    let rows: Vec<PickItem> = info
-        .items
+    let mut items = info.items.clone();
+    // The order you put this playlist in last time.
+    post::apply_order(ui.get_url().trim(), &mut items);
+    *state.items.borrow_mut() = items.clone();
+    let rows: Vec<PickItem> = items
         .iter()
         .map(|it| PickItem {
             kind: it.kind.label().into(),
@@ -1001,17 +1053,19 @@ fn show_picker(ui: &AppWindow, state: &ProbeState, info: &probe::MediaInfo, my_g
             quality: 0,
             // Videos only gallery-dl saw are saved from their file address, as they are.
             can_quality: it.kind == post::ItemKind::Video && it.direct_url.is_none(),
+            number: Default::default(),
         })
         .collect();
     ui.set_pick_checked(rows.len() as i32);
     ui.set_pick_items(ModelRc::from(Rc::new(VecModel::from(rows))));
+    renumber_picker(ui);
     ui.set_pick_note(info.note.clone().unwrap_or_default().into());
 
-    let urls: Vec<(usize, String)> =
-        info.items.iter().enumerate().filter_map(|(i, it)| Some((i, it.thumbnail.clone()?))).collect();
+    let urls: Vec<(String, String)> =
+        items.iter().filter_map(|it| Some((it.url.clone(), it.thumbnail.clone()?))).collect();
     let (weak, generation) = (ui.as_weak(), state.generation.clone());
     std::thread::spawn(move || {
-        for (i, url) in urls {
+        for (item_url, url) in urls {
             if generation.load(Ordering::SeqCst) != my_gen {
                 return;
             }
@@ -1021,6 +1075,9 @@ fn show_picker(ui: &AppWindow, state: &ProbeState, info: &probe::MediaInfo, my_g
                 if generation.load(Ordering::SeqCst) != my_gen {
                     return;
                 }
+                // Rows may have moved since: find the item's row now.
+                let Some(state) = PICKER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade())) else { return };
+                let Some(i) = state.items.borrow().iter().position(|it| it.url == item_url) else { return };
                 let model = ui.get_pick_items();
                 if let (Some(mut row), Ok(img)) = (model.row_data(i), slint::Image::load_from_path(&path)) {
                     row.thumb = img;
@@ -1314,6 +1371,21 @@ fn main() -> anyhow::Result<()> {
             }
         }
     });
+    ui.on_pick_move({
+        let (weak, probe_state) = (ui.as_weak(), probe_state.clone());
+        move |from, to| move_pick(&weak.unwrap(), &probe_state, from.max(0) as usize, to.max(0) as usize)
+    });
+    ui.on_pick_reverse({
+        let (weak, probe_state) = (ui.as_weak(), probe_state.clone());
+        move || {
+            let ui = weak.unwrap();
+            probe_state.items.borrow_mut().reverse();
+            let mut rows: Vec<PickItem> = ui.get_pick_items().iter().collect();
+            rows.reverse();
+            ui.set_pick_items(ModelRc::from(Rc::new(VecModel::from(rows))));
+            renumber_picker(&ui);
+        }
+    });
     ui.on_pick_all({
         let weak = ui.as_weak();
         move |on| {
@@ -1385,14 +1457,21 @@ fn main() -> anyhow::Result<()> {
                 }
             } else if !probe_state.items.borrow().is_empty() {
                 // A post or playlist: one row per picked item, in one group.
-                let picked: Vec<(usize, Option<Quality>)> = ui
+                let picked: Vec<post::Pick> = ui
                     .get_pick_items()
                     .iter()
                     .enumerate()
                     .filter(|(_, r)| r.checked)
-                    .map(|(i, r)| (i, (r.quality > 0).then(|| Quality::from_index(r.quality - 1))))
+                    .map(|(i, r)| {
+                        let (q, f) = pick_choice(r.quality);
+                        (i, q, f)
+                    })
                     .collect();
                 let items = probe_state.items.borrow().clone();
+                // Your order, for the next time this playlist is opened.
+                if items.len() > 1 {
+                    post::save_order(ui.get_url().trim(), items.iter().map(|it| it.url.clone()).collect());
+                }
                 let settings = settings.lock().unwrap().clone();
                 let title = ui.get_probe_title().to_string();
                 let reqs = post::requests(&title, &items, &picked, Quality::from_index(ui.get_quality()), &settings);

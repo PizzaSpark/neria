@@ -37,10 +37,13 @@ export struct PickItem {
     detail: string, // length, e.g. "0:05"
     thumb: image,
     checked: bool,
-    // Videos can have their own quality: 0 = as the chips above, 1.. = Best, 1080p, 720p,
-    // 480p, Audio only. Photos and GIFs are saved as they are.
+    // Videos can have their own quality and format: 0 = as the chips above, else an entry
+    // of the picker's menu (Best, 1080p… Best · mkv… Audio · mp3…; see `pick_choice`).
+    // Photos and GIFs are saved as they are.
     quality: int,
     can-quality: bool,
+    // "01": the number the file gets, in the picker's order.
+    number: string,
 }
 
 // A chapter on the clipper's timeline: click it to make it the selection.

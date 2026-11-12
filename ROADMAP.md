@@ -271,9 +271,16 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    Download now / Download later… (In an hour, Tonight 02:00, Tomorrow 08:00, At a time) /
    Tonight at 02:00; rows wait as "Later · Starts at 02:00" with Start now, kept across
    restarts. `NERIA_DIALOG=close|later`, `NERIA_SETTINGS=general`
-6. **More control in the picker**: drag rows into your own order before downloading (numbers
+6. ✅ **More control in the picker**: drag rows into your own order before downloading (numbers
    follow your order); "Reverse" for newest-first playlists; remember the order on
    re-download; a container/audio format per item (today Settings' format applies to all)
+   Built: a ≡ handle on each row (`DragHandle` in widgets.slint: drag it, or Tab to it and
+   ↑ / ↓; a line shows where it lands), the file numbers ("01") shown next to the ticks
+   when numbering is on, "Reverse" next to Select all. The row's menu holds quality and
+   format together (As above, Best, 1080p…, Best · mkv/webm, Audio · mp3/m4a/opus/flac/wav,
+   `pick_choice`); `DownloadRequest.format` overrides Settings for that item. The order is
+   kept per playlist link in `orders.json` (50 lists) and used the next time it's opened;
+   the playlist file (M3U) follows the numbers
 7. **Simple format presets** instead of codec/container talk: Best quality · Best
    compatibility (H.264 MP4, plays everywhere) · Smallest file · Audio only; the current
    chips/containers move under Advanced

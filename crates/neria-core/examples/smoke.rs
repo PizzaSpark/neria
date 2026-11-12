@@ -41,7 +41,7 @@ fn main() -> anyhow::Result<()> {
         vec![req]
     } else {
         // `NERIA_PICK=1,2:audio,3:480` - an item can carry its own quality.
-        let picked: Vec<(usize, Option<Quality>)> = match std::env::var("NERIA_PICK") {
+        let picked: Vec<neria_core::post::Pick> = match std::env::var("NERIA_PICK") {
             Ok(p) => p
                 .split(',')
                 .filter_map(|part| {
@@ -53,10 +53,10 @@ fn main() -> anyhow::Result<()> {
                         "480" => Quality::P480,
                         _ => Quality::Best,
                     });
-                    Some((n.parse::<usize>().ok()?.checked_sub(1)?, q))
+                    Some((n.parse::<usize>().ok()?.checked_sub(1)?, q, None))
                 })
                 .collect(),
-            Err(_) => (0..info.items.len()).map(|i| (i, None)).collect(),
+            Err(_) => (0..info.items.len()).map(|i| (i, None, None)).collect(),
         };
         neria_core::post::requests(&info.title, &info.items, &picked, quality, &settings)
     };

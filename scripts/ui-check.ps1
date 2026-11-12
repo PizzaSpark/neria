@@ -161,10 +161,10 @@ function Shot([string]$name, [string]$size, [hashtable]$envs) {
 }
 
 function Sheet([string]$size, [string[]]$files) {
-  $ims = $files | ForEach-Object { [System.Drawing.Image]::FromFile($_) }
+  $ims = @($files | ForEach-Object { [System.Drawing.Image]::FromFile($_) })
   $tw = [math]::Min(560, ($ims | Measure-Object -Property Width -Maximum).Maximum)
   $cols = if ($tw -le 420) { 6 } else { 3 }
-  $tiles = $ims | ForEach-Object { @{ im = $_; h = [int]($_.Height * $tw / $_.Width) } }
+  $tiles = @($ims | ForEach-Object { @{ im = $_; h = [int]($_.Height * $tw / $_.Width) } })
   $th = ($tiles | ForEach-Object { $_.h } | Measure-Object -Maximum).Maximum + 22
   $rows = [math]::Ceiling($ims.Count / $cols)
   $sheet = New-Object System.Drawing.Bitmap ($cols * ($tw + 10) + 10), ($rows * ($th + 10) + 10)
