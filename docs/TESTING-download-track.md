@@ -131,3 +131,8 @@ Design choices: `design/download-track.html` (all the recommended options were p
 - [ ] Advanced: type a template with an unknown part (e.g. `%(view_count)s`) + Enter: the
       builder says it's custom; picking a ready-made name goes back to pieces.
 - [ ] With a link previewed, the example uses its title.
+
+## Not built yet (next session): items 9–12
+Bulk paste / Paste & download / clipboard watcher, queue reordering, watch before
+downloading, follow a channel or playlist. Design picks are already made (all the
+recommended options in `design/download-track.html`).

@@ -14,12 +14,17 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI in `ui/`:
   - `app.slint`: `AppWindow` only, the one API Rust sees (all properties/callbacks); wires them
-    into the pages and overlays. Re-exports the structs and `Fmt` from `types.slint`.
+    into the pages and overlays. Re-exports the structs and `Fmt` from `types.slint`, and the
+    feature globals from `globals.slint` (`Accounts`, `Extras`, `Background`, `QueueActions`,
+    `Presets`, `Names`): newer features keep their state there and pages import them directly,
+    instead of threading every property through `app.slint` (Rust: `ui.global::<Extras>()`).
   - `pages/`: `download`, `clip`, `compress`, `settings` (drawer), `setup` (first run).
   - `dialogs/`: `match` (pick another match), `sync` (removed songs), `spotify` (heads-up),
-    `drop` (drag-and-drop overlay + clip/compress choice).
-  - `components/`: `job-row`, `quality-row`, `pick-list`, `timeline`, `sidebar` (rail + compact
-    `TabBar`), `update-banner`.
+    `drop` (drag-and-drop overlay + clip/compress choice), `tracks` (captions / audio tracks /
+    chapters picker), `background` (close-to-tray question, Download later), `names`
+    (filename builder).
+  - `components/`: `job-row`, `quality-row` (presets + Advanced), `pick-list`, `timeline` (+
+    `ChapterStrip`), `extras-row`, `sidebar` (rail + compact `TabBar`), `update-banner`.
   - `widgets.slint`: the one shared control set (buttons, chips, `ChoiceChips`, `Tick`, `Tag`,
     `Notice`, `Divider`, `ListRow`, `Thumb`, `Sticker`/`LogoMark`, `EmptyState`, `Dialog`, `Menu`,
     `Toast`…). `theme.slint`'s `Screen` global holds the width breakpoints (wide / medium /
@@ -28,7 +33,11 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
   - Pages take plain properties (no `clip-`/`cmp-` prefixes) and are bound in `app.slint`.
 
   Rust: `main.rs` (download page), `clipper.rs` (clip page; mpv renders into a GL texture shown
-  as a Slint image), `compressor.rs` (compress page).
+    as a Slint image), `compressor.rs` (compress page), `signin.rs` (`neria --sign-in <site>`:
+    the WebView2 sign-in window, its own process) + `signin_ui.rs`, `extras_ui.rs` (captions,
+    audio tracks, chapters), `background_ui.rs` (tray, notifications, Download later),
+    `names_ui.rs` (filename builder). Core: `cookies.rs` (per-site cookie files, only ever
+    passed for links of their own site), `tracks.rs`, `names.rs`.
 
 ## Commands
 ```bash
@@ -54,11 +63,13 @@ Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_C
 `NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
 (auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
-failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_SETTINGS` (open the settings drawer; `download`, `spotify`, `network`, `appearance` or `about` picks the section), `NERIA_UPDATE_URL` (check this "latest
+failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_SETTINGS` (open the settings drawer; `download`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_UPDATE_URL` (check this "latest
 release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),
 `NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_DEMO` (sample queue
 rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog), `NERIA_DIALOG` (open a dialog with sample
-data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, `update-ready`, `update-failed`),
+data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, `update-ready`, `update-failed`,
+`signin` (a problem that sign-in fixes), `extras` / `captions` / `audio` / `chapters` (a video with all three, the
+picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
 `NERIA_WINDOW` (window size in logical px, e.g. `780x580`), `NERIA_FAKE_FREE_MB` (pretend the
 drive has this much free, to test the free-space checks), `NERIA_DROP_HOVER` / `NERIA_DROP`
