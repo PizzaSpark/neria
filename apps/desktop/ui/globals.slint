@@ -107,6 +107,19 @@ export global Bulk {
     callback copied-dismiss();
 }
 
+// Watch a link before downloading: the Clip page's player without In/Out (Download track
+// 11). Volume and mute are the player's own and never touch what gets saved.
+export global Watch {
+    in-out property <bool> on;
+    in-out property <float> volume: 100;
+    in-out property <bool> muted;
+    callback start(); // the play mark on the Download page's preview
+    callback back(); // to the Download page (a file open before comes back)
+    callback download(); // the whole link, with the chips as they are
+    callback clip-this(); // stay, with In/Out
+    callback volume-changed();
+}
+
 // Queue actions that rows call directly.
 export global QueueActions {
     callback start-now(int); // a "Download later" row (or a card: the group, negated)

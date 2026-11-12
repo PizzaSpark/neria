@@ -18,7 +18,7 @@ use neria_core::{media, paths, probe};
 use neria_player::{GlRenderer, Mpv};
 use slint::{ComponentHandle, GraphicsAPI, Model, ModelRc, RenderingState, VecModel};
 
-use crate::{AppWindow, Fmt};
+use crate::{AppWindow, Fmt, Watch};
 
 const MEDIA_EXTENSIONS: &[&str] =
     &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac"];
@@ -35,6 +35,16 @@ enum Source {
     File(PathBuf),
     /// A web page URL, streamed by mpv through yt-dlp.
     Link(String),
+}
+
+/// What the clipper had open before "Watch" borrowed the player, to put it back.
+#[derive(Clone, Debug)]
+struct Previous {
+    source: Source,
+    name: String,
+    title_known: bool,
+    clip_in: f32,
+    clip_out: f32,
 }
 
 #[derive(Default)]
@@ -54,6 +64,14 @@ pub struct Clipper {
     load_gen: Arc<AtomicU64>,
     export_cancel: Option<Arc<AtomicBool>>,
     last_output: Arc<Mutex<Option<PathBuf>>>,
+    /// Watching a link: what was open before (comes back on Back).
+    previous: Option<Previous>,
+    /// In/Out to put back once the reopened file's length is known.
+    restore: Option<(f32, f32)>,
+    /// Start playing as soon as the length is known (Watch).
+    autoplay: bool,
+    /// Watching the link that was already open for clipping: Back leaves it open.
+    keep_open: bool,
 }
 
 impl Clipper {
@@ -97,6 +115,8 @@ impl Clipper {
             ui.set_clip_status(format!("Player unavailable: {e}").into());
             return;
         }
+        ui.global::<Watch>().set_on(false);
+        self.apply_volume(ui);
         self.source = Some(source.clone());
         self.title_known = title_known;
         self.duration_applied = false;
@@ -140,6 +160,68 @@ impl Clipper {
             Source::File(path) => self.spawn_timeline_jobs(ui, path),
             Source::Link(url) => self.spawn_link_timeline(ui, url),
         }
+    }
+
+    /// The listening volume (Watch global): the player's own, never the saved file's.
+    fn apply_volume(&self, ui: &AppWindow) {
+        let Some(mpv) = &self.mpv else { return };
+        let w = ui.global::<Watch>();
+        let _ = mpv.set_property("volume", &format!("{:.0}", w.get_volume().clamp(0.0, 100.0)));
+        let _ = mpv.set_property("mute", if w.get_muted() { "yes" } else { "no" });
+    }
+
+    /// Watch the Download page's previewed link: the player without In/Out.
+    fn watch(&mut self, ui: &AppWindow, url: &str, title: &str) {
+        let same = matches!(&self.source, Some(Source::Link(u)) if u == url);
+        self.keep_open = same;
+        if !same && let Some(source) = self.source.clone() {
+            self.previous = Some(Previous {
+                source,
+                name: ui.get_clip_name().to_string(),
+                title_known: self.title_known,
+                clip_in: ui.get_clip_in(),
+                clip_out: ui.get_clip_out(),
+            });
+        }
+        if same {
+            ui.set_page(1);
+            if let Some(mpv) = &self.mpv {
+                let _ = mpv.set_property("pause", "no");
+            }
+        } else {
+            self.open_link(ui, url, title);
+            self.autoplay = true;
+        }
+        ui.global::<Watch>().set_on(true);
+    }
+
+    /// Leave watching: stop, and put back what was open before (or nothing).
+    fn unwatch(&mut self, ui: &AppWindow) {
+        if let Some(mpv) = &self.mpv {
+            let _ = mpv.set_property("pause", "yes");
+        }
+        self.autoplay = false;
+        if std::mem::take(&mut self.keep_open) {
+            ui.global::<Watch>().set_on(false);
+            return;
+        }
+        match self.previous.take() {
+            Some(p) => {
+                self.open_source(ui, p.source, p.name, p.title_known);
+                self.restore = Some((p.clip_in, p.clip_out));
+            }
+            None => {
+                if let Some(mpv) = &self.mpv {
+                    let _ = mpv.command(&["stop"]);
+                }
+                self.source = None;
+                self.load_gen.fetch_add(1, Ordering::SeqCst);
+                ui.set_clip_loaded(false);
+                ui.set_clip_is_link(false);
+                ui.set_clip_frame(slint::Image::default());
+            }
+        }
+        ui.global::<Watch>().set_on(false);
     }
 
     fn load_pending(&mut self) {
@@ -266,7 +348,11 @@ impl Clipper {
                     let _ = mpv.command(&["seek", &t.to_string(), "absolute+exact"]);
                     self.last_pos = t as f64;
                 }
-                if std::env::var_os("NERIA_CLIP_PLAY").is_some() {
+                if let Some((a, b)) = self.restore.take() {
+                    ui.set_clip_in(a);
+                    ui.set_clip_out(if b > a { b } else { d as f32 });
+                }
+                if std::env::var_os("NERIA_CLIP_PLAY").is_some() || std::mem::take(&mut self.autoplay) {
                     let _ = mpv.set_property("pause", "no");
                 }
                 if std::env::var_os("NERIA_CLIP_LOOP").is_some() {
@@ -275,6 +361,9 @@ impl Clipper {
             }
         }
         let paused = mpv.get_flag("pause").unwrap_or(true);
+        if !paused && ui.get_page() != 1 {
+            let _ = mpv.set_property("pause", "yes");
+        }
         let ended = mpv.get_flag("eof-reached").unwrap_or(false);
         if let Some(p) = mpv.get_f64("time-pos") {
             // Playing through the selection: stop at Out, or loop back to In.
@@ -683,6 +772,62 @@ pub fn install(
             }
         }
     });
+
+    let watch = ui.global::<Watch>();
+    watch.on_start({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            let Some(url) = crate::link_of(&ui.get_url()) else { return };
+            let title = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { String::new() };
+            clipper.borrow_mut().watch(&ui, &url, &title);
+        }
+    });
+    watch.on_back({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            clipper.borrow_mut().unwatch(&ui);
+            ui.set_page(0);
+        }
+    });
+    watch.on_download({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            clipper.borrow_mut().unwatch(&ui);
+            ui.set_page(0);
+            // The preview it came from is still there: download it as if from there.
+            ui.invoke_start_download();
+        }
+    });
+    watch.on_clip_this({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            // Clipping the link now: what was open before stays closed.
+            clipper.borrow_mut().previous = None;
+            ui.global::<Watch>().set_on(false);
+        }
+    });
+    watch.on_volume_changed({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || clipper.borrow().apply_volume(&weak.unwrap())
+    });
+    // Dev hook for design checks: watch this file or link as if from a preview.
+    if let Ok(target) = std::env::var("NERIA_WATCH") {
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        slint::Timer::single_shot(Duration::from_millis(300), move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = clipper.borrow_mut();
+            if probe::looks_like_url(&target) {
+                c.open_link(&ui, &target, "");
+            } else {
+                c.open(&ui, Path::new(&target));
+            }
+            ui.global::<Watch>().set_on(true);
+        });
+    }
 
     let timer = slint::Timer::default();
     {

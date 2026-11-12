@@ -1,11 +1,11 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { JobItem, PickItem, SyncItem } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, Notice, Divider, Thumb, Menu, MenuItem } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, Notice, Divider, Thumb, Menu, MenuItem, PlayMark } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
-import { Accounts, Extras, Background, Presets, Bulk } from "../globals.slint";
+import { Accounts, Extras, Background, Presets, Bulk, Watch } from "../globals.slint";
 import { ExtrasRow } from "../components/extras-row.slint";
 import { UpdateBanner } from "../components/update-banner.slint";
 
@@ -351,6 +351,11 @@ export component DownloadPage inherits Rectangle {
                     text: root.probe-state == 1 ? "\u{E895}" : root.probe-blocked ? "\u{E783}" : "\u{E7BA}";
                     color: root.probe-state != 3 ? Theme.muted : root.probe-blocked ? Theme.bad : Theme.warn;
                     font-size: 20px;
+                }
+                // One video (not a song list, a post's photos or a list of links): watch it.
+                if root.probe-state == 2 && !root.probe-is-spotify && root.pick-items.length == 0 && !Bulk.links && !root.gif-mode: PlayMark {
+                    label: "Watch it before downloading";
+                    clicked => { Watch.start(); }
                 }
             }
             VerticalLayout {

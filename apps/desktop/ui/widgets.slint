@@ -949,6 +949,35 @@ export component Thumb inherits Rectangle {
     @children
 }
 
+// A round "play" mark over a thumbnail: watch the link before downloading it.
+export component PlayMark inherits Rectangle {
+    in property <string> label: "Watch it";
+    callback clicked();
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+    border-width: 2px;
+    border-color: Theme.hard;
+    background: ta.pressed ? Theme.pop-hover : Theme.pop;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: 20px;
+        activated => { root.clicked(); }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    Icon {
+        x: (parent.width - self.width) / 2 + 1px;
+        text: "\u{E768}";
+        font-size: 15px;
+        color: Theme.on-pop;
+    }
+}
+
 // One line of status next to an icon: "That's not a link yet", "Already downloaded",
 // warnings. Children (a link, a button) follow the text.
 export component Notice inherits HorizontalLayout {

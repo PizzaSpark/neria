@@ -102,6 +102,9 @@ $states = [ordered]@{
   "drop-ask"   = @{ NERIA_DROP = $video }
   # Several links at once (looked up for real: needs the internet and a longer -Wait).
   "bulk"       = @{ NERIA_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw https://www.youtube.com/watch?v=jNQXAC9IVRw&list=PLBCF2DAC6FFB574DE https://vimeo.com/76979871 spotify:album:1 https://example.com/nothing-here" }
+  "watch"      = @{ NERIA_WATCH = $video }
+  # A single-video preview with its play mark (looked up for real, like "bulk").
+  "dl-link"    = @{ NERIA_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw" }
   "copied"     = @{ NERIA_COPIED = "https://www.youtube.com/watch?v=jNQXAC9IVRw"; NERIA_DEMO = "1" }
 }
 

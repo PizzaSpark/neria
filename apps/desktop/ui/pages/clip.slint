@@ -5,7 +5,8 @@ import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets } from "../globals.slint";
+import { Presets, Watch } from "../globals.slint";
+import { Slider } from "std-widgets.slint";
 
 // Trim a file, or preview a link and download only the selection. Takes the keyboard
 // (Space, I/O, J/L, arrows, `,` `.`, R, Home/End) while it's open.
@@ -94,6 +95,19 @@ export component ClipPage inherits FocusScope {
             root.toggle-play();
             return accept;
         }
+        if Watch.on && (event.text == Key.Home || event.text == Key.End) {
+            root.seek(event.text == Key.Home ? 0 : root.duration);
+            return accept;
+        }
+        if Watch.on && (event.text == "m" || event.text == "M") {
+            Watch.muted = !Watch.muted;
+            Watch.volume-changed();
+            return accept;
+        }
+        if Watch.on && (event.text == "i" || event.text == "I" || event.text == "o" || event.text == "O"
+                || event.text == "r" || event.text == "R" || event.text == "," || event.text == ".") {
+            return reject;
+        }
         if event.text == "i" || event.text == "I" {
             root.set-in();
             return accept;
@@ -145,11 +159,22 @@ export component ClipPage inherits FocusScope {
             PageTitle {
                 horizontal-stretch: 1;
                 spacing: 4px;
-                title: "Cut the good part.";
+                title: Watch.on ? "Watch it first." : "Cut the good part.";
                 subtitle: root.loaded ? root.name : Screen.compact ? "" : "Trim a file, or preview a link and download only the part you want.";
             }
+            // Watching: back to the preview it came from.
+            if root.loaded && Watch.on: VerticalLayout {
+                alignment: Screen.compact ? start : center;
+                horizontal-stretch: 0;
+                GhostButton {
+                    compact: true;
+                    text: "Back";
+                    icon: "\u{E72B}";
+                    clicked => { Watch.back(); }
+                }
+            }
             // Once something is open; compact: icons only, level with the headline.
-            if root.loaded: VerticalLayout {
+            if root.loaded && !Watch.on: VerticalLayout {
                 alignment: Screen.compact ? start : center;
                 horizontal-stretch: 0;
                 GhostButton {
@@ -160,7 +185,7 @@ export component ClipPage inherits FocusScope {
                     clicked => { root.paste-link(); }
                 }
             }
-            if root.loaded: VerticalLayout {
+            if root.loaded && !Watch.on: VerticalLayout {
                 alignment: Screen.compact ? start : center;
                 horizontal-stretch: 0;
                 GhostButton {
@@ -282,7 +307,7 @@ export component ClipPage inherits FocusScope {
                     clicked => { root.toggle-play(); }
                 }
             }
-            VerticalLayout {
+            if !Watch.on: VerticalLayout {
                 alignment: center;
                 IconButton {
                     icon: "\u{E892}";
@@ -290,7 +315,7 @@ export component ClipPage inherits FocusScope {
                     clicked => { root.frame-step(-1); }
                 }
             }
-            VerticalLayout {
+            if !Watch.on: VerticalLayout {
                 alignment: center;
                 IconButton {
                     icon: "\u{E893}";
@@ -298,7 +323,7 @@ export component ClipPage inherits FocusScope {
                     clicked => { root.frame-step(1); }
                 }
             }
-            VerticalLayout {
+            if !Watch.on: VerticalLayout {
                 alignment: center;
                 Rectangle {
                     width: 32px;
@@ -322,12 +347,37 @@ export component ClipPage inherits FocusScope {
                 horizontal-stretch: 1;
                 overflow: elide;
             }
-            if !Screen.compact: GhostButton {
+            // Listening volume: the player's own, never what gets saved.
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                IconButton {
+                    icon: Watch.muted || Watch.volume == 0 ? "\u{E74F}" : "\u{E767}";
+                    label: Watch.muted ? "Unmute" : "Mute";
+                    clicked => {
+                        Watch.muted = !Watch.muted;
+                        Watch.volume-changed();
+                    }
+                }
+            }
+            if !Screen.compact: Slider {
+                width: 96px;
+                horizontal-stretch: 0;
+                minimum: 0;
+                maximum: 100;
+                value <=> Watch.volume;
+                accessible-label: "Volume";
+                changed => {
+                    Watch.muted = false;
+                    Watch.volume-changed();
+                }
+            }
+            if !Screen.compact && !Watch.on: GhostButton {
                 horizontal-stretch: 0;
                 text: "In  " + Fmt.time(root.in-time);
                 clicked => { root.set-in(); }
             }
-            if !Screen.compact: GhostButton {
+            if !Screen.compact && !Watch.on: GhostButton {
                 horizontal-stretch: 0;
                 text: "Out  " + Fmt.time(root.out-time);
                 clicked => { root.set-out(); }
@@ -335,7 +385,7 @@ export component ClipPage inherits FocusScope {
         }
 
         // Compact: In and Out get a row of their own, half each.
-        if root.loaded && Screen.compact: HorizontalLayout {
+        if root.loaded && Screen.compact && !Watch.on: HorizontalLayout {
             spacing: 8px;
             GhostButton {
                 horizontal-stretch: 1;
@@ -359,7 +409,8 @@ export component ClipPage inherits FocusScope {
             thumbs: root.thumbs;
             wave: root.wave;
             has-video: root.has-video;
-            show-keyframes: root.mode == 0 && !root.is-link;
+            show-keyframes: root.mode == 0 && !root.is-link && !Watch.on;
+            handles: !Watch.on;
             keyframe-ticks: root.keyframe-ticks;
             effective-in: root.effective-in;
             seek(t) => {
@@ -375,15 +426,17 @@ export component ClipPage inherits FocusScope {
             in-time: root.in-time;
             out-time: root.out-time;
             picked(i) => {
-                root.in-time = root.chapters[i].start;
-                root.out-time = min(root.chapters[i].end, root.duration);
+                if !Watch.on {
+                    root.in-time = root.chapters[i].start;
+                    root.out-time = min(root.chapters[i].end, root.duration);
+                }
                 root.seek(root.chapters[i].start);
             }
         }
 
         // Keyboard shortcuts: not on compact (and no keyboard on a phone).
         if root.loaded && !Screen.compact: Text {
-            text: "Space play clip  ·  I / O set in / out  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  Home / End jump to in / out";
+            text: Watch.on ? "Space play / pause  ·  ← → 5s (Shift 1s)  ·  M mute  ·  Home / End start / end" : "Space play clip  ·  I / O set in / out  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  Home / End jump to in / out";
             color: Theme.muted;
             font-size: 11px;
             overflow: elide;
@@ -403,7 +456,33 @@ export component ClipPage inherits FocusScope {
             show-clip: false;
         }
 
-        if root.loaded && Screen.compact: VerticalLayout {
+        // Watching: download the whole thing, or start clipping it.
+        if root.loaded && Watch.on: HorizontalLayout {
+            spacing: 8px;
+            if !Screen.compact: Text {
+                horizontal-stretch: 1;
+                text: "Nothing is saved until you download it.";
+                color: Theme.muted;
+                font-size: 12px;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            GhostButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: "Clip this";
+                icon: "\u{E8C6}";
+                clicked => { Watch.clip-this(); }
+            }
+            PrimaryButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: "Download";
+                icon: "\u{E896}";
+                enabled: root.tools-ready;
+                clicked => { Watch.download(); }
+            }
+        }
+
+        if root.loaded && Screen.compact && !Watch.on: VerticalLayout {
             // Spare height goes to the player, not here.
             vertical-stretch: 0;
             spacing: 8px;
@@ -460,7 +539,7 @@ export component ClipPage inherits FocusScope {
             }
         }
 
-        if root.loaded && !Screen.compact: HorizontalLayout {
+        if root.loaded && !Screen.compact && !Watch.on: HorizontalLayout {
             spacing: 8px;
             ChoiceChips {
                 horizontal-stretch: 0;

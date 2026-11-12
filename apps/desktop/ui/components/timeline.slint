@@ -15,6 +15,8 @@ export component Timeline inherits Rectangle {
     in property <bool> show-keyframes;
     in property <[float]> keyframe-ticks;
     in property <float> effective-in;
+    // Watching (no clip): no In/Out handles.
+    in property <bool> handles: true;
     callback seek(float);
 
     property <float> dur: max(0.001, root.duration);
@@ -136,7 +138,7 @@ export component Timeline inherits Rectangle {
     }
 
     // In handle (sits just inside the selection)
-    Rectangle {
+    if root.handles: Rectangle {
         x: root.in-x;
         width: root.handle-w;
         height: root.height;
@@ -160,7 +162,7 @@ export component Timeline inherits Rectangle {
     }
 
     // Out handle
-    Rectangle {
+    if root.handles: Rectangle {
         x: root.out-x - root.handle-w;
         width: root.handle-w;
         height: root.height;
