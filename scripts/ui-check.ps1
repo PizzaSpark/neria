@@ -54,6 +54,9 @@ $history = @($samples | ForEach-Object -Begin { $i = 0 } -Process {
 })
 $history | ConvertTo-Json | Set-Content -Encoding ascii (Join-Path $home_ "history.json")
 $video = Join-Path $media "sample.mp4"
+# A signed-in site, for Settings → Network.
+New-Item -ItemType Directory -Force (Join-Path $home_ "cookies") | Out-Null
+"# Netscape HTTP Cookie File`n.youtube.com`tTRUE`t/`tTRUE`t0`tPREF`tx" | Set-Content -Encoding ascii (Join-Path $home_ "cookies\youtube.com.txt")
 
 # What to capture: name -> dev hooks (see CLAUDE.md).
 $states = [ordered]@{
@@ -67,6 +70,8 @@ $states = [ordered]@{
   "cmp"        = @{ NERIA_COMPRESS = $video }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
+  "set-net"    = @{ NERIA_SETTINGS = "network" }
+  "signin"     = @{ NERIA_DIALOG = "signin" }
   "match"      = @{ NERIA_DIALOG = "match" }
   "sync"       = @{ NERIA_DIALOG = "sync" }
   "spotify"    = @{ NERIA_DIALOG = "spotify" }

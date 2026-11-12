@@ -166,9 +166,7 @@ pub fn gallery(url: &str, settings: &Settings) -> Gallery {
     }
     let mut cmd = proc::command(exe);
     cmd.args(["-j", "--no-colors"]);
-    if !settings.cookies_browser.is_empty() {
-        cmd.args(["--cookies-from-browser", &settings.cookies_browser]);
-    }
+    cmd.args(crate::cookies::args_for(url, settings));
     cmd.arg("--").arg(url);
     let Ok(out) = cmd.stdout(Stdio::piped()).stderr(Stdio::null()).output() else { return Gallery::default() };
     serde_json::from_slice::<Value>(&out.stdout).map(|v| parse_gallery(&v, url)).unwrap_or_default()

@@ -151,9 +151,7 @@ pub fn storyboard_strip(
 ) -> Result<(String, f64, Vec<PathBuf>)> {
     let mut cmd = proc::command(paths::tool("yt-dlp"));
     cmd.args(["-J", "--no-warnings", "--no-playlist", "--encoding", "utf-8"]);
-    if !settings.cookies_browser.is_empty() {
-        cmd.args(["--cookies-from-browser", &settings.cookies_browser]);
-    }
+    cmd.args(crate::cookies::args_for(url, settings));
     let out = cmd.arg("--").arg(url).stdout(Stdio::piped()).stderr(Stdio::null()).output()?;
     let v: Value = serde_json::from_slice(&out.stdout).context("couldn't read the link")?;
     let title = v["title"].as_str().unwrap_or("").to_string();

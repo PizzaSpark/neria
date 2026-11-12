@@ -193,7 +193,7 @@ built once on it. Friends' feedback feeds in here.
 Grouped by page. Tracks can be interleaved; within a track, top first.
 
 ### Download
-1. **Private and signed-in downloads**: content you can see when signed in: private and
+1. ✅ **Private and signed-in downloads**: content you can see when signed in: private and
    unlisted-to-you videos, age-restricted videos, members-only, friends-only and group posts,
    Instagram without the anonymous limit, your own Liked/Watch later lists. Today this only
    works through Settings → Network → Cookies, which fails on Chrome/Edge. Better: a "Sign in
@@ -201,6 +201,15 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    keeps that site's cookies in Neria's folder (portable, per site, "Sign out" in Settings);
    a `cookies.txt` import for power users. Cookies stay on this PC and are only sent to the
    site they belong to. (The browser extension under Later can hand over cookies too)
+   Built: problems that signing in can fix ("age-restricted", "members only", "wants you to
+   sign in", Instagram's limit, private) show **Sign in to YouTube** (or "Sign in again") and
+   "or import cookies.txt". The window is `neria --sign-in <site>`, its own process: Edge
+   WebView2 through wry with a Neria bar on top (Done; says "Signed in" once the site's login
+   cookies appear), profile in `webview/<site>/`. Only cookies of that site go to
+   `cookies/<site>.txt`; `cookies::args_for` hands that file to yt-dlp/gallery-dl for links
+   of the same site only (else the browser setting, as before). Settings → Network → Signed
+   in: sites with Sign out, sign in to a typed site, import a `cookies.txt` (split per site).
+   The link is looked up again after signing in. `NERIA_DIALOG=signin` for checks
 2. **Captions / subtitles**: a "Captions" picker on the preview listing every language,
    split into **Made by the creator** and **Auto-generated**, the video's own language on
    top; tick one or several (search for long lists, "All" / "None"). SRT (default), VTT, ASS

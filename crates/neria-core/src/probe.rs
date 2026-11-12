@@ -26,6 +26,12 @@ pub struct MediaInfo {
     pub note: Option<String>,
     /// `Extractor:id` of a single video, for the duplicate check.
     pub key: Option<String>,
+    /// A single video's captions, audio tracks (when there's a choice) and chapters.
+    pub captions: Vec<crate::tracks::Caption>,
+    pub audio_tracks: Vec<crate::tracks::AudioTrack>,
+    pub chapters: Vec<crate::tracks::Chapter>,
+    /// A channel or playlist (something new can show up in): "Follow" is offered.
+    pub followable: bool,
 }
 
 impl MediaInfo {
@@ -141,6 +147,10 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
                 crate::download::media_key(s("extractor_key"), s("id"))
             })
             .flatten(),
+        captions: if is_playlist { Vec::new() } else { crate::tracks::captions(&v) },
+        audio_tracks: if is_playlist { Vec::new() } else { crate::tracks::audio_tracks(&v) },
+        chapters: if is_playlist { Vec::new() } else { crate::tracks::chapters(&v) },
+        followable: is_playlist,
         items,
         note: None,
     })
@@ -184,9 +194,10 @@ fn post_info(
 fn no_video_problem() -> LinkProblem {
     LinkProblem::new(
         "Neria couldn't find a video in this post",
-        "If it has one, open the video itself and copy its link. Posts you only see when signed in need Settings → Network → Cookies.",
+        "If it has one, open the video itself and copy its link. Posts you only see when signed in need you to sign in.",
         false,
     )
+    .with_sign_in()
 }
 
 /// yt-dlp's `-J` for the link. Photos (Instagram) and posts without a video come back as
@@ -195,9 +206,7 @@ fn ytdlp_json(url: &str, settings: &Settings) -> Result<Value> {
     let mut cmd = proc::command(paths::tool("yt-dlp"));
     cmd.args(["-J", "--encoding", "utf-8", "--no-warnings", "--flat-playlist", "--ignore-no-formats-error"]);
     cmd.arg(if settings.allow_playlists { "--yes-playlist" } else { "--no-playlist" });
-    if !settings.cookies_browser.is_empty() {
-        cmd.args(["--cookies-from-browser", &settings.cookies_browser]);
-    }
+    cmd.args(crate::cookies::args_for(url, settings));
     cmd.arg("--").arg(url);
 
     let out = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().context("failed to start yt-dlp")?;
@@ -230,9 +239,7 @@ pub fn preview_stream(url: &str, settings: &Settings) -> Result<PreviewStream> {
     cmd.args(["-f", "bv*[height<=240][protocol^=http]/wv*[protocol^=http]/b[protocol^=http]/w"]);
     // URLs never contain '|', titles can: keep the title last.
     cmd.args(["--print", "%(duration)s|%(url)s|%(title)s"]);
-    if !settings.cookies_browser.is_empty() {
-        cmd.args(["--cookies-from-browser", &settings.cookies_browser]);
-    }
+    cmd.args(crate::cookies::args_for(url, settings));
     cmd.arg("--").arg(url);
     let out = cmd.stdout(Stdio::piped()).stderr(Stdio::null()).output()?;
     let text = String::from_utf8_lossy(&out.stdout);
@@ -318,11 +325,19 @@ pub struct LinkProblem {
     /// Trying again won't help (deleted, private, unsupported site…), so the
     /// Download button should be greyed out.
     pub permanent: bool,
+    /// Signing in to the site may help (private, age-restricted, members-only, login wall):
+    /// the preview offers "Sign in to …".
+    pub sign_in: bool,
 }
 
 impl LinkProblem {
     pub fn new(title: impl Into<String>, hint: impl Into<String>, permanent: bool) -> Self {
-        Self { title: title.into(), hint: hint.into(), permanent }
+        Self { title: title.into(), hint: hint.into(), permanent, sign_in: false }
+    }
+
+    fn with_sign_in(mut self) -> Self {
+        self.sign_in = true;
+        self
     }
 }
 
@@ -365,7 +380,7 @@ pub fn explain(msg: &str) -> LinkProblem {
     let low = raw.to_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| low.contains(n));
     let gone = |t: &str| LinkProblem::new(t, "There's nothing left to download at this link.", true);
-    let cookies = "Pick the browser you're signed in with under Settings → Network → Cookies. Firefox works best; Chrome and Edge usually don't.";
+    let cookies = "Sign in to the site and Neria can get it. Your password goes to the site, never to Neria.";
 
     if has(&["not enough space"]) {
         return LinkProblem::new(msg, "", false);
@@ -387,9 +402,10 @@ pub fn explain(msg: &str) -> LinkProblem {
     ]) {
         return LinkProblem::new(
             "Neria couldn't read your browser's cookies",
-            "Brave, Opera and Vivaldi lock them while they're open: close the browser fully, then paste the link again. Chrome and Edge also encrypt them, so for those sign in with Firefox and pick it under Settings → Network → Cookies.",
+            "Chrome and Edge encrypt them, and Brave, Opera and Vivaldi lock them while open. Easier: sign in to the site in Neria instead.",
             false,
-        );
+        )
+        .with_sign_in();
     }
 
     if has(&["unsupported url"]) {
@@ -412,9 +428,10 @@ pub fn explain(msg: &str) -> LinkProblem {
     if has(&["private video", "video is private"]) {
         return LinkProblem::new(
             "This video is private",
-            "Only the uploader and people they shared it with can watch it.",
+            "Only the uploader and people they shared it with can watch it. Shared with you? Sign in.",
             true,
-        );
+        )
+        .with_sign_in();
     }
     if has(&["account associated with this video has been terminated", "account has been terminated"]) {
         return gone("This video's channel was closed");
@@ -445,21 +462,22 @@ pub fn explain(msg: &str) -> LinkProblem {
         );
     }
     if has(&["confirm your age", "age-restricted", "age restricted", "inappropriate for some users"]) {
-        return LinkProblem::new("This video is age-restricted", cookies, false);
+        return LinkProblem::new("This video is age-restricted", cookies, false).with_sign_in();
     }
     if has(&["members-only", "members only", "join this channel"]) {
-        return LinkProblem::new("This video is for channel members only", cookies, false);
+        return LinkProblem::new("This video is for channel members only", cookies, false).with_sign_in();
     }
     // Instagram after a few lookups without an account: it sends you to the login page.
     if has(&["exceeded the rate-limit", "rate-limit for accessing"]) {
         return LinkProblem::new(
             "The site is limiting how much you can see without signing in",
-            "Wait an hour or so, or sign in: Settings → Network → Cookies.",
+            "Wait an hour or so, or sign in.",
             false,
-        );
+        )
+        .with_sign_in();
     }
     if has(&["sign in to confirm", "login required", "log in", "sign in", "use --cookies", "cookies"]) {
-        return LinkProblem::new("The site wants you to sign in", cookies, false);
+        return LinkProblem::new("The site wants you to sign in", cookies, false).with_sign_in();
     }
     if has(&["live event will begin", "premieres in", "this live event", "will begin in"]) {
         return LinkProblem::new("This stream hasn't started yet", "Try again once it's live.", false);
@@ -600,6 +618,8 @@ mod tests {
         assert!(!needs_newer_ytdlp("[youtube] x: Private video. Sign in if you've been granted access to this video"));
         assert!(!needs_newer_ytdlp("ERROR: [youtube] x: Video unavailable"));
         assert!(needs_newer_ytdlp("yt-dlp.exe: error: no such option: --js-runtimes"));
+        assert!(explain("[youtube] x: Sign in to confirm your age.").sign_in);
+        assert!(!explain("[youtube] x: Video unavailable").sign_in);
         let other = explain("[foo] 1: something odd");
         assert_eq!(other.title, "something odd");
         assert!(!other.permanent);

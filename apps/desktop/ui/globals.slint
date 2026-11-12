@@ -1,0 +1,27 @@
+// State and callbacks of the Download feature track, one global per feature. Pages import
+// them directly instead of threading every property through app.slint; app.slint
+// re-exports them, so Rust still sees one API (`ui.global::<Accounts>()`).
+
+// One signed-in site in Settings → Network.
+export struct SiteItem {
+    site: string, // "youtube.com"
+    name: string, // "YouTube"
+    detail: string, // "signed in 3 days ago"
+}
+
+// Signed-in downloads (cookies kept per site in Neria's folder).
+export global Accounts {
+    in property <[SiteItem]> sites;
+    // The link preview's problem can be solved by signing in to this site ("" otherwise).
+    in property <string> problem-site;
+    in property <string> problem-name;
+    // Already signed in there (the account may not have access): "Sign in again".
+    in property <bool> problem-again;
+    // Settings: sign in to a site typed by hand.
+    in-out property <string> other-site;
+    // A sign-in window is open (buttons wait).
+    in property <bool> busy;
+    callback sign-in(string); // site
+    callback sign-out(string);
+    callback import-file();
+}

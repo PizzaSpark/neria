@@ -5,6 +5,7 @@
 
 pub mod clip;
 pub mod compress;
+pub mod cookies;
 pub mod disk;
 pub mod download;
 pub mod fingerprint;
@@ -23,6 +24,7 @@ pub mod report;
 pub mod settings;
 pub mod spotify;
 pub mod tools;
+pub mod tracks;
 pub mod update;
 pub mod web;
 pub mod ytmusic;

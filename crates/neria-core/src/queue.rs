@@ -74,6 +74,8 @@ pub struct JobSnapshot {
     pub gif_files: Vec<PathBuf>,
     /// The item yt-dlp is on right now is a GIF (its file follows).
     pending_gif: bool,
+    /// Every file yt-dlp finished (chapters as one file: the pieces to join).
+    files: Vec<PathBuf>,
     /// Spotify track audio check: Some(source) when it matched that preview,
     /// Some("none") when no preview existed anywhere, None when not checked.
     pub verified: Option<&'static str>,
@@ -108,6 +110,7 @@ impl JobSnapshot {
             gif: false,
             gif_files: Vec::new(),
             pending_gif: false,
+            files: Vec::new(),
             verified: None,
             key: None,
             restored: false,
@@ -171,6 +174,9 @@ impl JobSnapshot {
             DlEvent::File(path) => {
                 if self.pending_gif && !self.gif_files.contains(&path) {
                     self.gif_files.push(path.clone());
+                }
+                if !self.files.contains(&path) {
+                    self.files.push(path.clone());
                 }
                 self.file = Some(path);
             }
@@ -329,6 +335,52 @@ fn merge_m3u(
         files.sort_by(|a, b| a.2.cmp(&b.2));
     }
     files
+}
+
+/// A piece of "chapters as one file" (`Title.neria-part002.mp4`).
+fn is_piece(path: &std::path::Path) -> bool {
+    path.file_name().is_some_and(|n| n.to_string_lossy().contains(".neria-part"))
+}
+
+/// The joined file's name: the piece's without its part number.
+fn joined_name(piece: &std::path::Path) -> PathBuf {
+    let name = piece.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let joined = match name.split_once(".neria-part") {
+        Some((base, rest)) => format!("{base}{}", rest.trim_start_matches(|c: char| c.is_ascii_digit())),
+        None => name,
+    };
+    piece.with_file_name(joined)
+}
+
+/// Join pieces of the same video end to end without re-encoding (they were cut on keyframes).
+fn join_pieces(pieces: &[PathBuf], out: &std::path::Path) -> anyhow::Result<()> {
+    let list = paths::cache_dir().join(format!("join-{}.txt", std::process::id()));
+    let body: String =
+        pieces.iter().map(|p| format!("file '{}'\n", p.to_string_lossy().replace('\'', "'\\''"))).collect();
+    std::fs::write(&list, body)?;
+    let out_tmp = out.with_extension(format!(
+        "joining.{}",
+        out.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_else(|| "mp4".into())
+    ));
+    let status = proc::command(paths::tool("ffmpeg"))
+        .args(["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i"])
+        .arg(&list)
+        .args(["-map", "0", "-c", "copy"])
+        .arg(&out_tmp)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    let _ = std::fs::remove_file(&list);
+    match status {
+        Ok(s) if s.success() => {
+            std::fs::rename(&out_tmp, out)?;
+            Ok(())
+        }
+        _ => {
+            let _ = std::fs::remove_file(&out_tmp);
+            anyhow::bail!("Couldn't join the chapters into one file")
+        }
+    }
 }
 
 fn is_picture(path: &std::path::Path) -> bool {
@@ -1050,6 +1102,15 @@ impl Queue {
             }
         }
 
+        // Chapters joined into one file, plain-text captions, captions-only results.
+        if matches!(result, Ok(true))
+            && !cancelled
+            && req.music.is_none()
+            && let Err(e) = self.finish_tracks(id, &req, &dir)
+        {
+            result = Err(e);
+        }
+
         // Spotify track downloaded: add Spotify tags, cover art and lyrics.
         let mut tag_error = None;
         if let (Some(job), Ok(true), false) = (&req.music, &result, cancelled) {
@@ -1104,6 +1165,74 @@ impl Queue {
             self.write_group_m3u(id);
         }
         self.pump();
+    }
+
+    /// What's left after yt-dlp for captions and chapters (see `finish_tracks`).
+    fn finish_tracks(&self, id: u64, req: &DownloadRequest, dir: &std::path::Path) -> anyhow::Result<()> {
+        let (files, dests) = {
+            let entries = self.inner.entries.lock().unwrap();
+            let Some(e) = entries.iter().find(|e| e.snap.id == id) else { return Ok(()) };
+            (e.snap.files.clone(), e.dests.clone())
+        };
+        // Chapters as one file: join the pieces in order.
+        if req.sections.len() > 1 {
+            let mut pieces: Vec<PathBuf> = files.iter().filter(|f| is_piece(f)).cloned().collect();
+            pieces.sort();
+            if let Some(first) = pieces.first() {
+                let out = joined_name(first);
+                self.update(id, true, |s| {
+                    s.state = JobState::Processing;
+                    s.postprocessor = Some("Joining".into());
+                });
+                join_pieces(&pieces, &out)?;
+                for p in &pieces {
+                    let _ = std::fs::remove_file(p);
+                }
+                self.update(id, true, |s| s.file = Some(out));
+            }
+        }
+        let Some(c) = req.captions.as_ref().filter(|c| !c.is_empty()) else { return Ok(()) };
+        // Caption files of this download: `<stem>.<lang>.<ext>` next to where the video goes.
+        let stems: Vec<String> = dests
+            .iter()
+            .chain(files.iter())
+            .filter_map(|d| Some(d.file_stem()?.to_string_lossy().into_owned()))
+            .map(|s| s.split(".neria-part").next().unwrap_or(&s).to_string())
+            .collect();
+        let subs = |exts: &[&str]| -> Vec<PathBuf> {
+            std::fs::read_dir(dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    let ext = p.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+                    exts.contains(&ext.as_str()) && stems.iter().any(|s| name.starts_with(&format!("{s}.")))
+                })
+                .collect()
+        };
+        if c.format == crate::tracks::SubFormat::Txt {
+            for srt in subs(&["srt"]) {
+                if let Ok(text) = std::fs::read_to_string(&srt)
+                    && std::fs::write(srt.with_extension("txt"), crate::tracks::srt_to_text(&text)).is_ok()
+                {
+                    let _ = std::fs::remove_file(&srt);
+                }
+            }
+        }
+        if req.captions_only() {
+            let mut found = subs(&["srt", "vtt", "ass", "txt"]);
+            found.sort();
+            if found.is_empty() {
+                anyhow::bail!("No captions in the picked languages could be saved");
+            }
+            self.update(id, true, |s| {
+                s.file = found.first().cloned();
+                s.note = (found.len() > 1).then(|| format!("{} caption files saved", found.len()));
+            });
+        }
+        Ok(())
     }
 
     fn dests_of(&self, id: u64) -> Vec<PathBuf> {

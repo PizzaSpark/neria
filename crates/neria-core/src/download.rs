@@ -47,6 +47,19 @@ pub struct DownloadRequest {
     pub key: Option<String>,
     /// "Download again": overwrite a file of the same name instead of keeping it.
     pub force: bool,
+    /// Captions to save with it (or instead of it).
+    pub captions: Option<crate::tracks::CaptionChoice>,
+    /// Audio tracks by language (empty = the default one). Video: several become several
+    /// tracks in one file. Audio only: the first one.
+    pub audio_langs: Vec<String>,
+    /// Added to the file name, e.g. " (Spanish)" for one language of several.
+    pub name_tag: Option<String>,
+    /// Chapters as one file: these ranges are downloaded and joined (neighbours already
+    /// merged). Needs two or more; one range goes in `section`.
+    pub sections: Vec<(f64, f64)>,
+    /// Tags for a file made from one chapter: its title and number.
+    pub meta_title: Option<String>,
+    pub track: Option<usize>,
 }
 
 impl Default for DownloadRequest {
@@ -73,7 +86,18 @@ impl DownloadRequest {
             duration: None,
             key: None,
             force: false,
+            captions: None,
+            audio_langs: Vec::new(),
+            name_tag: None,
+            sections: Vec::new(),
+            meta_title: None,
+            track: None,
         }
+    }
+
+    /// Only the captions are saved (no video file).
+    pub fn captions_only(&self) -> bool {
+        self.captions.as_ref().is_some_and(|c| c.only && !c.is_empty())
     }
 
     pub fn music(job: MusicJob) -> Self {
@@ -153,15 +177,21 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     } else {
         s.filename_template.trim().to_string()
     };
-    let template = match req.section {
-        Some((a, b)) => {
-            let tag = format!(" (clip {}-{})", crate::clip::stamp(a), crate::clip::stamp(b));
-            match template.strip_suffix(".%(ext)s") {
-                Some(base) => format!("{base}{tag}.%(ext)s"),
-                None => format!("{template}{tag}"),
-            }
-        }
-        None => template,
+    // A clip of a link says which part it is; a chapter's fixed name already does.
+    let mut tags = String::new();
+    if let (Some((a, b)), None) = (req.section, stem) {
+        tags.push_str(&format!(" (clip {}-{})", crate::clip::stamp(a), crate::clip::stamp(b)));
+    }
+    if let Some(t) = &req.name_tag {
+        tags.push_str(&t.replace('%', "%%"));
+    }
+    // Chapters as one file: each range is its own piece first, joined afterwards.
+    if req.sections.len() > 1 {
+        tags.push_str(".neria-part%(section_number)03d");
+    }
+    let template = match template.strip_suffix(".%(ext)s") {
+        Some(base) => format!("{base}{tags}.%(ext)s"),
+        None => format!("{template}{tags}"),
     };
     push(&["-o", &template]);
     if req.force || req.music.as_ref().is_some_and(|m| m.forced.is_some()) {
@@ -176,6 +206,13 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
             push(&["--force-keyframes-at-cuts"]);
         }
     }
+    if req.sections.len() > 1 {
+        for (a, b) in &req.sections {
+            push(&["--download-sections", &format!("*{a:.3}-{b:.3}")]);
+        }
+        // Clean cuts, so the pieces join without a glitch.
+        push(&["--force-keyframes-at-cuts", "--force-overwrites"]);
+    }
     match req.playlist_index {
         Some(i) => push(&["--yes-playlist", "--playlist-items", &i.to_string()]),
         None => push(&[if s.allow_playlists { "--yes-playlist" } else { "--no-playlist" }]),
@@ -183,10 +220,23 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
 
     match req.quality {
         Quality::Audio => {
-            push(&["-f", "ba/b", "-x", "--audio-format", &s.audio_format, "--audio-quality", "0"]);
+            let f = if req.audio_langs.is_empty() {
+                "ba/b".to_string()
+            } else {
+                crate::tracks::audio_format(&req.audio_langs, false, None)
+            };
+            push(&["-f", &f, "-x", "--audio-format", &s.audio_format, "--audio-quality", "0"]);
         }
         q => {
-            push(&["-f", "bv*+ba/b"]);
+            if req.audio_langs.is_empty() {
+                push(&["-f", "bv*+ba/b"]);
+            } else {
+                push(&["-f", &crate::tracks::audio_format(&req.audio_langs, true, None)]);
+                if req.audio_langs.len() > 1 {
+                    // One file, one audio track per language (players show a track menu).
+                    push(&["--audio-multistreams"]);
+                }
+            }
             let mut sort = Vec::new();
             if s.prefer_h264 {
                 sort.push("vcodec:h264".to_string());
@@ -220,20 +270,34 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     if s.save_thumbnail && req.music.is_none() {
         push(&["--write-thumbnail", "--convert-thumbnails", "jpg"]);
     }
-    if s.embed_metadata {
+    if s.embed_metadata || req.meta_title.is_some() {
         push(&["--embed-metadata"]);
     }
-    if s.embed_subs && req.quality != Quality::Audio {
-        push(&["--embed-subs", "--sub-langs", "all,-live_chat"]);
+    // A chapter saved as its own file: its own title and number in the tags.
+    if let Some(title) = &req.meta_title {
+        let q = |v: &str| format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\""));
+        let mut ppa = format!("Metadata+ffmpeg_o:-metadata title={}", q(title));
+        if let Some(n) = req.track {
+            ppa.push_str(&format!(" -metadata track={n}"));
+        }
+        push(&["--postprocessor-args", &ppa]);
     }
+    match &req.captions {
+        Some(c) if !c.is_empty() => a.extend(c.args(req.quality == Quality::Audio)),
+        Some(_) => {}
+        None if s.embed_subs && req.quality != Quality::Audio => {
+            a.extend(["--embed-subs", "--sub-langs", "all,-live_chat"].map(String::from));
+        }
+        None => {}
+    }
+    let mut push = |items: &[&str]| a.extend(items.iter().map(|x| x.to_string()));
     // Not for Spotify tracks: YouTube Music audio has no sponsor segments, and
     // cutting "music_offtopic" would shorten songs.
     if s.sponsorblock && req.music.is_none() {
         push(&["--sponsorblock-remove", "sponsor,selfpromo,interaction"]);
     }
-    if !s.cookies_browser.is_empty() {
-        push(&["--cookies-from-browser", &s.cookies_browser]);
-    }
+    a.extend(crate::cookies::args_for(&req.url, s));
+    let mut push = |items: &[&str]| a.extend(items.iter().map(|x| x.to_string()));
     if !s.rate_limit.trim().is_empty() {
         push(&["-r", s.rate_limit.trim()]);
     }

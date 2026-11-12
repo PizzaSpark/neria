@@ -15,6 +15,8 @@ rfd = "0.17"
 arboard = { version = "3.7", default-features = false }
 open = "5"
 trash = "5"
+# The sign-in window (Edge WebView2 on Windows), run as its own `--sign-in` process.
+wry = { version = "0.57", default-features = false }
 
 # Our own drop target, so links dragged from a browser land too (winit only takes files).
 [target.'cfg(windows)'.dependencies]

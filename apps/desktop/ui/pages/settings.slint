@@ -1,7 +1,8 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress } from "../widgets.slint";
+import { Accounts } from "../globals.slint";
+import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider } from "../widgets.slint";
 
 // One group of settings under a small heading.
 component Group inherits VerticalLayout {
@@ -440,7 +441,66 @@ export component SettingsDrawer inherits Rectangle {
                             alignment: start;
 
                             Group {
-                                title: "Cookies";
+                                title: "Signed in";
+                                Hint {
+                                    text: "For private, age-restricted and members-only videos. Sign in from a link's problem, or here. Cookies stay in Neria's folder and are only sent to the site they came from.";
+                                }
+                                for s in Accounts.sites: VerticalLayout {
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        padding-top: 7px;
+                                        padding-bottom: 7px;
+                                        Text {
+                                            text: s.name;
+                                            color: Theme.ink;
+                                            font-size: 13px;
+                                            font-weight: 600;
+                                            vertical-alignment: center;
+                                            horizontal-stretch: 0;
+                                        }
+                                        Text {
+                                            text: s.detail;
+                                            color: Theme.muted;
+                                            font-family: Theme.mono;
+                                            font-size: 11.5px;
+                                            vertical-alignment: center;
+                                            horizontal-stretch: 1;
+                                            overflow: elide;
+                                        }
+                                        TextLink {
+                                            text: "Sign out";
+                                            clicked => { Accounts.sign-out(s.site); }
+                                        }
+                                    }
+                                    Divider { }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    LineEdit {
+                                        horizontal-stretch: 1;
+                                        placeholder-text: "A site, e.g. vimeo.com";
+                                        text <=> Accounts.other-site;
+                                        accepted => { Accounts.sign-in(Accounts.other-site); }
+                                    }
+                                    GhostButton {
+                                        horizontal-stretch: 0;
+                                        text: Accounts.busy ? "Signing in…" : "Sign in";
+                                        icon: "\u{E77B}";
+                                        clicked => { Accounts.sign-in(Accounts.other-site); }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    alignment: start;
+                                    TextLink {
+                                        text: "Import a cookies.txt file";
+                                        icon: "\u{E8E5}";
+                                        clicked => { Accounts.import-file(); }
+                                    }
+                                }
+                            }
+
+                            Group {
+                                title: "Or use a browser's cookies";
                                 SettingRow {
                                     label: "Borrow sign-in from";
                                     ComboBox {
@@ -450,7 +510,7 @@ export component SettingsDrawer inherits Rectangle {
                                         selected => { root.settings-changed(); }
                                     }
                                 }
-                                Hint { text: "Use this for age-restricted, members-only or \"confirm you're not a bot\" videos."; }
+                                Hint { text: "For sites you haven't signed in to above. Also helps with \"confirm you're not a bot\"."; }
                                 // Chromium browsers lock their cookie file while open and encrypt it.
                                 // Two separate `if`s: wrapped text nested inside a sub-layout gets
                                 // measured as one line and squashes the next group.

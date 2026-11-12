@@ -20,6 +20,8 @@ mod drop_ui;
 mod match_ui;
 mod recent_ui;
 mod setup_ui;
+mod signin;
+mod signin_ui;
 mod spotify_ui;
 mod updates_ui;
 
@@ -728,6 +730,16 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             ui.set_pick_checked(checked);
             ui.set_pick_note("One video in this post couldn't be reached.".into());
         }
+        // A link that needs an account: "Sign in to YouTube" on the problem.
+        "signin" => {
+            let url = "https://www.youtube.com/watch?v=private123";
+            ui.set_url(url.into());
+            let p = probe::explain(
+                "[youtube] x: Sign in to confirm your age. This video may be inappropriate for some users.",
+            );
+            show_problem(ui, &p.title, &p.hint, p.permanent);
+            signin_ui::show_for_problem(ui, url, Some(&p));
+        }
         "toast" => {
             ui.set_toast("Report copied. Paste it in a message to whoever helps you with Neria (Ctrl+V).".into())
         }
@@ -751,7 +763,7 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
     }
 }
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
@@ -977,6 +989,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
         return;
     }
     *state.last_url.borrow_mut() = url.clone();
+    signin_ui::show_for_problem(ui, &url, None);
 
     let my_gen = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
     clear_picker(ui, state);
@@ -1047,6 +1060,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                         probe::LinkProblem::new(format!("{e:#}"), "You can still try downloading it.", false)
                     });
                     show_problem(&ui, &p.title, &p.hint, p.permanent);
+                    signin_ui::show_for_problem(&ui, &url, Some(&p));
                 }
             }
             // Dev hook: press Download once the preview is in (if it's allowed).
@@ -1104,6 +1118,13 @@ pub(crate) fn reveal(path: &Path) {
 }
 
 fn main() -> anyhow::Result<()> {
+    // `neria --sign-in <site> [dark|light]`: just the sign-in window (see signin.rs).
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--sign-in") {
+        let saved =
+            signin::run(args.get(2).map_or("", String::as_str), args.get(3).map(String::as_str) != Some("light"));
+        std::process::exit(if saved { 0 } else { 2 });
+    }
     // Put bin/ first on our own PATH so tools that spawn tools (mpv's yt-dlp
     // hook -> yt-dlp -> deno/ffmpeg) find the bundled copies.
     {
@@ -1471,6 +1492,7 @@ fn main() -> anyhow::Result<()> {
     });
     setup_ui::install(&ui);
     drop_ui::install(&ui);
+    signin_ui::install(&ui);
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());
         move || start_setup(&weak.unwrap(), settings.clone(), queue.clone())

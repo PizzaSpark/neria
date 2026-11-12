@@ -5,6 +5,7 @@ import { Icon, PrimaryButton, GhostButton, PageTitle, SectionTitle, Tag, LinkFie
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
+import { Accounts } from "../globals.slint";
 import { UpdateBanner } from "../components/update-banner.slint";
 
 // One first-run step: a number in a small outlined box, a line, and a muted sentence.
@@ -271,6 +272,25 @@ export component DownloadPage inherits Rectangle {
                     font-size: 13px;
                     wrap: root.probe-state == 3 ? word-wrap : no-wrap;
                     overflow: elide;
+                }
+                // Private, age-restricted, members-only…: sign in to the site, right here.
+                if root.probe-state == 3 && Accounts.problem-site != "": HorizontalLayout {
+                    padding-top: 6px;
+                    spacing: 14px;
+                    alignment: start;
+                    GhostButton {
+                        compact: true;
+                        icon: "\u{E77B}";
+                        text: Accounts.busy ? "Signing in…" : (Accounts.problem-again ? "Sign in again to " : "Sign in to ") + Accounts.problem-name;
+                        clicked => { Accounts.sign-in(Accounts.problem-site); }
+                    }
+                    if !Screen.compact: VerticalLayout {
+                        alignment: center;
+                        TextLink {
+                            text: "or import cookies.txt";
+                            clicked => { Accounts.import-file(); }
+                        }
+                    }
                 }
                 // Already downloaded / already in the queue.
                 if root.probe-state == 2 && root.dup-text != "": Notice {
