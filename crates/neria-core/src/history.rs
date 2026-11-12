@@ -55,6 +55,26 @@ pub fn find(key: Option<&str>, url: &str) -> Option<Record> {
     find_in(&load(), key, url)
 }
 
+/// The newest downloads whose files still exist (one record per file), newest first,
+/// keeping those `keep` accepts, at most `limit`.
+pub fn recent(limit: usize, keep: impl Fn(&std::path::Path) -> bool) -> Vec<Record> {
+    let all = {
+        let _guard = LOCK.lock().unwrap();
+        load()
+    };
+    recent_in(&all, limit, keep)
+}
+
+fn recent_in(all: &[Record], limit: usize, keep: impl Fn(&std::path::Path) -> bool) -> Vec<Record> {
+    let mut seen = std::collections::HashSet::new();
+    all.iter()
+        .rev()
+        .filter(|r| seen.insert(r.file.clone()) && keep(&r.file) && r.file.is_file())
+        .take(limit)
+        .cloned()
+        .collect()
+}
+
 fn find_in(all: &[Record], key: Option<&str>, url: &str) -> Option<Record> {
     all.iter().rev().filter(|r| key.map_or(r.url == url, |k| r.key == k)).find(|r| r.file.is_file()).cloned()
 }
@@ -76,6 +96,22 @@ mod tests {
         assert!(find_in(&all, Some("Youtube:b"), "u").is_none());
         // No key (site didn't give an id): the same link counts.
         assert!(find_in(&all, None, "u").is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn recent_is_newest_first_one_per_file() {
+        let dir = std::env::temp_dir().join(format!("neria-recent-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("a.mp4"), dir.join("b.mp3"));
+        std::fs::write(&a, b"x").unwrap();
+        std::fs::write(&b, b"x").unwrap();
+        let rec = |file: &PathBuf, at| Record { key: String::new(), url: "u".into(), file: file.clone(), title: "t".into(), at };
+        let all = vec![rec(&a, 1), rec(&b, 2), rec(&dir.join("gone.mp4"), 3), rec(&a, 4)];
+        let files = |v: Vec<Record>| v.into_iter().map(|r| r.at).collect::<Vec<_>>();
+        assert_eq!(files(recent_in(&all, 5, |_| true)), vec![4, 2]);
+        assert_eq!(files(recent_in(&all, 5, |p| p.extension().is_some_and(|e| e == "mp4"))), vec![4]);
+        assert_eq!(files(recent_in(&all, 1, |_| true)), vec![4]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

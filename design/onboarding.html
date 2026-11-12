@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria first run</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --pop:#ffd23f; --onpop:#1a1405; --popsh:#9a6f00; --hard:#000;
+    --ok:#7fd6a4; --okbg:#173326;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 24px 90px; }
+  .page { max-width: 1280px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 860px; line-height: 1.55; font-size: 15px; }
+  .lead b { color: #151412; }
+  section { margin-top: 50px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 16px; }
+  .why b { color: #151412; }
+  .row { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; }
+  .opt { display: flex; flex-direction: column; gap: 8px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt p { font-size: 13px; color: #5b574e; max-width: 600px; line-height: 1.5; }
+
+  .win { width: 600px; height: 470px; background: var(--bg); color: var(--ink); border-radius: 10px; overflow: hidden; display: flex; font-size: 13px;
+         box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); }
+  .rail { width: 64px; border-right: 1px solid var(--line); padding: 14px 6px; display: flex; flex-direction: column; gap: 4px; align-items: center; flex: none; }
+  .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--pop); border: 2px solid var(--hard); box-shadow: 2px 2px 0 var(--popsh); display: grid; place-items: center; font: 700 15px "Space Grotesk"; color: var(--onpop); margin-bottom: 10px; }
+  .nav { width: 50px; height: 44px; border-radius: 10px; border: 2px solid transparent; display: grid; place-items: center; color: var(--dim); }
+  .nav.on { border-color: var(--ls); background: var(--panel); color: var(--ink); }
+  .main { flex: 1; min-width: 0; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; }
+  .i { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-style: normal; line-height: 1; }
+  .hl { font: 700 24px/1.1 "Space Grotesk"; }
+  .sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .field { height: 46px; background: var(--panel); border: 2px solid var(--ls); border-radius: 11px; display: flex; align-items: center; gap: 6px; padding: 0 5px 0 14px; flex: none; }
+  .field .ph { flex: 1; color: var(--muted); font-size: 13.5px; }
+  .ghost { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; color: var(--ink); }
+  .prim { height: 34px; padding: 0 13px; background: var(--pop); color: var(--onpop); border: 2px solid var(--hard); border-radius: 9px; box-shadow: 3px 3px 0 var(--popsh); display: inline-flex; align-items: center; gap: 6px; font: 700 13px "Space Grotesk"; white-space: nowrap; }
+  .prim.off { background: var(--raised); color: var(--dim); border-color: var(--ls); box-shadow: none; }
+  .chips { display: flex; gap: 6px; }
+  .chip { height: 28px; padding: 0 9px; border: 2px solid var(--ls); border-radius: 8px; display: inline-flex; align-items: center; font-size: 12px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .div { height: 1px; background: var(--line); }
+  .qh { display: flex; align-items: center; gap: 8px; }
+  .qh b { font: 700 14px "Space Grotesk"; }
+  .tlink { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .steps { display: flex; flex-direction: column; }
+  .step { display: flex; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--line); align-items: flex-start; }
+  .num { width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--ls); display: grid; place-items: center; font: 500 11px "JetBrains Mono"; color: var(--muted); flex: none; }
+  .step b { font-weight: 600; font-size: 13.5px; display: block; }
+  .step span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .kbd { font: 500 10.5px "JetBrains Mono"; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; color: var(--ink); }
+  .strip { display: flex; gap: 10px; align-items: center; background: var(--raised); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; }
+  .tag { font: 700 10.5px "Space Grotesk"; padding: 3px 7px; border-radius: 6px; background: var(--pop); color: var(--onpop); }
+  .empty { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  .empty b { color: var(--ink); font: 700 15px "Space Grotesk"; display: block; margin-bottom: 4px; }
+  .rec { display: flex; flex-direction: column; }
+  .rr { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .rr .th { width: 56px; height: 32px; border-radius: 6px; flex: none; }
+  .rr .t { flex: 1; min-width: 0; }
+  .rr .t div { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rr .t span { font: 400 11px "JetBrains Mono"; color: var(--muted); }
+  .small { font: 700 12.5px "Space Grotesk"; color: var(--ink); }
+  .t1 { background: linear-gradient(135deg, #3a2a5a, #c0566b 55%, #f2b06b); }
+  .t2 { background: linear-gradient(160deg, #0f3b3a, #2f8f7a 60%, #d8e3a0); }
+  .t3 { background: linear-gradient(120deg, #2b2b33, #6b6f86 50%, #c9ccd8); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>First run and empty pages</h1>
+  <p class="lead">What a new user sees right after setup, and what Clip and Compress show before you open anything.
+  Today: an empty queue, and big centred icons with a title (the “giant centred Nothing here yet” that DESIGN.md
+  calls a vibecoded tell).</p>
+
+  <section>
+    <div class="label"><span>Question 1</span><h2>The very first Download page</h2></div>
+    <p class="why">Shown until the first download starts (then never again). Both teach the same three things: paste or
+    <b>drag</b> a link, pick a quality, and that Spotify links and Clip-before-download exist.</p>
+    <div class="row">
+      <div class="opt">
+        <h3>A · Three steps in the empty queue</h3>
+        <p>Calm numbered rows where the queue will be (same look as queue rows), plus a “Hide tips” link. Teaches the
+        whole flow; disappears by itself once there's a download.</p>
+        <div class="win">
+          <div class="rail"><div class="logo">N</div><div class="nav on"><i class="i">&#xE896;</i></div><div class="nav"><i class="i">&#xE8C6;</i></div><div class="nav"><i class="i">&#xE73F;</i></div></div>
+          <div class="main">
+            <div><div class="hl">Grab anything.</div><div class="sub">YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.</div></div>
+            <div class="field"><span class="ph">Paste a link here</span><span class="ghost"><i class="i">&#xE77F;</i>Paste</span><span class="prim off"><i class="i">&#xE896;</i>Download</span></div>
+            <div class="chips"><span class="chip on">Best</span><span class="chip">1080p</span><span class="chip">720p</span><span class="chip">480p</span><span class="chip">Audio only</span></div>
+            <div class="div"></div>
+            <div class="qh"><b>How it works</b><span class="tlink">Hide tips</span></div>
+            <div class="steps">
+              <div class="step"><span class="num">1</span><div><b>Copy a link and paste it above</b><span>Or drag a video, tab or link from your browser onto Neria. <span class="kbd">Ctrl</span> <span class="kbd">V</span> works too.</span></div></div>
+              <div class="step"><span class="num">2</span><div><b>Pick a quality, press Download</b><span>Playlists, albums and posts with several videos let you pick the items.</span></div></div>
+              <div class="step"><span class="num">3</span><div><b>Find it in Videos › Neria</b><span>Spotify songs come as tagged mp3s. Want only part of a video? Press “Clip first”.</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="opt">
+        <h3>B · One welcome line</h3>
+        <p>A single calm strip above the queue with the one thing to know; the rest is left to discover. Quieter,
+        but Clip-first and Spotify stay hidden until you stumble on them.</p>
+        <div class="win">
+          <div class="rail"><div class="logo">N</div><div class="nav on"><i class="i">&#xE896;</i></div><div class="nav"><i class="i">&#xE8C6;</i></div><div class="nav"><i class="i">&#xE73F;</i></div></div>
+          <div class="main">
+            <div><div class="hl">Grab anything.</div><div class="sub">YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.</div></div>
+            <div class="field"><span class="ph">Paste a link here</span><span class="ghost"><i class="i">&#xE77F;</i>Paste</span><span class="prim off"><i class="i">&#xE896;</i>Download</span></div>
+            <div class="chips"><span class="chip on">Best</span><span class="chip">1080p</span><span class="chip">720p</span><span class="chip">480p</span><span class="chip">Audio only</span></div>
+            <div class="strip"><span class="tag">New</span><span style="flex:1">Copy a link from any site and paste it above, or drag it onto Neria.</span><span style="color:var(--muted)">✕</span></div>
+            <div class="div"></div>
+            <div class="qh"><b>Queue</b></div>
+            <div class="empty" style="margin-top:40px">Your downloads show up here.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Same in both</span><h2>Clip and Compress before you open anything</h2></div>
+    <p class="why">Left-aligned like every other page (no giant centred icon), the two ways in as buttons, and below them
+    <b>your recent downloads</b>, so the thing you most likely want is one click away. With nothing downloaded yet, the
+    list is replaced by one line saying what the page is for.</p>
+    <div class="row">
+      <div class="win" style="height:420px">
+        <div class="rail"><div class="logo">N</div><div class="nav"><i class="i">&#xE896;</i></div><div class="nav on"><i class="i">&#xE8C6;</i></div><div class="nav"><i class="i">&#xE73F;</i></div></div>
+        <div class="main">
+          <div><div class="hl">Cut the good part.</div><div class="sub">Trim a file, or preview a link and download only the part you want.</div></div>
+          <div style="display:flex;gap:8px"><span class="prim"><i class="i">&#xE71B;</i>Paste link</span><span class="ghost" style="height:34px"><i class="i">&#xE8E5;</i>Open file…</span></div>
+          <div class="div" style="margin-top:6px"></div>
+          <div class="small">Recent downloads</div>
+          <div class="rec">
+            <div class="rr"><div class="th t1"></div><div class="t"><div>Lo-fi beats to study to, 3 hour mix</div><span>3:02:11 · today</span></div><span class="ghost">Clip</span></div>
+            <div class="rr"><div class="th t2"></div><div class="t"><div>Mountain timelapse 8K</div><span>4:12 · yesterday</span></div><span class="ghost">Clip</span></div>
+            <div class="rr"><div class="th t3"></div><div class="t"><div>City walk at night, Tokyo 4K</div><span>58:40 · Nov 9</span></div><span class="ghost">Clip</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="win" style="height:420px">
+        <div class="rail"><div class="logo">N</div><div class="nav"><i class="i">&#xE896;</i></div><div class="nav"><i class="i">&#xE8C6;</i></div><div class="nav on"><i class="i">&#xE73F;</i></div></div>
+        <div class="main">
+          <div><div class="hl">Make it smaller.</div><div class="sub">Fit Discord, email or any size limit, or just save space.</div></div>
+          <div style="display:flex;gap:8px"><span class="prim"><i class="i">&#xE8E5;</i>Open file…</span></div>
+          <div class="div" style="margin-top:6px"></div>
+          <div class="empty"><b>Nothing downloaded yet</b>Open a video, or drop one here. Finished downloads show up in this list, ready to shrink for Discord or email.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

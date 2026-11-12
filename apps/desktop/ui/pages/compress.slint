@@ -1,6 +1,8 @@
 import { LineEdit, CheckBox, ComboBox, ScrollView, Slider } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { PrimaryButton, GhostButton, Bar, ChoiceChips, PageTitle, EmptyState, Notice, Divider, Thumb } from "../widgets.slint";
+import { PrimaryButton, GhostButton, Bar, ChoiceChips, PageTitle, Notice, Divider, Thumb } from "../widgets.slint";
+import { RecentList } from "../components/recent-list.slint";
+import { RecentItem } from "../types.slint";
 
 // The label of an option row ("Goal", "Size"…).
 component OptionLabel inherits Text {
@@ -61,6 +63,9 @@ export component CompressPage inherits Rectangle {
     in property <bool> has-output;
 
     callback open-file();
+    // Empty page: recent video downloads, opened by path.
+    in property <[RecentItem]> recent;
+    callback open-path(string);
     callback options-changed();
     callback start-compress();
     callback cancel();
@@ -84,26 +89,38 @@ export component CompressPage inherits Rectangle {
                 title: "Make it smaller.";
                 subtitle: Screen.compact ? "" : "Fit Discord, email or any size limit, or just save space.";
             }
-            VerticalLayout {
+            if root.loaded: VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
                 GhostButton {
                     compact: true;
                     text: Screen.compact ? "" : "Open file…";
                     icon: "\u{E8E5}";
+                    label: "Open file";
                     clicked => { root.open-file(); }
                 }
             }
         }
 
-        if !root.loaded: EmptyState {
-            icon: "\u{E73F}";
-            title: "Drop in a video to shrink it";
-            tip: "Tip: finished downloads have a compress button too.";
-            PrimaryButton {
-                text: "Open file…";
-                icon: "\u{E8E5}";
-                clicked => { root.open-file(); }
+        // Nothing open: the way in, then recent video downloads.
+        if !root.loaded: VerticalLayout {
+            vertical-stretch: 1;
+            alignment: start;
+            spacing: 14px;
+            HorizontalLayout {
+                alignment: start;
+                PrimaryButton {
+                    text: "Open file…";
+                    icon: "\u{E8E5}";
+                    clicked => { root.open-file(); }
+                }
+            }
+            Divider { }
+            RecentList {
+                items: root.recent;
+                action: "Compress";
+                empty-text: "Open a video, or drop one here. Finished downloads show up here, ready to shrink for Discord or email.";
+                open(path) => { root.open-path(path); }
             }
         }
 
@@ -116,7 +133,7 @@ export component CompressPage inherits Rectangle {
                 Thumb {
                     width: Screen.compact ? 112px : 184px;
                     border-radius: 10px;
-                    background: #000000;
+                    background: Theme.video;
                     source: root.thumb;
                 }
                 VerticalLayout {

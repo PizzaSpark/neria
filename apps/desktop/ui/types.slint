@@ -43,6 +43,15 @@ export struct PickItem {
     can-quality: bool,
 }
 
+// A finished download offered on the empty Clip / Compress pages.
+export struct RecentItem {
+    path: string,
+    title: string,
+    detail: string, // "4:12  ·  yesterday"
+    thumb: image,
+    video: bool,
+}
+
 export struct JobItem {
     // Negative for a group's card (the group id, negated).
     id: int,
@@ -55,6 +64,9 @@ export struct JobItem {
     stats: string,
     // Finished, but worth a look (e.g. uncertain Spotify match).
     warn: bool,
+    // How strong the doubt is: 0 none, 1 unsure (weak title match, or close but maybe
+    // another edit), 2 sounds different (the audio check says another recording).
+    flag: int,
     // Spotify track: offers "pick another match".
     music: bool,
     // Saved as a photo or GIF: nothing to clip or compress (yet).

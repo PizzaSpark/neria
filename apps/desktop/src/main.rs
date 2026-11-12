@@ -18,6 +18,7 @@ mod clipper;
 mod compressor;
 mod drop_ui;
 mod match_ui;
+mod recent_ui;
 mod setup_ui;
 mod spotify_ui;
 mod updates_ui;
@@ -37,8 +38,17 @@ fn pick(list: &[&str], i: i32) -> String {
     list.get(i.max(0) as usize).copied().unwrap_or(list[0]).to_string()
 }
 
+/// "Videos › Neria": the last two parts of the download folder, for the first-run steps.
+fn short_dir(dir: &Path) -> String {
+    let parts: Vec<String> =
+        dir.components().rev().take(2).map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
+    parts.into_iter().rev().collect::<Vec<_>>().join(" › ")
+}
+
 fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_output_dir(s.output_dir.to_string_lossy().as_ref().into());
+    ui.set_output_short(short_dir(&s.output_dir).into());
+    ui.set_show_tips(!s.tips_done);
     ui.set_sort_folders(s.sort_folders);
     ui.set_number_items(s.number_items);
     ui.set_save_thumbnail(s.save_thumbnail);
@@ -93,6 +103,7 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.spotify_client_secret = ui.get_spotify_client_secret().trim().to_string();
     s.check_updates = ui.get_check_updates();
     s.theme = pick(&THEMES, ui.get_theme_index());
+    s.tips_done = !ui.get_show_tips();
 }
 
 fn job_item(s: &JobSnapshot) -> JobItem {
@@ -115,6 +126,7 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         status: status.into(),
         stats: stats.into(),
         warn: s.note.is_some(),
+        flag: if s.note.is_none() { 0 } else if s.note_strong { 2 } else { 1 },
         music: s.music,
         still: s.file.as_ref().and_then(|f| f.extension()).is_some_and(|e| {
             ["jpg", "jpeg", "png", "webp", "gif", "heic"].contains(&e.to_string_lossy().to_lowercase().as_str())
@@ -140,6 +152,8 @@ thread_local! {
     // Group cards the user closed (open by default, so every item is in view).
     static COLLAPSED: Rc<RefCell<HashSet<i32>>> = Rc::default();
     static GROUP_TITLES: RefCell<HashMap<i32, String>> = RefCell::default();
+    // Queue filter: 0 all, 1 active, 2 done, 3 needs a look.
+    static FILTER: std::cell::Cell<i32> = const { std::cell::Cell::new(0) };
     static RESET_VIEW: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
 }
 
@@ -147,11 +161,34 @@ fn rows() -> Rc<VecModel<JobItem>> {
     ROWS.with(|r| r.clone())
 }
 
-/// Give the queue list its rows: everything but the rows of closed cards.
+/// Which filter a (non-card) row belongs to: 1 active, 2 done, 3 needs a look.
+fn row_bucket(j: &JobItem) -> i32 {
+    match j.state {
+        0..=2 | 6 => 1,
+        4 => 3,
+        3 if j.warn => 3,
+        _ => 2,
+    }
+}
+
+/// Does the row show under the current filter? A card shows when any of its rows does.
+fn passes_filter(j: &JobItem) -> bool {
+    let filter = FILTER.with(|f| f.get());
+    if filter == 0 {
+        return true;
+    }
+    if j.header {
+        return rows().iter().any(|m| !m.header && m.group == j.group && row_bucket(&m) == filter);
+    }
+    row_bucket(j) == filter
+}
+
+/// Give the queue list its rows: those of the current filter, minus the rows of closed cards.
 fn install_job_view(ui: &AppWindow) {
     let collapsed = COLLAPSED.with(|c| c.clone());
-    let view =
-        Rc::new(slint::FilterModel::new(rows(), move |j: &JobItem| !j.child || !collapsed.borrow().contains(&j.group)));
+    let view = Rc::new(slint::FilterModel::new(rows(), move |j: &JobItem| {
+        (!j.child || !collapsed.borrow().contains(&j.group)) && passes_filter(j)
+    }));
     ui.set_jobs(ModelRc::from(view.clone()));
     RESET_VIEW.with(|r| *r.borrow_mut() = Some(Box::new(move || view.reset())));
 }
@@ -408,6 +445,13 @@ fn refresh_counts(ui: &AppWindow) {
         model.iter().filter(|j| !j.header && j.group != 0 && !(3..=5).contains(&j.state)).map(|j| j.group).collect();
     let finished = model.iter().filter(|j| !j.header && (3..=5).contains(&j.state) && !open.contains(&j.group)).count();
     ui.set_finished_count(finished as i32);
+    let in_bucket = |b: i32| model.iter().filter(|j| !j.header && row_bucket(j) == b).count() as i32;
+    ui.set_filter_counts(ModelRc::new(VecModel::from(vec![
+        model.iter().filter(|j| !j.header).count() as i32,
+        in_bucket(1),
+        in_bucket(2),
+        in_bucket(3),
+    ])));
 }
 
 fn remove_rows(ui: &AppWindow, ids: &[u64]) {
@@ -536,11 +580,28 @@ fn demo_rows(ui: &AppWindow) {
         "Bonnie Tyler - Total Eclipse of the Heart",
         3,
         1.0,
-        "Doesn't sound like the Spotify preview (58% similar). Pick another?",
+        "Only 58% like the Spotify preview, probably another recording",
         "",
         true,
         true,
     ));
+    if let Some(mut r) = vec.row_data(vec.row_count() - 1) {
+        r.flag = 2;
+        vec.set_row_data(vec.row_count() - 1, r);
+    }
+    vec.push(JobItem {
+        flag: 1,
+        ..row(
+            9007,
+            "a-ha - Take On Me",
+            3,
+            1.0,
+            "Close to the Spotify preview, maybe another master or edit",
+            "",
+            true,
+            true,
+        )
+    });
     vec.push(row(9006, "https://vimeo.com/1", 4, 0.0, "This video was removed or doesn't exist", "", false, false));
     refresh_counts(ui);
 }
@@ -734,14 +795,21 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             if let Some(path) = std::env::var_os("NERIA_COMPRESS") {
                 ui.invoke_cmp_open_path(path.to_string_lossy().as_ref().into());
             }
-            drop_ui::dev_hooks(&ui);
-            if let Ok(which) = std::env::var("NERIA_DIALOG") {
-                demo_dialog(&ui, &which);
-            }
             if let Ok(page) = std::env::var("NERIA_PAGE") {
                 let names = ["download", "clip", "compress"];
                 if let Some(i) = names.iter().position(|n| page.eq_ignore_ascii_case(n)) {
                     ui.set_page(i as i32);
+                }
+            }
+            drop_ui::dev_hooks(&ui);
+            if let Ok(which) = std::env::var("NERIA_DIALOG") {
+                demo_dialog(&ui, &which);
+            }
+            if let Ok(filter) = std::env::var("NERIA_FILTER") {
+                let names = ["all", "active", "done", "attention"];
+                if let Some(i) = names.iter().position(|n| filter.eq_ignore_ascii_case(n)) {
+                    ui.set_queue_filter(i as i32);
+                    ui.invoke_queue_filter_changed(i as i32);
                 }
             }
             if let Ok(section) = std::env::var("NERIA_SETTINGS") {
@@ -1176,6 +1244,8 @@ fn main() -> anyhow::Result<()> {
             if !ui.get_tools_ready() || ui.get_probe_blocked() {
                 return;
             }
+            // The first download: the "How it works" steps have done their job.
+            ui.set_show_tips(false);
             save();
             if neria_core::spotify::parse_link(&url).is_some() {
                 // First time: explain where the audio comes from (once the lookup is done).
@@ -1342,9 +1412,39 @@ fn main() -> anyhow::Result<()> {
             let current = ui.get_output_dir().to_string();
             if let Some(dir) = rfd::FileDialog::new().set_directory(&current).pick_folder() {
                 ui.set_output_dir(dir.to_string_lossy().as_ref().into());
+                ui.set_output_short(short_dir(&dir).into());
                 save();
             }
         }
+    });
+    ui.on_hide_tips({
+        let (weak, save) = (ui.as_weak(), save.clone());
+        move || {
+            weak.unwrap().set_show_tips(false);
+            save();
+        }
+    });
+    recent_ui::install(&ui);
+    // Flagged songs: listen to the file, or keep it and drop the doubt ("It's right").
+    ui.on_play_job({
+        let queue = queue.clone();
+        move |id| {
+            if let Some(path) = queue.file_of(id as u64).filter(|p| p.exists()) {
+                let _ = open::that(path);
+            }
+        }
+    });
+    ui.on_accept_job({
+        let queue = queue.clone();
+        move |id| queue.accept(id as u64)
+    });
+    ui.on_queue_filter_changed(|filter| {
+        FILTER.with(|f| f.set(filter));
+        RESET_VIEW.with(|r| {
+            if let Some(reset) = r.borrow().as_ref() {
+                reset();
+            }
+        });
     });
     ui.on_report_job({
         let (queue, weak) = (queue.clone(), ui.as_weak());

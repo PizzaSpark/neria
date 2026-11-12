@@ -3,7 +3,7 @@
 // globals; the screens themselves live in pages/, dialogs/ and components/.
 import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
-import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, Fmt, Formats } from "types.slint";
+import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
 import { Sidebar, TabBar } from "components/sidebar.slint";
 import { DownloadPage } from "pages/download.slint";
@@ -16,7 +16,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, Fmt }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, Fmt }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -170,7 +170,23 @@ export component AppWindow inherits Window {
 
     in-out property <int> page;
     // Compact: Settings is a sheet over the page, so picking a tab closes it.
-    changed page => { if Screen.compact { root.drawer-open = false; } }
+    changed page => {
+        if Screen.compact {
+            root.drawer-open = false;
+        }
+        if root.page != 0 {
+            root.refresh-recent();
+        }
+    }
+    // Recent downloads for the empty Clip and Compress pages (Rust fills them).
+    in property <[RecentItem]> recent-clip;
+    in property <[RecentItem]> recent-compress;
+    callback refresh-recent();
+    // First run: "How it works" on the empty queue until a download starts or it's hidden.
+    in-out property <bool> show-tips;
+    callback hide-tips();
+    // Where downloads go, short: "Videos › Neria".
+    in property <string> output-short;
     // A file dragged in from Explorer. drop-kind: 0 not media, 1 video, 2 audio.
     in property <bool> drop-hover;
     in property <string> drop-name;
@@ -278,6 +294,13 @@ export component AppWindow inherits Window {
     callback setup-copy-details();
     callback setup-show-folder();
     callback report-job(int);
+    // Flagged songs: open the file to listen; "It's right" drops the doubt.
+    callback play-job(int);
+    callback accept-job(int);
+    // Queue filter: 0 all, 1 active, 2 done, 3 needs a look; counts in that order.
+    in-out property <int> queue-filter;
+    in property <[int]> filter-counts: [0, 0, 0, 0];
+    callback queue-filter-changed(int);
     callback copy-report();
     callback update-check();
     callback update-install();
@@ -376,6 +399,14 @@ export component AppWindow inherits Window {
                     cmp-job(id) => { root.cmp-job(id); }
                     match-pick(id) => { root.match-pick(id); }
                     report-job(id) => { root.report-job(id); }
+                    play-job(id) => { root.play-job(id); }
+                    accept-job(id) => { root.accept-job(id); }
+                    filter <=> root.queue-filter;
+                    filter-counts: root.filter-counts;
+                    filter-changed(f) => { root.queue-filter-changed(f); }
+                    show-tips: root.show-tips;
+                    hide-tips => { root.hide-tips(); }
+                    output-short: root.output-short;
                     pause-job(id) => { root.pause-job(id); }
                     resume-job(id) => { root.resume-job(id); }
                     toggle-group(id) => { root.toggle-group(id); }
@@ -409,6 +440,8 @@ export component AppWindow inherits Window {
                     video-format: root.video-format;
                     audio-format: root.audio-format;
                     open-file => { root.clip-open(); }
+                recent: root.recent-clip;
+                open-path(p) => { root.clip-open-path(p); }
                     paste-link => { root.clip-paste-link(); }
                     toggle-play => { root.clip-toggle-play(); }
                     seek(t) => { root.clip-seek(t); }
@@ -448,6 +481,8 @@ export component AppWindow inherits Window {
                     status: root.cmp-status;
                     has-output: root.cmp-has-output;
                     open-file => { root.cmp-open(); }
+                recent: root.recent-compress;
+                open-path(p) => { root.cmp-open-path(p); }
                     options-changed => { root.cmp-options-changed(); }
                     start-compress => { root.cmp-start(); }
                     cancel => { root.cmp-cancel(); }

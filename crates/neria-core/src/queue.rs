@@ -61,6 +61,9 @@ pub struct JobSnapshot {
     pub file: Option<PathBuf>,
     /// Shown on a finished row, e.g. a Spotify match worth double-checking.
     pub note: Option<String>,
+    /// The note is a strong doubt: the audio check says it's another recording, not just
+    /// a weak title match or a close-but-not-quite sound.
+    pub note_strong: bool,
     /// Thumbnail (video) or cover (Spotify song) URL for the row.
     pub thumbnail: Option<String>,
     /// A Spotify track (the UI offers "pick another match").
@@ -99,6 +102,7 @@ impl JobSnapshot {
             error: None,
             file: None,
             note: None,
+            note_strong: false,
             thumbnail: None,
             music: false,
             gif: false,
@@ -272,6 +276,8 @@ struct SavedJob {
     file: Option<PathBuf>,
     #[serde(default)]
     note: Option<String>,
+    #[serde(default)]
+    note_strong: bool,
     #[serde(default)]
     error: Option<String>,
     #[serde(default)]
@@ -470,6 +476,7 @@ impl Queue {
             snap.key = job.key;
             snap.file = job.file;
             snap.note = job.note;
+            snap.note_strong = job.note_strong;
             snap.error = job.error;
             snap.downloaded = job.downloaded;
             snap.total = job.total;
@@ -532,6 +539,7 @@ impl Queue {
                 progress: e.snap.progress,
                 file: e.snap.file.clone(),
                 note: e.snap.note.clone(),
+                note_strong: e.snap.note_strong,
                 error: e.snap.error.clone(),
                 thumbnail: e.snap.thumbnail.clone(),
                 key: e.snap.key.clone(),
@@ -774,6 +782,19 @@ impl Queue {
         self.pump();
     }
 
+    /// "It's right": the user listened and keeps this file, so drop the doubt about it.
+    pub fn accept(&self, id: u64) {
+        let mut entries = self.inner.entries.lock().unwrap();
+        let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
+        if e.snap.note.is_none() {
+            return;
+        }
+        e.snap.note = None;
+        e.snap.note_strong = false;
+        (self.inner.notify)(e.snap.clone());
+        self.save_locked(&entries);
+    }
+
     /// Remove a finished job from the list. Returns false for unfinished ones.
     pub fn remove(&self, id: u64) -> bool {
         let mut entries = self.inner.entries.lock().unwrap();
@@ -901,7 +922,10 @@ impl Queue {
                     req.url = c.url();
                     if c.score < music::CONFIDENT {
                         let note = format!("Check match: \"{}\" by {}", c.title, c.artists);
-                        self.update(id, false, |s| s.note = Some(note));
+                        self.update(id, false, |s| {
+                            s.note = Some(note);
+                            s.note_strong = false;
+                        });
                     }
                 }
                 result => {
@@ -1049,6 +1073,7 @@ impl Queue {
             }
             if let Some(e) = &gif_error {
                 s.note = Some(e.clone());
+                s.note_strong = false;
             }
             s.speed = None;
             s.eta = None;
@@ -1380,12 +1405,16 @@ impl Queue {
                     self.update(id, false, |s| {
                         s.verified = Some(reference.source);
                         s.note = None; // the audio check beats any title-based doubt
+                        s.note_strong = false;
                     });
                     return result;
                 }
                 fingerprint::Verdict::Unsure => {
                     let note = format!("Close to the {} preview, maybe another master or edit", reference.source);
-                    self.update(id, false, |s| s.note = Some(note));
+                    self.update(id, false, |s| {
+                        s.note = Some(note);
+                        s.note_strong = false;
+                    });
                     return result;
                 }
                 fingerprint::Verdict::Different => {}
@@ -1417,11 +1446,14 @@ impl Queue {
             };
             let Some(url) = target else {
                 let note = format!(
-                    "Doesn't sound like the {} preview ({:.0}% similar). Pick another?",
-                    reference.source,
-                    sim * 100.0
+                    "Only {:.0}% like the {} preview, probably another recording",
+                    sim * 100.0,
+                    reference.source
                 );
-                self.update(id, false, |s| s.note = Some(note));
+                self.update(id, false, |s| {
+                    s.note = Some(note);
+                    s.note_strong = true;
+                });
                 return result;
             };
             let going_back = !tried.iter().all(|t| *t != url);
@@ -1444,8 +1476,11 @@ impl Queue {
             if going_back {
                 let pct = best.as_ref().map_or(0.0, |(b, _)| b * 100.0);
                 let note =
-                    format!("Doesn't sound like the {} preview ({pct:.0}% similar). Pick another?", reference.source);
-                self.update(id, false, |s| s.note = Some(note));
+                    format!("Only {pct:.0}% like the {} preview, probably another recording", reference.source);
+                self.update(id, false, |s| {
+                    s.note = Some(note);
+                    s.note_strong = true;
+                });
                 return result;
             }
         }

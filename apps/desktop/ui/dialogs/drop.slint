@@ -1,12 +1,14 @@
 import { Theme } from "../theme.slint";
 import { Icon, Dialog, ChoiceTile, Sticker } from "../widgets.slint";
 
-// A file dragged in from Explorer, over the page it would land on (not the nav rail).
-// kind: 0 not media, 1 video, 2 audio.
+// A file dragged in from Explorer, or a link from a browser, over the page it would land
+// on (not the nav). kind: 0 not media, 1 video, 2 audio, 3 a link.
 export component DropOverlay inherits Rectangle {
     in property <int> kind;
     in property <string> name;
     in property <int> page;
+    // Links: the clipper on Clip, the Download box anywhere else.
+    property <bool> link: root.kind == 3;
     property <bool> ok: root.kind != 0 && !(root.page == 2 && root.kind == 2);
     background: Theme.bg.with-alpha(0.94);
     Rectangle {
@@ -32,7 +34,7 @@ export component DropOverlay inherits Rectangle {
                     edge: root.kind != 0 ? Theme.hard : Theme.line-strong;
                     face: root.kind != 0 ? Theme.pop : Theme.raised;
                     Icon {
-                        text: root.kind == 0 ? "\u{E8A5}" : root.page == 2 ? "\u{E73F}" : root.page == 1 || root.kind == 2 ? "\u{E8C6}" : "\u{E8E5}";
+                        text: root.kind == 0 ? "\u{E8A5}" : root.link ? (root.page == 1 ? "\u{E8C6}" : "\u{E896}") : root.page == 2 ? "\u{E73F}" : root.page == 1 || root.kind == 2 ? "\u{E8C6}" : "\u{E8E5}";
                         font-size: 22px;
                         color: root.kind != 0 ? Theme.on-pop : Theme.muted;
                     }
@@ -40,6 +42,7 @@ export component DropOverlay inherits Rectangle {
             }
             Text {
                 text: root.kind == 0 ? "Neria opens video and audio files"
+                    : root.link ? (root.page == 1 ? "Drop to clip it" : "Drop to download it")
                     : root.page == 2 ? (root.kind == 1 ? "Drop to compress it" : "Compress works on videos")
                     : root.page == 1 || root.kind == 2 ? "Drop to clip it"
                     : "Drop to clip or compress it";

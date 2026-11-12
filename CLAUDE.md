@@ -2,7 +2,9 @@
 
 Fast, portable, UX-first downloader / clipper / compressor. Rust + Slint, driving yt-dlp, ffmpeg,
 Deno, gallery-dl (photos in posts) and libmpv, all auto-fetched into `bin/` next to the exe. Plan and status: `ROADMAP.md`.
-UI design system: `docs/DESIGN.md` (Studio + Play); follow it for any new or changed screen.
+UI design system: `docs/DESIGN.md` (Studio + Play); follow it for any new or changed screen,
+including its "Adding a screen or a control" checklist. Screenshots of every page and dialog at
+every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check`).
 
 ## Layout
 - `crates/neria-core`: everything non-UI (tool fetch, yt-dlp probe/download queue, clip export,
@@ -31,6 +33,7 @@ UI design system: `docs/DESIGN.md` (Studio + Play); follow it for any new or cha
 ## Commands
 ```bash
 cargo test -p neria-core
+cargo test -p neria --test ui_rules   # UI guardrails (colours, keyboard, labels, widths, contrast)
 cargo run -p neria
 cargo build --release -p neria
 ```
@@ -51,7 +54,7 @@ Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_C
 `NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
 (auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
-failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_SETTINGS` (open the settings drawer; `download`, `spotify`, `network`, `appearance` or `about` picks the section), `NERIA_UPDATE_URL` (check this "latest
+failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_SETTINGS` (open the settings drawer; `download`, `spotify`, `network`, `appearance` or `about` picks the section), `NERIA_UPDATE_URL` (check this "latest
 release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),
 `NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_DEMO` (sample queue
 rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog), `NERIA_DIALOG` (open a dialog with sample
@@ -59,7 +62,8 @@ data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, 
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
 `NERIA_WINDOW` (window size in logical px, e.g. `780x580`), `NERIA_FAKE_FREE_MB` (pretend the
 drive has this much free, to test the free-space checks), `NERIA_DROP_HOVER` / `NERIA_DROP`
-(a file path: show the drag-and-drop overlay for it / act as if it was dropped), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
+(a file path or link: show the drag-and-drop overlay for it / act as if it was dropped),
+`NERIA_DROP_CLIPBOARD` (drop whatever is on the clipboard, through the real OLE drop code), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
 `NERIA_HOME` (override app dir; for UI tests point it at a scratch folder with its own
 `settings.json` and a junction `bin` → `target/debug/bin`, so downloads don't land in the real
 Videos folder).

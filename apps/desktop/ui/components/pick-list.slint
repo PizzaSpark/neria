@@ -62,6 +62,7 @@ export component PickList inherits VerticalLayout {
         height: min(root.items.length, root.visible-rows) * 48px;
         for item[i] in root.items: ListRow {
             height: 48px;
+            // keyboard: the row's tick does the same.
             TouchArea {
                 mouse-cursor: pointer;
                 clicked => { root.toggle(i, !item.checked); }

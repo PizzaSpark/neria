@@ -1,7 +1,9 @@
 import { Theme, Screen } from "../theme.slint";
 import { Fmt } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, PageTitle, EmptyState } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, PageTitle, Notice, Divider } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
+import { RecentList } from "../components/recent-list.slint";
+import { RecentItem } from "../types.slint";
 import { Timeline } from "../components/timeline.slint";
 
 // Trim a file, or preview a link and download only the selection. Takes the keyboard
@@ -42,6 +44,9 @@ export component ClipPage inherits FocusScope {
 
     callback open-file();
     callback paste-link();
+    // Empty page: recent downloads, opened by path.
+    in property <[RecentItem]> recent;
+    callback open-path(string);
     callback toggle-play();
     callback seek(float);
     callback frame-step(int);
@@ -139,42 +144,64 @@ export component ClipPage inherits FocusScope {
                 title: "Cut the good part.";
                 subtitle: root.loaded ? root.name : Screen.compact ? "" : "Trim a file, or preview a link and download only the part you want.";
             }
-            // Compact: icons only (the empty page spells them out), level with the headline.
-            VerticalLayout {
+            // Once something is open; compact: icons only, level with the headline.
+            if root.loaded: VerticalLayout {
                 alignment: Screen.compact ? start : center;
                 horizontal-stretch: 0;
                 GhostButton {
                     compact: true;
                     text: Screen.compact ? "" : "Paste link";
                     icon: "\u{E71B}";
+                    label: "Paste link";
                     clicked => { root.paste-link(); }
                 }
             }
-            VerticalLayout {
+            if root.loaded: VerticalLayout {
                 alignment: Screen.compact ? start : center;
                 horizontal-stretch: 0;
                 GhostButton {
                     compact: true;
                     text: Screen.compact ? "" : "Open file…";
                     icon: "\u{E8E5}";
+                    label: "Open file";
                     clicked => { root.open-file(); }
                 }
             }
         }
 
-        if !root.loaded: EmptyState {
-            icon: "\u{E8C6}";
-            title: "Open a video, or paste a link and clip it before downloading";
-            tip: root.status != "" ? root.status : "Tip: finished downloads and link previews have a scissors button that opens them here.";
-            PrimaryButton {
-                text: "Paste link";
-                icon: "\u{E71B}";
-                clicked => { root.paste-link(); }
+        // Nothing open: the two ways in, then recent downloads (left-aligned like every page).
+        if !root.loaded: VerticalLayout {
+            vertical-stretch: 1;
+            alignment: start;
+            spacing: 14px;
+            HorizontalLayout {
+                alignment: start;
+                spacing: 10px;
+                PrimaryButton {
+                    text: "Paste link";
+                    icon: "\u{E71B}";
+                    clicked => { root.paste-link(); }
+                }
+                GhostButton {
+                    text: "Open file…";
+                    icon: "\u{E8E5}";
+                    label: "Open file";
+                    clicked => { root.open-file(); }
+                }
             }
-            GhostButton {
-                text: "Open file…";
-                icon: "\u{E8E5}";
-                clicked => { root.open-file(); }
+            if root.status != "": Notice {
+                icon: "\u{E946}";
+                text: root.status;
+                color: Theme.muted;
+                font-size: 12.5px;
+                wrap: true;
+            }
+            Divider { }
+            RecentList {
+                items: root.recent;
+                action: "Clip";
+                empty-text: "Open a video or audio file, or paste a link to clip it before downloading. Finished downloads show up here, ready to trim.";
+                open(path) => { root.open-path(path); }
             }
         }
 
@@ -196,7 +223,7 @@ export component ClipPage inherits FocusScope {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 border-radius: 12px;
-                background: #000000;
+                background: Theme.video;
                 clip: true;
                 Image {
                     width: parent.width;
@@ -213,7 +240,7 @@ export component ClipPage inherits FocusScope {
                     width: 150px;
                     height: 40px;
                     border-radius: 20px;
-                    background: #000000b0;
+                    background: Theme.video-veil;
                     HorizontalLayout {
                         alignment: center;
                         spacing: 8px;
@@ -230,6 +257,7 @@ export component ClipPage inherits FocusScope {
                         }
                     }
                 }
+                // keyboard: Space plays and pauses (the page takes the keyboard).
                 TouchArea {
                     clicked => {
                         root.toggle-play();
@@ -245,6 +273,7 @@ export component ClipPage inherits FocusScope {
                 alignment: center;
                 IconButton {
                     icon: root.playing ? "\u{E769}" : "\u{E768}";
+                    label: root.playing ? "Pause" : "Play";
                     tint: Theme.text;
                     clicked => { root.toggle-play(); }
                 }
@@ -253,6 +282,7 @@ export component ClipPage inherits FocusScope {
                 alignment: center;
                 IconButton {
                     icon: "\u{E892}";
+                    label: "Previous frame";
                     clicked => { root.frame-step(-1); }
                 }
             }
@@ -260,6 +290,7 @@ export component ClipPage inherits FocusScope {
                 alignment: center;
                 IconButton {
                     icon: "\u{E893}";
+                    label: "Next frame";
                     clicked => { root.frame-step(1); }
                 }
             }
@@ -272,6 +303,7 @@ export component ClipPage inherits FocusScope {
                     background: root.loop ? Theme.accent.with-alpha(0.2) : transparent;
                     IconButton {
                         icon: "\u{E8EE}";
+                        label: "Play the selection on repeat";
                         tint: root.loop ? Theme.accent-hi : Theme.muted;
                         clicked => { root.loop = !root.loop; }
                     }

@@ -35,15 +35,17 @@ playful part.
 | `line` | `#26262a` | `#e2dccd` | Hairlines, meter track |
 | `line-strong` | `#34343a` | `#cfc7b4` | Control outlines |
 | `ink` | `#f1efe9` | `#151412` | Text, selected chip fill |
-| `muted` | `#8e8c88` | `#6d685e` | Secondary text |
-| `dim` | `#5f5d5a` | `#9a9486` | Hints, inactive nav |
+| `muted` | `#8e8c88` | `#6b665c` | Secondary text, hints, placeholders (4.5:1+ everywhere) |
+| `dim` | `#6e6c68` | `#878276` | Icons, inactive nav, disabled labels (3:1+; never body text) |
+| `edge` | `#6d6c6e` | `#888376` | An outline that alone shows a control (empty tick box), 3:1+ |
+| `focus` | ink | ink | Keyboard focus ring |
 | `pop` | `#ffd23f` | `#ffd23f` | Main action, progress, counts |
 | `on-pop` | `#1a1405` | `#1a1405` | Text on `pop` |
 | `pop-shadow` | `#9a6f00` | `#151412` | Hard shadow under the main action (deep ochre: same family as the yellow) |
 | `hard` | `#000000` | `#151412` | Outline of `pop` controls |
-| `ok` / `ok-bg` | `#7fd6a4` / `#173326` | `#1d7a4b` / `#d5f2e0` | Saved, done |
-| `warn` / `warn-bg` | `#f5b14a` / `#3a2a12` | `#9a5b00` / `#fbe7c4` | Check match, retryable problems |
-| `bad` / `bad-bg` | `#ff7b72` / `#3a1a1a` | `#c2372e` / `#fde0dc` | Failed, can't download |
+| `ok` / `ok-bg` | `#7fd6a4` / `#173326` | `#1c7649` / `#d5f2e0` | Saved, done |
+| `warn` / `warn-bg` | `#f5b14a` / `#3a2a12` | `#975900` / `#fbe7c4` | Unsure match, retryable problems |
+| `bad` / `bad-bg` | `#ff7b72` / `#3a1a1a` | `#ba352c` / `#fde0dc` | Failed, sounds different, can't download |
 
 Yellow is for the one main action per screen and for "things are moving" (progress, counts).
 Never for decoration.
@@ -81,7 +83,11 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
 - **Group card** (playlist/post/album): a queue row with a stacked thumbnail, title at 650, a
   summary ("3 of 12 saved · 1 failed · now: …"), whole-group actions and a chevron; open by
   default. Its rows hang under it, indented 28px off a 2px `line` guide.
-- **Tag**: tinted `*-bg` with `*` text, Space Grotesk 11/600, 6px radius.
+- **Tag**: tinted `*-bg` with `*` text, Space Grotesk 11/600, 6px radius. Flagged songs:
+  "Unsure" in `warn`, "Sounds different" in `bad`.
+- **Filter tabs** (queue): calm words with a mono count, `ink` with a 2px underline when
+  picked; the "Needs a look" count turns `warn` when it isn't 0. In the header row on wide
+  windows, on a line of their own below it. Not chips: they change the view, not a setting.
 - **Count badge**: `pop` fill, mono 11px ("1 going").
 - **Keyboard hint**: mono 11px, 1px outline with a 2px bottom edge.
 - **Nav**: 80px rail (bottom tabs on compact windows, see below), icon with a small label
@@ -109,10 +115,33 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
 - **Toast / dialog / drawer**: the only floating cards: `panel`, 1px `line-strong`, 12px radius.
   Dialogs use the shared `Dialog` (scrim, Space Grotesk 20 title, optional muted line, ×);
   lists inside are calm rows with hairlines, never cards per row.
+- **Keyboard focus**: every pressable control uses `KeyPress` (Tab reaches it, Enter/Space
+  presses it): a 2px `focus` (ink) ring, 4px outside the control, only while focused from the
+  keyboard. Dialogs and the drawer close on Esc.
 - **Tick**: 20px box, 2px `line-strong` outline, 6px radius; ticked = `ink` fill with a `bg`
   check. The label is part of the target.
 - **Banner** (new version and the like): a calm strip with a tag, one line of text, ghost
   actions and a hairline under it, so the page keeps its one yellow action.
+
+## Adding a screen or a control
+
+So the next feature doesn't undo the foundation. Most of this is automatic if you build from
+the shared pieces; the rest is checked.
+
+1. **Build from `widgets.slint`.** Buttons, chips, ticks, tabs, menu rows already handle the
+   keyboard (`KeyPress`), screen readers (role and label) and both themes. A new kind of
+   control goes into `widgets.slint` with the same three, not into a page.
+2. **Colours only from `theme.slint`**, with a dark and a light value. Text uses `ink` or
+   `muted`; `dim` is for icons and disabled labels.
+3. **Widths: let layouts size things.** Read `Screen.compact` / `Screen.wide` for what changes
+   per width (see "Window widths"); never a fixed width over 360px; rows of chips use
+   `ChoiceChips` (they wrap). Wrapping text must sit in layouts only: a `Rectangle` between
+   it and its layout stops it from measuring its height.
+4. **Icon-only buttons get a `label`** (what a screen reader says).
+5. **Check it:** `cargo test -p neria --test ui_rules` (colours, keyboard, labels, widths,
+   contrast; fails with what to do), then `scripts/ui-check.ps1` for screenshots of every page
+   and dialog at 1280 / 900 / 720 / 400 wide. Add the new screen to the script's list (a dev
+   hook in `main.rs` that opens it, like `NERIA_DIALOG`).
 
 ## Themes
 

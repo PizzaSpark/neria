@@ -1,0 +1,87 @@
+import { Theme } from "../theme.slint";
+import { RecentItem } from "../types.slint";
+import { Icon, GhostButton, SectionTitle, Divider, Thumb } from "../widgets.slint";
+
+// "Recent downloads" on the empty Clip and Compress pages: calm rows (frame, title, length
+// and age) with one button each. With nothing downloaded yet, one line on what the page
+// is for instead.
+export component RecentList inherits VerticalLayout {
+    in property <[RecentItem]> items;
+    // The button on each row: "Clip" or "Compress".
+    in property <string> action;
+    in property <string> empty-text;
+    callback open(string);
+    spacing: 0px;
+
+    if root.items.length > 0: SectionTitle {
+        text: "Recent downloads";
+        font-size: 13px;
+    }
+    if root.items.length > 0: Rectangle { height: 6px; }
+    for item in root.items: VerticalLayout {
+        HorizontalLayout {
+            padding-top: 8px;
+            padding-bottom: 8px;
+            spacing: 12px;
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                Thumb {
+                    width: 56px;
+                    height: 32px;
+                    source: item.thumb;
+                    if item.thumb.width == 0: Icon {
+                        text: item.video ? "\u{E8B2}" : "\u{E8D6}";
+                        font-size: 13px;
+                        color: Theme.dim;
+                    }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 3px;
+                horizontal-stretch: 1;
+                Text {
+                    text: item.title;
+                    color: Theme.ink;
+                    font-size: 13.5px;
+                    font-weight: 500;
+                    overflow: elide;
+                }
+                Text {
+                    text: item.detail;
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 11px;
+                    overflow: elide;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                GhostButton {
+                    compact: true;
+                    text: root.action;
+                    label: root.action + " " + item.title;
+                    clicked => { root.open(item.path); }
+                }
+            }
+        }
+        Divider { }
+    }
+
+    if root.items.length == 0: Text {
+        text: "Nothing downloaded yet";
+        color: Theme.ink;
+        font-family: Theme.display;
+        font-size: 15px;
+        font-weight: 700;
+    }
+    if root.items.length == 0: Rectangle { height: 4px; }
+    if root.items.length == 0: Text {
+        text: root.empty-text;
+        color: Theme.muted;
+        font-size: 12.5px;
+        wrap: word-wrap;
+    }
+}

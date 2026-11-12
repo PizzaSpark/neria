@@ -163,11 +163,32 @@ built once on it. Friends' feedback feeds in here.
    dialogs edge to edge. Chip rows wrap at every width (Compress at medium used to clip);
    scrolling lists keep a 24px lane so the scrollbar never sits on a button.
    `NERIA_PAGE=clip|compress` and `NERIA_DIALOG=pick` for checks
-4. Queue filters (active / done / needs attention) and clearer flagged-match states
-5. Drag and drop links anywhere (files already work); keyboard navigation and focus states
-   everywhere
-6. First-run onboarding, better empty states, accessibility pass (contrast, screen-reader
-   labels)
+4. ✅ Queue filters: All / Active / Done / Needs a look (failed, or a song in doubt), calm
+   tabs with counts in the queue header (their own line below medium width); a card shows
+   when any of its rows matches; an empty filter says so and offers "Show all". Flagged songs
+   now come in two strengths: "Unsure" (weak title match, or close but maybe another edit) and
+   "Sounds different" (the audio check says another recording), with Play (opens the file)
+   and "It's right" (clears the doubt, kept in `queue.json`) next to Pick match; on compact
+   they're in the ⋯ menu. Mocks: `design/queue-filters.html`. `NERIA_FILTER` for checks
+5. ✅ Drag and drop links anywhere: Neria registers its own Windows drop target (winit only
+   takes files), so a link or tab dragged from a browser opens in the clipper on Clip and goes
+   into the Download box (with its preview) anywhere else; files work as before; the overlay
+   says "Drop to download it". Keyboard: every control (buttons, chips, ticks, tabs, nav,
+   menu rows, Settings sections) is reachable with Tab, pressed with Enter or Space, and shows
+   a 2px ring while focused (not on mouse clicks); Esc closes dialogs and Settings, which take
+   the keyboard when they open. `NERIA_DROP` / `NERIA_DROP_HOVER` take links too, and
+   `NERIA_DROP_CLIPBOARD` drops what's on the clipboard through the real drop code
+6. ✅ First run: "How it works" in the empty queue (paste or drag a link, pick a quality,
+   where files go, Spotify and Clip first) until the first download or "Hide tips"
+   (`tips_done` in settings); the link box takes the keyboard so Ctrl+V works at once. Clip
+   and Compress, before a file is open: left-aligned buttons and "Recent downloads" from
+   `history.json` (frame, length, age; Compress lists videos only), or one line on what the
+   page is for. Accessibility: every control has a screen-reader role and label (icon-only
+   buttons say what they do), progress bars report their value; colours checked against WCAG
+   (`muted`, light status tags and accent text now 4.5:1, `dim` 3:1 and kept off body text,
+   empty tick boxes get a 3:1 outline). Mocks: `design/onboarding.html`.
+   Guardrails so later screens keep all this: `cargo test -p neria --test ui_rules` and
+   `scripts/ui-check.ps1`, with a checklist in `docs/DESIGN.md`
 
 ## Then: feature tracks
 Grouped by page. Tracks can be interleaved; within a track, top first.

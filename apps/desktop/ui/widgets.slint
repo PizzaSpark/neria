@@ -11,6 +11,31 @@ export component Icon inherits Text {
     horizontal-alignment: center;
 }
 
+// Keyboard for a pressable control: Tab reaches it, Enter or Space presses it, and a 2px
+// ring shows around it while it has focus (clicks with the mouse don't show it). Put it
+// inside the control; it fills it. `radius` is the control's corner radius.
+export component KeyPress inherits FocusScope {
+    in property <length> radius: 10px;
+    callback activated();
+    focus-on-click: false;
+    key-pressed(event) => {
+        if event.text == Key.Return || event.text == " " {
+            root.activated();
+            return accept;
+        }
+        reject
+    }
+    if root.has-focus: Rectangle {
+        x: -4px;
+        y: -4px;
+        width: root.width + 8px;
+        height: root.height + 8px;
+        border-radius: root.radius + 4px;
+        border-width: 2px;
+        border-color: Theme.focus;
+    }
+}
+
 // The one main action on a screen: sticker yellow, black outline, hard shadow.
 // Presses down onto its shadow.
 export component PrimaryButton inherits Rectangle {
@@ -21,6 +46,14 @@ export component PrimaryButton inherits Rectangle {
     property <length> lift: !root.enabled ? 0px : ta.pressed ? 1px : 3px;
     min-width: face-row.preferred-width + 3px;
     height: 44px;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    KeyPress {
+        enabled: root.enabled;
+        activated => { root.clicked(); }
+    }
     // Shadow
     Rectangle {
         x: 3px;
@@ -73,9 +106,18 @@ export component GhostButton inherits Rectangle {
     in property <string> text;
     in property <string> icon;
     in property <bool> compact;
+    // What a screen reader says; needed when the button is an icon only.
+    in property <string> label: root.text;
     callback clicked();
     height: root.compact ? 30px : 40px;
     border-radius: root.compact ? 8px : 10px;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: root.border-radius;
+        activated => { root.clicked(); }
+    }
     background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
     border-width: 2px;
     border-color: ta.has-hover ? Theme.muted : Theme.line-strong;
@@ -108,10 +150,19 @@ export component GhostButton inherits Rectangle {
 export component IconButton inherits Rectangle {
     in property <string> icon;
     in property <color> tint: Theme.muted;
+    // What a screen reader says ("Close", "Remove"…).
+    in property <string> label;
     callback clicked();
     width: 32px;
     height: 32px;
     border-radius: 8px;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: 8px;
+        activated => { root.clicked(); }
+    }
     border-width: 2px;
     border-color: ta.has-hover ? Theme.line-strong : transparent;
     background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
@@ -132,6 +183,15 @@ export component Chip inherits Rectangle {
     callback clicked();
     height: 34px;
     border-radius: 9px;
+    accessible-role: radio-button;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: 9px;
+        activated => { root.clicked(); }
+    }
     background: root.selected ? Theme.ink : ta.has-hover ? Theme.raised : transparent;
     border-width: 2px;
     border-color: root.selected ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
@@ -158,6 +218,10 @@ export component Chip inherits Rectangle {
 export component Bar inherits Rectangle {
     in property <float> value;
     in property <color> fill: Theme.pop;
+    accessible-role: progress-indicator;
+    accessible-value: Math.round(root.value * 100) + "%";
+    accessible-value-minimum: 0;
+    accessible-value-maximum: 100;
     height: 6px;
     border-radius: 3px;
     background: Theme.line;
@@ -180,6 +244,14 @@ export component NavItem inherits Rectangle {
     callback clicked();
     height: 56px;
     border-radius: 12px;
+    accessible-role: tab;
+    accessible-label: root.label;
+    accessible-item-selected: root.active;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: 12px;
+        activated => { root.clicked(); }
+    }
     border-width: 2px;
     border-color: root.active ? Theme.line-strong : transparent;
     background: root.active ? Theme.panel : ta.has-hover ? Theme.raised : transparent;
@@ -322,6 +394,7 @@ export component Tag inherits Rectangle {
 export component LinkField inherits Rectangle {
     in-out property <string> text;
     in property <string> placeholder;
+    public function focus-input() { input.focus(); }
     callback edited(string);
     callback accepted();
     height: 54px;
@@ -330,6 +403,7 @@ export component LinkField inherits Rectangle {
     border-width: 2px;
     border-color: input.has-focus ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
     animate border-color { duration: 100ms; }
+    // keyboard: Tab reaches the text input itself.
     ta := TouchArea {
         mouse-cursor: MouseCursor.text;
         clicked => { input.focus(); }
@@ -345,7 +419,7 @@ export component LinkField inherits Rectangle {
                 width: parent.width;
                 height: parent.height;
                 text: root.placeholder;
-                color: Theme.dim;
+                color: Theme.muted;
                 font-family: Theme.body;
                 font-size: 15px;
                 vertical-alignment: center;
@@ -361,6 +435,7 @@ export component LinkField inherits Rectangle {
                 font-size: 15px;
                 vertical-alignment: center;
                 single-line: true;
+                accessible-placeholder-text: root.placeholder;
                 selection-background-color: Theme.pop.with-alpha(0.45);
                 selection-foreground-color: Theme.ink;
                 edited => { root.edited(self.text); }
@@ -372,12 +447,69 @@ export component LinkField inherits Rectangle {
 }
 
 // Quiet secondary action (queue header): muted text, ink on hover.
+// A queue filter: a word and its count, underlined when picked. Calm (it's a view of the
+// list, not an action); `attention` tints the count when there's something to look at.
+export component FilterTab inherits Rectangle {
+    in property <string> text;
+    in property <int> count;
+    in property <bool> active;
+    in property <bool> attention;
+    callback clicked();
+    min-width: row.preferred-width;
+    height: 32px;
+    accessible-role: tab;
+    accessible-label: root.text + ", " + root.count;
+    accessible-item-selected: root.active;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: 6px;
+        activated => { root.clicked(); }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    row := HorizontalLayout {
+        spacing: 6px;
+        alignment: center;
+        Text {
+            text: root.text;
+            color: root.active || ta.has-hover ? Theme.ink : Theme.muted;
+            font-family: Theme.body;
+            font-size: 13px;
+            font-weight: root.active ? 600 : 500;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.count;
+            color: root.attention && root.count > 0 ? Theme.warn : Theme.muted;
+            font-family: Theme.mono;
+            font-size: 11px;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+    }
+    Rectangle {
+        y: parent.height - 2px;
+        height: 2px;
+        border-radius: 1px;
+        background: root.active ? Theme.ink : transparent;
+    }
+}
+
 export component TextLink inherits Rectangle {
     in property <string> text;
     in property <string> icon;
     callback clicked();
     min-width: row.preferred-width;
     height: 30px;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: 6px;
+        activated => { root.clicked(); }
+    }
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -437,6 +569,21 @@ export component Tick inherits Rectangle {
     callback toggled(bool);
     min-height: 28px;
     min-width: root.elide ? 60px : row.preferred-width;
+    accessible-role: checkbox;
+    accessible-label: root.text;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => {
+        root.checked = !root.checked;
+        root.toggled(root.checked);
+    }
+    KeyPress {
+        radius: 8px;
+        activated => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
@@ -454,7 +601,7 @@ export component Tick inherits Rectangle {
                 height: 20px;
                 border-radius: 6px;
                 border-width: 2px;
-                border-color: root.checked ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
+                border-color: root.checked ? Theme.ink : ta.has-hover ? Theme.muted : Theme.edge;
                 background: root.checked ? Theme.ink : transparent;
                 animate background, border-color { duration: 90ms; }
                 if root.checked: Icon {
@@ -490,6 +637,7 @@ export component Dialog inherits Rectangle {
     in property <bool> closable: true;
     callback close();
     background: Theme.scrim;
+    // keyboard: Esc closes it (when it can be closed).
     TouchArea {
         clicked => {
             if root.closable {
@@ -499,50 +647,69 @@ export component Dialog inherits Rectangle {
     }
     // Compact windows: the card goes nearly edge to edge.
     property <length> margin: Screen.compact ? 24px : 48px;
-    Rectangle {
-        width: min(root.card-width, root.width - root.margin);
-        height: root.fit ? min(body.preferred-height, root.height - root.margin) : min(root.card-height, root.height - root.margin);
-        border-radius: 12px;
-        background: Theme.panel;
-        border-width: 1px;
-        border-color: Theme.line-strong;
-        clip: true;
-        TouchArea { }
-        body := VerticalLayout {
-            padding: Screen.compact ? 18px : 24px;
-            padding-top: Screen.compact ? 18px : 22px;
-            spacing: Screen.compact ? 14px : 16px;
-            HorizontalLayout {
-                spacing: 12px;
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    spacing: 4px;
-                    Text {
-                        text: root.title;
-                        color: Theme.ink;
-                        font-family: Theme.display;
-                        font-size: 20px;
-                        font-weight: 700;
-                        letter-spacing: -0.4px;
-                        wrap: word-wrap;
-                    }
-                    if root.subtitle != "": Text {
-                        text: root.subtitle;
-                        color: Theme.muted;
-                        font-family: Theme.body;
-                        font-size: 13px;
-                        overflow: elide;
-                    }
-                }
-                if root.closable: VerticalLayout {
-                    alignment: start;
-                    IconButton {
-                        icon: "\u{E711}";
-                        clicked => { root.close(); }
-                    }
-                }
+    // Esc closes it (from anywhere inside, the search box included). It takes the
+    // keyboard when it opens, so Tab starts inside the dialog.
+    init => { keys.focus(); }
+    keys := FocusScope {
+        width: root.width;
+        height: root.height;
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        key-pressed(event) => {
+            if event.text == Key.Escape && root.closable {
+                root.close();
+                return accept;
             }
-            @children
+            reject
+        }
+        accessible-role: groupbox;
+        accessible-label: root.title;
+        Rectangle {
+            width: min(root.card-width, root.width - root.margin);
+            height: root.fit ? min(body.preferred-height, root.height - root.margin) : min(root.card-height, root.height - root.margin);
+            border-radius: 12px;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line-strong;
+            clip: true;
+            TouchArea { }
+            body := VerticalLayout {
+                padding: Screen.compact ? 18px : 24px;
+                padding-top: Screen.compact ? 18px : 22px;
+                spacing: Screen.compact ? 14px : 16px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 4px;
+                        Text {
+                            text: root.title;
+                            color: Theme.ink;
+                            font-family: Theme.display;
+                            font-size: 20px;
+                            font-weight: 700;
+                            letter-spacing: -0.4px;
+                            wrap: word-wrap;
+                        }
+                        if root.subtitle != "": Text {
+                            text: root.subtitle;
+                            color: Theme.muted;
+                            font-family: Theme.body;
+                            font-size: 13px;
+                            overflow: elide;
+                        }
+                    }
+                    if root.closable: VerticalLayout {
+                        alignment: start;
+                        IconButton {
+                            icon: "\u{E711}";
+                            label: "Close";
+                            clicked => { root.close(); }
+                        }
+                    }
+                }
+                @children
+            }
         }
     }
 }
@@ -556,6 +723,14 @@ export component ChoiceTile inherits Rectangle {
     callback clicked();
     min-height: col.preferred-height;
     border-radius: 12px;
+    accessible-role: button;
+    accessible-label: root.title;
+    accessible-description: root.text;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: 12px;
+        activated => { root.clicked(); }
+    }
     border-width: 2px;
     border-color: ta.has-hover ? Theme.ink : Theme.line-strong;
     background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
@@ -599,6 +774,7 @@ export component ChoiceChips inherits FlexboxLayout {
     horizontal-stretch: 1;
     vertical-stretch: 0;
     spacing: Screen.compact ? 7px : 8px;
+    accessible-role: radio-group;
     for option[i] in root.options: Chip {
         horizontal-stretch: 0;
         text: option;
@@ -632,6 +808,13 @@ export component MenuItem inherits Rectangle {
     callback clicked();
     height: 36px;
     border-radius: 8px;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: 8px;
+        activated => { root.clicked(); }
+    }
     background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -732,45 +915,6 @@ export component Notice inherits HorizontalLayout {
     @children
 }
 
-// An empty page: big icon, one display line, the actions (children), a muted tip.
-export component EmptyState inherits Rectangle {
-    in property <string> icon;
-    in property <string> title;
-    in property <string> tip;
-    vertical-stretch: 1;
-    VerticalLayout {
-        alignment: center;
-        spacing: 12px;
-        Icon {
-            text: root.icon;
-            font-size: 36px;
-            color: Theme.accent-hi;
-        }
-        Text {
-            text: root.title;
-            color: Theme.ink;
-            font-family: Theme.display;
-            font-size: Screen.compact ? 17px : 19px;
-            font-weight: 700;
-            horizontal-alignment: center;
-            wrap: word-wrap;
-        }
-        HorizontalLayout {
-            alignment: center;
-            spacing: 10px;
-            @children
-        }
-        Text {
-            text: root.tip;
-            color: Theme.muted;
-            font-size: 12px;
-            horizontal-alignment: center;
-            wrap: word-wrap;
-        }
-    }
-}
-
-// Short message at the bottom of the window ("Report copied…"). Sizes itself to the
 // text, up to `widest`; the window centres it.
 export component Toast inherits Rectangle {
     in property <string> text;

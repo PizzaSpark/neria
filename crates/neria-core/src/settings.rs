@@ -82,6 +82,9 @@ pub struct Settings {
     pub check_updates: bool,
     /// "system" (follow Windows), "dark" or "light".
     pub theme: String,
+    /// The first-run "How it works" steps were seen through (a download started, or the
+    /// user hid them).
+    pub tips_done: bool,
 }
 
 impl Default for Settings {
@@ -115,6 +118,7 @@ impl Default for Settings {
             spotify_client_secret: String::new(),
             check_updates: true,
             theme: "system".into(),
+            tips_done: false,
         }
     }
 }

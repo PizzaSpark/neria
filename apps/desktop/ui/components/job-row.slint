@@ -17,6 +17,9 @@ export component JobRow inherits Rectangle {
     callback open-compressor();
     callback pick-match();
     callback report();
+    // Flagged songs: listen to it, or keep it ("It's right").
+    callback play();
+    callback accept();
     callback pause();
     callback resume();
     // Open/close a group card.
@@ -27,8 +30,13 @@ export component JobRow inherits Rectangle {
     property <bool> failed: root.job.state == 4;
     property <bool> paused: root.job.state == 6;
     property <string> glyph: root.job.header ? "\u{E8F1}" : root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? (root.job.music ? "\u{E8D6}" : "\u{E8B2}") : root.job.state == 4 ? "\u{E783}" : root.paused ? "\u{E769}" : "\u{E711}";
-    property <string> tag: root.job.state == 0 ? "Waiting" : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : root.paused ? "Paused" : "";
-    property <int> tag-kind: root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
+    // A saved song that may be the wrong version: "Unsure", or "Sounds different" when the
+    // audio check says it's another recording.
+    property <bool> flagged: root.done && root.job.warn && root.job.music && !root.job.header;
+    property <string> tag: root.job.state == 0 ? "Waiting"
+        : root.flagged ? (root.job.flag == 2 ? "Sounds different" : "Unsure")
+        : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : root.paused ? "Paused" : "";
+    property <int> tag-kind: root.flagged && root.job.flag == 2 ? 3 : root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
 
     // What the row offers (the same on every width; compact folds most into the menu).
     property <bool> can-show: root.done || (root.job.header && root.job.state != 0);
@@ -50,6 +58,7 @@ export component JobRow inherits Rectangle {
     height: root.moving ? 72px : 62px;
 
     // A group card opens and closes anywhere outside its buttons.
+    // keyboard: the chevron button does the same.
     if root.job.header: TouchArea {
         mouse-cursor: pointer;
         clicked => { root.toggle(); }
@@ -184,10 +193,12 @@ export component JobRow inherits Rectangle {
                 compact: true;
                 width: 30px;
                 icon: "\u{E712}";
+                label: "More actions";
                 clicked => { menu.show(); }
             }
             if root.job.header: IconButton {
                 icon: root.job.expanded ? "\u{E70E}" : "\u{E70D}";
+                label: root.job.expanded ? "Close group" : "Open group";
                 clicked => { root.toggle(); }
             }
           }
@@ -206,6 +217,7 @@ export component JobRow inherits Rectangle {
             if root.job.can-pause && root.narrow: GhostButton {
                 compact: true;
                 icon: "\u{E769}";
+                label: "Pause";
                 clicked => { root.pause(); }
             }
             if root.job.can-resume: GhostButton {
@@ -218,20 +230,33 @@ export component JobRow inherits Rectangle {
                 text: "Cancel";
                 clicked => { root.cancel(); }
             }
+            if root.flagged: GhostButton {
+                compact: true;
+                text: root.narrow ? "" : "Play";
+                icon: "\u{E768}";
+                label: "Play";
+                clicked => { root.play(); }
+            }
+            if root.flagged: GhostButton {
+                compact: true;
+                text: "It's right";
+                clicked => { root.accept(); }
+            }
             // A card's "Show" opens its folder.
-            if root.done || (root.job.header && root.job.state != 0): GhostButton {
+            if !root.flagged && (root.done || (root.job.header && root.job.state != 0)): GhostButton {
                 compact: true;
                 text: "Show";
                 clicked => { root.open(); }
             }
-            if root.done && !root.job.header && !root.job.still && !root.narrow: GhostButton {
+            if root.done && !root.flagged && !root.job.header && !root.job.still && !root.narrow: GhostButton {
                 compact: true;
                 text: "Clip";
                 clicked => { root.open-clipper(); }
             }
-            if root.done && !root.job.header && !root.job.still && root.narrow: GhostButton {
+            if root.done && !root.flagged && !root.job.header && !root.job.still && root.narrow: GhostButton {
                 compact: true;
                 icon: "\u{E8C6}";
+                label: "Clip";
                 clicked => { root.open-clipper(); }
             }
             // Songs are already small; compressing is for videos.
@@ -243,6 +268,7 @@ export component JobRow inherits Rectangle {
             if root.done && !root.job.header && !root.job.music && !root.job.still && root.narrow: GhostButton {
                 compact: true;
                 icon: "\u{E73F}";
+                label: "Compress";
                 clicked => { root.open-compressor(); }
             }
             if root.job.music && !root.job.header && (root.done || root.failed): GhostButton {
@@ -262,10 +288,12 @@ export component JobRow inherits Rectangle {
             }
             if root.job.can-remove: IconButton {
                 icon: "\u{E711}";
+                label: "Remove from list";
                 clicked => { root.remove(); }
             }
             if root.job.header: IconButton {
                 icon: root.job.expanded ? "\u{E70E}" : "\u{E70D}";
+                label: root.job.expanded ? "Close group" : "Open group";
                 clicked => { root.toggle(); }
             }
           }
@@ -278,6 +306,16 @@ export component JobRow inherits Rectangle {
         x: root.width - Theme.lane - (root.job.header ? 38px : 0px) - 200px;
         y: root.height / 2 + 19px;
         Menu {
+            if root.flagged: MenuItem {
+                icon: "\u{E768}";
+                text: "Play";
+                clicked => { root.play(); }
+            }
+            if root.flagged: MenuItem {
+                icon: "\u{E73E}";
+                text: "It's right, keep it";
+                clicked => { root.accept(); }
+            }
             if root.job.can-cancel && root.main != 6: MenuItem {
                 icon: "\u{E711}";
                 text: root.job.header ? "Cancel all" : "Cancel";

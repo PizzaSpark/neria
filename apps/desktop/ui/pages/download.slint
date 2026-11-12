@@ -1,11 +1,59 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { JobItem, PickItem, SyncItem } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, Notice, Divider, Thumb } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, Notice, Divider, Thumb } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
 import { UpdateBanner } from "../components/update-banner.slint";
+
+// One first-run step: a number in a small outlined box, a line, and a muted sentence.
+component TipStep inherits VerticalLayout {
+    in property <string> num;
+    in property <string> title;
+    in property <string> text;
+    HorizontalLayout {
+        padding-top: 11px;
+        padding-bottom: 11px;
+        spacing: 14px;
+        VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 0;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 7px;
+                border-width: 2px;
+                border-color: Theme.line-strong;
+                Text {
+                    text: root.num;
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 11px;
+                    font-weight: 500;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 3px;
+            Text {
+                text: root.title;
+                color: Theme.ink;
+                font-size: 13.5px;
+                font-weight: 600;
+                wrap: word-wrap;
+            }
+            Text {
+                text: root.text;
+                color: Theme.muted;
+                font-size: 12.5px;
+                wrap: word-wrap;
+            }
+        }
+    }
+    Divider { }
+}
 
 // Paste a link, see what it is, pick the quality (or the items of a post/playlist), and
 // follow the queue.
@@ -88,11 +136,33 @@ export component DownloadPage inherits Rectangle {
     callback cmp-job(int);
     callback match-pick(int);
     callback report-job(int);
+    callback play-job(int);
+    callback accept-job(int);
+    // 0 all, 1 active, 2 done, 3 needs a look; `filter-counts` in that order.
+    in-out property <int> filter;
+    in property <[int]> filter-counts;
+    callback filter-changed(int);
+    // First run: "How it works" in the empty queue.
+    in property <bool> show-tips;
+    // Not under a link preview: by then step 1 is done and the picker needs the room.
+    property <bool> tips: root.show-tips && root.total-jobs == 0 && root.probe-state == 0;
+    callback hide-tips();
+    in property <string> output-short;
+    // Ready for Ctrl+V as soon as the page shows.
+    init => { link.focus-input(); }
     callback pause-job(int);
     callback resume-job(int);
     callback toggle-group(int);
 
     property <bool> picking: root.probe-state == 2 && root.pick-items.length > 1;
+    // Queue filters: in the header row on wide windows, on a line of their own otherwise.
+    property <int> total-jobs: root.filter-counts[0];
+    property <bool> tabs-inline: Screen.wide;
+    property <[string]> filter-names: ["All", "Active", "Done", "Needs a look"];
+    function pick-filter(i: int) {
+        root.filter = i;
+        root.filter-changed(i);
+    }
     // Chips go under the preview title when there's room (saves a row for the queue).
     property <bool> chips-inline: root.probe-state == 2 && Screen.wide;
     property <bool> short: root.window-height < 820px;
@@ -132,7 +202,7 @@ export component DownloadPage inherits Rectangle {
             later => { root.update-later(); }
         }
 
-        LinkField {
+        link := LinkField {
             text <=> root.url;
             placeholder: "Paste a link here";
             edited(t) => { root.url-edited(t); }
@@ -303,10 +373,22 @@ export component DownloadPage inherits Rectangle {
                 padding-top: 14px;
                 padding-bottom: 4px;
                 spacing: 10px;
-                SectionTitle {
-                    text: "Queue";
+                if !root.tabs-inline || root.total-jobs == 0: SectionTitle {
+                    text: root.tips ? "How it works" : "Queue";
                     vertical-alignment: center;
                     horizontal-stretch: 0;
+                }
+                if root.tabs-inline && root.total-jobs > 0: HorizontalLayout {
+                    horizontal-stretch: 0;
+                    spacing: 18px;
+                    padding-right: 6px;
+                    for name[i] in root.filter-names: FilterTab {
+                        text: name;
+                        count: root.filter-counts[i];
+                        active: root.filter == i;
+                        attention: i == 3;
+                        clicked => { root.pick-filter(i); }
+                    }
                 }
                 if root.running-count > 0: VerticalLayout {
                     alignment: center;
@@ -333,6 +415,10 @@ export component DownloadPage inherits Rectangle {
                     text: Screen.compact ? "Clear" : "Clear finished";
                     clicked => { root.clear-finished(); }
                 }
+                if root.tips: TextLink {
+                    text: "Hide tips";
+                    clicked => { root.hide-tips(); }
+                }
                 TextLink {
                     text: Screen.compact ? "Folder" : "Open folder";
                     icon: "\u{E838}";
@@ -340,23 +426,73 @@ export component DownloadPage inherits Rectangle {
                 }
             }
 
-            if root.jobs.length == 0: VerticalLayout {
+            if !root.tabs-inline && root.total-jobs > 0: HorizontalLayout {
+                spacing: Screen.compact ? 16px : 18px;
+                padding-bottom: 2px;
+                for name[i] in root.filter-names: FilterTab {
+                    text: name;
+                    count: root.filter-counts[i];
+                    active: root.filter == i;
+                    attention: i == 3;
+                    clicked => { root.pick-filter(i); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+            }
+
+            // A filter with nothing in it (the queue itself isn't empty).
+            if root.jobs.length == 0 && root.total-jobs > 0: VerticalLayout {
                 vertical-stretch: 1;
                 alignment: center;
                 spacing: 8px;
                 Text {
-                    text: "Your downloads land here";
+                    text: root.filter == 1 ? "Nothing downloading right now"
+                        : root.filter == 2 ? "Nothing finished yet"
+                        : "Nothing needs a look";
                     color: Theme.ink;
                     font-family: Theme.display;
-                    font-size: 18px;
+                    font-size: 16px;
                     font-weight: 700;
                     horizontal-alignment: center;
                 }
+                HorizontalLayout {
+                    alignment: center;
+                    TextLink {
+                        text: "Show all " + root.total-jobs;
+                        clicked => { root.pick-filter(0); }
+                    }
+                }
+            }
+
+            // First run: the whole flow in three calm rows, until a download starts.
+            if root.tips: VerticalLayout {
+                vertical-stretch: 1;
+                alignment: start;
+                TipStep {
+                    num: "1";
+                    title: "Copy a link and paste it above";
+                    text: "Or drag a video, tab or link from your browser onto Neria. Ctrl+V works too.";
+                }
+                TipStep {
+                    num: "2";
+                    title: "Pick a quality, press Download";
+                    text: "Playlists, albums and posts with several videos let you pick the items first.";
+                }
+                TipStep {
+                    num: "3";
+                    title: "Find it in " + root.output-short;
+                    text: "Spotify songs come as tagged " + root.audio-format + " files. Only want part of a video? Press Clip first.";
+                }
+            }
+
+            // Later: one quiet line where the rows will be.
+            if root.total-jobs == 0 && !root.tips && root.probe-state == 0: VerticalLayout {
+                vertical-stretch: 1;
+                alignment: start;
+                padding-top: 12px;
                 Text {
-                    text: "Paste a link above and press Download. Playlists and albums get one card you can open.";
+                    text: "Your downloads show up here. Paste a link above, or drag one onto Neria.";
                     color: Theme.muted;
                     font-size: 13px;
-                    horizontal-alignment: center;
                     wrap: word-wrap;
                 }
             }
@@ -375,6 +511,8 @@ export component DownloadPage inherits Rectangle {
                     open-compressor => { root.cmp-job(job.id); }
                     pick-match => { root.match-pick(job.id); }
                     report => { root.report-job(job.id); }
+                    play => { root.play-job(job.id); }
+                    accept => { root.accept-job(job.id); }
                     pause => { root.pause-job(job.id); }
                     resume => { root.resume-job(job.id); }
                     toggle => { root.toggle-group(job.group); }

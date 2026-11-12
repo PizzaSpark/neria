@@ -55,13 +55,13 @@ export component Timeline inherits Rectangle {
         x: 0;
         width: root.in-x;
         height: root.height;
-        background: #0b0d12c8;
+        background: Theme.strip-shade;
     }
     Rectangle {
         x: root.out-x;
         width: max(0px, root.width - root.out-x);
         height: root.height;
-        background: #0b0d12c8;
+        background: Theme.strip-shade;
     }
     Rectangle {
         x: root.in-x;
@@ -98,7 +98,7 @@ export component Timeline inherits Rectangle {
             width: 2px;
             height: 12px;
             border-radius: 1px;
-            background: #ffffffc0;
+            background: Theme.strip-mark-soft;
         }
     }
 
@@ -144,7 +144,7 @@ export component Timeline inherits Rectangle {
             width: 2px;
             height: 24px;
             border-radius: 1px;
-            background: #ffffffd0;
+            background: Theme.strip-mark;
         }
         in-ta := TouchArea {
             mouse-cursor: ew-resize;
@@ -168,7 +168,7 @@ export component Timeline inherits Rectangle {
             width: 2px;
             height: 24px;
             border-radius: 1px;
-            background: #ffffffd0;
+            background: Theme.strip-mark;
         }
         out-ta := TouchArea {
             mouse-cursor: ew-resize;

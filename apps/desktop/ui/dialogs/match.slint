@@ -113,6 +113,7 @@ export component MatchDialog inherits Dialog {
                             // Compact: icon only (the hint under the list explains it).
                             text: Screen.compact ? "" : "Check";
                             icon: "\u{E8D6}";
+                            label: "Check against the Spotify preview";
                             clicked => { root.check(i); }
                         }
                     }
@@ -120,6 +121,7 @@ export component MatchDialog inherits Dialog {
                         alignment: center;
                         IconButton {
                             icon: "\u{E8A7}";
+                            label: "Open in browser";
                             clicked => { root.open-url(item.url); }
                         }
                     }
