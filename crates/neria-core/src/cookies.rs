@@ -266,14 +266,40 @@ pub fn list() -> Vec<(String, u64)> {
 
 /// What to tell yt-dlp / gallery-dl about cookies for `url`: the site's own file when the
 /// user signed in there, else the browser from Settings → Network, else nothing.
+///
+/// yt-dlp writes its cookies back to the `--cookies` file when it ends, and several
+/// downloads run at once, so each run gets its own copy: the site's file is only ever read
+/// (and its date keeps saying when you signed in).
 pub fn args_for(url: &str, settings: &Settings) -> Vec<String> {
     if let Some(f) = file_for(url) {
-        return vec!["--cookies".into(), f.to_string_lossy().into_owned()];
+        let file = private_copy(&f).unwrap_or(f);
+        return vec!["--cookies".into(), file.to_string_lossy().into_owned()];
     }
     if !settings.cookies_browser.is_empty() {
         return vec!["--cookies-from-browser".into(), settings.cookies_browser.clone()];
     }
     Vec::new()
+}
+
+/// A throwaway copy of a site's cookie file for one yt-dlp / gallery-dl run, in the cache.
+/// Copies older than a day (their run is long over) are removed on the way.
+fn private_copy(file: &Path) -> Option<PathBuf> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let dir = paths::cache_dir().join("cookie-runs");
+    std::fs::create_dir_all(&dir).ok()?;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for e in entries.flatten() {
+            let old = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
+            if old.is_some_and(|age| age.as_secs() > 86_400) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let copy = dir.join(format!("{}-{n}.txt", std::process::id()));
+    std::fs::copy(file, &copy).ok()?;
+    Some(copy)
 }
 
 #[cfg(test)]
