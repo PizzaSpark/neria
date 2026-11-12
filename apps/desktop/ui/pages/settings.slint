@@ -580,8 +580,11 @@ export component SettingsDrawer inherits Rectangle {
                                 }
                                 HorizontalLayout {
                                     spacing: 8px;
+                                    // As tall as the button's face (41px), level with it.
                                     LineEdit {
                                         horizontal-stretch: 1;
+                                        height: 41px;
+                                        y: 0;
                                         placeholder-text: "A site, e.g. vimeo.com";
                                         text <=> Accounts.other-site;
                                         accepted => { Accounts.sign-in(Accounts.other-site); }

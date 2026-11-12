@@ -366,9 +366,12 @@ impl Clipper {
         }
         let ended = mpv.get_flag("eof-reached").unwrap_or(false);
         if let Some(p) = mpv.get_f64("time-pos") {
-            // Playing through the selection: stop at Out, or loop back to In.
+            // Playing through the selection: stop at Out, or loop back to In. Watching has no
+            // selection (an In/Out or loop left from clipping doesn't count).
+            let watching = ui.global::<Watch>().get_on();
             let (cin, cout) = (ui.get_clip_in() as f64, ui.get_clip_out() as f64);
-            let crossed = !paused && cout > cin && self.last_pos < cout && p >= cout && self.last_pos >= cin - 0.25;
+            let crossed =
+                !watching && !paused && cout > cin && self.last_pos < cout && p >= cout && self.last_pos >= cin - 0.25;
             if crossed {
                 if ui.get_clip_loop() {
                     let _ = mpv.command(&["seek", &format!("{cin:.3}"), "absolute+exact"]);
@@ -667,7 +670,13 @@ pub fn install(
         let (clipper, weak) = (clipper.clone(), ui.as_weak());
         move || {
             let ui = weak.unwrap();
-            clipper.borrow_mut().toggle_play(ui.get_clip_in() as f64, ui.get_clip_out() as f64)
+            // Watching: play the whole thing, whatever In/Out say.
+            let (a, b) = if ui.global::<Watch>().get_on() {
+                (0.0, 0.0)
+            } else {
+                (ui.get_clip_in() as f64, ui.get_clip_out() as f64)
+            };
+            clipper.borrow_mut().toggle_play(a, b)
         }
     });
     ui.on_clip_seek({

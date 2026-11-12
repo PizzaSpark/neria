@@ -65,8 +65,8 @@ pub fn looks_like_url(s: &str) -> bool {
 }
 
 /// Every link in pasted text (one per line, or separated by spaces or commas), in order,
-/// each once. Links pasted into a one-line box can arrive glued together
-/// (`https://a…https://b…`), so they're split where the next `http(s)://` starts too.
+/// each once. (The one-line link box turns pasted line breaks into spaces.) A link inside
+/// another one (`web.archive.org/web/…/https://…`, `?q=https://…`) stays whole.
 /// Spotify URIs count; `https://` is added to links typed without it.
 pub fn split_links(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -75,29 +75,11 @@ pub fn split_links(text: &str) -> Vec<String> {
         if word.is_empty() {
             continue;
         }
-        // Start of every link glued into this word.
-        let mut starts: Vec<usize> = Vec::new();
-        for pat in ["https://", "http://"] {
-            starts.extend(word.match_indices(pat).map(|(i, _)| i));
-        }
-        starts.sort_unstable();
-        starts.dedup();
-        let pieces: Vec<&str> = if starts.len() > 1 || starts.first().is_some_and(|&s| s > 0) {
-            let mut cut = starts.clone();
-            if cut.first() != Some(&0) {
-                cut.insert(0, 0);
-            }
-            cut.iter().enumerate().map(|(k, &s)| &word[s..cut.get(k + 1).copied().unwrap_or(word.len())]).collect()
-        } else {
-            vec![word]
-        };
-        for piece in pieces {
-            let link = if piece.starts_with("spotify:") { Some(piece.to_string()) } else { normalize_url(piece) };
-            if let Some(link) = link
-                && !out.contains(&link)
-            {
-                out.push(link);
-            }
+        let link = if word.starts_with("spotify:") { Some(word.to_string()) } else { normalize_url(word) };
+        if let Some(link) = link
+            && !out.contains(&link)
+        {
+            out.push(link);
         }
     }
     out
@@ -640,9 +622,11 @@ mod tests {
     fn splits_pasted_links() {
         let text = "https://youtu.be/a\n  https://vimeo.com/1, youtube.com/watch?v=b\r\nhello\nhttps://youtu.be/a";
         assert_eq!(split_links(text), ["https://youtu.be/a", "https://vimeo.com/1", "https://youtube.com/watch?v=b"]);
-        // Glued together by a one-line box.
-        assert_eq!(split_links("https://youtu.be/ahttps://youtu.be/b"), ["https://youtu.be/a", "https://youtu.be/b"]);
-        assert_eq!(split_links("see:https://youtu.be/a"), ["https://youtu.be/a"]);
+        // A link inside a link is one link.
+        let archived = "https://web.archive.org/web/2020/https://www.youtube.com/watch?v=a";
+        assert_eq!(split_links(archived), [archived]);
+        let redirect = "https://www.google.com/url?q=https://youtu.be/a&sa=D";
+        assert_eq!(split_links(redirect), [redirect]);
         assert_eq!(split_links("<https://youtu.be/a> spotify:track:1"), ["https://youtu.be/a", "spotify:track:1"]);
         assert_eq!(split_links("https://youtu.be/a"), ["https://youtu.be/a"]);
         assert!(split_links("just some words").is_empty());

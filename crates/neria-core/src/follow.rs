@@ -206,8 +206,18 @@ fn settle(f: &mut Followed, items: &[Item], done: impl Fn(&str) -> bool, waiting
             }
         }
     }
-    let mut new: Vec<Item> =
-        items.iter().filter(|i| !f.seen.contains(&i.url) && !f.pending.contains(&i.url)).cloned().collect();
+    let mut new: Vec<Item> = Vec::new();
+    for it in items {
+        if f.seen.contains(&it.url) || f.pending.contains(&it.url) {
+            continue;
+        }
+        // Downloaded by hand already: nothing to fetch.
+        if done(&it.url) {
+            f.seen.push(it.url.clone());
+        } else {
+            new.push(it.clone());
+        }
+    }
     // Channels list newest first: download the oldest of the new ones first.
     if f.channel {
         new.reverse();
@@ -295,6 +305,9 @@ mod tests {
         let new = settle(&mut f, &[item("c"), item("b"), item("a")], |_| false, |_| false);
         assert_eq!(new.iter().map(|i| i.url.as_str()).collect::<Vec<_>>(), ["b", "c"]);
         assert_eq!(f.pending, ["b", "c"]);
+        // d is new but was downloaded by hand: seen, not fetched.
+        let new = settle(&mut f, &[item("d")], |l| l == "d", |l| l == "b" || l == "c");
+        assert!(new.is_empty() && f.seen.contains(&"d".to_string()));
         // b downloaded, c is still in the queue: nothing new.
         let new = settle(&mut f, &[item("c"), item("b"), item("a")], |l| l == "b", |l| l == "c");
         assert!(new.is_empty());
