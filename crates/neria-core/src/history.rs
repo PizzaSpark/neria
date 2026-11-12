@@ -106,7 +106,13 @@ mod tests {
         let (a, b) = (dir.join("a.mp4"), dir.join("b.mp3"));
         std::fs::write(&a, b"x").unwrap();
         std::fs::write(&b, b"x").unwrap();
-        let rec = |file: &PathBuf, at| Record { key: String::new(), url: "u".into(), file: file.clone(), title: "t".into(), at };
+        let rec = |file: &PathBuf, at| Record {
+            key: String::new(),
+            url: "u".into(),
+            file: file.clone(),
+            title: "t".into(),
+            at,
+        };
         let all = vec![rec(&a, 1), rec(&b, 2), rec(&dir.join("gone.mp4"), 3), rec(&a, 4)];
         let files = |v: Vec<Record>| v.into_iter().map(|r| r.at).collect::<Vec<_>>();
         assert_eq!(files(recent_in(&all, 5, |_| true)), vec![4, 2]);

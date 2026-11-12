@@ -67,7 +67,8 @@ fn colours_come_from_the_theme() {
         }
         for (i, l) in lines.iter().enumerate() {
             let code = l.split("//").next().unwrap_or("");
-            if code.contains('#') && code.split('#').skip(1).any(|h| h.chars().take(6).all(|c| c.is_ascii_hexdigit()) && h.len() >= 6)
+            if code.contains('#')
+                && code.split('#').skip(1).any(|h| h.chars().take(6).all(|c| c.is_ascii_hexdigit()) && h.len() >= 6)
                 && !excused(&lines, i)
             {
                 problems.push(format!("  {file}:{}: {}", i + 1, l.trim()));
@@ -92,7 +93,10 @@ fn everything_clickable_works_from_the_keyboard() {
                 continue;
             }
             // KeyPress anywhere in the same component, or a comment just above.
-            let start = (0..i).rev().find(|&k| lines[k].starts_with("export component") || lines[k].starts_with("component ")).unwrap_or(0);
+            let start = (0..i)
+                .rev()
+                .find(|&k| lines[k].starts_with("export component") || lines[k].starts_with("component "))
+                .unwrap_or(0);
             let near = (start..i).any(|k| lines[k].contains("KeyPress {"))
                 || (i.saturating_sub(3)..i).any(|k| lines[k].contains("keyboard:"));
             if !near && !excused(&lines, i) {
@@ -163,7 +167,10 @@ fn nothing_is_wider_than_the_smallest_window() {
             for key in ["width:", "min-width:", "preferred-width:"] {
                 if let Some(rest) = t.strip_prefix(key) {
                     let n: String = rest.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
-                    if rest.trim().starts_with(&format!("{n}px")) && n.parse::<u32>().is_ok_and(|n| n > 360) && !excused(&lines, i) {
+                    if rest.trim().starts_with(&format!("{n}px"))
+                        && n.parse::<u32>().is_ok_and(|n| n > 360)
+                        && !excused(&lines, i)
+                    {
                         problems.push(format!("  {file}:{}: {}", i + 1, l.trim()));
                     }
                 }

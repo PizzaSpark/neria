@@ -87,7 +87,7 @@ them; related ideas are merged into one item so they get built together.
   Compress / Settings restyled, Appearance (Same as Windows / Dark / Light), setup screen,
   one shared `Dialog` and `Tick` (match picker, sync review, update banner, toast)
 
-### Since v0.2.0 (in `main`, not released yet)
+### v0.3.0: posts, playlists, a queue you can trust, UI foundation
 - **Pick what to download from posts and playlists** (`post.rs`): X, Instagram and Facebook
   posts with several photos/videos/GIFs, and playlists, list every item under the preview
   (thumbnail, name, length) with ticks, "Select all" / "None" and "Download 3 items". Each
@@ -135,15 +135,14 @@ them; related ideas are merged into one item so they get built together.
   links (with "Allow playlists" off they only fetch the one video)
 - **Queue thumbnails for playlist items**: YouTube sent WebP named `.jpg`, which didn't load
 
-## Now: v0.3
-Finish and ship what's in `main`, plus the loose ends that make it feel complete.
+## Now: after v0.3.0
+Loose ends left from v0.3 (released 2026-11-12 without them).
 1. **Check what's left on real links**: an Instagram carousel all the way through with
    cookies. Brave locks its cookies while open (the error and Settings now say "close it
    fully"); not yet checked whether it reads them once closed
 2. **Code signing** to remove the SmartScreen warning: SignPath Foundation signs open-source
    projects for free; the repo is public, so apply and sign in the release workflow
-3. Later, not now: release notes (`docs/releases/v0.3.0.md`), version bump, friends test
-   round two
+3. Friends test round two
 
 ## Next: UI foundation
 The features grew page by page. Make the UI one coherent system, so the features below are
@@ -324,6 +323,11 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
 - **Stats**: recorded length, size, speed, stream bitrate/resolution, how far behind live,
   segments received / retried / missed, connection status
 - Clipping a live stream: pick a range from the rewindable window
+- **Clip the last…** (instant replay): one button on a live row with quick picks **30 s ·
+  1 min · 5 min · 10 min**; saves that much up to "now" as its own file right away, while the
+  recording keeps going. Works from the rewindable window too, so it doesn't need a recording
+  running when the stream can be rewound. Optional keyboard shortcut; the saved clip opens in
+  the clipper for fine trimming
 
 ## Later: bigger ideas (keep UX simple)
 - **Browser extension (Chrome, Edge, Firefox)**: a Neria button on video pages and posts, and

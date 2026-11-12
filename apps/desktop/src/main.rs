@@ -126,7 +126,13 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         status: status.into(),
         stats: stats.into(),
         warn: s.note.is_some(),
-        flag: if s.note.is_none() { 0 } else if s.note_strong { 2 } else { 1 },
+        flag: if s.note.is_none() {
+            0
+        } else if s.note_strong {
+            2
+        } else {
+            1
+        },
         music: s.music,
         still: s.file.as_ref().and_then(|f| f.extension()).is_some_and(|e| {
             ["jpg", "jpeg", "png", "webp", "gif", "heic"].contains(&e.to_string_lossy().to_lowercase().as_str())

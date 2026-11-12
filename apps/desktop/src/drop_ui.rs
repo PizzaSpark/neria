@@ -340,7 +340,12 @@ mod ole {
             Ok(())
         }
 
-        fn DragOver(&self, _keys: MODIFIERKEYS_FLAGS, _pt: &POINTL, effect: *mut DROPEFFECT) -> windows::core::Result<()> {
+        fn DragOver(
+            &self,
+            _keys: MODIFIERKEYS_FLAGS,
+            _pt: &POINTL,
+            effect: *mut DROPEFFECT,
+        ) -> windows::core::Result<()> {
             unsafe { *effect = self.effect.get() };
             Ok(())
         }

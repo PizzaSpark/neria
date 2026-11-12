@@ -1475,8 +1475,7 @@ impl Queue {
             }
             if going_back {
                 let pct = best.as_ref().map_or(0.0, |(b, _)| b * 100.0);
-                let note =
-                    format!("Only {pct:.0}% like the {} preview, probably another recording", reference.source);
+                let note = format!("Only {pct:.0}% like the {} preview, probably another recording", reference.source);
                 self.update(id, false, |s| {
                     s.note = Some(note);
                     s.note_strong = true;
