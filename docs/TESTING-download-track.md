@@ -42,3 +42,14 @@ Design choices: `design/download-track.html` (all the recommended options were p
 - [ ] The picked languages are ticked again on the next video that has them.
 - [ ] A YouTube video without captions says "No captions on this video".
 - [ ] Audio only + captions: files are saved next to the mp3 (nothing to embed into).
+
+## 3. Audio tracks
+- [ ] A YouTube video with dubbed tracks (e.g. MrBeast uploads): "Audio: Original (…)"
+      shows; the picker lists every language with "Original" marked.
+- [ ] Original + Spanish, mp4: one file; VLC's Audio → Audio Track menu shows both, named
+      by language. Same with mkv.
+- [ ] Only Spanish ticked: the file has just the Spanish track.
+- [ ] Audio only + two languages: two rows in one group, `… (Spanish).mp3` and
+      `… (English).mp3`.
+- [ ] A video with one audio language shows no Audio button.
+- [ ] Descriptive audio tracks (if a video has them) are listed with "(descriptive)".

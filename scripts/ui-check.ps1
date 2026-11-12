@@ -74,6 +74,7 @@ $states = [ordered]@{
   "signin"     = @{ NERIA_DIALOG = "signin" }
   "extras"     = @{ NERIA_DIALOG = "extras" }
   "captions"   = @{ NERIA_DIALOG = "captions" }
+  "audio"      = @{ NERIA_DIALOG = "audio" }
   "match"      = @{ NERIA_DIALOG = "match" }
   "sync"       = @{ NERIA_DIALOG = "sync" }
   "spotify"    = @{ NERIA_DIALOG = "spotify" }

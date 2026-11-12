@@ -8,8 +8,9 @@ use std::sync::{Arc, Mutex};
 
 use neria_core::download::DownloadRequest;
 use neria_core::probe::MediaInfo;
+use neria_core::settings::Quality;
 use neria_core::settings::Settings;
-use neria_core::tracks::{Caption, CaptionChoice, SubFormat, SubMode};
+use neria_core::tracks::{AudioTrack, Caption, CaptionChoice, SubFormat, SubMode};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::{AppWindow, Extras, TrackRow};
@@ -21,6 +22,16 @@ struct State {
     cap_picked: HashSet<String>,
     /// A site where videos usually have captions (YouTube): say when this one has none.
     expect_captions: bool,
+    audio: Vec<AudioTrack>,
+    /// Picked audio languages (the original when none is).
+    audio_picked: HashSet<String>,
+}
+
+/// The audio tracks to download, original first; empty = just the default track.
+fn picked_audio(s: &State) -> Vec<&AudioTrack> {
+    let picked: Vec<&AudioTrack> = s.audio.iter().filter(|t| s.audio_picked.contains(&t.lang)).collect();
+    let only_original = picked.len() == 1 && picked[0].original;
+    if only_original || picked.is_empty() { Vec::new() } else { picked }
 }
 
 thread_local! {
@@ -57,6 +68,17 @@ fn refresh_buttons(ui: &AppWindow) {
             format!("{}: {}", if only { "Captions only" } else { "Captions" }, summary(&caps)).into()
         });
         ex.set_no_captions(s.captions.is_empty() && s.expect_captions);
+        let audio: Vec<String> = picked_audio(&s).iter().map(|t| t.name.clone()).collect();
+        ex.set_audio_text(match audio.len() {
+            _ if s.audio.is_empty() => "".into(),
+            0 => {
+                let original = s.audio.iter().find(|t| t.original).map(|t| t.name.clone());
+                format!("Audio: Original{}", original.map(|n| format!(" ({n})")).unwrap_or_default()).into()
+            }
+            1 => format!("Audio: {}", audio[0]).into(),
+            2 => format!("Audio: {} + {}", audio[0], audio[1]).into(),
+            n => format!("Audio: {n} languages").into(),
+        });
     });
 }
 
@@ -98,6 +120,19 @@ fn refresh_rows(ui: &AppWindow) {
                 });
             }
         }
+        if ex.get_open() == 2 {
+            total = s.audio.len() as i32;
+            picked = s.audio_picked.len() as i32;
+            for t in &s.audio {
+                rows.push(TrackRow {
+                    key: format!("l:{}", t.lang).into(),
+                    label: t.name.as_str().into(),
+                    detail: if t.original { "Original" } else { "" }.into(),
+                    checked: s.audio_picked.contains(&t.lang),
+                    header: false,
+                });
+            }
+        }
     });
     ex.set_total(total);
     ex.set_picked(picked);
@@ -118,6 +153,9 @@ pub fn set_info(ui: &AppWindow, info: &MediaInfo, settings: &Settings) {
         }
         s.captions = info.captions.clone();
         s.expect_captions = info.key.as_deref().is_some_and(|k| k.starts_with("Youtube:"));
+        s.audio = info.audio_tracks.clone();
+        let original = s.audio.iter().find(|t| t.original).or(s.audio.first()).map(|t| t.lang.clone());
+        s.audio_picked = original.into_iter().collect();
         // Last time's languages: the creator's version if there is one, else auto-generated.
         for lang in &settings.caption_langs {
             let found = s
@@ -147,6 +185,7 @@ pub fn requests(ui: &AppWindow, mut base: DownloadRequest) -> Vec<DownloadReques
     let ex = ui.global::<Extras>();
     STATE.with(|s| {
         let s = s.borrow();
+        let audio: Vec<(String, String)> = picked_audio(&s).iter().map(|t| (t.lang.clone(), t.name.clone())).collect();
         if !s.captions.is_empty() {
             let picked = picked_captions(&s);
             base.captions = Some(CaptionChoice {
@@ -157,8 +196,31 @@ pub fn requests(ui: &AppWindow, mut base: DownloadRequest) -> Vec<DownloadReques
                 only: ex.get_subs_only(),
             });
         }
-    });
-    vec![base]
+        if base.captions_only() || audio.is_empty() {
+            return vec![base];
+        }
+        if base.quality != Quality::Audio || audio.len() == 1 {
+            // One file: one audio track per language (or just the one picked).
+            base.audio_langs = audio.into_iter().map(|a| a.0).collect();
+            return vec![base];
+        }
+        // Audio only, several languages: one file each, "Title (Spanish).mp3". Captions
+        // come with the first.
+        audio
+            .into_iter()
+            .enumerate()
+            .map(|(i, (lang, name))| {
+                let mut r = base.clone();
+                r.audio_langs = vec![lang];
+                r.name_tag = Some(format!(" ({name})"));
+                r.title_hint = format!("{} ({name})", base.title_hint);
+                if i > 0 {
+                    r.captions = None;
+                }
+                r
+            })
+            .collect()
+    })
 }
 
 /// Keep this download's caption choices for next time.
@@ -203,6 +265,12 @@ pub fn install(ui: &AppWindow) {
                     } else {
                         s.cap_picked.remove(&key);
                     }
+                } else if let Some(lang) = key.strip_prefix("l:") {
+                    if on {
+                        s.audio_picked.insert(lang.to_string());
+                    } else {
+                        s.audio_picked.remove(lang);
+                    }
                 }
             });
             refresh_rows(&ui);
@@ -219,13 +287,21 @@ pub fn install(ui: &AppWindow) {
                 ui.global::<Extras>().get_rows().iter().filter(|r| !r.header).map(|r| r.key.to_string()).collect();
             STATE.with(|s| {
                 let mut s = s.borrow_mut();
-                if open == 1 {
-                    for k in shown {
-                        if on {
+                for k in shown {
+                    match (open, k.strip_prefix("l:")) {
+                        (2, Some(lang)) if on => {
+                            s.audio_picked.insert(lang.to_string());
+                        }
+                        (2, Some(lang)) => {
+                            s.audio_picked.remove(lang);
+                        }
+                        (1, _) if on => {
                             s.cap_picked.insert(k);
-                        } else {
+                        }
+                        (1, _) => {
                             s.cap_picked.remove(&k);
                         }
+                        _ => {}
                     }
                 }
             });

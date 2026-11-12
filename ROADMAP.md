@@ -223,11 +223,16 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    file. Last languages, format and mode are kept in settings. "No captions on this video"
    shows for YouTube videos without any. Also fixed: a preview with an empty queue no longer
    spreads the free space between the title and the chips. `NERIA_DIALOG=extras|captions`
-3. **Audio tracks (languages)**: YouTube videos with several audio tracks (dubbed languages,
+3. ✅ **Audio tracks (languages)**: YouTube videos with several audio tracks (dubbed languages,
    descriptive audio, original): an "Audio" picker listing each track by language with
    "Original" marked (the default). Several ticked = separate tracks in one MKV/MP4
    (`--audio-multistreams`), named by language so players show a track menu; Audio only +
    several = one file per language (`Title (Spanish).mp3`). Shown only when there's a choice
+   Built: "Audio: Original (English)" next to Captions when the formats carry two or more
+   languages (`tracks::audio_tracks`, original from the format note / language preference).
+   Picks become `-f bv*+ba[language=en]+ba[language=es]/…` with `--audio-multistreams`
+   (yt-dlp's merger tags each track's language); Audio only + several = one row per
+   language in a group, `Title [id] (Spanish).mp3`. `NERIA_DIALOG=audio`
 4. **Chapters**: a "Chapters" picker on the preview and in the clipper (chapter marks on the
    timeline, click one to select it). Tick any chapters; only those parts are downloaded
    (`--download-sections` per chapter). **Separate files** (`03 Chapter title.mp4` in a
