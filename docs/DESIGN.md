@@ -75,6 +75,10 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
 - **Primary button**: `pop` fill, 2px `hard` outline, `pop-shadow` offset, Space Grotesk 14.
   Presses down 2px (shadow shrinks) on click. One per screen.
 - **Secondary / row action**: 1.5–2px `line-strong` outline, no fill, `muted` text.
+  `GhostButton` at its regular size is exactly as tall as the primary button (a 41px face
+  at the top of the same 44px slot, where the yellow one keeps its shadow), so a pair like
+  Cancel + Download lines up. `compact` (30px) is for rows and strips, never beside a
+  primary button.
 - **Chip**: 2px `line-strong` outline, 9px radius; selected = `ink` fill with `bg` text.
 - **Input**: `panel` fill, 2px `line-strong` outline, 50px tall; the primary button can sit inside.
 - **Queue row**: no card; 1px `line` under it, thumbnail, title (Inter Tight 14/500), a status

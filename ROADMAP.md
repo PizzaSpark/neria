@@ -310,15 +310,53 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    template is still `filename_template`, so old settings keep working. Applies to single
    videos; picked playlist/post items keep "01 Title". Later, if wanted: dropping a field at
    an exact spot in the line. `NERIA_DIALOG=names`
-9. **Bulk and quick download**: paste several links at once (one per line, or a text file) →
+9. ✅ **Bulk and quick download**: paste several links at once (one per line, or a text file) →
    one row per link, skipping duplicates. "Paste & download" with your defaults (skips the
    preview) and an optional clipboard watcher that offers detected links
-10. **Queue order**: drag waiting rows to reorder; "Move to top" / "Move to bottom" (Ctrl+↑ /
+   Built: two or more links in the box (one per line, spaces, commas, or glued together by
+   the one-line box: `probe::split_links`), or a dropped `.txt`, list as "5 links" in the
+   picker (`bulk_ui.rs`, `Bulk` global): each looked up, three at a time, with its title,
+   length and picture; unticked with a tag when it's In the queue, Downloaded before, Twice
+   in this list, a playlist/post or Spotify link (Paste it on its own) or Can't download.
+   Download adds one plain row per ticked link, in the list's order (per-row quality menu
+   as in the picker). Download ▾ → **Paste & download** (also Ctrl+Shift+V in the link box)
+   queues every link on the clipboard with the chips as they are; Spotify links go to the
+   box instead (they need their look-up). Settings → Download → "Offer links I copy in
+   other apps" (off by default): Neria reads the clipboard only when Windows says
+   something was copied, and only offers a lone link copied outside Neria: a "Link copied"
+   strip on the Download page (Download / Preview / ✕), a notification from the tray.
+   `NERIA_COPIED=<link>` for checks
+10. ✅ **Queue order**: drag waiting rows to reorder; "Move to top" / "Move to bottom" (Ctrl+↑ /
     Ctrl+↓); running jobs stay put, the next free slot takes the top waiting row; groups move
     as one (and can be reordered inside)
-11. **Watch the link before downloading**: a play button on the preview that streams it (same
+    Built (`order_ui.rs`, core `Queue::reorder`): waiting rows now read top-down in the
+    order they start, so a new link lands below the last waiting row instead of on top. A
+    ≡ grip on waiting and paused rows (wide and medium; drag it, or ↑ / ↓ and Ctrl+↑ / ↓ on
+    it) and ⋯ → Move to top / Move to bottom (compact: in the row's ⋯ menu, no grip).
+    Running and finished rows stay put; a playlist card moves with its rows, which move
+    among themselves. The list is the truth: after a change the queue is told the order it
+    shows (and `queue.json` keeps it)
+11. ✅ **Watch the link before downloading**: a play button on the preview that streams it (same
     player as "Clip first", without the trimming)
-12. Later: follow a channel/playlist and download new uploads on a schedule
+    Built: a yellow play mark on a single video's preview opens the Clip page as "Watch it
+    first." (`Watch` global, `clipper.rs`): plays at once, no In/Out, frame steps or loop;
+    Back, Clip this (turns In/Out on) and Download (the whole link with the chips, as from
+    the preview). A file that was open in the clipper comes back on Back, with its In/Out.
+    Listening volume and mute (M) next to the time, on the Clip page in both modes (the
+    Clip track's "Preview volume"); playback pauses whenever you leave the Clip page.
+    `NERIA_WATCH=<file or link>` for checks
+12. ✅ Follow a channel/playlist and download new uploads on a schedule
+    Built (core `follow.rs`, `following.json`; `follow_ui.rs`): "Follow" under the picker
+    of a channel or playlist preview; Settings → Following lists them (how often: hourly /
+    daily / weekly, checked when, new found, Check now, Pause / Resume, Unfollow). Only
+    uploads new since you followed are downloaded, in the kind of file the chips said then,
+    as one card ("Kurzgesagt · 2 new") into a folder named after the channel/playlist.
+    Channels are read from their Videos tab, newest 40; playlists whole. An upload counts
+    as seen once it downloaded (`history::ever_downloaded`, so a deleted file isn't fetched
+    again) or failed three checks; premieres not yet live are left for later. Checks run
+    one at a time while Neria runs (tray too), every minute looking for due ones; missed
+    ones run 20 s after start. Channel links (`/@name`) now preview their videos instead
+    of their tabs (`probe::channel_videos_url`). Example: `--example follow`
 
 ### Music (Spotify and lyrics)
 1. **Synced lyrics from more sources (Musixmatch first).** Musixmatch is where Spotify's own
@@ -345,8 +383,8 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
 
 ### Clip / edit
 1. **Audio controls**, two separate things so it's clear what ends up in the file:
-   - **Preview volume**: a volume slider + mute for listening (mpv `volume`); never changes
-     the exported clip
+   - ✅ **Preview volume**: a volume slider + mute for listening (mpv `volume`); never changes
+     the exported clip (built with Download track 11: `Watch.volume` / `Watch.muted`, M)
    - **Clip audio**, applied on export: keep / mute / gain (± dB) / **normalize** (ffmpeg
      `loudnorm`, presets like -14 LUFS for YouTube/TikTok/Discord, -16 for podcasts) / fade
      in / fade out, with a live preview. Fast · lossless still works: only the audio is

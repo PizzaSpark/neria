@@ -151,6 +151,24 @@ Design choices: `design/download-track.html` (all the recommended options were p
 - [ ] Captions only, then paste the link again: no "You downloaded this" (fixed: captions
       aren't recorded as the video).
 
+## 9. Several links, Paste & download, clipboard watcher
+- [ ] Paste three YouTube links on separate lines: "3 links", each row fills in its title,
+      length and picture; Download makes three rows (not a playlist card), in that order.
+- [ ] Ctrl+V of lines into the box (they may arrive glued together): still split.
+- [ ] A link already in the queue / downloaded before / pasted twice (`&list=` and plain):
+      unticked with "In the queue" / "Downloaded before" / "Twice in this list".
+- [ ] A playlist link and a Spotify link among them: "Paste it on its own", unticked.
+- [ ] Drop a `.txt` with links (one per line): the same list. A `.txt` without links:
+      "There are no links in that file."
+- [ ] Download ▾ → Paste & download with two links on the clipboard: two rows start, no
+      preview; toast says so. Ctrl+Shift+V in the link box does the same (and doesn't
+      paste the text). Only a Spotify link: it goes into the box with its preview.
+- [ ] Settings → Download → "Offer links I copy in other apps": copy a link in the
+      browser → the strip; Download / Preview / ✕ work. Copying the same link again doesn't
+      offer it twice; copying in Neria (the link box, Copy report) doesn't offer anything.
+- [ ] In the tray with the watcher on: a notification "Link copied"; clicking it shows
+      Neria with the strip. Off: nothing, and no clipboard reads (no CPU use).
+
 ## 10. Queue order
 - [ ] Two links waiting and one running: the waiting ones read top-down in the order they
       start; a new link lands below the last waiting row (not on top, as before).
@@ -162,3 +180,32 @@ Design choices: `design/download-track.html` (all the recommended options were p
 - [ ] A waiting playlist card moves as one block; inside it, waiting songs move among
       themselves. The card keeps its ≡ while its rows report progress.
 - [ ] The order survives a restart (`queue.json` is written in that order).
+
+## 11. Watch before downloading
+- [ ] A YouTube video's preview has the yellow play mark (not playlists, posts, Spotify,
+      GIFs, a list of links). Tab reaches it, Enter starts it.
+- [ ] "Watch it first.": plays by itself, no In/Out handles or buttons, Space / ← → / M
+      work, I and O do nothing. Volume slider and mute change the sound.
+- [ ] Download: back on the Download page, the video is queued with the chips' choice.
+- [ ] Clip this: In/Out appear (whole video), Download clip works as with Clip first.
+- [ ] A file was open in the clipper with In/Out set: watch a link, Back → the file is
+      back with its In/Out. Clip first on a link, then watch the same link, Back → still
+      open for clipping.
+- [ ] Leave the Clip page while it plays (Download tab): the sound stops.
+
+## 12. Follow a channel or playlist
+- [ ] Paste `https://www.youtube.com/@kurzgesagt`: the preview lists videos (not "Videos"
+      and "Shorts"); "Follow" under the picker. Follow → toast, button says "Following".
+- [ ] Settings → Following: the channel, "daily · checked just now". Check now: nothing
+      new (only uploads after following count).
+- [ ] Edit `following.json`: remove the newest link from `seen`, Check now: one card
+      "Kurzgesagt · 1 new", saved in `Video\Kurzgesagt – In a Nutshell\`. Next check:
+      nothing new (it's pending, then seen once downloaded).
+- [ ] Delete that file and check again: it isn't downloaded again.
+- [ ] Hourly / Weekly, Pause (no checks; "paused"), Resume, Unfollow (gone; the preview's
+      button says Follow again).
+- [ ] A playlist: Follow, add a video to it on YouTube, Check now: that one downloads.
+- [ ] Close Neria for longer than the interval, start it: the missed check runs about 20 s
+      after the tools are ready. With Neria in the tray, checks still run.
+- [ ] Offline at check time: "couldn't check: …" in the list; next check works again.
+- [ ] Audio only picked when following: new uploads come as audio, in `Audio\<name>\`.

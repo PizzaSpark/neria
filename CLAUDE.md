@@ -36,8 +36,12 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
     as a Slint image), `compressor.rs` (compress page), `signin.rs` (`neria --sign-in <site>`:
     the WebView2 sign-in window, its own process) + `signin_ui.rs`, `extras_ui.rs` (captions,
     audio tracks, chapters), `background_ui.rs` (tray, notifications, Download later),
-    `names_ui.rs` (filename builder). Core: `cookies.rs` (per-site cookie files, only ever
-    passed for links of their own site), `tracks.rs`, `names.rs`.
+    `names_ui.rs` (filename builder), `order_ui.rs` (queue order: the list is the truth, the
+    queue is told the order it shows), `bulk_ui.rs` (several links, Paste & download, clipboard
+    watcher), `follow_ui.rs` (Follow, Settings → Following, the checks). Watch mode lives in
+    `clipper.rs` (`Watch` global). Core: `cookies.rs` (per-site cookie files, only ever
+    passed for links of their own site; each yt-dlp run gets its own copy), `tracks.rs`,
+    `names.rs`, `follow.rs` (`following.json`).
 
 ## Commands
 ```bash
@@ -56,6 +60,8 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example verify -- <spotify track id> [--no-spotify] <file|youtube url>...`
   (audio check scores; `--no-spotify` forces the Deezer/Apple fallback reference)
+- `NERIA_HOME=target/debug cargo run -p neria-core --example follow -- <channel or playlist link>`
+  (what following it would see: the list a check reads and its newest entries; read-only)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example updates -- [--any-age] [--update <tool>]`
   (new Neria release / newer tool builds; `--update` re-downloads into NERIA_HOME/bin, use a scratch copy)
 
@@ -63,7 +69,7 @@ Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_C
 `NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
 (auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
-failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_SETTINGS` (open the settings drawer; `download`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_UPDATE_URL` (check this "latest
+failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_SETTINGS` (open the settings drawer; `download`, `following`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_COPIED` (a link: show the clipboard watcher's "Link copied" strip), `NERIA_WATCH` (a file or link: open it in watch mode), `NERIA_UPDATE_URL` (check this "latest
 release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),
 `NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_DEMO` (sample queue
 rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog), `NERIA_DIALOG` (open a dialog with sample
