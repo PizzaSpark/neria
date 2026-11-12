@@ -15,6 +15,7 @@ use neria_core::{fmt, history, post, probe, report, tools};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod background_ui;
+mod bulk_ui;
 mod clipper;
 mod compressor;
 mod drop_ui;
@@ -774,6 +775,7 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
                 quality: 0,
                 can_quality,
                 number: Default::default(),
+                tag: Default::default(),
             };
             let rows = vec![
                 item("Video", "Sunset over the harbour, long take", "2:41", true, true),
@@ -1019,6 +1021,7 @@ fn show_duplicate(ui: &AppWindow, state: &ProbeState, url: &str, earlier: Option
 /// Empty the "what to download" list.
 fn clear_picker(ui: &AppWindow, state: &ProbeState) {
     state.items.borrow_mut().clear();
+    bulk_ui::clear(ui);
     ui.set_pick_items(ModelRc::from(Rc::new(VecModel::<PickItem>::default())));
     ui.set_pick_checked(0);
     ui.set_pick_note("".into());
@@ -1100,6 +1103,7 @@ fn show_picker(ui: &AppWindow, state: &ProbeState, info: &probe::MediaInfo, my_g
             // Videos only gallery-dl saw are saved from their file address, as they are.
             can_quality: it.kind == post::ItemKind::Video && it.direct_url.is_none(),
             number: Default::default(),
+            tag: Default::default(),
         })
         .collect();
     ui.set_pick_checked(rows.len() as i32);
@@ -1163,6 +1167,24 @@ fn show_problem(ui: &AppWindow, title: &str, hint: &str, permanent: bool) {
 }
 
 fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settings>>, text: &str) {
+    // Several links (one per line, or glued together by the one-line box): pick which.
+    let links = probe::split_links(text);
+    if links.len() >= 2 {
+        let joined = links.join(" ");
+        if !ui.get_tools_ready() || *state.last_url.borrow() == joined {
+            return;
+        }
+        *state.last_url.borrow_mut() = joined;
+        let my_gen = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        clear_picker(ui, state);
+        clear_link_notes(ui, state);
+        extras_ui::clear(ui);
+        signin_ui::show_for_problem(ui, "", None);
+        ui.set_probe_is_spotify(false);
+        ui.set_probe_is_gif(false);
+        bulk_ui::show(ui, state, links, my_gen, settings.lock().unwrap().clone());
+        return;
+    }
     let Some(url) = link_of(text) else {
         state.generation.fetch_add(1, Ordering::SeqCst);
         clear_picker(ui, state);
@@ -1450,6 +1472,7 @@ fn main() -> anyhow::Result<()> {
     match_ui::install(&ui, queue.clone());
     updates_ui::install(&ui);
     order_ui::setup(&ui);
+    bulk_ui::install(&ui, queue.clone(), settings.clone());
 
     ui.on_url_edited({
         let weak = ui.as_weak();
@@ -1478,7 +1501,13 @@ fn main() -> anyhow::Result<()> {
         move || {
             let ui = weak.unwrap();
             // Enter in the link box gets here too, so re-check what the button checks.
-            let Some(url) = link_of(&ui.get_url()) else { return };
+            let bulk = bulk_ui::active(&ui);
+            let url = if bulk {
+                String::new()
+            } else {
+                let Some(url) = link_of(&ui.get_url()) else { return };
+                url
+            };
             if !ui.get_tools_ready() || ui.get_probe_blocked() {
                 return;
             }
@@ -1489,7 +1518,10 @@ fn main() -> anyhow::Result<()> {
             // The first download: the "How it works" steps have done their job.
             ui.set_show_tips(false);
             save();
-            if neria_core::spotify::parse_link(&url).is_some() {
+            if bulk {
+                // Several pasted links: one plain row each, in the list's order.
+                bulk_ui::enqueue(&ui, &probe_state, &queue);
+            } else if neria_core::spotify::parse_link(&url).is_some() {
                 // First time: explain where the audio comes from (once the lookup is done).
                 let looked_up = probe_state.spotify.lock().unwrap().as_ref().is_some_and(|p| p.url == url);
                 if looked_up && ui.get_spotify_explain() && !HEADS_UP_OK.swap(false, Ordering::SeqCst) {

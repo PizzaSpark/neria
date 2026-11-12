@@ -164,6 +164,11 @@ pub struct Note {
     pub failed: bool,
 }
 
+/// Neria is in the tray (its window hidden).
+pub fn in_tray() -> bool {
+    IN_TRAY.with(Cell::get)
+}
+
 fn window_focused(ui: &AppWindow) -> bool {
     !IN_TRAY.with(Cell::get) && ui.window().with_winit_window(|w| w.has_focus()).unwrap_or(false)
 }

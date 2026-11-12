@@ -129,6 +129,25 @@ fn dropped(ui: &AppWindow, path: PathBuf) {
         return;
     }
     let e = ext(&path);
+    // A list of links (one per line): into the Download box, which lists them.
+    if e == "txt" {
+        let text = std::fs::metadata(&path)
+            .ok()
+            .filter(|m| m.len() < 1_000_000)
+            .and_then(|_| std::fs::read_to_string(&path).ok())
+            .unwrap_or_default();
+        let links = probe::split_links(&text);
+        if links.is_empty() {
+            crate::show_toast(ui, "There are no links in that file.");
+            return;
+        }
+        let joined = links.join(" ");
+        ui.set_drawer_open(false);
+        ui.set_page(0);
+        ui.set_url(joined.as_str().into());
+        ui.invoke_url_edited(joined.into());
+        return;
+    }
     let video = VIDEO.contains(&e.as_str());
     let audio = AUDIO.contains(&e.as_str());
     if !video && !audio {

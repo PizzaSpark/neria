@@ -1,11 +1,11 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { JobItem, PickItem, SyncItem } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, Notice, Divider, Thumb, Menu, MenuItem } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, Notice, Divider, Thumb, Menu, MenuItem } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
-import { Accounts, Extras, Background, Presets } from "../globals.slint";
+import { Accounts, Extras, Background, Presets, Bulk } from "../globals.slint";
 import { ExtrasRow } from "../components/extras-row.slint";
 import { UpdateBanner } from "../components/update-banner.slint";
 
@@ -196,6 +196,59 @@ export component DownloadPage inherits Rectangle {
             }
         }
 
+        // The clipboard watcher: a link was just copied somewhere else.
+        if Bulk.copied != "": Rectangle {
+            height: 44px;
+            border-radius: 10px;
+            background: Theme.raised;
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 6px;
+                spacing: 8px;
+                Icon {
+                    horizontal-stretch: 0;
+                    text: "\u{E8C8}";
+                    font-size: 14px;
+                    color: Theme.muted;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: (Screen.compact ? "" : "Link copied: ") + Bulk.copied;
+                    color: Theme.ink;
+                    font-size: 13px;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    GhostButton {
+                        compact: true;
+                        text: "Download";
+                        clicked => { Bulk.copied-download(); }
+                    }
+                }
+                if !Screen.compact: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    GhostButton {
+                        compact: true;
+                        text: "Preview";
+                        clicked => { Bulk.copied-preview(); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    IconButton {
+                        icon: "\u{E711}";
+                        label: "Dismiss";
+                        clicked => { Bulk.copied-dismiss(); }
+                    }
+                }
+            }
+        }
+
         if root.update-banner || root.update-state == 2 || root.update-state == 3: UpdateBanner {
             state: root.update-state;
             version: root.update-version;
@@ -213,6 +266,7 @@ export component DownloadPage inherits Rectangle {
             placeholder: "Paste a link here";
             edited(t) => { root.url-edited(t); }
             accepted => { root.start-download(); }
+            paste-download => { Bulk.paste-download(); }
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
@@ -243,14 +297,21 @@ export component DownloadPage inherits Rectangle {
         }
 
         dl-menu := PopupWindow {
-            x: link.x + link.width - 220px;
+            x: link.x + link.width - 260px;
             y: link.y + link.height + 6px;
             Menu {
-                width: 220px;
+                width: 260px;
                 MenuItem {
                     icon: "\u{E896}";
                     text: "Download now";
                     clicked => { root.start-download(); }
+                }
+                // Every link on the clipboard, with the chips as they are; skips the preview.
+                MenuItem {
+                    icon: "\u{E77F}";
+                    text: "Paste & download";
+                    shortcut: "Ctrl+Shift+V";
+                    clicked => { Bulk.paste-download(); }
                 }
                 MenuItem {
                     icon: "\u{E823}";

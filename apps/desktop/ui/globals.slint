@@ -92,6 +92,21 @@ export global Background {
     callback test-sound(bool); // failed?
 }
 
+// Several links at once, "Paste & download" and the clipboard watcher.
+export global Bulk {
+    // The picker lists pasted links (not a playlist's items): no numbering, "5 links".
+    in property <bool> links;
+    // Paste & download (Download ▾, Ctrl+Shift+V): every link on the clipboard, your defaults.
+    callback paste-download();
+    // The watcher (Settings → Download, off by default) and its strip on the Download page.
+    in-out property <bool> watch;
+    in property <string> copied; // the link just copied ("" = no strip)
+    callback watch-changed();
+    callback copied-download();
+    callback copied-preview();
+    callback copied-dismiss();
+}
+
 // Queue actions that rows call directly.
 export global QueueActions {
     callback start-now(int); // a "Download later" row (or a card: the group, negated)

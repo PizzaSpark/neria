@@ -438,6 +438,8 @@ export component LinkField inherits Rectangle {
     public function focus-input() { input.focus(); }
     callback edited(string);
     callback accepted();
+    // Ctrl+Shift+V in the box: "Paste & download" instead of a plain paste.
+    callback paste-download();
     height: 54px;
     border-radius: 12px;
     background: Theme.panel;
@@ -466,21 +468,35 @@ export component LinkField inherits Rectangle {
                 vertical-alignment: center;
                 overflow: elide;
             }
-            input := TextInput {
+            FocusScope {
                 x: 0;
                 width: parent.width;
                 height: parent.height;
-                text <=> root.text;
-                color: Theme.ink;
-                font-family: Theme.body;
-                font-size: 15px;
-                vertical-alignment: center;
-                single-line: true;
-                accessible-placeholder-text: root.placeholder;
-                selection-background-color: Theme.pop.with-alpha(0.45);
-                selection-foreground-color: Theme.ink;
-                edited => { root.edited(self.text); }
-                accepted => { root.accepted(); }
+                focus-on-click: false;
+                focus-on-tab-navigation: false;
+                capture-key-pressed(event) => {
+                    if event.modifiers.control && event.modifiers.shift && (event.text == "v" || event.text == "V") {
+                        root.paste-download();
+                        return accept;
+                    }
+                    reject
+                }
+                input := TextInput {
+                    x: 0;
+                    width: parent.width;
+                    height: parent.height;
+                    text <=> root.text;
+                    color: Theme.ink;
+                    font-family: Theme.body;
+                    font-size: 15px;
+                    vertical-alignment: center;
+                    single-line: true;
+                    accessible-placeholder-text: root.placeholder;
+                    selection-background-color: Theme.pop.with-alpha(0.45);
+                    selection-foreground-color: Theme.ink;
+                    edited => { root.edited(self.text); }
+                    accepted => { root.accepted(); }
+                }
             }
         }
         @children
@@ -846,6 +862,8 @@ export component Menu inherits Rectangle {
 export component MenuItem inherits Rectangle {
     in property <string> icon;
     in property <string> text;
+    // Its keyboard shortcut, said quietly on the right ("Ctrl+Shift+V").
+    in property <string> shortcut;
     callback clicked();
     height: 36px;
     border-radius: 8px;
@@ -879,6 +897,14 @@ export component MenuItem inherits Rectangle {
             font-size: 13px;
             vertical-alignment: center;
             overflow: elide;
+        }
+        if root.shortcut != "": Text {
+            horizontal-stretch: 0;
+            text: root.shortcut;
+            color: Theme.muted;
+            font-family: Theme.mono;
+            font-size: 11px;
+            vertical-alignment: center;
         }
     }
 }

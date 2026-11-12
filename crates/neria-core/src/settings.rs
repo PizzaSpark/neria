@@ -115,6 +115,9 @@ pub struct Settings {
     /// The first-run "How it works" steps were seen through (a download started, or the
     /// user hid them).
     pub tips_done: bool,
+    /// Offer links copied in other apps (a strip on the Download page, a notification from
+    /// the tray). Off by default.
+    pub watch_clipboard: bool,
     /// Captions languages picked last time (ticked again when a video has them).
     pub caption_langs: Vec<String>,
     pub caption_format: crate::tracks::SubFormat,
@@ -167,6 +170,7 @@ impl Default for Settings {
             check_updates: true,
             theme: "system".into(),
             tips_done: false,
+            watch_clipboard: false,
             caption_langs: Vec::new(),
             caption_format: Default::default(),
             caption_mode: Default::default(),

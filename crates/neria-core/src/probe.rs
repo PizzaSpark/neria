@@ -64,6 +64,45 @@ pub fn looks_like_url(s: &str) -> bool {
     (s.starts_with("http://") || s.starts_with("https://")) && s.len() > 10 && !s.contains(char::is_whitespace)
 }
 
+/// Every link in pasted text (one per line, or separated by spaces or commas), in order,
+/// each once. Links pasted into a one-line box can arrive glued together
+/// (`https://a…https://b…`), so they're split where the next `http(s)://` starts too.
+/// Spotify URIs count; `https://` is added to links typed without it.
+pub fn split_links(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for word in text.split(|c: char| c.is_whitespace() || c == ',') {
+        let word = word.trim_matches(|c: char| matches!(c, '<' | '>' | '"' | '\'' | '(' | ')' | ';'));
+        if word.is_empty() {
+            continue;
+        }
+        // Start of every link glued into this word.
+        let mut starts: Vec<usize> = Vec::new();
+        for pat in ["https://", "http://"] {
+            starts.extend(word.match_indices(pat).map(|(i, _)| i));
+        }
+        starts.sort_unstable();
+        starts.dedup();
+        let pieces: Vec<&str> = if starts.len() > 1 || starts.first().is_some_and(|&s| s > 0) {
+            let mut cut = starts.clone();
+            if cut.first() != Some(&0) {
+                cut.insert(0, 0);
+            }
+            cut.iter().enumerate().map(|(k, &s)| &word[s..cut.get(k + 1).copied().unwrap_or(word.len())]).collect()
+        } else {
+            vec![word]
+        };
+        for piece in pieces {
+            let link = if piece.starts_with("spotify:") { Some(piece.to_string()) } else { normalize_url(piece) };
+            if let Some(link) = link
+                && !out.contains(&link)
+            {
+                out.push(link);
+            }
+        }
+    }
+    out
+}
+
 pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
     // Photos in X/Facebook posts: ask gallery-dl at the same time.
     let gallery = crate::post::wants_gallery(url).then(|| {
@@ -553,6 +592,18 @@ pub fn clean_error(msg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn splits_pasted_links() {
+        let text = "https://youtu.be/a\n  https://vimeo.com/1, youtube.com/watch?v=b\r\nhello\nhttps://youtu.be/a";
+        assert_eq!(split_links(text), ["https://youtu.be/a", "https://vimeo.com/1", "https://youtube.com/watch?v=b"]);
+        // Glued together by a one-line box.
+        assert_eq!(split_links("https://youtu.be/ahttps://youtu.be/b"), ["https://youtu.be/a", "https://youtu.be/b"]);
+        assert_eq!(split_links("see:https://youtu.be/a"), ["https://youtu.be/a"]);
+        assert_eq!(split_links("<https://youtu.be/a> spotify:track:1"), ["https://youtu.be/a", "spotify:track:1"]);
+        assert_eq!(split_links("https://youtu.be/a"), ["https://youtu.be/a"]);
+        assert!(split_links("just some words").is_empty());
+    }
 
     #[test]
     fn playlist_of_a_video_link() {

@@ -1,7 +1,7 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { Accounts, Background, Names } from "../globals.slint";
+import { Accounts, Background, Names, Bulk } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider } from "../widgets.slint";
 
 // One group of settings under a small heading.
@@ -300,6 +300,14 @@ export component SettingsDrawer inherits Rectangle {
                                     text: "Number playlist and post items in order (01, 02…)";
                                     checked <=> root.number-items;
                                     toggled => { root.settings-changed(); }
+                                }
+                                Tick {
+                                    text: "Offer links I copy in other apps";
+                                    checked <=> Bulk.watch;
+                                    toggled => { Bulk.watch-changed(); }
+                                }
+                                Hint {
+                                    text: "A strip on the Download page (a notification while Neria is in the tray) lets you download or preview it. Neria only looks when something is copied, and only at a lone link.";
                                 }
                             }
 
