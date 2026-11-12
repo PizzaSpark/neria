@@ -70,7 +70,7 @@ New-Item -ItemType Directory -Force (Join-Path $home_ "cookies") | Out-Null
 
 # A followed channel and playlist, for Settings → Following.
 @(
-  @{ url = "https://www.youtube.com/@kurzgesagt/videos"; name = "Kurzgesagt – In a Nutshell"; channel = $true; every = "daily"; last_check = ($now - 7200); last_new = 1 },
+  @{ url = "https://www.youtube.com/@kurzgesagt/videos"; name = "Kurzgesagt - In a Nutshell"; channel = $true; every = "daily"; last_check = ($now - 7200); last_new = 1 },
   @{ url = "https://www.youtube.com/playlist?list=PL1"; name = "Lo-fi beats to study to"; every = "weekly"; paused = $true; last_check = ($now - 90000) }
 ) | ConvertTo-Json | ForEach-Object { [IO.File]::WriteAllText((Join-Path $home_ "following.json"), $_) }
 
