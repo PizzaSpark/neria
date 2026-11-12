@@ -150,40 +150,50 @@ export component GhostButton inherits Rectangle {
     // What a screen reader says; needed when the button is an icon only.
     in property <string> label: root.text;
     callback clicked();
-    height: root.compact ? 30px : 40px;
-    border-radius: root.compact ? 8px : 10px;
+    // Regular size matches PrimaryButton exactly: the same 44px slot with a 41px face at
+    // the top (the yellow button's 3px shadow sits below its face), so a pair lines up.
+    height: root.compact ? 30px : 44px;
+    // Sized by its content (which sits inside the face).
+    min-width: row.min-width;
+    preferred-width: row.preferred-width;
     accessible-role: button;
     accessible-label: root.label;
     accessible-action-default => { root.clicked(); }
-    KeyPress {
-        radius: root.border-radius;
-        activated => { root.clicked(); }
-    }
-    background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
-    border-width: 2px;
-    border-color: ta.has-hover ? Theme.muted : Theme.line-strong;
-    animate background, border-color { duration: 100ms; }
-    ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-    HorizontalLayout {
-        padding-left: root.compact ? 10px : 14px;
-        padding-right: root.compact ? 10px : 14px;
-        spacing: 7px;
-        alignment: center;
-        if root.icon != "": Icon {
-            text: root.icon;
-            font-size: root.compact ? 12px : 13px;
-            color: Theme.ink;
+    face := Rectangle {
+        y: 0;
+        width: parent.width;
+        height: root.compact ? parent.height : parent.height - 3px;
+        border-radius: root.compact ? 8px : 10px;
+        background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
+        border-width: 2px;
+        border-color: ta.has-hover ? Theme.muted : Theme.line-strong;
+        animate background, border-color { duration: 100ms; }
+        KeyPress {
+            radius: parent.border-radius;
+            activated => { root.clicked(); }
         }
-        if root.text != "": Text {
-            text: root.text;
-            color: Theme.ink;
-            font-family: Theme.body;
-            font-size: root.compact ? 12px : 13px;
-            font-weight: 500;
-            vertical-alignment: center;
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+        }
+        row := HorizontalLayout {
+            padding-left: root.compact ? 10px : 14px;
+            padding-right: root.compact ? 10px : 14px;
+            spacing: 7px;
+            alignment: center;
+            if root.icon != "": Icon {
+                text: root.icon;
+                font-size: root.compact ? 12px : 13px;
+                color: Theme.ink;
+            }
+            if root.text != "": Text {
+                text: root.text;
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: root.compact ? 12px : 13px;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
         }
     }
 }

@@ -270,8 +270,8 @@ export component DownloadPage inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
+                // Regular size: the same height as Download next to it.
                 GhostButton {
-                    compact: true;
                     text: "Paste";
                     icon: "\u{E77F}";
                     clicked => { root.paste(); }
@@ -350,6 +350,12 @@ export component DownloadPage inherits Rectangle {
                 if root.probe-state != 2: Icon {
                     text: root.probe-state == 1 ? "\u{E895}" : root.probe-blocked ? "\u{E783}" : "\u{E7BA}";
                     color: root.probe-state != 3 ? Theme.muted : root.probe-blocked ? Theme.bad : Theme.warn;
+                    font-size: 20px;
+                }
+                // Several pasted links: a link sign instead of a picture.
+                if root.probe-state == 2 && Bulk.links: Icon {
+                    text: "\u{E71B}";
+                    color: Theme.muted;
                     font-size: 20px;
                 }
                 // One video (not a song list, a post's photos or a list of links): watch it.

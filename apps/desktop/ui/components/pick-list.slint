@@ -176,7 +176,7 @@ export component PickList inherits VerticalLayout {
                     Tag { text: item.tag; }
                 }
                 // Compact: the length makes way for the quality menu.
-                if !Screen.compact || !item.can-quality: Text {
+                if !Screen.compact || !item.can-quality || item.tag != "": Text {
                     horizontal-stretch: 0;
                     text: item.detail;
                     color: Theme.muted;
@@ -184,8 +184,9 @@ export component PickList inherits VerticalLayout {
                     font-size: 11.5px;
                     vertical-alignment: center;
                 }
-                // This video only: another quality or format, or just its audio.
-                if item.can-quality: VerticalLayout {
+                // This video only: another quality or format, or just its audio. Not on a
+                // pasted link that says why it's unticked (the title needs the room).
+                if item.can-quality && item.tag == "": VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 0;
                     ComboBox {

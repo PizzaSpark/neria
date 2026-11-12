@@ -75,6 +75,7 @@ fn summary(ui: &AppWindow) {
         ("Downloaded before", "downloaded before"),
         ("Paste it on its own", "to paste on their own"),
         ("Can't download", "can't be downloaded"),
+        ("Twice in this list", "twice in this list"),
     ] {
         let n = count(tag);
         if n > 0 {
@@ -190,7 +191,14 @@ fn looked_up(
             } else {
                 row.detail = info.duration.map(fmt::duration).unwrap_or_default().into();
                 row.can_quality = !info.gif;
-                if state.queue.find_unfinished(info.key.as_deref(), url).is_some() {
+                // The same video twice in what was pasted (a `&list=` link and a plain one).
+                let twice = info.key.as_ref().is_some_and(|k| {
+                    KEYS.with(|keys| keys.borrow().iter().any(|(u, other)| u != url && other.as_ref() == Some(k)))
+                });
+                if twice {
+                    row.tag = "Twice in this list".into();
+                    row.checked = false;
+                } else if state.queue.find_unfinished(info.key.as_deref(), url).is_some() {
                     row.tag = "In the queue".into();
                     row.checked = false;
                 } else if downloaded_before {
