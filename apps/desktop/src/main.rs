@@ -20,6 +20,7 @@ mod clipper;
 mod compressor;
 mod drop_ui;
 mod extras_ui;
+mod follow_ui;
 mod match_ui;
 mod names_ui;
 mod order_ui;
@@ -958,7 +959,7 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                 }
             }
             if let Ok(section) = std::env::var("NERIA_SETTINGS") {
-                let names = ["download", "spotify", "network", "general", "about"];
+                let names = ["download", "following", "spotify", "network", "general", "about"];
                 let section = if section.eq_ignore_ascii_case("appearance") { "general".into() } else { section };
                 if let Some(i) = names.iter().position(|n| section.eq_ignore_ascii_case(n)) {
                     ui.set_settings_section(i as i32);
@@ -1022,6 +1023,7 @@ fn show_duplicate(ui: &AppWindow, state: &ProbeState, url: &str, earlier: Option
 fn clear_picker(ui: &AppWindow, state: &ProbeState) {
     state.items.borrow_mut().clear();
     bulk_ui::clear(ui);
+    follow_ui::clear(ui);
     ui.set_pick_items(ModelRc::from(Rc::new(VecModel::<PickItem>::default())));
     ui.set_pick_checked(0);
     ui.set_pick_note("".into());
@@ -1255,6 +1257,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     ui.set_probe_meta(info.meta_line().into());
                     ui.set_probe_is_gif(info.gif || is_single_gif(&info));
                     extras_ui::set_info(&ui, &info, &settings);
+                    follow_ui::set_preview(&ui, &url, &info);
                     if info.items.len() > 1
                         && let Some(state) = PICKER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade()))
                     {
@@ -1473,6 +1476,7 @@ fn main() -> anyhow::Result<()> {
     updates_ui::install(&ui);
     order_ui::setup(&ui);
     bulk_ui::install(&ui, queue.clone(), settings.clone());
+    let _follow_checks = follow_ui::install(&ui, queue.clone(), settings.clone());
 
     ui.on_url_edited({
         let weak = ui.as_weak();

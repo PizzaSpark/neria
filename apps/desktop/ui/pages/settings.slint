@@ -1,7 +1,7 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { Accounts, Background, Names, Bulk } from "../globals.slint";
+import { Accounts, Background, Names, Bulk, Following, FollowItem } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider } from "../widgets.slint";
 
 // One group of settings under a small heading.
@@ -10,6 +10,67 @@ component Group inherits VerticalLayout {
     spacing: 8px;
     SectionTitle { text: root.title; }
     @children
+}
+
+// A followed channel or playlist: name, how it's going, and what you can do.
+component FollowRow inherits VerticalLayout {
+    in property <FollowItem> item;
+    spacing: 6px;
+    padding-bottom: 10px;
+    Text {
+        text: root.item.name;
+        color: root.item.paused ? Theme.muted : Theme.ink;
+        font-size: 13.5px;
+        font-weight: 600;
+        overflow: elide;
+    }
+    Text {
+        text: root.item.detail;
+        color: Theme.muted;
+        font-size: 12px;
+        wrap: word-wrap;
+    }
+    // Compact: two lines, so the four controls fit a 400px window.
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        ComboBox {
+            width: 104px;
+            model: ["Hourly", "Daily", "Weekly"];
+            current-index: root.item.every;
+            selected => { Following.every(root.item.url, self.current-index); }
+        }
+        GhostButton {
+            compact: true;
+            text: root.item.checking ? "Checking…" : "Check now";
+            clicked => { Following.check-now(root.item.url); }
+        }
+        if !Screen.compact: GhostButton {
+            compact: true;
+            text: root.item.paused ? "Resume" : "Pause";
+            clicked => { Following.pause(root.item.url, !root.item.paused); }
+        }
+        if !Screen.compact: GhostButton {
+            compact: true;
+            text: "Unfollow";
+            clicked => { Following.unfollow(root.item.url); }
+        }
+    }
+    if Screen.compact: HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        GhostButton {
+            compact: true;
+            text: root.item.paused ? "Resume" : "Pause";
+            clicked => { Following.pause(root.item.url, !root.item.paused); }
+        }
+        GhostButton {
+            compact: true;
+            text: "Unfollow";
+            clicked => { Following.unfollow(root.item.url); }
+        }
+    }
+    Divider { }
 }
 
 // A label on the left, its control (150px wide) on the right.
@@ -144,6 +205,7 @@ export component SettingsDrawer inherits Rectangle {
 
     property <[{icon: string, label: string}]> sections: [
         { icon: "\u{E896}", label: "Download" },
+        { icon: "\u{E728}", label: "Following" },
         { icon: "\u{E8D6}", label: "Spotify" },
         { icon: "\u{E774}", label: "Network" },
         { icon: "\u{E790}", label: "General" },
@@ -206,7 +268,7 @@ export component SettingsDrawer inherits Rectangle {
                         // Too narrow for all five: keep the open one in view (Appearance and
                         // About sit at the end).
                         function reveal() {
-                            self.content-x = root.section >= 3 ? min(0px, self.width - self.content-width) : 0px;
+                            self.content-x = root.section >= 4 ? min(0px, self.width - self.content-width) : 0px;
                         }
                         init => { self.reveal(); }
                         changed width => { self.reveal(); }
@@ -405,8 +467,29 @@ export component SettingsDrawer inherits Rectangle {
                             }
                         }
 
-                        // ---- Spotify ----
+                        // ---- Following ----
                         if root.section == 1: VerticalLayout {
+                            spacing: 22px;
+                            padding-top: Screen.compact ? 14px : 0px;
+                            padding-left: Screen.compact ? 16px : 20px;
+                            padding-right: Theme.lane;
+                            padding-bottom: 22px;
+                            alignment: start;
+
+                            Group {
+                                title: "Following";
+                                if Following.items.length == 0: Hint {
+                                    text: "Nothing yet. Paste a channel or playlist link and press Follow under its preview: Neria then downloads its new uploads by itself.";
+                                }
+                                for f in Following.items: FollowRow { item: f; }
+                            }
+                            Hint {
+                                text: "Only uploads that are new since you followed are downloaded, into a folder named after the channel or playlist, in the kind of file you had picked. Checks run while Neria is open (the tray counts); one that was missed runs when Neria starts.";
+                            }
+                        }
+
+                        // ---- Spotify ----
+                        if root.section == 2: VerticalLayout {
                             spacing: 22px;
                             padding-top: Screen.compact ? 14px : 0px;
                             padding-left: Screen.compact ? 16px : 20px;
@@ -453,7 +536,7 @@ export component SettingsDrawer inherits Rectangle {
                         }
 
                         // ---- Network ----
-                        if root.section == 2: VerticalLayout {
+                        if root.section == 3: VerticalLayout {
                             spacing: 22px;
                             padding-top: Screen.compact ? 14px : 0px;
                             padding-left: Screen.compact ? 16px : 20px;
@@ -593,7 +676,7 @@ export component SettingsDrawer inherits Rectangle {
                         }
 
                         // ---- General: closing, notifications, theme ----
-                        if root.section == 3: VerticalLayout {
+                        if root.section == 4: VerticalLayout {
                             spacing: 22px;
                             padding-top: Screen.compact ? 14px : 0px;
                             padding-left: Screen.compact ? 16px : 20px;
@@ -673,7 +756,7 @@ export component SettingsDrawer inherits Rectangle {
                         }
 
                         // ---- About ----
-                        if root.section == 4: VerticalLayout {
+                        if root.section == 5: VerticalLayout {
                             spacing: 22px;
                             padding-top: Screen.compact ? 14px : 0px;
                             padding-left: Screen.compact ? 16px : 20px;

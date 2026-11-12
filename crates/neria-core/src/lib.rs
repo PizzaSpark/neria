@@ -11,6 +11,7 @@ pub mod download;
 pub mod fingerprint;
 pub mod fmt;
 pub mod folders;
+pub mod follow;
 pub mod gif;
 pub mod history;
 pub mod media;

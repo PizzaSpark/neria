@@ -5,7 +5,7 @@ import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SectionTitle, 
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
-import { Accounts, Extras, Background, Presets, Bulk, Watch } from "../globals.slint";
+import { Accounts, Extras, Background, Presets, Bulk, Watch, Following } from "../globals.slint";
 import { ExtrasRow } from "../components/extras-row.slint";
 import { UpdateBanner } from "../components/update-banner.slint";
 
@@ -463,6 +463,33 @@ export component DownloadPage inherits Rectangle {
             move(from, to) => { root.pick-move(from, to); }
             reverse => { root.pick-reverse(); }
             number-items-toggled => { root.settings-changed(); }
+        }
+
+        // A channel or playlist: its new uploads can come by themselves.
+        if root.probe-state == 2 && Following.can-follow && !Bulk.links: HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            GhostButton {
+                compact: true;
+                horizontal-stretch: 0;
+                text: Following.followed ? "Following" : "Follow";
+                icon: Following.followed ? "\u{E73E}" : "\u{E710}";
+                clicked => {
+                    if Following.followed {
+                        Following.open-list();
+                    } else {
+                        Following.follow();
+                    }
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: Following.note;
+                color: Theme.muted;
+                font-size: 12px;
+                overflow: elide;
+                vertical-alignment: center;
+            }
         }
 
         // Spotify notices: truncated playlist, API fallback, removed songs.

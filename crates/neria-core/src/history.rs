@@ -75,6 +75,13 @@ fn recent_in(all: &[Record], limit: usize, keep: impl Fn(&std::path::Path) -> bo
         .collect()
 }
 
+/// This link was downloaded at some point (even if its file was since moved or deleted):
+/// for followed channels, so a video you deleted isn't fetched again.
+pub fn ever_downloaded(url: &str) -> bool {
+    let _guard = LOCK.lock().unwrap();
+    load().iter().any(|r| r.url == url)
+}
+
 fn find_in(all: &[Record], key: Option<&str>, url: &str) -> Option<Record> {
     all.iter().rev().filter(|r| key.map_or(r.url == url, |k| r.key == k)).find(|r| r.file.is_file()).cloned()
 }

@@ -68,6 +68,12 @@ if (-not (Test-Path $chaptered)) {
 New-Item -ItemType Directory -Force (Join-Path $home_ "cookies") | Out-Null
 "# Netscape HTTP Cookie File`n.youtube.com`tTRUE`t/`tTRUE`t0`tPREF`tx" | Set-Content -Encoding ascii (Join-Path $home_ "cookies\youtube.com.txt")
 
+# A followed channel and playlist, for Settings → Following.
+@(
+  @{ url = "https://www.youtube.com/@kurzgesagt/videos"; name = "Kurzgesagt – In a Nutshell"; channel = $true; every = "daily"; last_check = ($now - 7200); last_new = 1 },
+  @{ url = "https://www.youtube.com/playlist?list=PL1"; name = "Lo-fi beats to study to"; every = "weekly"; paused = $true; last_check = ($now - 90000) }
+) | ConvertTo-Json | ForEach-Object { [IO.File]::WriteAllText((Join-Path $home_ "following.json"), $_) }
+
 # What to capture: name -> dev hooks (see CLAUDE.md).
 $states = [ordered]@{
   "dl"         = @{ NERIA_DEMO = "1" }
@@ -81,6 +87,7 @@ $states = [ordered]@{
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-net"    = @{ NERIA_SETTINGS = "network" }
+  "set-follow" = @{ NERIA_SETTINGS = "following" }
   "signin"     = @{ NERIA_DIALOG = "signin" }
   "extras"     = @{ NERIA_DIALOG = "extras" }
   "advanced"   = @{ NERIA_DIALOG = "advanced" }

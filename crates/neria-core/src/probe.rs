@@ -103,13 +103,38 @@ pub fn split_links(text: &str) -> Vec<String> {
     out
 }
 
+/// A YouTube channel's own link (`/@name`, `/channel/…`, `/c/…`, `/user/…`, or its Home
+/// tab) lists the channel's tabs (Videos, Shorts, Live), not videos: its Videos tab
+/// instead. `None` for anything else.
+pub fn channel_videos_url(url: &str) -> Option<String> {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let host = host.to_ascii_lowercase();
+    if !matches!(host.as_str(), "youtube.com" | "www.youtube.com" | "m.youtube.com") {
+        return None;
+    }
+    let path = path.split(['?', '#']).next().unwrap_or("");
+    let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let base = match segs.as_slice() {
+        [h, ..] if h.starts_with('@') => 1,
+        ["channel" | "c" | "user", _, ..] => 2,
+        _ => return None,
+    };
+    match segs.get(base) {
+        None | Some(&"featured") => Some(format!("https://www.youtube.com/{}/videos", segs[..base].join("/"))),
+        _ => None,
+    }
+}
+
 pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
+    let videos = channel_videos_url(url);
+    let url = videos.as_deref().unwrap_or(url);
     // Photos in X/Facebook posts: ask gallery-dl at the same time.
     let gallery = crate::post::wants_gallery(url).then(|| {
         let (url, settings) = (url.to_string(), settings.clone());
         std::thread::spawn(move || crate::post::gallery(&url, &settings))
     });
-    let ytdlp = ytdlp_json(url, settings);
+    let ytdlp = ytdlp_json(url, settings, &[]);
     let mut gallery = gallery.and_then(|h| h.join().ok()).unwrap_or_default();
     // gallery-dl doesn't follow Facebook `share/` links; yt-dlp knows where they lead.
     if gallery.items.is_empty()
@@ -189,10 +214,27 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
         captions: if is_playlist { Vec::new() } else { crate::tracks::captions(&v) },
         audio_tracks: if is_playlist { Vec::new() } else { crate::tracks::audio_tracks(&v) },
         chapters: if is_playlist { Vec::new() } else { crate::tracks::chapters(&v) },
-        followable: is_playlist,
+        // Channels and playlists (their items have titles); not a post's photos.
+        followable: is_playlist && crate::post::is_playlist(&items),
         items,
         note: None,
     })
+}
+
+/// What a followed channel or playlist holds now, for its check: the newest `newest`
+/// entries (channels list newest first), or all of them. Upcoming premieres and streams
+/// that haven't started are left out (they'd only fail; they're picked up once they're on).
+pub fn list_entries(url: &str, settings: &Settings, newest: Option<usize>) -> Result<Vec<crate::post::Item>> {
+    let end = newest.map(|n| n.to_string());
+    let mut extra = vec!["--yes-playlist"];
+    if let Some(end) = &end {
+        extra.extend(["--playlist-end", end.as_str()]);
+    }
+    let mut v = ytdlp_json(url, settings, &extra)?;
+    if let Some(entries) = v.get_mut("entries").and_then(Value::as_array_mut) {
+        entries.retain(|e| !matches!(e.get("live_status").and_then(Value::as_str), Some("is_upcoming" | "is_live")));
+    }
+    Ok(crate::post::from_ytdlp(&v, url).unwrap_or_default())
 }
 
 /// A video link that's also in a playlist (`watch?v=…&list=…`): the playlist's own link,
@@ -241,10 +283,11 @@ fn no_video_problem() -> LinkProblem {
 
 /// yt-dlp's `-J` for the link. Photos (Instagram) and posts without a video come back as
 /// items without formats instead of failing the whole lookup.
-fn ytdlp_json(url: &str, settings: &Settings) -> Result<Value> {
+fn ytdlp_json(url: &str, settings: &Settings, extra: &[&str]) -> Result<Value> {
     let mut cmd = proc::command(paths::tool("yt-dlp"));
     cmd.args(["-J", "--encoding", "utf-8", "--no-warnings", "--flat-playlist", "--ignore-no-formats-error"]);
     cmd.arg(if settings.allow_playlists { "--yes-playlist" } else { "--no-playlist" });
+    cmd.args(extra);
     cmd.args(crate::cookies::args_for(url, settings));
     cmd.arg("--").arg(url);
 

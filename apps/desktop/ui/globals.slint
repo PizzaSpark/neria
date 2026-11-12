@@ -120,6 +120,31 @@ export global Watch {
     callback volume-changed();
 }
 
+// One followed channel or playlist in Settings → Following.
+export struct FollowItem {
+    url: string,
+    name: string,
+    detail: string, // "daily · checked 2 h ago · 1 new"
+    every: int, // 0 hourly, 1 daily, 2 weekly
+    paused: bool,
+    checking: bool,
+}
+
+// Follow a channel or playlist: its new uploads download by themselves (Download track 12).
+export global Following {
+    // The preview is a channel or playlist: "Follow" under it.
+    in property <bool> can-follow;
+    in property <bool> followed;
+    in property <string> note;
+    callback follow();
+    callback open-list(); // Settings → Following
+    in property <[FollowItem]> items;
+    callback check-now(string);
+    callback pause(string, bool);
+    callback unfollow(string);
+    callback every(string, int);
+}
+
 // Queue actions that rows call directly.
 export global QueueActions {
     callback start-now(int); // a "Download later" row (or a card: the group, negated)
