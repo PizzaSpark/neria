@@ -1000,8 +1000,21 @@ export component Toast inherits Rectangle {
 // far the pointer is from where it was pressed.
 export component DragHandle inherits Rectangle {
     in property <string> label: "Move";
+    // Take the keyboard when this turns true (or the handle is created with it true): a list
+    // that rebuilds its rows after a move gives the focus back to the moved row's handle.
+    in property <bool> want-focus;
     callback step(int);
     callback jump(int);
+    init => {
+        if root.want-focus {
+            fs.focus();
+        }
+    }
+    changed want-focus => {
+        if root.want-focus {
+            fs.focus();
+        }
+    }
     callback dragging(length);
     callback dropped();
     width: 24px;

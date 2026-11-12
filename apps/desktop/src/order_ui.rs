@@ -62,9 +62,9 @@ pub(crate) fn insert_at(list: &[JobItem]) -> usize {
 
 /// Move the row `id` (a card: the group, negated) by `steps` places among the rows that can
 /// move; a big number goes to the top or bottom.
-fn move_row(id: i32, steps: i32) {
+fn move_row(ui: &AppWindow, id: i32, steps: i32) {
     let model = rows();
-    let mut list: Vec<JobItem> = model.iter().collect();
+    let list: Vec<JobItem> = model.iter().collect();
     let (pos, inside) = if id < 0 {
         match list.iter().position(|j| j.header && j.group == -id) {
             Some(p) => (p, None),
@@ -84,16 +84,28 @@ fn move_row(id: i32, steps: i32) {
         return;
     }
     let (start, end) = free[k];
-    let taken: Vec<JobItem> = list.drain(start..end).collect();
-    let n = taken.len();
+    let n = end - start;
     // Before the target (moving up) or after it (moving down), in the shortened list.
+    // Row by row, so the rest of the list (and where it's scrolled to) stays as it is.
     let at = if t < k { free[t].0 } else { free[t].1 - n };
-    for (i, row) in taken.into_iter().enumerate() {
-        list.insert(at + i, row);
+    let taken: Vec<JobItem> = list[start..end].to_vec();
+    for _ in 0..n {
+        model.remove(start);
     }
-    model.set_vec(list);
+    for (i, row) in taken.into_iter().enumerate() {
+        model.insert(at + i, row);
+    }
     sync();
     refresh_movable();
+    // The moved row was rebuilt: give its grip the keyboard back, once.
+    let actions = ui.global::<QueueActions>();
+    actions.set_focus_id(id);
+    let weak = ui.as_weak();
+    slint::Timer::single_shot(std::time::Duration::from_millis(400), move || {
+        if let Some(ui) = weak.upgrade() {
+            ui.global::<QueueActions>().set_focus_id(0);
+        }
+    });
 }
 
 /// Tell the queue the start order the list shows.
@@ -131,7 +143,12 @@ pub(crate) fn refresh_movable() {
 }
 
 pub(crate) fn setup(ui: &AppWindow) {
-    ui.global::<QueueActions>().on_move(move_row);
+    let weak = ui.as_weak();
+    ui.global::<QueueActions>().on_move(move |id, steps| {
+        if let Some(ui) = weak.upgrade() {
+            move_row(&ui, id, steps);
+        }
+    });
 }
 
 #[cfg(test)]

@@ -208,31 +208,7 @@ export component JobRow inherits Rectangle {
                 label: root.job.expanded ? "Close group" : "Open group";
                 clicked => { root.toggle(); }
             }
-            if root.job.can-move && root.drag-steps != 0: Text {
-                text: (root.drag-steps < 0 ? "Up " : "Down ") + abs(root.drag-steps);
-                color: Theme.muted;
-                font-size: 12px;
-                vertical-alignment: center;
-            }
-            if root.job.can-move: VerticalLayout {
-                alignment: center;
-                DragHandle {
-                    label: "Move " + root.job.title;
-                    step(d) => { QueueActions.move(root.job.id, d); }
-                    jump(d) => { QueueActions.move(root.job.id, d * 1000); }
-                    dragging(dy) => {
-                        root.held = true;
-                        root.drag-steps = round(dy / root.height);
-                    }
-                    dropped => {
-                        if root.drag-steps != 0 {
-                            QueueActions.move(root.job.id, root.drag-steps);
-                        }
-                        root.held = false;
-                        root.drag-steps = 0;
-                    }
-                }
-            }
+            // No grip here: the title needs the room; moves are in the ⋯ menu.
           }
         }
 
@@ -350,6 +326,8 @@ export component JobRow inherits Rectangle {
                 alignment: center;
                 DragHandle {
                     label: "Move " + root.job.title;
+                    // Moving rebuilds the row: the moved one takes the keyboard back.
+                    want-focus: QueueActions.focus-id == root.job.id;
                     step(d) => { QueueActions.move(root.job.id, d); }
                     jump(d) => { QueueActions.move(root.job.id, d * 1000); }
                     dragging(dy) => {

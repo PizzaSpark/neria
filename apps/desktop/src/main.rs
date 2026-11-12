@@ -393,8 +393,11 @@ fn queue_update(weak: &slint::Weak<AppWindow>, pending: &Arc<Mutex<PendingJobs>>
                 std::mem::take(&mut p.snaps)
             };
             let mut groups = HashSet::new();
+            // Only rows that appear or start/stop waiting change the start order (progress
+            // ticks of a big playlist don't).
+            let mut reordered = false;
             for (snap, insertable) in &snaps {
-                upsert_job(&ui, snap, *insertable);
+                reordered |= upsert_job(&ui, snap, *insertable);
                 if snap.group != 0 {
                     groups.insert(snap.group as i32);
                 }
@@ -402,8 +405,10 @@ fn queue_update(weak: &slint::Weak<AppWindow>, pending: &Arc<Mutex<PendingJobs>>
             for g in groups {
                 refresh_group(g);
             }
-            order_ui::sync();
-            order_ui::refresh_movable();
+            if reordered {
+                order_ui::sync();
+                order_ui::refresh_movable();
+            }
             refresh_counts(&ui);
             let snaps: Vec<JobSnapshot> = snaps.into_iter().map(|(s, _)| s).collect();
             background_ui::after_updates(&ui, &snaps);
@@ -411,8 +416,9 @@ fn queue_update(weak: &slint::Weak<AppWindow>, pending: &Arc<Mutex<PendingJobs>>
     }
 }
 
-/// Update (or insert) a job row. The caller refreshes group cards and counters.
-fn upsert_job(ui: &AppWindow, snap: &JobSnapshot, insertable: bool) {
+/// Update (or insert) a job row. The caller refreshes group cards and counters. True when
+/// the queue's start order may have changed (a row added, or one started/stopped waiting).
+fn upsert_job(ui: &AppWindow, snap: &JobSnapshot, insertable: bool) -> bool {
     let vec = rows();
     let mut item = job_item(snap);
     if let Some(url) = &snap.thumbnail {
@@ -450,7 +456,10 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot, insertable: bool) {
             let old = vec.row_data(i).unwrap_or_default();
             item.child = old.child;
             item.can_move = old.can_move;
-            vec.set_row_data(i, item)
+            let waits = |s: i32| s == 0 || s == 6;
+            let changed = waits(old.state) != waits(item.state);
+            vec.set_row_data(i, item);
+            changed
         }
         // New jobs go below the last waiting row (top when nothing waits), so waiting rows
         // read in the order they'll start; playlist/album items follow the previous item of
@@ -467,8 +476,9 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot, insertable: bool) {
                 None => order_ui::insert_at(&vec.iter().collect::<Vec<_>>()),
             };
             vec.insert(at, item);
+            true
         }
-        None => {}
+        None => false,
     }
 }
 

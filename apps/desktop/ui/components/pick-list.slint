@@ -26,6 +26,13 @@ export component PickList inherits VerticalLayout {
     // Dragging: the row held and where it would land (-1 = not dragging).
     property <int> drag-from: -1;
     property <int> drag-to: -1;
+    // The row just moved with the keyboard: the rebuilt list gives its handle the focus back.
+    property <int> focus-row: -1;
+    Timer {
+        interval: 400ms;
+        running: root.focus-row >= 0;
+        triggered => { root.focus-row = -1; }
+    }
     property <length> row-h: 48px;
     vertical-stretch: 0;
     spacing: 6px;
@@ -100,16 +107,20 @@ export component PickList inherits VerticalLayout {
                     horizontal-stretch: 0;
                     DragHandle {
                         label: "Move " + (item.title != "" ? item.title : item.kind + " " + (i + 1));
+                        want-focus: i == root.focus-row;
                         step(d) => {
                             if i + d >= 0 && i + d < root.items.length {
+                                root.focus-row = i + d;
                                 root.move(i, i + d);
                             }
                         }
                         jump(d) => {
                             if d < 0 && i > 0 {
+                                root.focus-row = 0;
                                 root.move(i, 0);
                             }
                             if d > 0 && i < root.items.length - 1 {
+                                root.focus-row = root.items.length - 1;
                                 root.move(i, root.items.length - 1);
                             }
                         }
