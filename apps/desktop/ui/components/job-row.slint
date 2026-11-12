@@ -1,12 +1,14 @@
 import { Theme } from "../theme.slint";
 import { JobItem } from "../types.slint";
-import { Icon, GhostButton, IconButton, Bar, Tag } from "../widgets.slint";
+import { Icon, GhostButton, IconButton, Bar, Tag, Menu, MenuItem } from "../widgets.slint";
 
 // One queue row: calm (hairline, no card), with labelled actions on the right.
 export component JobRow inherits Rectangle {
     in property <JobItem> job;
-    // Narrow window: Clip / Compress shrink to icons so the title keeps its room.
+    // Medium window: Clip / Compress shrink to icons so the title keeps its room.
     in property <bool> narrow;
+    // Compact window: one main action, the rest in a ⋯ menu.
+    in property <bool> compact;
     callback cancel();
     callback remove();
     callback retry();
@@ -28,6 +30,21 @@ export component JobRow inherits Rectangle {
     property <string> tag: root.job.state == 0 ? "Waiting" : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : root.paused ? "Paused" : "";
     property <int> tag-kind: root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
 
+    // What the row offers (the same on every width; compact folds most into the menu).
+    property <bool> can-show: root.done || (root.job.header && root.job.state != 0);
+    property <bool> can-clip: root.done && !root.job.header && !root.job.still;
+    // Songs are already small; compressing is for videos.
+    property <bool> can-compress: root.can-clip && !root.job.music;
+    property <bool> can-match: root.job.music && !root.job.header && (root.done || root.failed);
+    property <bool> can-report: root.failed && !root.job.header;
+    // Compact: the one button that stays on the row. 1 pause, 2 resume, 3 retry,
+    // 4 pick match, 5 show, 6 cancel (waiting), 0 none.
+    property <int> main: root.job.can-pause ? 1 : root.job.can-resume ? 2 : root.job.can-retry ? 3
+        : root.can-match && root.job.warn ? 4 : root.can-show ? 5 : root.job.can-cancel ? 6 : 0;
+    property <bool> has-menu: (root.job.can-cancel && root.main != 6) || (root.can-show && root.main != 5)
+        || root.can-clip || (root.can-match && root.main != 4) || (root.job.can-retry && root.main != 3)
+        || root.can-report || root.job.can-remove;
+
     // A paused download keeps its bar, greyed, so you see how far it got.
     property <bool> moving: root.job.state == 1 || root.job.state == 2 || (root.paused && root.job.progress > 0);
     height: root.moving ? 72px : 62px;
@@ -43,7 +60,7 @@ export component JobRow inherits Rectangle {
     Rectangle {
         x: root.job.child ? 28px : 0;
         y: parent.height - 1px;
-        width: parent.width - 16px - self.x;
+        width: parent.width - Theme.lane - self.x;
         height: 1px;
         background: Theme.line;
     }
@@ -60,7 +77,7 @@ export component JobRow inherits Rectangle {
         spacing: 14px;
         padding-left: root.job.child ? 28px : 0;
         // Room for the list's scrollbar, which is drawn over the right edge.
-        padding-right: 16px;
+        padding-right: Theme.lane;
 
         // Thumbnail (16:9 for videos, square for song covers), or a status icon
         // until it arrives. Always a 64px slot so every title lines up.
@@ -119,7 +136,8 @@ export component JobRow inherits Rectangle {
                         kind: root.tag-kind;
                     }
                 }
-                Text {
+                // Compact: a moving row shows only its numbers (size, speed, time left).
+                if !root.compact || !root.moving || root.job.stats == "": Text {
                     text: root.job.status;
                     color: root.failed || (root.done && root.job.warn) ? Theme.ink : Theme.muted;
                     font-size: 12px;
@@ -134,7 +152,8 @@ export component JobRow inherits Rectangle {
                     font-family: root.job.music && root.done ? Theme.body : Theme.mono;
                     font-size: 11px;
                     vertical-alignment: center;
-                    horizontal-stretch: 0;
+                    horizontal-stretch: root.compact && root.moving ? 1 : 0;
+                    overflow: elide;
                 }
             }
             if root.moving: Bar {
@@ -143,7 +162,38 @@ export component JobRow inherits Rectangle {
             }
         }
 
-        VerticalLayout {
+        if root.compact: VerticalLayout {
+          alignment: center;
+          horizontal-stretch: 0;
+          HorizontalLayout {
+            spacing: 6px;
+            if root.main != 0: GhostButton {
+                compact: true;
+                text: root.main == 1 ? "Pause" : root.main == 2 ? "Resume" : root.main == 3 ? "Retry"
+                    : root.main == 4 ? "Pick match" : root.main == 5 ? "Show" : "Cancel";
+                clicked => {
+                    if root.main == 1 { root.pause(); }
+                    else if root.main == 2 { root.resume(); }
+                    else if root.main == 3 { root.retry(); }
+                    else if root.main == 4 { root.pick-match(); }
+                    else if root.main == 5 { root.open(); }
+                    else { root.cancel(); }
+                }
+            }
+            if root.has-menu: GhostButton {
+                compact: true;
+                width: 30px;
+                icon: "\u{E712}";
+                clicked => { menu.show(); }
+            }
+            if root.job.header: IconButton {
+                icon: root.job.expanded ? "\u{E70E}" : "\u{E70D}";
+                clicked => { root.toggle(); }
+            }
+          }
+        }
+
+        if !root.compact: VerticalLayout {
           alignment: center;
           horizontal-stretch: 0;
           HorizontalLayout {
@@ -219,6 +269,55 @@ export component JobRow inherits Rectangle {
                 clicked => { root.toggle(); }
             }
           }
+        }
+    }
+
+    // Compact: everything but the main action. Opens under the ⋯ button, right-aligned
+    // with it (the row's actions end at the scrollbar lane).
+    menu := PopupWindow {
+        x: root.width - Theme.lane - (root.job.header ? 38px : 0px) - 200px;
+        y: root.height / 2 + 19px;
+        Menu {
+            if root.job.can-cancel && root.main != 6: MenuItem {
+                icon: "\u{E711}";
+                text: root.job.header ? "Cancel all" : "Cancel";
+                clicked => { root.cancel(); }
+            }
+            if root.can-show && root.main != 5: MenuItem {
+                icon: "\u{E838}";
+                text: root.job.header ? "Show folder" : "Show in folder";
+                clicked => { root.open(); }
+            }
+            if root.can-clip: MenuItem {
+                icon: "\u{E8C6}";
+                text: "Clip";
+                clicked => { root.open-clipper(); }
+            }
+            if root.can-compress: MenuItem {
+                icon: "\u{E73F}";
+                text: "Compress";
+                clicked => { root.open-compressor(); }
+            }
+            if root.can-match && root.main != 4: MenuItem {
+                icon: "\u{E8D6}";
+                text: root.failed || root.job.warn ? "Pick match" : "Other match";
+                clicked => { root.pick-match(); }
+            }
+            if root.job.can-retry && root.main != 3: MenuItem {
+                icon: "\u{E72C}";
+                text: root.job.header ? "Retry failed" : "Retry";
+                clicked => { root.retry(); }
+            }
+            if root.can-report: MenuItem {
+                icon: "\u{EBE8}";
+                text: "Copy report";
+                clicked => { root.report(); }
+            }
+            if root.job.can-remove: MenuItem {
+                icon: "\u{E74D}";
+                text: "Remove from list";
+                clicked => { root.remove(); }
+            }
         }
     }
 }

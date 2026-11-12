@@ -1,5 +1,5 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick } from "../widgets.slint";
 
@@ -32,6 +32,8 @@ component SectionLink inherits Rectangle {
     in property <string> icon;
     in property <string> label;
     in property <bool> active;
+    // The compact strip is words only, so all five fit at the 400px minimum.
+    in property <bool> show-icon: true;
     callback clicked();
     height: 38px;
     border-radius: 9px;
@@ -43,10 +45,10 @@ component SectionLink inherits Rectangle {
         clicked => { root.clicked(); }
     }
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 8px;
+        padding-left: root.show-icon ? 10px : 9px;
+        padding-right: root.show-icon ? 8px : 9px;
         spacing: 9px;
-        Icon {
+        if root.show-icon: Icon {
             text: root.icon;
             font-size: 14px;
             color: root.active ? Theme.ink : Theme.dim;
@@ -67,6 +69,7 @@ component SectionLink inherits Rectangle {
 
 // The Settings drawer, sliding over the right edge of the window. Put it over the whole
 // window: clicking the dimmed part closes it. Sections on the left, one shown at a time.
+// Compact windows: a full sheet, sections as a strip along the top (it scrolls sideways).
 // Clip and Compress have no settings of their own: clips from links use the Download
 // formats, and both pages pick everything per file.
 export component SettingsDrawer inherits Rectangle {
@@ -122,32 +125,40 @@ export component SettingsDrawer inherits Rectangle {
     callback tools-update();
     callback copy-report();
 
-    background: #000000a0;
+    background: Screen.compact ? transparent : #000000a0;
     TouchArea {
         clicked => { root.close(); }
     }
 
     changed section => { scroll.content-y = 0; }
 
+    property <[{icon: string, label: string}]> sections: [
+        { icon: "\u{E896}", label: "Download" },
+        { icon: "\u{E8D6}", label: "Spotify" },
+        { icon: "\u{E774}", label: "Network" },
+        { icon: "\u{E790}", label: "Appearance" },
+        { icon: "\u{E946}", label: "About" },
+    ];
+
     Rectangle {
-        x: parent.width - self.width;
+        x: Screen.compact ? 0 : parent.width - self.width;
         y: 0;
-        // Wide enough for the section list plus the old 400px column; on narrow windows
+        // Wide enough for the section list plus the old 400px column; on medium windows
         // it leaves a strip of the page showing so it still reads as a drawer.
-        width: min(600px, parent.width - 120px);
+        width: Screen.compact ? parent.width : min(600px, parent.width - 120px);
         height: parent.height;
         background: Theme.surface;
-        border-width: 1px;
+        border-width: Screen.compact ? 0 : 1px;
         border-color: Theme.border;
         TouchArea { }
 
         VerticalLayout {
-            padding-top: 22px;
-            spacing: 14px;
+            padding-top: Screen.compact ? 16px : 22px;
+            spacing: Screen.compact ? 10px : 14px;
 
             HorizontalLayout {
-                padding-left: 22px;
-                padding-right: 22px;
+                padding-left: Screen.compact ? 16px : 22px;
+                padding-right: Screen.compact ? 12px : 22px;
                 Text {
                     text: "Settings";
                     color: Theme.text;
@@ -163,49 +174,58 @@ export component SettingsDrawer inherits Rectangle {
                 }
             }
 
+            if Screen.compact: VerticalLayout {
+                Flickable {
+                    height: 46px;
+                    content-width: max(self.width, strip.preferred-width);
+                    // Too narrow for all five: keep the open one in view (Appearance and
+                    // About sit at the end).
+                    function reveal() {
+                        self.content-x = root.section >= 3 ? min(0px, self.width - self.content-width) : 0px;
+                    }
+                    init => { self.reveal(); }
+                    changed width => { self.reveal(); }
+                    changed content-width => { self.reveal(); }
+                    strip := HorizontalLayout {
+                        alignment: start;
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        padding-bottom: 8px;
+                        spacing: 2px;
+                        for s[i] in root.sections: SectionLink {
+                            show-icon: false;
+                            icon: s.icon;
+                            label: s.label;
+                            active: root.section == i;
+                            clicked => { root.section = i; }
+                        }
+                    }
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+            }
+
             HorizontalLayout {
                 vertical-stretch: 1;
 
-                VerticalLayout {
+                if !Screen.compact: VerticalLayout {
                     width: 150px;
                     padding-left: 14px;
                     padding-right: 12px;
                     padding-bottom: 22px;
                     spacing: 4px;
                     alignment: start;
-                    SectionLink {
-                        icon: "\u{E896}";
-                        label: "Download";
-                        active: root.section == 0;
-                        clicked => { root.section = 0; }
-                    }
-                    SectionLink {
-                        icon: "\u{E8D6}";
-                        label: "Spotify";
-                        active: root.section == 1;
-                        clicked => { root.section = 1; }
-                    }
-                    SectionLink {
-                        icon: "\u{E774}";
-                        label: "Network";
-                        active: root.section == 2;
-                        clicked => { root.section = 2; }
-                    }
-                    SectionLink {
-                        icon: "\u{E790}";
-                        label: "Appearance";
-                        active: root.section == 3;
-                        clicked => { root.section = 3; }
-                    }
-                    SectionLink {
-                        icon: "\u{E946}";
-                        label: "About";
-                        active: root.section == 4;
-                        clicked => { root.section = 4; }
+                    for s[i] in root.sections: SectionLink {
+                        icon: s.icon;
+                        label: s.label;
+                        active: root.section == i;
+                        clicked => { root.section = i; }
                     }
                 }
 
-                Rectangle {
+                if !Screen.compact: Rectangle {
                     width: 1px;
                     background: Theme.line;
                 }
@@ -216,8 +236,9 @@ export component SettingsDrawer inherits Rectangle {
                     // ---- Download ----
                     if root.section == 0: VerticalLayout {
                         spacing: 22px;
-                        padding-left: 20px;
-                        padding-right: 22px;
+                        padding-top: Screen.compact ? 14px : 0px;
+                        padding-left: Screen.compact ? 16px : 20px;
+                        padding-right: Theme.lane;
                         padding-bottom: 22px;
                         alignment: start;
 
@@ -341,8 +362,9 @@ export component SettingsDrawer inherits Rectangle {
                     // ---- Spotify ----
                     if root.section == 1: VerticalLayout {
                         spacing: 22px;
-                        padding-left: 20px;
-                        padding-right: 22px;
+                        padding-top: Screen.compact ? 14px : 0px;
+                        padding-left: Screen.compact ? 16px : 20px;
+                        padding-right: Theme.lane;
                         padding-bottom: 22px;
                         alignment: start;
 
@@ -387,8 +409,9 @@ export component SettingsDrawer inherits Rectangle {
                     // ---- Network ----
                     if root.section == 2: VerticalLayout {
                         spacing: 22px;
-                        padding-left: 20px;
-                        padding-right: 22px;
+                        padding-top: Screen.compact ? 14px : 0px;
+                        padding-left: Screen.compact ? 16px : 20px;
+                        padding-right: Theme.lane;
                         padding-bottom: 22px;
                         alignment: start;
 
@@ -467,8 +490,9 @@ export component SettingsDrawer inherits Rectangle {
                     // ---- Appearance ----
                     if root.section == 3: VerticalLayout {
                         spacing: 22px;
-                        padding-left: 20px;
-                        padding-right: 22px;
+                        padding-top: Screen.compact ? 14px : 0px;
+                        padding-left: Screen.compact ? 16px : 20px;
+                        padding-right: Theme.lane;
                         padding-bottom: 22px;
                         alignment: start;
 
@@ -493,8 +517,9 @@ export component SettingsDrawer inherits Rectangle {
                     // ---- About ----
                     if root.section == 4: VerticalLayout {
                         spacing: 22px;
-                        padding-left: 20px;
-                        padding-right: 22px;
+                        padding-top: Screen.compact ? 14px : 0px;
+                        padding-left: Screen.compact ? 16px : 20px;
+                        padding-right: Theme.lane;
                         padding-bottom: 22px;
                         alignment: start;
 

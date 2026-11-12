@@ -1,5 +1,5 @@
 import { ComboBox, ListView } from "std-widgets.slint";
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { PickItem } from "../types.slint";
 import { SectionTitle, TextLink, Tick, Notice, Divider, ListRow, Thumb } from "../widgets.slint";
 
@@ -30,8 +30,8 @@ export component PickList inherits VerticalLayout {
             horizontal-stretch: 0;
         }
         Rectangle { horizontal-stretch: 1; }
-        // Only matters when several go into one folder.
-        if root.checked > 1: Tick {
+        // Only matters when several go into one folder. Compact: on its own line below.
+        if root.checked > 1 && !Screen.compact: Tick {
             text: "Number the files in order";
             checked <=> root.number-items;
             toggled => { root.number-items-toggled(); }
@@ -45,11 +45,19 @@ export component PickList inherits VerticalLayout {
             clicked => { root.all(false); }
         }
     }
+    if root.checked > 1 && Screen.compact: HorizontalLayout {
+        alignment: start;
+        Tick {
+            text: "Number the files in order";
+            checked <=> root.number-items;
+            toggled => { root.number-items-toggled(); }
+        }
+    }
     if root.note != "": Notice {
         text: root.note;
         wrap: true;
     }
-    Divider { inset-right: 16px; }
+    Divider { inset-right: Theme.lane; }
     ListView {
         height: min(root.items.length, root.visible-rows) * 48px;
         for item[i] in root.items: ListRow {
@@ -60,8 +68,8 @@ export component PickList inherits VerticalLayout {
             }
             HorizontalLayout {
                 padding-left: 4px;
-                padding-right: 26px;
-                spacing: 12px;
+                padding-right: Theme.lane;
+                spacing: Screen.compact ? 10px : 12px;
                 Tick {
                     horizontal-stretch: 0;
                     checked: item.checked;
@@ -71,8 +79,8 @@ export component PickList inherits VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 0;
                     Thumb {
-                        width: 64px;
-                        height: 36px;
+                        width: Screen.compact ? 48px : 64px;
+                        height: Screen.compact ? 27px : 36px;
                         source: item.thumb;
                     }
                 }
@@ -85,7 +93,8 @@ export component PickList inherits VerticalLayout {
                     overflow: elide;
                     vertical-alignment: center;
                 }
-                Text {
+                // Compact: the length makes way for the quality menu.
+                if !Screen.compact || !item.can-quality: Text {
                     horizontal-stretch: 0;
                     text: item.detail;
                     color: Theme.muted;
@@ -98,7 +107,7 @@ export component PickList inherits VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 0;
                     ComboBox {
-                        width: 130px;
+                        width: Screen.compact ? 112px : 130px;
                         enabled: item.checked;
                         model: root.qualities;
                         current-index: item.quality;

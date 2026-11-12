@@ -84,12 +84,26 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
 - **Tag**: tinted `*-bg` with `*` text, Space Grotesk 11/600, 6px radius.
 - **Count badge**: `pop` fill, mono 11px ("1 going").
 - **Keyboard hint**: mono 11px, 1px outline with a 2px bottom edge.
-- **Nav**: 80px rail, icon with a small label (Slint has no tooltips, so no bare icons);
+- **Nav**: 80px rail (bottom tabs on compact windows, see below), icon with a small label
+  (Slint has no tooltips, so no bare icons);
   active item gets a `line-strong` outline on `panel`.
 - **Quality row**: chips under the preview title when the window is wide enough, otherwise in
   their own row; ends with the format button ("mp4 · H.264") that opens Settings.
 - **Text link**: quiet secondary actions (Clear finished, Open folder): muted text, ink on hover.
-- **Lists**: rows keep a 16px lane on the right for the scrollbar; dividers stop before it.
+- **Lists**: rows keep a 24px lane on the right (`Theme.lane`: the 14px scrollbar plus a 10px
+  gap) so the scrollbar never touches a button; dividers stop before it.
+- **Window widths** (`Screen` in `theme.slint`; mocks in `design/narrow-layouts.html`):
+  - *Wide* (1000px+): everything side by side; quality chips under the preview title.
+  - *Medium* (720–999): rail stays; chips get their own row; row actions Clip / Compress / Pause
+    shrink to icons; the Settings drawer leaves a strip of the page showing.
+  - *Compact* (under 720, down to the 400 × 600 minimum; also the starting point for Android):
+    bottom tab bar (Download, Clip, Compress, Settings) and the logo next to the headline;
+    page padding 16px; queue rows keep one main action (Pause / Resume / Retry / Pick match /
+    Show / Cancel) and put the rest in a ⋯ menu (`Menu` / `MenuItem`); Settings is a full
+    sheet with the sections as words along the top; Clip stacks (In / Out on their own row, no
+    shortcut line, Export across the bottom); Compress puts each label above its chips and
+    Compress across the bottom; header buttons go icon-only; dialogs go nearly edge to edge.
+  - Chip rows (`ChoiceChips`) wrap onto more lines instead of clipping, at every width.
 - **Narrow windows**: secondary row actions shrink to icons; preview thumbnail shrinks on short
   windows; long option lists scroll while the main action stays pinned.
 - **Toast / dialog / drawer**: the only floating cards: `panel`, 1px `line-strong`, 12px radius.

@@ -2,10 +2,10 @@
 // talks only to AppWindow (properties and callbacks below) and the exported structs and
 // globals; the screens themselves live in pages/, dialogs/ and components/.
 import { Palette } from "std-widgets.slint";
-import { Theme } from "theme.slint";
+import { Theme, Screen } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
-import { Sidebar } from "components/sidebar.slint";
+import { Sidebar, TabBar } from "components/sidebar.slint";
 import { DownloadPage } from "pages/download.slint";
 import { ClipPage } from "pages/clip.slint";
 import { CompressPage } from "pages/compress.slint";
@@ -16,7 +16,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, MatchItem, ToolRow, SyncItem, PickItem, JobItem, Fmt }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, Fmt }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -24,14 +24,21 @@ export component AppWindow inherits Window {
     icon: @image-url("../assets/neria-256.png");
     preferred-width: 1040px;
     preferred-height: 740px;
-    min-width: 780px;
-    min-height: 580px;
+    // Smallest supported window: the compact layout (bottom tabs) at phone width.
+    min-width: 400px;
+    min-height: 600px;
     background: Theme.bg;
     default-font-family: Theme.body;
     // Keep the standard widgets (text fields, checkboxes…) in the same light/dark mode.
     property <bool> theme-dark: Theme.dark;
-    init => { Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light; }
+    init => {
+        Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light;
+        Screen.width = self.width;
+    }
     changed theme-dark => { Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light; }
+    // Breakpoints (theme.slint `Screen`) follow the window width.
+    property <length> window-width: self.width;
+    changed window-width => { Screen.width = self.width; }
 
     // Setup
     in property <bool> tools-ready;
@@ -162,6 +169,8 @@ export component AppWindow inherits Window {
     in property <bool> tools-updating;
 
     in-out property <int> page;
+    // Compact: Settings is a sheet over the page, so picking a tab closes it.
+    changed page => { if Screen.compact { root.drawer-open = false; } }
     // A file dragged in from Explorer. drop-kind: 0 not media, 1 video, 2 audio.
     in property <bool> drop-hover;
     in property <string> drop-name;
@@ -277,168 +286,179 @@ export component AppWindow inherits Window {
     callback tools-update();
     callback theme-changed();
 
+    // Rail on the left, or tabs along the bottom on compact windows. The pages stay put
+    // when the window crosses the breakpoint, so nothing reloads.
     HorizontalLayout {
-        Sidebar {
+        if !Screen.compact: Sidebar {
             page <=> root.page;
             settings-open: root.drawer-open;
             open-settings => { root.drawer-open = true; }
         }
 
-        Rectangle {
+        VerticalLayout {
             horizontal-stretch: 1;
+            Rectangle {
+                vertical-stretch: 1;
 
-            if root.page == 0: DownloadPage {
-                window-width: root.width;
-                window-height: root.height;
-                tools-ready: root.tools-ready;
+                if root.page == 0: DownloadPage {
+                    window-width: root.width;
+                    window-height: root.height;
+                    tools-ready: root.tools-ready;
 
-                update-banner: root.update-banner;
-                update-state: root.update-state;
-                update-version: root.update-version;
-                update-status: root.update-status;
-                update-progress: root.update-progress;
-                update-install => { root.update-install(); }
-                update-restart => { root.update-restart(); }
-                update-later => { root.update-later(); }
+                    update-banner: root.update-banner;
+                    update-state: root.update-state;
+                    update-version: root.update-version;
+                    update-status: root.update-status;
+                    update-progress: root.update-progress;
+                    update-install => { root.update-install(); }
+                    update-restart => { root.update-restart(); }
+                    update-later => { root.update-later(); }
 
-                url <=> root.url;
-                probe-state: root.probe-state;
-                probe-blocked: root.probe-blocked;
-                probe-title: root.probe-title;
-                probe-meta: root.probe-meta;
-                probe-thumb: root.probe-thumb;
-                probe-is-spotify: root.probe-is-spotify;
-                quality <=> root.quality;
-                gif-mode: root.gif-mode;
-                dup-text: root.dup-text;
-                dup-file: root.dup-file;
-                playlist-url: root.playlist-url;
-                paste => { root.paste(); }
-                url-edited(t) => { root.url-edited(t); }
-                start-download => { root.start-download(); }
-                dup-show => { root.dup-show(); }
-                use-playlist => { root.use-playlist(); }
-                clip-open-link(url, title) => { root.clip-open-link(url, title); }
+                    url <=> root.url;
+                    probe-state: root.probe-state;
+                    probe-blocked: root.probe-blocked;
+                    probe-title: root.probe-title;
+                    probe-meta: root.probe-meta;
+                    probe-thumb: root.probe-thumb;
+                    probe-is-spotify: root.probe-is-spotify;
+                    quality <=> root.quality;
+                    gif-mode: root.gif-mode;
+                    dup-text: root.dup-text;
+                    dup-file: root.dup-file;
+                    playlist-url: root.playlist-url;
+                    paste => { root.paste(); }
+                    url-edited(t) => { root.url-edited(t); }
+                    start-download => { root.start-download(); }
+                    dup-show => { root.dup-show(); }
+                    use-playlist => { root.use-playlist(); }
+                    clip-open-link(url, title) => { root.clip-open-link(url, title); }
 
-                video-format: root.video-format;
-                audio-format: root.audio-format;
-                lyrics: root.lyrics;
-                settings-changed => { root.settings-changed(); }
-                open-settings => {
-                    root.settings-section = 0;
-                    root.drawer-open = true;
+                    video-format: root.video-format;
+                    audio-format: root.audio-format;
+                    lyrics: root.lyrics;
+                    settings-changed => { root.settings-changed(); }
+                    open-settings => {
+                        root.settings-section = 0;
+                        root.drawer-open = true;
+                    }
+                    whats-new => {
+                        root.settings-section = 4;
+                        root.drawer-open = true;
+                    }
+
+                    pick-items: root.pick-items;
+                    pick-checked: root.pick-checked;
+                    pick-note: root.pick-note;
+                    number-items <=> root.number-items;
+                    pick-toggle(i, on) => { root.pick-toggle(i, on); }
+                    pick-all(on) => { root.pick-all(on); }
+                    pick-quality(i, q) => { root.pick-quality(i, q); }
+
+                    spotify-count: root.spotify-count;
+                    spotify-note: root.spotify-note;
+                    sync-items: root.sync-items;
+                    review-removed => { root.sync-open = true; }
+
+                    jobs: root.jobs;
+                    active-count: root.active-count;
+                    running-count: root.running-count;
+                    paused-count: root.paused-count;
+                    finished-count: root.finished-count;
+                    pause-all => { root.pause-all(); }
+                    resume-all => { root.resume-all(); }
+                    clear-finished => { root.clear-finished(); }
+                    open-output => { root.open-output(); }
+                    cancel-job(id) => { root.cancel-job(id); }
+                    remove-job(id) => { root.remove-job(id); }
+                    retry-job(id) => { root.retry-job(id); }
+                    open-job(id) => { root.open-job(id); }
+                    clip-job(id) => { root.clip-job(id); }
+                    cmp-job(id) => { root.cmp-job(id); }
+                    match-pick(id) => { root.match-pick(id); }
+                    report-job(id) => { root.report-job(id); }
+                    pause-job(id) => { root.pause-job(id); }
+                    resume-job(id) => { root.resume-job(id); }
+                    toggle-group(id) => { root.toggle-group(id); }
                 }
-                whats-new => {
-                    root.settings-section = 4;
-                    root.drawer-open = true;
+
+                if root.page == 1: ClipPage {
+                    tools-ready: root.tools-ready;
+                    loaded: root.clip-loaded;
+                    has-video: root.clip-has-video;
+                    name: root.clip-name;
+                    frame: root.clip-frame;
+                    duration: root.clip-duration;
+                    position: root.clip-position;
+                    playing: root.clip-playing;
+                    in-time <=> root.clip-in;
+                    out-time <=> root.clip-out;
+                    mode <=> root.clip-mode;
+                    loop <=> root.clip-loop;
+                    thumbs: root.clip-thumbs;
+                    wave: root.clip-wave;
+                    exporting: root.clip-exporting;
+                    export-progress: root.clip-export-progress;
+                    status: root.clip-status;
+                    has-output: root.clip-has-output;
+                    keyframes: root.clip-keyframes;
+                    keyframe-ticks: root.clip-keyframe-ticks;
+                    is-link: root.clip-is-link;
+                    gif: root.clip-is-gif && root.x-gifs-as-gif;
+                    buffering: root.clip-buffering;
+                    quality <=> root.quality;
+                    video-format: root.video-format;
+                    audio-format: root.audio-format;
+                    open-file => { root.clip-open(); }
+                    paste-link => { root.clip-paste-link(); }
+                    toggle-play => { root.clip-toggle-play(); }
+                    seek(t) => { root.clip-seek(t); }
+                    frame-step(n) => { root.clip-frame-step(n); }
+                    export-clip => { root.clip-export(); }
+                    cancel-export => { root.clip-cancel-export(); }
+                    show-output => { root.clip-show-output(); }
+                    view-queue => { root.page = 0; }
+                    settings-changed => { root.settings-changed(); }
+                    open-settings => {
+                        root.settings-section = 0;
+                        root.drawer-open = true;
+                    }
                 }
 
-                pick-items: root.pick-items;
-                pick-checked: root.pick-checked;
-                pick-note: root.pick-note;
-                number-items <=> root.number-items;
-                pick-toggle(i, on) => { root.pick-toggle(i, on); }
-                pick-all(on) => { root.pick-all(on); }
-                pick-quality(i, q) => { root.pick-quality(i, q); }
-
-                spotify-count: root.spotify-count;
-                spotify-note: root.spotify-note;
-                sync-items: root.sync-items;
-                review-removed => { root.sync-open = true; }
-
-                jobs: root.jobs;
-                active-count: root.active-count;
-                running-count: root.running-count;
-                paused-count: root.paused-count;
-                finished-count: root.finished-count;
-                pause-all => { root.pause-all(); }
-                resume-all => { root.resume-all(); }
-                clear-finished => { root.clear-finished(); }
-                open-output => { root.open-output(); }
-                cancel-job(id) => { root.cancel-job(id); }
-                remove-job(id) => { root.remove-job(id); }
-                retry-job(id) => { root.retry-job(id); }
-                open-job(id) => { root.open-job(id); }
-                clip-job(id) => { root.clip-job(id); }
-                cmp-job(id) => { root.cmp-job(id); }
-                match-pick(id) => { root.match-pick(id); }
-                report-job(id) => { root.report-job(id); }
-                pause-job(id) => { root.pause-job(id); }
-                resume-job(id) => { root.resume-job(id); }
-                toggle-group(id) => { root.toggle-group(id); }
+                if root.page == 2: CompressPage {
+                    loaded: root.cmp-loaded;
+                    name: root.cmp-name;
+                    info: root.cmp-info;
+                    thumb: root.cmp-thumb;
+                    mode <=> root.cmp-mode;
+                    size-index <=> root.cmp-size-index;
+                    custom-mb <=> root.cmp-custom-mb;
+                    quality <=> root.cmp-quality;
+                    codec <=> root.cmp-codec;
+                    use-gpu <=> root.cmp-use-gpu;
+                    gpu-available: root.cmp-gpu-available;
+                    gpu-label: root.cmp-gpu-label;
+                    res-index <=> root.cmp-res-index;
+                    fps-index <=> root.cmp-fps-index;
+                    audio-index <=> root.cmp-audio-index;
+                    estimate: root.cmp-estimate;
+                    warning: root.cmp-warning;
+                    can-start: root.cmp-can-start;
+                    running: root.cmp-running;
+                    progress: root.cmp-progress;
+                    status: root.cmp-status;
+                    has-output: root.cmp-has-output;
+                    open-file => { root.cmp-open(); }
+                    options-changed => { root.cmp-options-changed(); }
+                    start-compress => { root.cmp-start(); }
+                    cancel => { root.cmp-cancel(); }
+                    show-output => { root.cmp-show-output(); }
+                }
             }
 
-            if root.page == 1: ClipPage {
-                tools-ready: root.tools-ready;
-                loaded: root.clip-loaded;
-                has-video: root.clip-has-video;
-                name: root.clip-name;
-                frame: root.clip-frame;
-                duration: root.clip-duration;
-                position: root.clip-position;
-                playing: root.clip-playing;
-                in-time <=> root.clip-in;
-                out-time <=> root.clip-out;
-                mode <=> root.clip-mode;
-                loop <=> root.clip-loop;
-                thumbs: root.clip-thumbs;
-                wave: root.clip-wave;
-                exporting: root.clip-exporting;
-                export-progress: root.clip-export-progress;
-                status: root.clip-status;
-                has-output: root.clip-has-output;
-                keyframes: root.clip-keyframes;
-                keyframe-ticks: root.clip-keyframe-ticks;
-                is-link: root.clip-is-link;
-                gif: root.clip-is-gif && root.x-gifs-as-gif;
-                buffering: root.clip-buffering;
-                quality <=> root.quality;
-                video-format: root.video-format;
-                audio-format: root.audio-format;
-                open-file => { root.clip-open(); }
-                paste-link => { root.clip-paste-link(); }
-                toggle-play => { root.clip-toggle-play(); }
-                seek(t) => { root.clip-seek(t); }
-                frame-step(n) => { root.clip-frame-step(n); }
-                export-clip => { root.clip-export(); }
-                cancel-export => { root.clip-cancel-export(); }
-                show-output => { root.clip-show-output(); }
-                view-queue => { root.page = 0; }
-                settings-changed => { root.settings-changed(); }
-                open-settings => {
-                    root.settings-section = 0;
-                    root.drawer-open = true;
-                }
-            }
-
-            if root.page == 2: CompressPage {
-                loaded: root.cmp-loaded;
-                name: root.cmp-name;
-                info: root.cmp-info;
-                thumb: root.cmp-thumb;
-                mode <=> root.cmp-mode;
-                size-index <=> root.cmp-size-index;
-                custom-mb <=> root.cmp-custom-mb;
-                quality <=> root.cmp-quality;
-                codec <=> root.cmp-codec;
-                use-gpu <=> root.cmp-use-gpu;
-                gpu-available: root.cmp-gpu-available;
-                gpu-label: root.cmp-gpu-label;
-                res-index <=> root.cmp-res-index;
-                fps-index <=> root.cmp-fps-index;
-                audio-index <=> root.cmp-audio-index;
-                estimate: root.cmp-estimate;
-                warning: root.cmp-warning;
-                can-start: root.cmp-can-start;
-                running: root.cmp-running;
-                progress: root.cmp-progress;
-                status: root.cmp-status;
-                has-output: root.cmp-has-output;
-                open-file => { root.cmp-open(); }
-                options-changed => { root.cmp-options-changed(); }
-                start-compress => { root.cmp-start(); }
-                cancel => { root.cmp-cancel(); }
-                show-output => { root.cmp-show-output(); }
+            if Screen.compact: TabBar {
+                page <=> root.page;
+                settings-open: root.drawer-open;
+                open-settings => { root.drawer-open = true; }
             }
         }
     }
@@ -447,7 +467,8 @@ export component AppWindow inherits Window {
         x: 0;
         y: 0;
         width: root.width;
-        height: root.height;
+        // Compact: a full sheet that leaves the tab bar showing.
+        height: Screen.compact ? root.height - 66px : root.height;
         section <=> root.settings-section;
         output-dir: root.output-dir;
         sort-folders <=> root.sort-folders;
@@ -498,8 +519,8 @@ export component AppWindow inherits Window {
 
     if root.toast != "": Toast {
         x: (root.width - self.width) / 2;
-        y: root.height - self.height - 26px;
-        widest: root.width - 80px;
+        y: root.height - self.height - (Screen.compact ? 66px + 14px : 26px);
+        widest: root.width - (Screen.compact ? 32px : 80px);
         text: root.toast;
     }
 
@@ -545,10 +566,10 @@ export component AppWindow inherits Window {
     }
 
     if root.drop-hover: DropOverlay {
-        x: 80px;
+        x: Screen.compact ? 0 : 80px;
         y: 0;
-        width: root.width - 80px;
-        height: root.height;
+        width: root.width - self.x;
+        height: root.height - (Screen.compact ? 66px : 0);
         kind: root.drop-kind;
         name: root.drop-name;
         page: root.page;

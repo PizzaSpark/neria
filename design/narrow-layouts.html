@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria narrow layouts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#5f5d5a; --pop:#ffd23f; --onpop:#1a1405;
+    --popsh:#9a6f00; --hard:#000; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 24px 90px; }
+  .page { max-width: 1340px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; letter-spacing: -0.01em; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 820px; line-height: 1.55; font-size: 15px; }
+  .lead b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 860px; margin-bottom: 18px; }
+  .why b { color: #151412; font-weight: 600; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .opt { display: flex; flex-direction: column; gap: 10px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt p { font-size: 13px; color: #5b574e; max-width: 400px; line-height: 1.5; }
+  .opt p b { color: #151412; }
+
+  /* ---- the window ---- */
+  .win { width: 400px; height: 700px; background: var(--bg); color: var(--ink); border-radius: 10px; overflow: hidden;
+         display: flex; flex-direction: column; position: relative;
+         box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); font-size: 13px; }
+  .win.short { height: 600px; }
+  .tb { height: 30px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 12px; color: var(--muted); background: #0f0f11; }
+  .tb .x { margin-left: auto; letter-spacing: 14px; color: var(--dim); }
+  .body { flex: 1; min-height: 0; display: flex; }
+  .col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .content { flex: 1; min-height: 0; padding: 18px 16px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+  .i { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-style: normal; line-height: 1; }
+  .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mono { font-family: "JetBrains Mono", monospace; font-size: 11px; }
+
+  .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--pop); border: 2px solid var(--hard);
+          box-shadow: 2px 2px 0 var(--popsh); display: grid; place-items: center; font: 700 17px "Space Grotesk"; color: var(--onpop); flex: none; }
+  .logo.sm { width: 28px; height: 28px; font-size: 14px; border-radius: 8px; }
+  .hl { font: 700 24px/1.1 "Space Grotesk", sans-serif; }
+  .sub { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+
+  .field { height: 50px; flex: none; background: var(--panel); border: 2px solid var(--ls); border-radius: 12px; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 14px; }
+  .field .ph { flex: 1; color: var(--dim); font-size: 14px; min-width: 0; }
+  .ghost { height: 32px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; gap: 6px;
+           color: var(--muted); font: 700 12.5px "Space Grotesk"; white-space: nowrap; flex: none; background: none; }
+  .ghost.icon { width: 32px; padding: 0; justify-content: center; }
+  .ghost.tall { height: 40px; }
+  .prim { height: 36px; padding: 0 14px; background: var(--pop); color: var(--onpop); border: 2px solid var(--hard); border-radius: 10px;
+          box-shadow: 3px 3px 0 var(--popsh); display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 700 14px "Space Grotesk"; white-space: nowrap; flex: none; }
+  .prim.full { width: 100%; height: 44px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+  .chip { height: 32px; padding: 0 9px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .grow { flex: 1; }
+  .div { height: 1px; background: var(--line); flex: none; }
+
+  .qhead { display: flex; align-items: center; gap: 8px; padding-top: 2px; }
+  .qhead b { font: 700 14px "Space Grotesk"; }
+  .badge { background: var(--pop); color: var(--onpop); font: 500 11px "JetBrains Mono"; padding: 3px 6px; border-radius: 6px; }
+  .tlink { color: var(--muted); font-size: 12.5px; display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+  .tag { font: 600 10.5px "Space Grotesk"; padding: 3px 6px; border-radius: 6px; background: var(--raised); color: var(--muted); }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+
+  .q { display: flex; flex-direction: column; }
+  .job { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: center; }
+  .job .th { width: 56px; height: 32px; border-radius: 6px; flex: none; }
+  .job .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .job .t { font-size: 13.5px; font-weight: 500; }
+  .job .s { display: flex; gap: 7px; align-items: center; color: var(--muted); font-size: 11.5px; }
+  .meter { height: 5px; border-radius: 3px; background: var(--line); }
+  .meter i { display: block; height: 100%; border-radius: 3px; background: var(--pop); }
+  .meter.paused i { background: var(--muted); }
+  .acts { display: flex; gap: 6px; align-items: center; flex: none; }
+  .acts.under { padding-top: 2px; }
+  .job.stack { align-items: flex-start; }
+  .job.stack .th { margin-top: 2px; }
+  .t1 { background: linear-gradient(135deg, #3a2a5a, #c0566b 55%, #f2b06b); }
+  .t2 { background: linear-gradient(160deg, #0f3b3a, #2f8f7a 60%, #d8e3a0); }
+  .t3 { background: linear-gradient(120deg, #2b2b33, #6b6f86 50%, #c9ccd8); }
+  .t4 { background: linear-gradient(140deg, #4a1d1d, #b8432f 60%, #f0c27a); }
+
+  /* nav variants */
+  .rail { width: 64px; flex: none; border-right: 1px solid var(--line); padding: 14px 6px; display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+  .rail .logo { margin: 0 auto 10px; }
+  .nav { height: 52px; border-radius: 11px; border: 2px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--dim); }
+  .nav span { font-size: 10px; font-weight: 500; color: var(--muted); }
+  .nav.on { border-color: var(--ls); background: var(--panel); color: var(--ink); }
+  .nav.on span { color: var(--ink); }
+  .tabs { height: 64px; flex: none; border-top: 1px solid var(--line); display: flex; padding: 6px 8px; gap: 4px; }
+  .tabs .nav { flex: 1; }
+  .topbar { height: 52px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+  .seg { height: 34px; padding: 0 10px; border-radius: 9px; border: 2px solid transparent; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .seg.on { border-color: var(--ls); background: var(--panel); color: var(--ink); }
+
+  .menu { position: absolute; right: 18px; width: 170px; background: var(--panel); border: 1px solid var(--ls); border-radius: 12px; padding: 6px;
+          box-shadow: 0 14px 30px -10px rgba(0,0,0,.7); z-index: 2; }
+  .menu div { height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: 8px; font-size: 13px; }
+  .menu div:first-child { background: var(--raised); }
+  .menu .i { color: var(--muted); font-size: 14px; }
+
+  /* shared pages */
+  .sheet { position: absolute; inset: 30px 0 0 0; background: var(--panel); display: flex; flex-direction: column; }
+  .stabs { display: flex; gap: 6px; padding: 0 16px 12px; overflow: hidden; border-bottom: 1px solid var(--line); flex: none; }
+  .sec { margin-top: 18px; display: flex; flex-direction: column; gap: 9px; }
+  .sec h4 { font: 700 13px "Space Grotesk"; }
+  .tick { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+  .tick i { width: 18px; height: 18px; border-radius: 6px; border: 2px solid var(--ls); flex: none; display: grid; place-items: center; font-style: normal; font-size: 10px; }
+  .tick i.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .combo { height: 34px; width: 150px; border: 1px solid var(--ls); border-radius: 7px; background: var(--raised); display: flex; align-items: center; padding: 0 10px; font-size: 12.5px; justify-content: space-between; }
+  .player { border-radius: 12px; aspect-ratio: 16/9; flex: none; background:
+            linear-gradient(90deg,#e33 0 16%,#3c3 16% 33%,#ee3 33% 50%,#33e 50% 66%,#e3e 66% 83%,#3ee 83%); }
+  .win.short .player { aspect-ratio: auto; height: 150px; }
+  .tl { height: 74px; border-radius: 10px; border: 2px solid var(--pop); flex: none; background:
+        repeating-linear-gradient(90deg,#2a2a30 0 34px,#3a3a42 34px 36px); position: relative; }
+  .tl::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 18px; background: #222226; border-radius: 0 0 8px 8px; }
+  .optlab { color: var(--muted); font-size: 12px; }
+  .pin { padding: 12px 16px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; flex: none; }
+  .note { font-size: 11.5px; color: var(--muted); }
+
+  .bp { display: flex; gap: 0; margin-top: 12px; max-width: 960px; border-radius: 10px; overflow: hidden; border: 1px solid #d3ccbb; background: #fbf8f0; }
+  .bp div { flex: 1; padding: 14px 16px; border-right: 1px solid #e2dccd; font-size: 13px; line-height: 1.5; color: #5b574e; }
+  .bp div:last-child { border-right: 0; }
+  .bp b { display: block; font: 700 14px "Space Grotesk"; color: #151412; margin-bottom: 4px; }
+  .bp code { font: 500 11.5px "JetBrains Mono"; color: #151412; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Narrow Neria: three ways to fold it up</h1>
+  <p class="lead">Every mock is the <b>narrowest supported window, 400 × 700</b>. That's a Windows window snapped to a
+  quarter or a third of the screen, and almost exactly an Android phone (360–412 wide), so whichever you pick is also the
+  Android layout later. Above 720px wide nothing changes much from today; the big decisions are only down here.</p>
+
+  <div class="bp">
+    <div><b>Wide · 1100+</b>Today's layout: 80px rail, quality chips beside the preview, labelled row actions, column capped at 1240.</div>
+    <div><b>Medium · 720–1099</b>Rail stays. Chips get their own row; Clip / Compress on rows shrink to icons. Settings drawer as today.</div>
+    <div><b>Compact · under 720</b>The new layout below. Window minimum: <code>400 × 560</code> (today it's 780 × 580).</div>
+  </div>
+
+  <!-- ===================== NAV ===================== -->
+  <section>
+    <div class="label"><span>Question 1</span><h2>Where does the navigation go?</h2></div>
+    <p class="why">Same Download page in all three, same queue rows; only the navigation moves. The 80px rail would eat a
+    fifth of a 400px window, so it has to change.</p>
+    <div class="row">
+
+      <!-- A: bottom tabs -->
+      <div class="opt">
+        <h3>A · Bottom tabs</h3>
+        <p><b>Android's own pattern</b>, so it carries over as is. Pages get the full width; the logo moves next to the
+        headline. Costs 64px of height at the bottom.</p>
+        <div class="win">
+          <div class="tb"><span>Neria</span><span class="x">– ▢ ✕</span></div>
+          <div class="body"><div class="col">
+            <div class="content">
+              <div style="display:flex;gap:12px;align-items:center">
+                <div class="logo sm">N</div>
+                <div class="hl">Grab anything.</div>
+              </div>
+              <div class="field"><span class="ph ell">Paste a link here</span>
+                <span class="ghost"><i class="i">&#xE77F;</i>Paste</span>
+                <span class="prim"><i class="i">&#xE896;</i>Download</span></div>
+              <div class="chips"><span class="chip on">Best</span><span class="chip">1080p</span><span class="chip">720p</span><span class="chip">480p</span><span class="chip">Audio</span><span class="ghost" style="margin-left:auto"><i class="i">&#xE713;</i>mp4</span></div>
+              <div class="div"></div>
+              <div class="qhead"><b>Queue</b><span class="badge">2 going</span><span class="grow"></span><span class="tlink"><i class="i">&#xE838;</i>Folder</span></div>
+              <div class="q" data-rows="A"></div>
+            </div>
+            <div class="tabs">
+              <div class="nav on"><i class="i">&#xE896;</i><span>Download</span></div>
+              <div class="nav"><i class="i">&#xE8C6;</i><span>Clip</span></div>
+              <div class="nav"><i class="i">&#xE73F;</i><span>Compress</span></div>
+              <div class="nav"><i class="i">&#xE713;</i><span>Settings</span></div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- B: top bar -->
+      <div class="opt">
+        <h3>B · Top bar</h3>
+        <p><b>Logo, pages and Settings in one strip at the top.</b> Headline goes (the bar already says where you are), so
+        the queue gets the most room. Feels more like a desktop toolbar than a phone app.</p>
+        <div class="win">
+          <div class="tb"><span>Neria</span><span class="x">– ▢ ✕</span></div>
+          <div class="topbar">
+            <div class="logo sm">N</div>
+            <span class="seg on"><i class="i">&#xE896;</i>Download</span>
+            <span class="seg"><i class="i">&#xE8C6;</i>Clip</span>
+            <span class="seg"><i class="i">&#xE73F;</i>Compress</span>
+            <span class="grow"></span>
+            <span class="ghost icon"><i class="i">&#xE713;</i></span>
+          </div>
+          <div class="body"><div class="col">
+            <div class="content">
+              <div class="field"><span class="ph ell">Paste a link here</span>
+                <span class="ghost"><i class="i">&#xE77F;</i>Paste</span>
+                <span class="prim"><i class="i">&#xE896;</i>Download</span></div>
+              <div class="chips"><span class="chip on">Best</span><span class="chip">1080p</span><span class="chip">720p</span><span class="chip">480p</span><span class="chip">Audio</span><span class="ghost" style="margin-left:auto"><i class="i">&#xE713;</i>mp4</span></div>
+              <div class="div"></div>
+              <div class="qhead"><b>Queue</b><span class="badge">2 going</span><span class="grow"></span><span class="tlink"><i class="i">&#xE838;</i>Folder</span></div>
+              <div class="q" data-rows="A"></div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- C: slim rail -->
+      <div class="opt">
+        <h3>C · Slim rail</h3>
+        <p><b>The rail stays, 64px instead of 80.</b> Closest to today, nothing moves when you resize. But every page loses
+        64px of an already narrow width, and it won't feel like a phone app on Android.</p>
+        <div class="win">
+          <div class="tb"><span>Neria</span><span class="x">– ▢ ✕</span></div>
+          <div class="body">
+            <div class="rail">
+              <div class="logo sm">N</div>
+              <div class="nav on"><i class="i">&#xE896;</i><span>Download</span></div>
+              <div class="nav"><i class="i">&#xE8C6;</i><span>Clip</span></div>
+              <div class="nav"><i class="i">&#xE73F;</i><span>Compress</span></div>
+              <span class="grow"></span>
+              <div class="nav"><i class="i">&#xE713;</i><span>Settings</span></div>
+            </div>
+            <div class="col">
+              <div class="content" style="padding-left:14px;padding-right:14px">
+                <div class="hl">Grab anything.</div>
+                <div class="field"><span class="ph ell">Paste a link</span>
+                  <span class="ghost icon"><i class="i">&#xE77F;</i></span>
+                  <span class="prim"><i class="i">&#xE896;</i>Download</span></div>
+                <div class="chips"><span class="chip on">Best</span><span class="chip">1080p</span><span class="chip">720p</span><span class="chip">480p</span><span class="chip">Audio</span><span class="ghost"><i class="i">&#xE713;</i>mp4</span></div>
+                <div class="div"></div>
+                <div class="qhead"><b>Queue</b><span class="badge">2 going</span><span class="grow"></span><span class="tlink"><i class="i">&#xE838;</i>Folder</span></div>
+                <div class="q" data-rows="A"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ROWS ===================== -->
+  <section>
+    <div class="label"><span>Question 2</span><h2>Queue row buttons</h2></div>
+    <p class="why">A done video has Show, Clip, Compress and ×; a failed one Retry, Report and ×. At 400px they no longer
+    fit next to the title. Two ways out (shown with bottom tabs, works with any nav):</p>
+    <div class="row">
+      <div class="opt">
+        <h3>1 · Buttons underneath</h3>
+        <p><b>Everything stays one tap away</b>, labelled, under the status line. Rows get taller (about 96px instead of
+        62), so fewer fit on screen.</p>
+        <div class="win short">
+          <div class="tb"><span>Neria</span><span class="x">– ▢ ✕</span></div>
+          <div class="body"><div class="col"><div class="content">
+            <div class="qhead"><b>Queue</b><span class="badge">1 going</span><span class="grow"></span><span class="tlink">Clear finished</span></div>
+            <div class="q" data-rows="under"></div>
+          </div></div></div>
+        </div>
+      </div>
+      <div class="opt">
+        <h3>2 · One button + “more”</h3>
+        <p><b>Rows stay 62px.</b> The one thing you most likely want (Pause, Show, Retry) stays, the rest go into a ⋯ menu.
+        One extra tap for Clip / Compress / Report.</p>
+        <div class="win short">
+          <div class="tb"><span>Neria</span><span class="x">– ▢ ✕</span></div>
+          <div class="body"><div class="col"><div class="content" style="position:relative">
+            <div class="qhead"><b>Queue</b><span class="badge">1 going</span><span class="grow"></span><span class="tlink">Clear finished</span></div>
+            <div class="q" data-rows="more"></div>
+            <div class="menu" style="top:164px">
+              <div><i class="i">&#xE8C6;</i>Clip</div>
+              <div><i class="i">&#xE73F;</i>Compress</div>
+              <div><i class="i">&#xE711;</i>Remove from list</div>
+            </div>
+          </div></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SAME ===================== -->
+  <section>
+    <div class="label"><span>Same in every option</span><h2>Settings, Clip and Compress</h2></div>
+    <p class="why">These follow from the rules in DESIGN.md, so I'd do them this way whatever you pick above (tell me if
+    something looks off). <b>Settings</b> becomes a full-window sheet with the sections as chips along the top.
+    <b>Clip</b> stacks: player, controls, timeline, then a pinned Export bar; the keyboard-shortcut line hides (no keyboard on
+    a phone). <b>Compress</b> puts each option's label above its chips, chips wrap, Compress stays pinned at the bottom.</p>
+    <div class="row">
+      <div class="win short">
+        <div class="tb"><span>Neria</span><span class="x">– ▢ ✕</span></div>
+        <div class="sheet">
+          <div style="display:flex;align-items:center;padding:16px 16px 12px"><div class="hl" style="font-size:18px">Settings</div><span class="grow"></span><span class="ghost icon" style="border-color:transparent"><i class="i">&#xE711;</i></span></div>
+          <div class="stabs"><span class="seg on">Download</span><span class="seg">Spotify</span><span class="seg">Network</span><span class="seg">Appearance</span></div>
+          <div style="padding:0 16px">
+            <div class="sec"><h4>Save to</h4><div class="mono" style="color:var(--muted)">D:\Videos\Neria</div>
+              <div style="display:flex;gap:8px"><span class="ghost tall">Change…</span><span class="ghost tall">Open folder</span></div>
+              <div class="tick"><i class="on">✓</i>Sort into Audio, Video and Photos folders</div>
+              <div class="hint">Playlists and posts get a folder of their own, inside Audio, Video or Photos when everything in it is one kind.</div></div>
+            <div class="sec"><h4>Video</h4>
+              <div style="display:flex;align-items:center"><span class="grow">Container</span><span class="combo">mp4 <span>⌄</span></span></div>
+              <div class="tick"><i></i>Prefer H.264 (plays everywhere, max 1080p on YouTube)</div>
+              <div class="tick"><i></i>Embed subtitles</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="win short">
+        <div class="tb"><span>Neria</span><span class="x">– ▢ ✕</span></div>
+        <div class="body"><div class="col">
+          <div class="content">
+            <div style="display:flex;align-items:center;gap:8px"><div class="hl" style="font-size:20px">Cut the good part.</div><span class="grow"></span><span class="ghost icon"><i class="i">&#xE71B;</i></span><span class="ghost icon"><i class="i">&#xE8E5;</i></span></div>
+            <div class="note ell">sample.mp4</div>
+            <div class="player"></div>
+            <div style="display:flex;align-items:center;gap:6px;color:var(--muted)"><i class="i" style="color:var(--ink)">&#xE768;</i>&nbsp;<i class="i">&#xE892;</i>&nbsp;<i class="i">&#xE893;</i>&nbsp;<i class="i">&#xE8EE;</i><span class="mono" style="color:var(--ink);margin-left:8px">0:04.20 / 0:20.00</span></div>
+            <div style="display:flex;gap:8px"><span class="ghost tall grow" style="justify-content:center">In 0:02.00</span><span class="ghost tall grow" style="justify-content:center">Out 0:12.50</span></div>
+            <div class="tl"></div>
+          </div>
+          <div class="pin">
+            <div class="chips"><span class="chip on">Fast · lossless</span><span class="chip">Exact · re-encode</span></div>
+            <div class="note">Selection 0:10.50 · lossless, starts on a keyframe</div>
+            <span class="prim full"><i class="i">&#xE8C6;</i>Export clip</span>
+          </div>
+        </div></div>
+      </div>
+
+      <div class="win short">
+        <div class="tb"><span>Neria</span><span class="x">– ▢ ✕</span></div>
+        <div class="body"><div class="col">
+          <div class="content">
+            <div class="hl" style="font-size:20px">Make it smaller.</div>
+            <div style="display:flex;gap:12px;align-items:center"><div class="t1" style="width:96px;height:54px;border-radius:8px;flex:none"></div>
+              <div style="min-width:0"><div class="ell" style="font-weight:600;font-size:14px">sample.mp4</div><div class="note ell">1280×720 · 30 fps · 0:20 · 7.7 MB</div></div></div>
+            <div class="div"></div>
+            <div class="optlab">Goal</div><div class="chips"><span class="chip on">Fit a size</span><span class="chip">Pick a quality</span></div>
+            <div class="optlab">Size</div><div class="chips"><span class="chip on">20 MB · Discord</span><span class="chip">25 MB</span><span class="chip">50 MB</span><span class="chip">100 MB</span><span class="chip">Custom</span></div>
+            <div class="optlab">Codec</div><div class="chips"><span class="chip on">H.264 · plays everywhere</span><span class="chip">H.265 · smaller</span><span class="chip">AV1 · smallest</span></div>
+          </div>
+          <div class="pin">
+            <div class="note" style="color:var(--ink)">≈ 19 MB · 1280×720 · 30 fps · H.264 on GPU</div>
+            <span class="prim full"><i class="i">&#xE73F;</i>Compress</span>
+          </div>
+        </div></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  // Queue rows, filled in per variant so the frames stay comparable.
+  const jobs = [
+    { t: "Lo-fi beats to study to, 3 hour mix", th: "t1", s: '<span class="mono">241 / 388 MB · 8.4 MB/s</span>', m: 62, a: "Pause" , more: ["Cancel"] },
+    { t: "Mountain timelapse 8K", th: "t2", s: '<span class="tag ok">Saved</span><span class="ell">Mountain timelapse 8K.mp4</span>', a: "Show", more: ["Clip", "Compress"] },
+    { t: "Bohemian Rhapsody · Queen", th: "t4", s: '<span class="tag warn">Check</span><span class="ell">Maybe a live version</span>', a: "Pick match", more: ["Show"] },
+    { t: "City walk at night, Tokyo 4K", th: "t3", s: '<span class="tag" style="background:#3a1a1a;color:#ff7b72">Failed</span><span class="ell">Sign-in needed</span>', a: "Retry", more: ["Report"] },
+  ];
+  const btn = (x) => `<span class="ghost">${x}</span>`;
+  const x = '<span class="ghost icon" style="border-color:transparent;color:var(--dim)"><i class="i">&#xE711;</i></span>';
+  const more = '<span class="ghost icon"><i class="i">&#xE712;</i></span>';
+  function row(j, mode) {
+    const meter = j.m ? `<div class="meter"><i style="width:${j.m}%"></i></div>` : "";
+    if (mode === "under") {
+      const all = [j.a, ...j.more].map(btn).join("");
+      return `<div class="job stack"><div class="th ${j.th}"></div><div class="tx"><div class="t ell">${j.t}</div><div class="s">${j.s}</div>${meter}<div class="acts under">${all}<span class="grow"></span>${x}</div></div></div>`;
+    }
+    return `<div class="job"><div class="th ${j.th}"></div><div class="tx"><div class="t ell">${j.t}</div><div class="s">${j.s}</div>${meter}</div><div class="acts">${btn(j.a)}${more}</div></div>`;
+  }
+  document.querySelectorAll(".q").forEach(q => {
+    const mode = q.dataset.rows === "under" ? "under" : "more";
+    q.innerHTML = jobs.map(j => row(j, mode)).join("");
+  });
+</script>
+</body>
+</html>

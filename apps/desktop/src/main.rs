@@ -635,6 +635,32 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             ui.set_sync_open(true);
         }
         "spotify" => ui.set_spotify_heads_up(true),
+        // A post with several items, for checking the item picker's layout.
+        "pick" => {
+            let item = |kind: &str, title: &str, detail: &str, checked: bool, can_quality: bool| PickItem {
+                kind: kind.into(),
+                title: title.into(),
+                detail: detail.into(),
+                thumb: Default::default(),
+                checked,
+                quality: 0,
+                can_quality,
+            };
+            let rows = vec![
+                item("Video", "Sunset over the harbour, long take", "2:41", true, true),
+                item("Photo", "", "", true, false),
+                item("Video", "Behind the scenes", "0:38", true, true),
+                item("GIF", "", "0:05", false, false),
+                item("Photo", "", "", true, false),
+            ];
+            let checked = rows.iter().filter(|r| r.checked).count() as i32;
+            ui.set_probe_state(2);
+            ui.set_probe_title("A post with photos and videos".into());
+            ui.set_probe_meta("@someone · 5 items".into());
+            ui.set_pick_items(ModelRc::from(Rc::new(VecModel::from(rows))));
+            ui.set_pick_checked(checked);
+            ui.set_pick_note("One video in this post couldn't be reached.".into());
+        }
         "toast" => {
             ui.set_toast("Report copied. Paste it in a message to whoever helps you with Neria (Ctrl+V).".into())
         }
@@ -711,6 +737,12 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             drop_ui::dev_hooks(&ui);
             if let Ok(which) = std::env::var("NERIA_DIALOG") {
                 demo_dialog(&ui, &which);
+            }
+            if let Ok(page) = std::env::var("NERIA_PAGE") {
+                let names = ["download", "clip", "compress"];
+                if let Some(i) = names.iter().position(|n| page.eq_ignore_ascii_case(n)) {
+                    ui.set_page(i as i32);
+                }
             }
             if let Ok(section) = std::env::var("NERIA_SETTINGS") {
                 let names = ["download", "spotify", "network", "appearance", "about"];

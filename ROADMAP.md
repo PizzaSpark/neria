@@ -155,8 +155,14 @@ built once on it. Friends' feedback feeds in here.
    on the left of the drawer. Clip and Compress have no settings of their own (you pick
    everything per file there), so no empty sections. The format button and "What's new"
    open the drawer at Download / About; `NERIA_SETTINGS=<section>` for checks
-3. Layouts that adapt to window width (wide desktop → narrow), so the same screens can later
-   become the Android layouts
+3. ✅ Layouts that adapt to window width, from three breakpoints (`Screen` in `theme.slint`):
+   wide 1000+, medium 720–999, compact under 720 down to a new 400 × 600 minimum (was
+   780 × 580). Compact is the Android starting point (mocks: `design/narrow-layouts.html`):
+   bottom tabs, one action per queue row plus a ⋯ menu, Settings as a full sheet with the
+   sections along the top, Clip and Compress stacked with their main button across the bottom,
+   dialogs edge to edge. Chip rows wrap at every width (Compress at medium used to clip);
+   scrolling lists keep a 24px lane so the scrollbar never sits on a button.
+   `NERIA_PAGE=clip|compress` and `NERIA_DIALOG=pick` for checks
 4. Queue filters (active / done / needs attention) and clearer flagged-match states
 5. Drag and drop links anywhere (files already work); keyboard navigation and focus states
    everywhere

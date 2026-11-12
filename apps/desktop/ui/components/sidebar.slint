@@ -1,7 +1,8 @@
 import { Theme } from "../theme.slint";
 import { NavItem, LogoMark } from "../widgets.slint";
 
-// The nav rail on the left: logo mark, the three pages, Settings at the bottom.
+// The nav rail on the left (wide and medium windows): logo mark, the three pages, Settings
+// at the bottom.
 export component Sidebar inherits Rectangle {
     in-out property <int> page;
     in property <bool> settings-open;
@@ -43,6 +44,53 @@ export component Sidebar inherits Rectangle {
         }
         Rectangle { vertical-stretch: 1; }
         NavItem {
+            icon: "\u{E713}";
+            label: "Settings";
+            active: root.settings-open;
+            clicked => { root.open-settings(); }
+        }
+    }
+}
+
+// Compact windows (and later Android): the same four places as a bar along the bottom.
+export component TabBar inherits Rectangle {
+    in-out property <int> page;
+    in property <bool> settings-open;
+    callback open-settings();
+    height: 66px;
+    background: Theme.bg;
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+    HorizontalLayout {
+        padding: 5px;
+        padding-top: 6px;
+        spacing: 4px;
+        NavItem {
+            horizontal-stretch: 1;
+            icon: "\u{E896}";
+            label: "Download";
+            active: root.page == 0 && !root.settings-open;
+            clicked => { root.page = 0; }
+        }
+        NavItem {
+            horizontal-stretch: 1;
+            icon: "\u{E8C6}";
+            label: "Clip";
+            active: root.page == 1 && !root.settings-open;
+            clicked => { root.page = 1; }
+        }
+        NavItem {
+            horizontal-stretch: 1;
+            icon: "\u{E73F}";
+            label: "Compress";
+            active: root.page == 2 && !root.settings-open;
+            clicked => { root.page = 2; }
+        }
+        NavItem {
+            horizontal-stretch: 1;
             icon: "\u{E713}";
             label: "Settings";
             active: root.settings-open;

@@ -1,13 +1,37 @@
 import { LineEdit, CheckBox, ComboBox, ScrollView, Slider } from "std-widgets.slint";
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { PrimaryButton, GhostButton, Bar, ChoiceChips, PageTitle, EmptyState, Notice, Divider, Thumb } from "../widgets.slint";
 
-// The label on the left of an option row ("Goal", "Size"…).
+// The label of an option row ("Goal", "Size"…).
 component OptionLabel inherits Text {
     width: 90px;
     color: Theme.muted;
     font-size: 13px;
     vertical-alignment: center;
+}
+
+// One option: its label on the left, level with the first line of chips (they wrap
+// when narrow), or above them on compact windows.
+component OptionRow inherits VerticalLayout {
+    in property <string> label;
+    spacing: 6px;
+    vertical-stretch: 0;
+    if Screen.compact: OptionLabel {
+        text: root.label;
+        font-size: 12px;
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        if !Screen.compact: VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 0;
+            OptionLabel {
+                height: 34px;
+                text: root.label;
+            }
+        }
+        @children
+    }
 }
 
 // Fit a size or pick a quality; codec, resolution, fps, audio; the estimate; Compress.
@@ -42,12 +66,15 @@ export component CompressPage inherits Rectangle {
     callback cancel();
     callback show-output();
 
+    // Compact: labels above the options, a smaller file card, and the Compress button
+    // across the bottom.
     VerticalLayout {
-        padding: 28px;
+        padding: Screen.compact ? Screen.pad : 28px;
+        padding-bottom: Screen.compact ? 12px : 28px;
         // Wide windows: keep a readable column instead of stretching edge to edge.
-        padding-left: max(26px, (parent.width - 1240px) / 2);
-        padding-right: max(26px, (parent.width - 1240px) / 2);
-        spacing: 16px;
+        padding-left: max(Screen.pad, (parent.width - 1240px) / 2);
+        padding-right: max(Screen.pad, (parent.width - 1240px) / 2);
+        spacing: Screen.compact ? 12px : 16px;
 
         HorizontalLayout {
             spacing: 12px;
@@ -55,14 +82,14 @@ export component CompressPage inherits Rectangle {
                 horizontal-stretch: 1;
                 spacing: 4px;
                 title: "Make it smaller.";
-                subtitle: "Fit Discord, email or any size limit, or just save space.";
+                subtitle: Screen.compact ? "" : "Fit Discord, email or any size limit, or just save space.";
             }
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
                 GhostButton {
                     compact: true;
-                    text: "Open file…";
+                    text: Screen.compact ? "" : "Open file…";
                     icon: "\u{E8E5}";
                     clicked => { root.open-file(); }
                 }
@@ -82,12 +109,12 @@ export component CompressPage inherits Rectangle {
 
         // File card
         if root.loaded: Rectangle {
-            height: 104px;
+            height: Screen.compact ? 63px : 104px;
             HorizontalLayout {
                 padding: 0px;
-                spacing: 16px;
+                spacing: Screen.compact ? 12px : 16px;
                 Thumb {
-                    width: 184px;
+                    width: Screen.compact ? 112px : 184px;
                     border-radius: 10px;
                     background: #000000;
                     source: root.thumb;
@@ -116,117 +143,119 @@ export component CompressPage inherits Rectangle {
         // Options scroll on short windows; the Compress bar stays pinned below.
         if root.loaded: ScrollView {
             vertical-stretch: 1;
+            // One plain layout (no Rectangle in between): wrapping chips are only measured
+            // at their real width through layouts, so a Rectangle would leave gaps.
             VerticalLayout {
                 spacing: 16px;
-                padding-right: 12px;
+                padding-right: Theme.lane;
+                padding-bottom: 4px;
                 alignment: start;
-                Rectangle {
-                    Divider {
-                        y: 0;
+                Divider { }
+                OptionRow {
+                    label: "Goal";
+                    ChoiceChips {
+                        options: ["Fit a size", "Pick a quality"];
+                        current <=> root.mode;
+                        changed => { root.options-changed(); }
                     }
+                }
+
+                if root.mode == 0: OptionRow {
+                    label: "Size";
                     VerticalLayout {
-                        padding-top: 18px;
-                        padding-bottom: 4px;
-                        spacing: 16px;
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            OptionLabel { text: "Goal"; }
-                            ChoiceChips {
-                                options: ["Fit a size", "Pick a quality"];
-                                current <=> root.mode;
-                                changed => { root.options-changed(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
+                        spacing: 8px;
+                        ChoiceChips {
+                            options: ["20 MB · Discord", "25 MB", "50 MB", "100 MB", "Custom"];
+                            current <=> root.size-index;
+                            changed => { root.options-changed(); }
                         }
-
-                        if root.mode == 0: HorizontalLayout {
+                        if root.size-index == 4: HorizontalLayout {
                             spacing: 8px;
-                            OptionLabel { text: "Size"; }
-                            ChoiceChips {
-                                options: ["20 MB · Discord", "25 MB", "50 MB", "100 MB", "Custom"];
-                                current <=> root.size-index;
-                                changed => { root.options-changed(); }
-                            }
-                            if root.size-index == 4: LineEdit {
+                            LineEdit {
                                 width: 90px;
                                 placeholder-text: "MB";
                                 text <=> root.custom-mb;
                                 edited => { root.options-changed(); }
                             }
-                            Rectangle { horizontal-stretch: 1; }
-                        }
-
-                        if root.mode == 1: HorizontalLayout {
-                            spacing: 12px;
-                            OptionLabel { text: "Quality"; }
                             Text {
-                                text: "Smaller";
+                                text: "MB";
                                 color: Theme.muted;
                                 font-size: 12px;
                                 vertical-alignment: center;
                             }
-                            Slider {
-                                horizontal-stretch: 1;
-                                minimum: 0;
-                                maximum: 1;
-                                value <=> root.quality;
-                                changed => { root.options-changed(); }
-                            }
-                            Text {
-                                text: "Better";
-                                color: Theme.muted;
-                                font-size: 12px;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            OptionLabel { text: "Codec"; }
-                            ChoiceChips {
-                                options: ["H.264 · plays everywhere", "H.265 · smaller", "AV1 · smallest"];
-                                current <=> root.codec;
-                                changed => { root.options-changed(); }
-                            }
                             Rectangle { horizontal-stretch: 1; }
                         }
+                    }
+                }
 
-                        HorizontalLayout {
-                            spacing: 10px;
-                            OptionLabel { text: "Output"; }
-                            ComboBox {
-                                width: 150px;
-                                model: ["Auto resolution", "Original size", "Max 1080p", "Max 720p", "Max 480p"];
-                                current-index <=> root.res-index;
-                                selected => { root.options-changed(); }
-                            }
-                            ComboBox {
-                                width: 130px;
-                                model: ["Original fps", "Max 60 fps", "Max 30 fps"];
-                                current-index <=> root.fps-index;
-                                selected => { root.options-changed(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
+                if root.mode == 1: OptionRow {
+                    label: "Quality";
+                    Text {
+                        text: "Smaller";
+                        color: Theme.muted;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                    Slider {
+                        horizontal-stretch: 1;
+                        minimum: 0;
+                        maximum: 1;
+                        value <=> root.quality;
+                        changed => { root.options-changed(); }
+                    }
+                    Text {
+                        text: "Better";
+                        color: Theme.muted;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                OptionRow {
+                    label: "Codec";
+                    ChoiceChips {
+                        options: ["H.264 · plays everywhere", "H.265 · smaller", "AV1 · smallest"];
+                        current <=> root.codec;
+                        changed => { root.options-changed(); }
+                    }
+                }
+
+                OptionRow {
+                    label: "Output";
+                    ComboBox {
+                        width: 150px;
+                        model: ["Auto resolution", "Original size", "Max 1080p", "Max 720p", "Max 480p"];
+                        current-index <=> root.res-index;
+                        selected => { root.options-changed(); }
+                    }
+                    ComboBox {
+                        width: 130px;
+                        model: ["Original fps", "Max 60 fps", "Max 30 fps"];
+                        current-index <=> root.fps-index;
+                        selected => { root.options-changed(); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+
+                OptionRow {
+                    label: "Audio";
+                    // The GPU tick drops under the bitrate when there's no room.
+                    FlexboxLayout {
+                        horizontal-stretch: 1;
+                        vertical-stretch: 0;
+                        spacing-horizontal: 16px;
+                        spacing-vertical: 8px;
+                        ComboBox {
+                            width: 150px;
+                            model: ["128 kbps", "96 kbps", "64 kbps", "No audio"];
+                            current-index <=> root.audio-index;
+                            selected => { root.options-changed(); }
                         }
-
-                        HorizontalLayout {
-                            spacing: 10px;
-                            OptionLabel { text: "Audio"; }
-                            ComboBox {
-                                width: 150px;
-                                model: ["128 kbps", "96 kbps", "64 kbps", "No audio"];
-                                current-index <=> root.audio-index;
-                                selected => { root.options-changed(); }
-                            }
-                            Rectangle { width: 6px; }
-                            CheckBox {
-                                text: root.gpu-label;
-                                enabled: root.gpu-available;
-                                checked <=> root.use-gpu;
-                                toggled => { root.options-changed(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
+                        CheckBox {
+                            text: root.gpu-label;
+                            enabled: root.gpu-available;
+                            checked <=> root.use-gpu;
+                            toggled => { root.options-changed(); }
                         }
                     }
                 }
@@ -248,7 +277,39 @@ export component CompressPage inherits Rectangle {
             value: root.progress;
         }
 
-        if root.loaded: HorizontalLayout {
+        // Compact: status and Show file on a line, Compress across the bottom.
+        if root.loaded && Screen.compact && (root.status != "" || (root.has-output && !root.running)): HorizontalLayout {
+            spacing: 8px;
+            Text {
+                horizontal-stretch: 1;
+                text: root.status;
+                color: Theme.muted;
+                font-size: 12px;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            if root.has-output && !root.running: GhostButton {
+                horizontal-stretch: 0;
+                compact: true;
+                text: "Show file";
+                icon: "\u{E838}";
+                clicked => { root.show-output(); }
+            }
+        }
+        if root.loaded && Screen.compact: PrimaryButton {
+            text: root.running ? "Cancel  " + Math.round(root.progress * 100) + "%" : "Compress";
+            icon: root.running ? "" : "\u{E73F}";
+            enabled: root.running || root.can-start;
+            clicked => {
+                if root.running {
+                    root.cancel();
+                } else {
+                    root.start-compress();
+                }
+            }
+        }
+
+        if root.loaded && !Screen.compact: HorizontalLayout {
             spacing: 8px;
             Text {
                 horizontal-stretch: 1;

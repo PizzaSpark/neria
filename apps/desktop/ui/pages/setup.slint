@@ -1,4 +1,4 @@
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { ToolRow } from "../types.slint";
 import { Icon, PrimaryButton, Bar, Tag, TextLink, Divider, ListRow, LogoMark } from "../widgets.slint";
 
@@ -21,10 +21,10 @@ export component SetupScreen inherits Rectangle {
     TouchArea { }
     HorizontalLayout {
         alignment: center;
-        padding: 26px;
+        padding: Screen.pad;
         VerticalLayout {
             alignment: center;
-            width: min(560px, root.width - 52px);
+            width: min(560px, root.width - 2 * Screen.pad);
             // Logo mark, same sticker as the nav rail, a size up.
             HorizontalLayout {
                 alignment: start;
@@ -38,7 +38,7 @@ export component SetupScreen inherits Rectangle {
                 text: root.blocked ? "Move Neria somewhere else." : root.failed ? "Setup hit a snag." : "Getting Neria ready.";
                 color: Theme.ink;
                 font-family: Theme.display;
-                font-size: 30px;
+                font-size: Screen.compact ? 26px : 30px;
                 font-weight: 700;
                 letter-spacing: -1px;
                 wrap: word-wrap;
@@ -141,7 +141,7 @@ export component SetupScreen inherits Rectangle {
                         }
                         VerticalLayout {
                             alignment: center;
-                            width: 168px;
+                            width: Screen.compact ? 120px : 168px;
                             spacing: 7px;
                             HorizontalLayout {
                                 alignment: end;

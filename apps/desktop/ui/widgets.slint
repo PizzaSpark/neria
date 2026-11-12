@@ -1,7 +1,7 @@
 // Shared controls. Rule: anything you press is playful (outline, sticker
 // yellow, hard shadow on the main action); anything you read is calm.
 
-import { Theme } from "theme.slint";
+import { Theme, Screen } from "theme.slint";
 
 export component Icon inherits Text {
     font-family: Theme.icons;
@@ -141,8 +141,8 @@ export component Chip inherits Rectangle {
         clicked => { root.clicked(); }
     }
     HorizontalLayout {
-        padding-left: 13px;
-        padding-right: 13px;
+        padding-left: Screen.compact ? 10px : 13px;
+        padding-right: Screen.compact ? 10px : 13px;
         Text {
             text: root.text;
             color: root.selected ? Theme.bg : Theme.ink;
@@ -206,18 +206,72 @@ export component NavItem inherits Rectangle {
     }
 }
 
-// Big friendly page headline ("Grab anything.") with an optional line under it.
+// The sticker: a rounded face with a hard outline and a hard shadow down-right. Children
+// go on the face. Used for the logo mark and the drop target.
+export component Sticker inherits Rectangle {
+    in property <length> size: 34px;
+    in property <length> radius: 10px;
+    in property <color> face: Theme.pop;
+    in property <color> edge: Theme.hard;
+    in property <color> shadow: Theme.hard;
+    width: root.size + 3px;
+    height: root.size + 3px;
+    Rectangle {
+        x: 3px;
+        y: 3px;
+        width: root.size;
+        height: root.size;
+        border-radius: root.radius;
+        background: root.shadow;
+    }
+    Rectangle {
+        width: root.size;
+        height: root.size;
+        border-radius: root.radius;
+        background: root.face;
+        border-width: 2px;
+        border-color: root.edge;
+        @children
+    }
+}
+
+// Neria's logo mark: an "N" whose left stem is a download arrow, on the sticker.
+export component LogoMark inherits Sticker {
+    // Sized from `size`: it sits on the face, which isn't its `parent` here.
+    Image {
+        width: root.size;
+        height: root.size;
+        source: @image-url("../assets/neria-mark.png");
+    }
+}
+
+// Big friendly page headline ("Grab anything.") with an optional line under it. Compact
+// windows have no rail, so the logo mark moves next to the headline there.
 export component PageTitle inherits VerticalLayout {
     in property <string> title;
     in property <string> subtitle;
-    spacing: 6px;
-    Text {
-        text: root.title;
-        color: Theme.ink;
-        font-family: Theme.display;
-        font-size: 30px;
-        font-weight: 700;
-        letter-spacing: -1px;
+    spacing: Screen.compact ? 4px : 6px;
+    HorizontalLayout {
+        spacing: 10px;
+        if Screen.compact: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            LogoMark {
+                size: 28px;
+                radius: 8px;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.title;
+            color: Theme.ink;
+            font-family: Theme.display;
+            font-size: Screen.compact ? 23px : 30px;
+            font-weight: 700;
+            letter-spacing: Screen.compact ? -0.6px : -1px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
     }
     if root.subtitle != "": Text {
         text: root.subtitle;
@@ -378,9 +432,11 @@ export component Kbd inherits Rectangle {
 export component Tick inherits Rectangle {
     in-out property <bool> checked;
     in property <string> text;
+    // One line, cut with "…" when too long (song names in a list).
+    in property <bool> elide;
     callback toggled(bool);
     min-height: 28px;
-    min-width: row.preferred-width;
+    min-width: root.elide ? 60px : row.preferred-width;
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
@@ -414,7 +470,8 @@ export component Tick inherits Rectangle {
             font-family: Theme.body;
             font-size: 13px;
             vertical-alignment: center;
-            wrap: word-wrap;
+            wrap: root.elide ? no-wrap : word-wrap;
+            overflow: root.elide ? TextOverflow.elide : TextOverflow.clip;
             horizontal-stretch: 1;
         }
     }
@@ -440,9 +497,11 @@ export component Dialog inherits Rectangle {
             }
         }
     }
+    // Compact windows: the card goes nearly edge to edge.
+    property <length> margin: Screen.compact ? 24px : 48px;
     Rectangle {
-        width: min(root.card-width, root.width - 48px);
-        height: root.fit ? min(body.preferred-height, root.height - 48px) : min(root.card-height, root.height - 48px);
+        width: min(root.card-width, root.width - root.margin);
+        height: root.fit ? min(body.preferred-height, root.height - root.margin) : min(root.card-height, root.height - root.margin);
         border-radius: 12px;
         background: Theme.panel;
         border-width: 1px;
@@ -450,9 +509,9 @@ export component Dialog inherits Rectangle {
         clip: true;
         TouchArea { }
         body := VerticalLayout {
-            padding: 24px;
-            padding-top: 22px;
-            spacing: 16px;
+            padding: Screen.compact ? 18px : 24px;
+            padding-top: Screen.compact ? 18px : 22px;
+            spacing: Screen.compact ? 14px : 16px;
             HorizontalLayout {
                 spacing: 12px;
                 VerticalLayout {
@@ -530,13 +589,16 @@ export component ChoiceTile inherits Rectangle {
     }
 }
 
-// A row of chips where one is picked (quality, clip mode, compress goal…).
-export component ChoiceChips inherits HorizontalLayout {
+// A row of chips where one is picked (quality, clip mode, compress goal…). Wraps onto
+// more lines when the window is too narrow for one. It takes the row's free width (chips
+// stay left) so it only wraps when it has to, and never grows taller than its lines.
+export component ChoiceChips inherits FlexboxLayout {
     in property <[string]> options;
     in-out property <int> current;
     callback changed();
-    horizontal-stretch: 0;
-    spacing: 8px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    spacing: Screen.compact ? 7px : 8px;
     for option[i] in root.options: Chip {
         horizontal-stretch: 0;
         text: option;
@@ -544,6 +606,55 @@ export component ChoiceChips inherits HorizontalLayout {
         clicked => {
             root.current = i;
             root.changed();
+        }
+    }
+}
+
+// The ⋯ button's pop-up (queue rows on compact windows): a floating card of calm rows.
+// Put the `MenuItem`s inside; the `PopupWindow` around it closes on any click.
+export component Menu inherits Rectangle {
+    width: 200px;
+    height: col.preferred-height;
+    border-radius: 12px;
+    background: Theme.panel;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    col := VerticalLayout {
+        padding: 6px;
+        spacing: 2px;
+        @children
+    }
+}
+
+export component MenuItem inherits Rectangle {
+    in property <string> icon;
+    in property <string> text;
+    callback clicked();
+    height: 36px;
+    border-radius: 8px;
+    background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        spacing: 10px;
+        Icon {
+            width: 16px;
+            text: root.icon;
+            font-size: 13px;
+            color: ta.has-hover ? Theme.ink : Theme.muted;
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            color: Theme.ink;
+            font-family: Theme.body;
+            font-size: 13px;
+            vertical-alignment: center;
+            overflow: elide;
         }
     }
 }
@@ -562,7 +673,7 @@ export component Divider inherits Rectangle {
 // A calm list row with a hairline at the bottom. The hairline stops short of the
 // ListView's scrollbar lane (`lane`; 0 outside a ListView).
 export component ListRow inherits Rectangle {
-    in property <length> lane: 16px;
+    in property <length> lane: Theme.lane;
     @children
     Rectangle {
         x: 0;
@@ -586,45 +697,6 @@ export component Thumb inherits Rectangle {
         image-fit: cover;
     }
     @children
-}
-
-// The sticker: a rounded face with a hard outline and a hard shadow down-right. Children
-// go on the face. Used for the logo mark and the drop target.
-export component Sticker inherits Rectangle {
-    in property <length> size: 34px;
-    in property <length> radius: 10px;
-    in property <color> face: Theme.pop;
-    in property <color> edge: Theme.hard;
-    in property <color> shadow: Theme.hard;
-    width: root.size + 3px;
-    height: root.size + 3px;
-    Rectangle {
-        x: 3px;
-        y: 3px;
-        width: root.size;
-        height: root.size;
-        border-radius: root.radius;
-        background: root.shadow;
-    }
-    Rectangle {
-        width: root.size;
-        height: root.size;
-        border-radius: root.radius;
-        background: root.face;
-        border-width: 2px;
-        border-color: root.edge;
-        @children
-    }
-}
-
-// Neria's logo mark: an "N" whose left stem is a download arrow, on the sticker.
-export component LogoMark inherits Sticker {
-    // Sized from `size`: it sits on the face, which isn't its `parent` here.
-    Image {
-        width: root.size;
-        height: root.size;
-        source: @image-url("../assets/neria-mark.png");
-    }
 }
 
 // One line of status next to an icon: "That's not a link yet", "Already downloaded",
@@ -678,9 +750,10 @@ export component EmptyState inherits Rectangle {
             text: root.title;
             color: Theme.ink;
             font-family: Theme.display;
-            font-size: 19px;
+            font-size: Screen.compact ? 17px : 19px;
             font-weight: 700;
             horizontal-alignment: center;
+            wrap: word-wrap;
         }
         HorizontalLayout {
             alignment: center;
@@ -692,6 +765,7 @@ export component EmptyState inherits Rectangle {
             color: Theme.muted;
             font-size: 12px;
             horizontal-alignment: center;
+            wrap: word-wrap;
         }
     }
 }

@@ -1,5 +1,5 @@
 import { ListView } from "std-widgets.slint";
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { MatchItem } from "../types.slint";
 import { GhostButton, IconButton, Hint, Tag, LinkField, Dialog, Divider, ListRow } from "../widgets.slint";
 
@@ -49,7 +49,7 @@ export component MatchDialog inherits Dialog {
 
     VerticalLayout {
         vertical-stretch: 1;
-        Divider { inset-right: 16px; }
+        Divider { inset-right: Theme.lane; }
         ListView {
             vertical-stretch: 1;
             for item[i] in root.items: ListRow {
@@ -57,14 +57,14 @@ export component MatchDialog inherits Dialog {
                 // Calm rows; the one in use sits on a slightly raised band.
                 Rectangle {
                     x: 0;
-                    width: parent.width - 16px;
+                    width: parent.width - Theme.lane;
                     background: item.current ? Theme.raised : transparent;
                 }
                 HorizontalLayout {
-                    padding-left: 12px;
-                    // 16px lane for the scrollbar, plus breathing room.
-                    padding-right: 26px;
-                    spacing: 8px;
+                    padding-left: Screen.compact ? 8px : 12px;
+                    // Keep clear of the scrollbar.
+                    padding-right: Theme.lane;
+                    spacing: Screen.compact ? 6px : 8px;
                     VerticalLayout {
                         alignment: center;
                         spacing: 5px;
@@ -110,7 +110,8 @@ export component MatchDialog inherits Dialog {
                         alignment: center;
                         GhostButton {
                             compact: true;
-                            text: "Check";
+                            // Compact: icon only (the hint under the list explains it).
+                            text: Screen.compact ? "" : "Check";
                             icon: "\u{E8D6}";
                             clicked => { root.check(i); }
                         }
@@ -126,7 +127,7 @@ export component MatchDialog inherits Dialog {
                         alignment: center;
                         GhostButton {
                             compact: true;
-                            text: "Use this";
+                            text: Screen.compact ? "Use" : "Use this";
                             clicked => { root.use(i); }
                         }
                     }

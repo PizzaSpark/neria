@@ -16,9 +16,12 @@ UI design system: `docs/DESIGN.md` (Studio + Play); follow it for any new or cha
   - `pages/`: `download`, `clip`, `compress`, `settings` (drawer), `setup` (first run).
   - `dialogs/`: `match` (pick another match), `sync` (removed songs), `spotify` (heads-up),
     `drop` (drag-and-drop overlay + clip/compress choice).
-  - `components/`: `job-row`, `quality-row`, `pick-list`, `timeline`, `sidebar`, `update-banner`.
+  - `components/`: `job-row`, `quality-row`, `pick-list`, `timeline`, `sidebar` (rail + compact
+    `TabBar`), `update-banner`.
   - `widgets.slint`: the one shared control set (buttons, chips, `ChoiceChips`, `Tick`, `Tag`,
-    `Notice`, `Divider`, `ListRow`, `Thumb`, `Sticker`/`LogoMark`, `EmptyState`, `Dialog`, `Toast`…).
+    `Notice`, `Divider`, `ListRow`, `Thumb`, `Sticker`/`LogoMark`, `EmptyState`, `Dialog`, `Menu`,
+    `Toast`…). `theme.slint`'s `Screen` global holds the width breakpoints (wide / medium /
+    compact, see `docs/DESIGN.md`); pages read `Screen.compact` etc. instead of taking the width.
     Reuse these instead of restyling per page. `theme.slint`: tokens + bundled fonts in `ui/fonts/`.
   - Pages take plain properties (no `clip-`/`cmp-` prefixes) and are bound in `app.slint`.
 
@@ -48,11 +51,11 @@ Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_C
 `NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
 (auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
-failed download), `NERIA_SETTINGS` (open the settings drawer; `download`, `spotify`, `network`, `appearance` or `about` picks the section), `NERIA_UPDATE_URL` (check this "latest
+failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_SETTINGS` (open the settings drawer; `download`, `spotify`, `network`, `appearance` or `about` picks the section), `NERIA_UPDATE_URL` (check this "latest
 release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),
 `NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_DEMO` (sample queue
 rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog), `NERIA_DIALOG` (open a dialog with sample
-data: `match`, `sync`, `spotify`, `toast`, `update`, `update-ready`, `update-failed`),
+data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, `update-ready`, `update-failed`),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
 `NERIA_WINDOW` (window size in logical px, e.g. `780x580`), `NERIA_FAKE_FREE_MB` (pretend the
 drive has this much free, to test the free-space checks), `NERIA_DROP_HOVER` / `NERIA_DROP`

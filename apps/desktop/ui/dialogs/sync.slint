@@ -1,4 +1,5 @@
 import { ListView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
 import { SyncItem } from "../types.slint";
 import { PrimaryButton, GhostButton, Hint, Tick, Dialog, Divider, ListRow } from "../widgets.slint";
 
@@ -22,15 +23,16 @@ export component SyncDialog inherits Dialog {
     }
     VerticalLayout {
         vertical-stretch: 1;
-        Divider { inset-right: 16px; }
+        Divider { inset-right: Theme.lane; }
         ListView {
             vertical-stretch: 1;
             for item[i] in root.items: ListRow {
                 height: 52px;
                 HorizontalLayout {
                     padding-left: 4px;
-                    padding-right: 26px;
+                    padding-right: Theme.lane;
                     Tick {
+                        elide: true;
                         text: item.title;
                         checked: item.checked;
                         toggled(on) => { root.toggle(i, on); }

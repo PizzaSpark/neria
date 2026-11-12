@@ -42,6 +42,10 @@ export global Theme {
     // Yellow can't be read on cream, so accent *text* gets its own colour.
     out property <color> pop-text: dark ? #ffd23f : #8a6500;
 
+    // Room kept free on the right of scrolling lists and panes: the 14px scrollbar plus a
+    // 10px gap, so it never sits on a row's buttons.
+    out property <length> lane: 24px;
+
     // Status (text / tinted background)
     out property <color> ok: dark ? #7fd6a4 : #1d7a4b;
     out property <color> ok-bg: dark ? #173326 : #d5f2e0;
@@ -60,4 +64,19 @@ export global Theme {
     out property <color> accent-hi: pop-text;
     out property <color> success: ok;
     out property <color> danger: bad;
+}
+
+// Layout breakpoints, from the window width (AppWindow keeps `width` current).
+// Wide (1000+): everything side by side. Medium (720–999): quality chips get their own
+// row, row actions shrink to icons. Compact (under 720, down to the 400px minimum): bottom
+// tabs, pages stack, one action per queue row plus a ⋯ menu. Compact is also the shape
+// the Android layouts start from.
+export global Screen {
+    in-out property <length> width: 1040px;
+    out property <length> wide-from: 1000px;
+    out property <length> medium-from: 720px;
+    out property <bool> wide: root.width >= root.wide-from;
+    out property <bool> compact: root.width < root.medium-from;
+    // Page padding: 26px, 16px on compact.
+    out property <length> pad: root.compact ? 16px : 26px;
 }

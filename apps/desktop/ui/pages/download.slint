@@ -1,5 +1,5 @@
 import { ListView } from "std-widgets.slint";
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { JobItem, PickItem, SyncItem } from "../types.slint";
 import { Icon, PrimaryButton, GhostButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, Notice, Divider, Thumb } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
@@ -94,7 +94,7 @@ export component DownloadPage inherits Rectangle {
 
     property <bool> picking: root.probe-state == 2 && root.pick-items.length > 1;
     // Chips go under the preview title when there's room (saves a row for the queue).
-    property <bool> chips-inline: root.probe-state == 2 && root.window-width >= 960px;
+    property <bool> chips-inline: root.probe-state == 2 && Screen.wide;
     property <bool> short: root.window-height < 820px;
     property <bool> no-quality: root.probe-is-spotify || root.gif-mode;
     property <string> no-quality-text: root.gif-mode ? "Saved as a .gif (X keeps GIFs as short silent videos)"
@@ -103,19 +103,20 @@ export component DownloadPage inherits Rectangle {
         : root.probe-is-spotify || root.quality == 4 ? root.audio-format : root.video-format;
 
     VerticalLayout {
-        padding: 26px;
+        padding: Screen.pad;
         // Wide windows: keep a readable column instead of stretching edge to edge.
-        padding-left: max(26px, (parent.width - 1240px) / 2);
-        padding-right: max(26px, (parent.width - 1240px) / 2);
-        padding-bottom: 14px;
-        spacing: 16px;
+        padding-left: max(Screen.pad, (parent.width - 1240px) / 2);
+        padding-right: max(Screen.pad, (parent.width - 1240px) / 2);
+        padding-bottom: Screen.compact ? 0px : 14px;
+        spacing: Screen.compact ? 12px : 16px;
 
         HorizontalLayout {
             spacing: 12px;
             PageTitle {
                 horizontal-stretch: 1;
                 title: "Grab anything.";
-                subtitle: "YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.";
+                // Compact: the link box says it all; the queue gets the line.
+                subtitle: Screen.compact ? "" : "YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.";
             }
         }
 
@@ -173,8 +174,8 @@ export component DownloadPage inherits Rectangle {
         if root.probe-state >= 1 && root.probe-state <= 3: HorizontalLayout {
             spacing: 16px;
             Thumb {
-                width: root.probe-state != 2 ? 120px : root.short ? 128px : 184px;
-                height: root.probe-state != 2 ? 68px : root.short ? 72px : 104px;
+                width: root.probe-state != 2 || Screen.compact ? 120px : root.short ? 128px : 184px;
+                height: root.probe-state != 2 || Screen.compact ? 68px : root.short ? 72px : 104px;
                 border-radius: 10px;
                 source: root.probe-thumb;
                 if root.probe-state != 2: Icon {
@@ -190,7 +191,7 @@ export component DownloadPage inherits Rectangle {
                 Text {
                     text: root.probe-state == 1 ? "Looking up the link…" : root.probe-title;
                     color: root.probe-state != 3 ? Theme.ink : root.probe-blocked ? Theme.bad : Theme.warn;
-                    font-size: root.short ? 15px : 17px;
+                    font-size: root.short || Screen.compact ? 15px : 17px;
                     font-weight: 600;
                     overflow: elide;
                 }
@@ -260,7 +261,7 @@ export component DownloadPage inherits Rectangle {
             note: root.pick-note;
             number-items <=> root.number-items;
             // Room for about four rows; the queue keeps the rest.
-            visible-rows: root.window-height < 760px ? 3 : 4;
+            visible-rows: root.window-height < 700px ? 2 : root.window-height < 760px ? 3 : 4;
             toggle(i, on) => { root.pick-toggle(i, on); }
             all(on) => { root.pick-all(on); }
             quality(i, q) => { root.pick-quality(i, q); }
@@ -316,24 +317,24 @@ export component DownloadPage inherits Rectangle {
                     }
                 }
                 // Next to the title, so the links on the right don't jump around
-                // as these come and go.
+                // as these come and go. Compact has room for one of the two.
                 if root.active-count > 0: TextLink {
                     text: "Pause all";
                     icon: "\u{E769}";
                     clicked => { root.pause-all(); }
                 }
-                if root.paused-count > 0: TextLink {
+                if root.paused-count > 0 && (!Screen.compact || root.active-count == 0): TextLink {
                     text: "Resume all";
                     icon: "\u{E768}";
                     clicked => { root.resume-all(); }
                 }
                 Rectangle { horizontal-stretch: 1; }
                 if root.finished-count > 0: TextLink {
-                    text: "Clear finished";
+                    text: Screen.compact ? "Clear" : "Clear finished";
                     clicked => { root.clear-finished(); }
                 }
                 TextLink {
-                    text: "Open folder";
+                    text: Screen.compact ? "Folder" : "Open folder";
                     icon: "\u{E838}";
                     clicked => { root.open-output(); }
                 }
@@ -364,7 +365,8 @@ export component DownloadPage inherits Rectangle {
                 vertical-stretch: 1;
                 for job in root.jobs: JobRow {
                     job: job;
-                    narrow: root.window-width < 1000px;
+                    narrow: !Screen.wide;
+                    compact: Screen.compact;
                     cancel => { root.cancel-job(job.id); }
                     remove => { root.remove-job(job.id); }
                     retry => { root.retry-job(job.id); }

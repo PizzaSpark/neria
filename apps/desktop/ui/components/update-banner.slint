@@ -1,4 +1,4 @@
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { GhostButton, IconButton, Bar, Tag, TextLink, Divider } from "../widgets.slint";
 
 // New Neria version (or one downloading / ready to restart), at the top of the Download page.
@@ -50,7 +50,8 @@ export component UpdateBanner inherits VerticalLayout {
                 font-size: 12px;
             }
         }
-        if root.state == 0 || root.state == 4: VerticalLayout {
+        // Compact: no room; the notes are in Settings → About too.
+        if (root.state == 0 || root.state == 4) && !Screen.compact: VerticalLayout {
             alignment: center;
             TextLink {
                 text: "What's new";

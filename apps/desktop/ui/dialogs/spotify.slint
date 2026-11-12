@@ -1,4 +1,4 @@
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { PrimaryButton, GhostButton, Tick, Dialog, Divider, ListRow } from "../widgets.slint";
 
 // First Download of a Spotify link: where the song info and the audio come from.
@@ -51,10 +51,16 @@ export component SpotifyHeadsUp inherits Dialog {
             }
         }
     }
+    // Compact: the tick gets its own line above the buttons.
+    if Screen.compact: Tick {
+        text: "Don't show this again";
+        checked <=> root.skip;
+    }
     HorizontalLayout {
-        padding-top: 4px;
+        padding-top: Screen.compact ? 0px : 4px;
         spacing: 12px;
-        VerticalLayout {
+        alignment: Screen.compact ? end : stretch;
+        if !Screen.compact: VerticalLayout {
             alignment: center;
             horizontal-stretch: 1;
             Tick {

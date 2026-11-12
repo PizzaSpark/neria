@@ -1,4 +1,4 @@
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { Fmt } from "../types.slint";
 import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, PageTitle, EmptyState } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
@@ -54,6 +54,14 @@ export component ClipPage inherits FocusScope {
 
     property <float> effective-in: Fmt.keyframe-before(root.in-time, root.keyframes);
     property <bool> early-start: !root.is-link && root.mode == 0 && root.effective-in < root.in-time - 0.05;
+    // What the export will do (or how it went), next to the Export button.
+    property <string> status-text: root.status != "" ? root.status
+        : root.is-link ? "Downloads only " + Fmt.time(root.out-time - root.in-time)
+            + (root.mode == 0 ? "  ·  fast, may start a few seconds early" : "  ·  frame-exact (slower)")
+        : root.mode == 1 ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  frame-exact H.264"
+        : root.early-start ? "Lossless cut starts earlier, at " + Fmt.time(root.effective-in) + " (keyframe)"
+        : "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  lossless, starts on a keyframe";
+    property <bool> status-warn: root.status == "" && root.early-start;
 
     function set-in() {
         root.in-time = min(root.position, root.duration);
@@ -116,34 +124,38 @@ export component ClipPage inherits FocusScope {
         reject
     }
 
+    // Compact: everything stacks, the player gives up height first, and the Export bar
+    // stays pinned at the bottom.
     VerticalLayout {
-        padding: 28px;
-        spacing: 14px;
+        padding: Screen.compact ? Screen.pad : 28px;
+        padding-bottom: Screen.compact ? 12px : 28px;
+        spacing: Screen.compact ? 8px : 14px;
 
         HorizontalLayout {
-            spacing: 12px;
+            spacing: Screen.compact ? 6px : 12px;
             PageTitle {
                 horizontal-stretch: 1;
                 spacing: 4px;
                 title: "Cut the good part.";
-                subtitle: root.loaded ? root.name : "Trim a file, or preview a link and download only the part you want.";
+                subtitle: root.loaded ? root.name : Screen.compact ? "" : "Trim a file, or preview a link and download only the part you want.";
             }
+            // Compact: icons only (the empty page spells them out), level with the headline.
             VerticalLayout {
-                alignment: center;
+                alignment: Screen.compact ? start : center;
                 horizontal-stretch: 0;
                 GhostButton {
                     compact: true;
-                    text: "Paste link";
+                    text: Screen.compact ? "" : "Paste link";
                     icon: "\u{E71B}";
                     clicked => { root.paste-link(); }
                 }
             }
             VerticalLayout {
-                alignment: center;
+                alignment: Screen.compact ? start : center;
                 horizontal-stretch: 0;
                 GhostButton {
                     compact: true;
-                    text: "Open file…";
+                    text: Screen.compact ? "" : "Open file…";
                     icon: "\u{E8E5}";
                     clicked => { root.open-file(); }
                 }
@@ -170,7 +182,7 @@ export component ClipPage inherits FocusScope {
         // window); 16:9 until the first frame arrives or for audio files.
         if root.loaded: Rectangle {
             vertical-stretch: 1;
-            min-height: 180px;
+            min-height: Screen.compact ? 90px : 180px;
             // Fixed hints so the inner box (sized from this one) can't feed its
             // size back into the page layout.
             min-width: 0px;
@@ -272,14 +284,32 @@ export component ClipPage inherits FocusScope {
                 font-size: 13px;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
+                overflow: elide;
             }
-            GhostButton {
+            if !Screen.compact: GhostButton {
                 horizontal-stretch: 0;
                 text: "In  " + Fmt.time(root.in-time);
                 clicked => { root.set-in(); }
             }
-            GhostButton {
+            if !Screen.compact: GhostButton {
                 horizontal-stretch: 0;
+                text: "Out  " + Fmt.time(root.out-time);
+                clicked => { root.set-out(); }
+            }
+        }
+
+        // Compact: In and Out get a row of their own, half each.
+        if root.loaded && Screen.compact: HorizontalLayout {
+            spacing: 8px;
+            GhostButton {
+                horizontal-stretch: 1;
+                compact: true;
+                text: "In  " + Fmt.time(root.in-time);
+                clicked => { root.set-in(); }
+            }
+            GhostButton {
+                horizontal-stretch: 1;
+                compact: true;
                 text: "Out  " + Fmt.time(root.out-time);
                 clicked => { root.set-out(); }
             }
@@ -302,7 +332,8 @@ export component ClipPage inherits FocusScope {
             }
         }
 
-        if root.loaded: Text {
+        // Keyboard shortcuts: not on compact (and no keyboard on a phone).
+        if root.loaded && !Screen.compact: Text {
             text: "Space play clip  ·  I / O set in / out  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  Home / End jump to in / out";
             color: Theme.muted;
             font-size: 11px;
@@ -321,27 +352,80 @@ export component ClipPage inherits FocusScope {
             show-clip: false;
         }
 
-        if root.loaded: HorizontalLayout {
+        if root.loaded && Screen.compact: VerticalLayout {
+            // Spare height goes to the player, not here.
+            vertical-stretch: 0;
             spacing: 8px;
             ChoiceChips {
                 options: ["Fast · lossless", "Exact · re-encode"];
                 current <=> root.mode;
             }
+            HorizontalLayout {
+                spacing: 6px;
+                min-height: 30px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.status-text;
+                    color: root.status-warn ? Theme.warn : Theme.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                if root.status-warn: GhostButton {
+                    horizontal-stretch: 0;
+                    compact: true;
+                    text: "Snap to keyframe";
+                    clicked => {
+                        root.in-time = root.effective-in;
+                        root.seek(root.in-time);
+                    }
+                }
+                if root.has-output && !root.exporting: GhostButton {
+                    horizontal-stretch: 0;
+                    compact: true;
+                    text: "Show file";
+                    icon: "\u{E838}";
+                    clicked => { root.show-output(); }
+                }
+                if root.is-link && root.status != "": GhostButton {
+                    horizontal-stretch: 0;
+                    compact: true;
+                    text: "View queue";
+                    clicked => { root.view-queue(); }
+                }
+            }
+            PrimaryButton {
+                text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%"
+                    : root.is-link ? "Download clip" : "Export clip";
+                icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
+                enabled: root.out-time > root.in-time && root.tools-ready;
+                clicked => {
+                    if root.exporting {
+                        root.cancel-export();
+                    } else {
+                        root.export-clip();
+                    }
+                }
+            }
+        }
+
+        if root.loaded && !Screen.compact: HorizontalLayout {
+            spacing: 8px;
+            ChoiceChips {
+                horizontal-stretch: 0;
+                options: ["Fast · lossless", "Exact · re-encode"];
+                current <=> root.mode;
+            }
             Text {
                 horizontal-stretch: 1;
-                text: root.status != "" ? root.status
-                    : root.is-link ? "Downloads only " + Fmt.time(root.out-time - root.in-time)
-                        + (root.mode == 0 ? "  ·  fast, may start a few seconds early" : "  ·  frame-exact (slower)")
-                    : root.mode == 1 ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  frame-exact H.264"
-                    : root.early-start ? "Lossless cut starts earlier, at " + Fmt.time(root.effective-in) + " (keyframe)"
-                    : "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  lossless, starts on a keyframe";
-                color: root.status == "" && root.early-start ? Theme.warn : Theme.muted;
+                text: root.status-text;
+                color: root.status-warn ? Theme.warn : Theme.muted;
                 font-size: 12px;
                 overflow: elide;
                 vertical-alignment: center;
                 horizontal-alignment: right;
             }
-            if root.status == "" && root.early-start: GhostButton {
+            if root.status-warn: GhostButton {
                 horizontal-stretch: 0;
                 text: "Snap to keyframe";
                 clicked => {
