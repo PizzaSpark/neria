@@ -63,7 +63,7 @@ data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, 
 `NERIA_WINDOW` (window size in logical px, e.g. `780x580`), `NERIA_FAKE_FREE_MB` (pretend the
 drive has this much free, to test the free-space checks), `NERIA_DROP_HOVER` / `NERIA_DROP`
 (a file path or link: show the drag-and-drop overlay for it / act as if it was dropped),
-`NERIA_DROP_CLIPBOARD` (drop whatever is on the clipboard, through the real OLE drop code), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
+`NERIA_DROP_CLIPBOARD` (drop whatever is on the clipboard, through the real OLE drop code), `NERIA_DROP_LOG` (a file: log what each real drag offers and what Neria made of it), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
 `NERIA_HOME` (override app dir; for UI tests point it at a scratch folder with its own
 `settings.json` and a junction `bin` → `target/debug/bin`, so downloads don't land in the real
 Videos folder).

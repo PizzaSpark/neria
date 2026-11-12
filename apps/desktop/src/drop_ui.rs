@@ -71,9 +71,17 @@ fn as_link(text: &str) -> Option<String> {
 pub fn install(ui: &AppWindow) {
     // Explorer sends one event per file; take the first of a batch.
     let last_drop: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
+    // Our drop target goes in on the window's first event: the native window is created
+    // lazily, and an event from it means it exists.
+    #[cfg(windows)]
+    let ole_ready = Cell::new(false);
     let weak = ui.as_weak();
     ui.window().on_winit_window_event(move |_, event| {
         let Some(ui) = weak.upgrade() else { return EventResult::Propagate };
+        #[cfg(windows)]
+        if !ole_ready.get() {
+            ole_ready.set(ole::install(&ui));
+        }
         match event {
             WindowEvent::HoveredFile(path) => {
                 // Only the first file of a hover batch sets the label.
@@ -96,17 +104,6 @@ pub fn install(ui: &AppWindow) {
         }
         EventResult::PreventDefault
     });
-
-    // The window exists once the event loop runs: swap in our drop target then.
-    #[cfg(windows)]
-    {
-        let weak = ui.as_weak();
-        slint::Timer::single_shot(Duration::ZERO, move || {
-            if let Some(ui) = weak.upgrade() {
-                ole::install(&ui);
-            }
-        });
-    }
 
     ui.on_drop_choose({
         let weak = ui.as_weak();
@@ -207,7 +204,44 @@ mod ole {
     use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
     use windows::core::{Ref, implement, w};
 
+    /// Dev aid (`NERIA_DROP_LOG=<file>`): append what each drag offered and what Neria
+    /// made of it, to see why a drop from some app doesn't land.
+    fn log(line: &str) {
+        if let Some(path) = std::env::var_os("NERIA_DROP_LOG") {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let _ = writeln!(f, "{line}");
+            }
+        }
+    }
+
+    /// The formats a data object offers, by name ("UniformResourceLocatorW", "CF 13"…).
+    fn formats(data: &IDataObject) -> String {
+        use windows::Win32::System::Com::DATADIR_GET;
+        use windows::Win32::System::DataExchange::GetClipboardFormatNameW;
+        let mut names = Vec::new();
+        unsafe {
+            let Ok(list) = data.EnumFormatEtc(DATADIR_GET.0 as u32) else { return "?".into() };
+            loop {
+                let mut f = [FORMATETC::default()];
+                let mut got = 0u32;
+                if list.Next(&mut f, Some(&mut got)).is_err() || got == 0 {
+                    break;
+                }
+                let mut buf = [0u16; 128];
+                let n = GetClipboardFormatNameW(f[0].cfFormat as u32, &mut buf);
+                names.push(if n > 0 {
+                    String::from_utf16_lossy(&buf[..n as usize])
+                } else {
+                    format!("CF {}", f[0].cfFormat)
+                });
+            }
+        }
+        names.join(", ")
+    }
+
     /// What's being dragged over the window.
+    #[derive(Debug)]
     enum Dragged {
         File { path: PathBuf, more: bool },
         Link(String),
@@ -290,6 +324,9 @@ mod ole {
             effect: *mut DROPEFFECT,
         ) -> windows::core::Result<()> {
             let what = self.read(data.ok().ok());
+            if std::env::var_os("NERIA_DROP_LOG").is_some() {
+                log(&format!("enter: [{}] -> {what:?}", data.ok().map(formats).unwrap_or_default()));
+            }
             let e = if matches!(what, Dragged::Other) { DROPEFFECT_NONE } else { DROPEFFECT_COPY };
             self.effect.set(e);
             if let Some(ui) = self.weak.upgrade() {
@@ -323,6 +360,7 @@ mod ole {
             effect: *mut DROPEFFECT,
         ) -> windows::core::Result<()> {
             let what = self.read(data.ok().ok());
+            log(&format!("drop: {what:?}"));
             unsafe { *effect = self.effect.get() };
             let Some(ui) = self.weak.upgrade() else { return Ok(()) };
             ui.set_drop_hover(false);
@@ -340,8 +378,9 @@ mod ole {
         }
     }
 
-    /// Replace winit's drop target (files only) with ours (files and links).
-    pub fn install(ui: &AppWindow) {
+    /// Replace winit's drop target (files only) with ours (files and links). False when
+    /// there's no native window to put it on.
+    pub fn install(ui: &AppWindow) -> bool {
         let hwnd = ui
             .window()
             .with_winit_window(|w| match w.window_handle().ok()?.as_raw() {
@@ -349,7 +388,7 @@ mod ole {
                 _ => None,
             })
             .flatten();
-        let Some(hwnd) = hwnd else { return };
+        let Some(hwnd) = hwnd else { return false };
         let target: IDropTarget = Target {
             weak: ui.as_weak(),
             effect: Cell::new(DROPEFFECT_NONE),
@@ -359,10 +398,15 @@ mod ole {
         unsafe {
             let hwnd = HWND(hwnd as *mut _);
             let _ = RevokeDragDrop(hwnd);
-            if let Err(e) = RegisterDragDrop(hwnd, &target) {
-                eprintln!("drop target: {e}");
+            match RegisterDragDrop(hwnd, &target) {
+                Ok(()) => log("drop target registered"),
+                Err(e) => {
+                    log(&format!("drop target: {e}"));
+                    eprintln!("drop target: {e}");
+                }
             }
         }
+        true
     }
 
     /// Dev hook (`NERIA_DROP_CLIPBOARD`): read the clipboard through the same code a drop
