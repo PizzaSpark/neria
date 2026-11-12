@@ -53,3 +53,20 @@ Design choices: `design/download-track.html` (all the recommended options were p
       `… (English).mp3`.
 - [ ] A video with one audio language shows no Audio button.
 - [ ] Descriptive audio tracks (if a video has them) are listed with "(descriptive)".
+
+## 4. Chapters
+- [ ] A YouTube video with chapters: "Chapters: all N"; untouched it downloads the whole
+      video as before.
+- [ ] One file, chapters 2+3: one file, starts and ends at the chapter edges (named with
+      "(clip …)").
+- [ ] One file, chapters 2+3+5: the line says "skips chapter 4"; one `… (chapters).mp4`
+      that plays 2→3→5 without a glitch at the joins; no `.neria-part` files left.
+- [ ] Separate files, video: a folder named after the video with `01 Intro.mp4`, … each
+      starting near its chapter (keyframe cut), title tag = chapter title.
+- [ ] Separate files + Audio only on a full-album upload: `01 Song.mp3`… with title and
+      track number tags; the group card counts them.
+- [ ] Separate files + captions: one captions file in the same folder.
+- [ ] Clipper: open a downloaded file with chapters (yt-dlp embeds them with "embed
+      metadata" on): the strip under the timeline; clicking a chapter sets In/Out and
+      seeks; the picked one is filled. "Clip first" from a preview with chapters shows
+      them too.

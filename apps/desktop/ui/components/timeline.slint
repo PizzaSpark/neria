@@ -1,4 +1,6 @@
 import { Theme } from "../theme.slint";
+import { ChapterMark } from "../types.slint";
+import { KeyPress } from "../widgets.slint";
 
 // Filmstrip + waveform with draggable in/out handles and a playhead.
 export component Timeline inherits Rectangle {
@@ -178,6 +180,48 @@ export component Timeline inherits Rectangle {
                     root.seek(root.out-time);
                 }
             }
+        }
+    }
+}
+
+// Under the timeline: the video's chapters as blocks you click to select one (In and Out
+// jump to its edges). The selected chapter is filled like a picked chip.
+export component ChapterStrip inherits Rectangle {
+    in property <float> duration;
+    in property <[ChapterMark]> chapters;
+    in property <float> in-time;
+    in property <float> out-time;
+    callback picked(int);
+    property <float> dur: max(0.001, root.duration);
+    height: 28px;
+    for c[i] in root.chapters: Rectangle {
+        property <bool> on: abs(root.in-time - c.start) < 0.05 && abs(root.out-time - min(c.end, root.duration)) < 0.05;
+        x: root.width * (c.start / root.dur);
+        width: max(2px, root.width * ((min(c.end, root.dur) - c.start) / root.dur) - 3px);
+        height: root.height;
+        border-radius: 6px;
+        border-width: 2px;
+        border-color: self.on ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
+        background: self.on ? Theme.ink : transparent;
+        accessible-role: button;
+        accessible-label: "Chapter " + (i + 1) + ": " + c.title;
+        accessible-action-default => { root.picked(i); }
+        KeyPress {
+            radius: 6px;
+            activated => { root.picked(i); }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.picked(i); }
+        }
+        Text {
+            x: 7px;
+            width: max(0px, parent.width - 14px);
+            text: c.title;
+            color: parent.on ? Theme.bg : Theme.ink;
+            font-size: 11.5px;
+            vertical-alignment: center;
+            overflow: elide;
         }
     }
 }

@@ -54,6 +54,16 @@ $history = @($samples | ForEach-Object -Begin { $i = 0 } -Process {
 })
 $history | ConvertTo-Json | Set-Content -Encoding ascii (Join-Path $home_ "history.json")
 $video = Join-Path $media "sample.mp4"
+# The same video with chapter marks, for the clipper's chapter strip.
+$chaptered = Join-Path $media "chapters.mp4"
+if (-not (Test-Path $chaptered)) {
+  $meta = Join-Path $media "chapters.txt"
+  $lines = @(";FFMETADATA1")
+  $names = @("Intro", "The twilight zone", "Midnight zone", "Credits")
+  for ($c = 0; $c -lt 4; $c++) { $lines += "[CHAPTER]", "TIMEBASE=1/1000", "START=$($c * 5000)", "END=$(($c + 1) * 5000)", "title=$($names[$c])" }
+  $lines | Set-Content -Encoding ascii $meta
+  & $ff -loglevel error -y -i $video -i $meta -map 0 -map_chapters 1 -c copy $chaptered
+}
 # A signed-in site, for Settings → Network.
 New-Item -ItemType Directory -Force (Join-Path $home_ "cookies") | Out-Null
 "# Netscape HTTP Cookie File`n.youtube.com`tTRUE`t/`tTRUE`t0`tPREF`tx" | Set-Content -Encoding ascii (Join-Path $home_ "cookies\youtube.com.txt")
@@ -75,6 +85,8 @@ $states = [ordered]@{
   "extras"     = @{ NERIA_DIALOG = "extras" }
   "captions"   = @{ NERIA_DIALOG = "captions" }
   "audio"      = @{ NERIA_DIALOG = "audio" }
+  "chapters"   = @{ NERIA_DIALOG = "chapters" }
+  "clip-ch"    = @{ NERIA_OPEN = $chaptered; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "10" }
   "match"      = @{ NERIA_DIALOG = "match" }
   "sync"       = @{ NERIA_DIALOG = "sync" }
   "spotify"    = @{ NERIA_DIALOG = "spotify" }

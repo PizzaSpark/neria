@@ -566,6 +566,7 @@ mod tests {
             size_bytes: 300_000_000,
             has_video: true,
             has_audio: true,
+            chapters: Vec::new(),
         }
     }
 

@@ -3,7 +3,7 @@
 // globals; the screens themselves live in pages/, dialogs/ and components/.
 import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
-import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, Fmt, Formats } from "types.slint";
+import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
 import { Accounts, SiteItem, Extras, TrackRow } from "globals.slint";
 import { TracksDialog } from "dialogs/tracks.slint";
@@ -18,7 +18,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, Fmt, Accounts, SiteItem, Extras, TrackRow }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -221,6 +221,8 @@ export component AppWindow inherits Window {
     in property <bool> clip-has-output;
     in property <[float]> clip-keyframes;
     in property <[float]> clip-keyframe-ticks;
+    // Chapters of the open file or link (empty when it has none).
+    in property <[ChapterMark]> clip-chapters;
     // Link mode: streaming a URL; export downloads just the selection.
     in property <bool> clip-is-link;
     // The link is an X GIF (from the Download page's preview): saved as is, no quality to pick.
@@ -435,6 +437,7 @@ export component AppWindow inherits Window {
                     has-output: root.clip-has-output;
                     keyframes: root.clip-keyframes;
                     keyframe-ticks: root.clip-keyframe-ticks;
+                    chapters: root.clip-chapters;
                     is-link: root.clip-is-link;
                     gif: root.clip-is-gif && root.x-gifs-as-gif;
                     buffering: root.clip-buffering;

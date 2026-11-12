@@ -43,6 +43,13 @@ export struct PickItem {
     can-quality: bool,
 }
 
+// A chapter on the clipper's timeline: click it to make it the selection.
+export struct ChapterMark {
+    start: float,
+    end: float,
+    title: string,
+}
+
 // A finished download offered on the empty Clip / Compress pages.
 export struct RecentItem {
     path: string,

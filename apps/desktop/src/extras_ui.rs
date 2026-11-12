@@ -10,7 +10,8 @@ use neria_core::download::DownloadRequest;
 use neria_core::probe::MediaInfo;
 use neria_core::settings::Quality;
 use neria_core::settings::Settings;
-use neria_core::tracks::{AudioTrack, Caption, CaptionChoice, SubFormat, SubMode};
+use neria_core::tracks::{self, AudioTrack, Caption, CaptionChoice, Chapter, SubFormat, SubMode};
+use neria_core::{download, fmt, music};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::{AppWindow, Extras, TrackRow};
@@ -25,6 +26,25 @@ struct State {
     audio: Vec<AudioTrack>,
     /// Picked audio languages (the original when none is).
     audio_picked: HashSet<String>,
+    chapters: Vec<Chapter>,
+    /// Ticked chapters (all by default).
+    ch_picked: Vec<bool>,
+    /// The previewed link, so the clipper can show the same chapters.
+    url: String,
+}
+
+/// Ticked chapter indexes; none ticked counts as all (the whole video).
+fn picked_chapters(s: &State) -> Vec<usize> {
+    let p: Vec<usize> = (0..s.chapters.len()).filter(|i| s.ch_picked.get(*i).copied().unwrap_or(true)).collect();
+    if p.is_empty() { (0..s.chapters.len()).collect() } else { p }
+}
+
+/// The chapters of the previewed link (for the clipper), if it's that link.
+pub fn chapters_for(url: &str) -> Vec<Chapter> {
+    STATE.with(|s| {
+        let s = s.borrow();
+        if s.url == url { s.chapters.clone() } else { Vec::new() }
+    })
 }
 
 /// The audio tracks to download, original first; empty = just the default track.
@@ -68,6 +88,31 @@ fn refresh_buttons(ui: &AppWindow) {
             format!("{}: {}", if only { "Captions only" } else { "Captions" }, summary(&caps)).into()
         });
         ex.set_no_captions(s.captions.is_empty() && s.expect_captions);
+        let picked = picked_chapters(&s);
+        let n = s.chapters.len();
+        ex.set_chapters_text(if n == 0 {
+            "".into()
+        } else if ex.get_chapter_mode() == 1 {
+            format!("Chapters: {} files", picked.len()).into()
+        } else if picked.len() == n {
+            format!("Chapters: all {n}").into()
+        } else {
+            format!("Chapters: {} of {n}", picked.len()).into()
+        });
+        // What the picks will make.
+        let note = if ex.get_open() != 3 {
+            String::new()
+        } else if ex.get_chapter_mode() == 1 {
+            "One file per chapter (\"03 Title\"), in a folder named after the video. Audio only: one song per chapter, numbered and tagged.".into()
+        } else if picked.len() == n {
+            "The whole video, as one file.".into()
+        } else {
+            match tracks::skipped_note(n, &picked) {
+                Some(skips) => format!("The picked chapters joined into one file: {skips}."),
+                None => "The picked chapters as one file.".into(),
+            }
+        };
+        ex.set_note(note.into());
         let audio: Vec<String> = picked_audio(&s).iter().map(|t| t.name.clone()).collect();
         ex.set_audio_text(match audio.len() {
             _ if s.audio.is_empty() => "".into(),
@@ -120,6 +165,19 @@ fn refresh_rows(ui: &AppWindow) {
                 });
             }
         }
+        if ex.get_open() == 3 {
+            total = s.chapters.len() as i32;
+            picked = picked_chapters(&s).len() as i32;
+            for (i, c) in s.chapters.iter().enumerate() {
+                rows.push(TrackRow {
+                    key: format!("h:{i}").into(),
+                    label: format!("{:02}  {}", i + 1, c.title).into(),
+                    detail: fmt::duration(c.end - c.start).into(),
+                    checked: s.ch_picked.get(i).copied().unwrap_or(true),
+                    header: false,
+                });
+            }
+        }
         if ex.get_open() == 2 {
             total = s.audio.len() as i32;
             picked = s.audio_picked.len() as i32;
@@ -145,6 +203,7 @@ pub fn set_info(ui: &AppWindow, info: &MediaInfo, settings: &Settings) {
     ex.set_sub_format(settings.caption_format.index());
     ex.set_sub_mode(settings.caption_mode.index());
     ex.set_subs_only(false);
+    ex.set_chapter_mode(if settings.chapters_separate { 1 } else { 0 });
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         *s = State::default();
@@ -156,6 +215,9 @@ pub fn set_info(ui: &AppWindow, info: &MediaInfo, settings: &Settings) {
         s.audio = info.audio_tracks.clone();
         let original = s.audio.iter().find(|t| t.original).or(s.audio.first()).map(|t| t.lang.clone());
         s.audio_picked = original.into_iter().collect();
+        s.chapters = info.chapters.clone();
+        s.ch_picked = vec![true; s.chapters.len()];
+        s.url = ui.get_url().trim().to_string();
         // Last time's languages: the creator's version if there is one, else auto-generated.
         for lang in &settings.caption_langs {
             let found = s
@@ -181,7 +243,72 @@ pub fn clear(ui: &AppWindow) {
 
 /// The picks, applied to the download of the previewed video. Usually one request; some
 /// picks make several (they then share a group titled after the video).
-pub fn requests(ui: &AppWindow, mut base: DownloadRequest) -> Vec<DownloadRequest> {
+pub fn requests(ui: &AppWindow, base: DownloadRequest, settings: &Settings) -> Vec<DownloadRequest> {
+    let reqs = with_tracks(ui, base);
+    let separate = ui.global::<Extras>().get_chapter_mode() == 1;
+    match <[DownloadRequest; 1]>::try_from(reqs) {
+        Ok([one]) => STATE.with(|s| with_chapters(&s.borrow(), one, separate, settings)),
+        Err(many) => many,
+    }
+}
+
+/// Picked chapters: a part of the video, several parts joined, or one file per chapter.
+fn with_chapters(s: &State, mut base: DownloadRequest, separate: bool, settings: &Settings) -> Vec<DownloadRequest> {
+    let picked = picked_chapters(s);
+    let n = s.chapters.len();
+    if n == 0 || base.captions_only() || (!separate && picked.len() == n) {
+        return vec![base];
+    }
+    if !separate {
+        let ranges = tracks::ranges(&s.chapters, &picked);
+        match ranges.as_slice() {
+            [one] => {
+                base.section = Some(*one);
+                // A clean cut, like the joined chapters.
+                base.exact_cuts = true;
+            }
+            _ => {
+                base.sections = ranges;
+                base.name_tag = Some(" (chapters)".into());
+            }
+        }
+        return vec![base];
+    }
+    // One file per chapter, numbered, in a folder named after the video.
+    let folder = download::out_dir(&base, settings).join(music::sanitize(&base.title_hint));
+    let captions = base.captions.take();
+    let mut out: Vec<DownloadRequest> = picked
+        .iter()
+        .map(|&i| {
+            let c = &s.chapters[i];
+            let mut r = base.clone();
+            let name = format!("{:02} {}", i + 1, music::sanitize(&c.title));
+            r.section = Some((c.start, c.end));
+            r.title_hint = name.clone();
+            r.stem = Some(name);
+            r.dir = Some(folder.clone());
+            r.meta_title = Some(c.title.clone());
+            r.track = Some(i + 1);
+            r.key = None;
+            r
+        })
+        .collect();
+    // Captions are for the whole video: saved once, in the same folder.
+    if let Some(mut c) = captions.filter(|c| !c.is_empty()) {
+        c.only = true;
+        let mut r = base.clone();
+        r.captions = Some(c);
+        r.dir = Some(folder);
+        r.stem = Some(music::sanitize(&base.title_hint));
+        r.title_hint = format!("{} (captions)", base.title_hint);
+        r.key = None;
+        out.push(r);
+    }
+    out
+}
+
+/// Captions and audio tracks applied (audio only + several languages = one request each).
+fn with_tracks(ui: &AppWindow, mut base: DownloadRequest) -> Vec<DownloadRequest> {
     let ex = ui.global::<Extras>();
     STATE.with(|s| {
         let s = s.borrow();
@@ -236,6 +363,7 @@ pub fn remember(ui: &AppWindow, settings: &Arc<Mutex<Settings>>) {
     }
     st.caption_format = SubFormat::from_index(ex.get_sub_format());
     st.caption_mode = SubMode::from_index(ex.get_sub_mode());
+    st.chapters_separate = ex.get_chapter_mode() == 1;
     let _ = st.save();
 }
 
@@ -250,6 +378,7 @@ pub fn install(ui: &AppWindow) {
             ex.set_note("".into());
             ex.set_open(kind);
             refresh_rows(&ui);
+            refresh_buttons(&ui);
         }
     });
     ex.on_toggle({
@@ -264,6 +393,10 @@ pub fn install(ui: &AppWindow) {
                         s.cap_picked.insert(key);
                     } else {
                         s.cap_picked.remove(&key);
+                    }
+                } else if let Some(i) = key.strip_prefix("h:").and_then(|i| i.parse::<usize>().ok()) {
+                    if let Some(c) = s.ch_picked.get_mut(i) {
+                        *c = on;
                     }
                 } else if let Some(lang) = key.strip_prefix("l:") {
                     if on {
@@ -294,6 +427,11 @@ pub fn install(ui: &AppWindow) {
                         }
                         (2, Some(lang)) => {
                             s.audio_picked.remove(lang);
+                        }
+                        (3, _) => {
+                            if let Some(c) = k.strip_prefix("h:").and_then(|i| i.parse::<usize>().ok()) {
+                                s.ch_picked[c] = on;
+                            }
                         }
                         (1, _) if on => {
                             s.cap_picked.insert(k);

@@ -120,6 +120,11 @@ impl Clipper {
         ui.set_clip_thumbs(ModelRc::from(Rc::new(VecModel::<slint::Image>::default())));
         ui.set_clip_keyframes(ModelRc::from(Rc::new(VecModel::<f32>::default())));
         ui.set_clip_keyframe_ticks(ModelRc::from(Rc::new(VecModel::<f32>::default())));
+        let chapters = match &source {
+            Source::Link(url) => crate::extras_ui::chapters_for(url),
+            _ => Vec::new(),
+        };
+        set_chapters(ui, &chapters);
         ui.set_clip_wave(slint::Image::default());
         ui.set_clip_frame(slint::Image::default());
         ui.set_page(1);
@@ -203,7 +208,11 @@ impl Clipper {
                 }
             };
             let has_video = info.has_video;
-            let _ = weak.upgrade_in_event_loop(move |ui| ui.set_clip_has_video(has_video));
+            let chapters = info.chapters.clone();
+            let _ = weak.upgrade_in_event_loop(move |ui| {
+                ui.set_clip_has_video(has_video);
+                set_chapters(&ui, &chapters);
+            });
 
             let wave_job = {
                 let path = path.clone();
@@ -452,6 +461,15 @@ unsafe fn make_target(gl: &glow::Context, w: i32, h: i32) -> Result<Target> {
         }
         Ok(Target { tex, fbo, w, h })
     }
+}
+
+/// The clipper's chapter strip.
+fn set_chapters(ui: &AppWindow, chapters: &[neria_core::tracks::Chapter]) {
+    let marks: Vec<crate::ChapterMark> = chapters
+        .iter()
+        .map(|c| crate::ChapterMark { start: c.start as f32, end: c.end as f32, title: c.title.as_str().into() })
+        .collect();
+    ui.set_clip_chapters(ModelRc::from(Rc::new(VecModel::from(marks))));
 }
 
 fn format_time(t: f32) -> String {

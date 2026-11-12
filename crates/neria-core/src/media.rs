@@ -21,6 +21,8 @@ pub struct FileInfo {
     /// A real video stream (cover art doesn't count).
     pub has_video: bool,
     pub has_audio: bool,
+    /// Chapter marks stored in the file (yt-dlp embeds YouTube's).
+    pub chapters: Vec<crate::tracks::Chapter>,
 }
 
 fn parse_rate(s: &str) -> f64 {
@@ -35,7 +37,7 @@ fn parse_rate(s: &str) -> f64 {
 
 pub fn file_info(path: &Path) -> Result<FileInfo> {
     let out = proc::command(paths::tool("ffprobe"))
-        .args(["-v", "error", "-print_format", "json", "-show_format", "-show_streams"])
+        .args(["-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-show_chapters"])
         .arg(path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -65,6 +67,22 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
             Some("audio") => info.has_audio = true,
             _ => {}
         }
+    }
+    let secs = |c: &Value, k: &str| c[k].as_str().and_then(|t| t.parse::<f64>().ok());
+    info.chapters = v["chapters"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .filter_map(|(i, c)| {
+            let (start, end) = (secs(c, "start_time")?, secs(c, "end_time")?);
+            let title = c["tags"]["title"].as_str().filter(|t| !t.trim().is_empty());
+            let title = title.map_or_else(|| format!("Chapter {}", i + 1), |t| t.trim().to_string());
+            (end > start).then_some(crate::tracks::Chapter { start, end, title })
+        })
+        .collect();
+    if info.chapters.len() < 2 {
+        info.chapters.clear();
     }
     Ok(info)
 }

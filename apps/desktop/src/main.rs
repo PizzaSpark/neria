@@ -1367,7 +1367,7 @@ fn main() -> anyhow::Result<()> {
                 // "Download again": replace a file of the same name.
                 req.force = ui.get_dup_text() != "";
                 // Captions, audio tracks and chapters picked on the preview.
-                let reqs = extras_ui::requests(&ui, req);
+                let reqs = extras_ui::requests(&ui, req, &settings.lock().unwrap().clone());
                 extras_ui::remember(&ui, &settings);
                 if reqs.len() == 1 {
                     queue.add(reqs.into_iter().next().unwrap());

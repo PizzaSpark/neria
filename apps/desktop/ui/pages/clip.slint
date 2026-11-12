@@ -3,8 +3,8 @@ import { Fmt } from "../types.slint";
 import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, PageTitle, Notice, Divider } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
-import { RecentItem } from "../types.slint";
-import { Timeline } from "../components/timeline.slint";
+import { RecentItem, ChapterMark } from "../types.slint";
+import { Timeline, ChapterStrip } from "../components/timeline.slint";
 
 // Trim a file, or preview a link and download only the selection. Takes the keyboard
 // (Space, I/O, J/L, arrows, `,` `.`, R, Home/End) while it's open.
@@ -31,6 +31,7 @@ export component ClipPage inherits FocusScope {
     in property <bool> has-output;
     in property <[float]> keyframes;
     in property <[float]> keyframe-ticks;
+    in property <[ChapterMark]> chapters;
     // Link mode: streaming a URL; export downloads just the selection.
     in property <bool> is-link;
     // The link is an X GIF saved as a real .gif: no quality to pick.
@@ -361,6 +362,19 @@ export component ClipPage inherits FocusScope {
             seek(t) => {
                 root.seek(t);
                 root.focus();
+            }
+        }
+
+        // Chapters: click one to select it (In and Out jump to its edges).
+        if root.loaded && root.chapters.length > 0: ChapterStrip {
+            duration: root.duration;
+            chapters: root.chapters;
+            in-time: root.in-time;
+            out-time: root.out-time;
+            picked(i) => {
+                root.in-time = root.chapters[i].start;
+                root.out-time = min(root.chapters[i].end, root.duration);
+                root.seek(root.chapters[i].start);
             }
         }
 

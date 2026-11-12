@@ -233,13 +233,24 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    Picks become `-f bv*+ba[language=en]+ba[language=es]/…` with `--audio-multistreams`
    (yt-dlp's merger tags each track's language); Audio only + several = one row per
    language in a group, `Title [id] (Spanish).mp3`. `NERIA_DIALOG=audio`
-4. **Chapters**: a "Chapters" picker on the preview and in the clipper (chapter marks on the
+4. ✅ **Chapters**: a "Chapters" picker on the preview and in the clipper (chapter marks on the
    timeline, click one to select it). Tick any chapters; only those parts are downloaded
    (`--download-sections` per chapter). **Separate files** (`03 Chapter title.mp4` in a
    folder named after the video) or **One file** (neighbours 2 + 3 become one range; gaps
    2 + 4 are joined with a clean cut and the UI says "skips chapter 3"). In the clipper,
    chapters set In/Out or fill the clip render queue. Audio only works the same (one song
    per chapter from a full album upload, numbered and tagged)
+   Built: "Chapters: all 9" on the preview opens the picker (`tracks::chapters`), with
+   One file / Separate files (kept in settings) and a line saying what you'll get. One
+   file: all = the whole video; one range = a clean-cut section; several ranges =
+   `--download-sections` per range (neighbours merged, keyframes forced at the cuts) as
+   `.neria-partNNN` pieces joined with ffmpeg's concat (`Title (chapters).mp4`). Separate:
+   one row per chapter in a group, `03 Chapter title` in a folder named after the video,
+   title and track number tagged (`--postprocessor-args Metadata+ffmpeg_o:…`); captions
+   are saved once in that folder. Clipper: ffprobe reads a file's chapters (links reuse the
+   preview's); a chapter strip under the timeline sets In/Out to the clicked chapter.
+   Left for the Clip track: filling the clip render queue (it doesn't exist yet).
+   `NERIA_DIALOG=chapters`; ui-check makes a chaptered sample (`clip-ch`)
 5. **Tray, notifications and scheduling**: closing to the tray keeps downloads running
    (optional). A Windows notification when a download/compress/export finishes or fails
    (thumbnail, title, "Open" / "Show in folder"; a group sends one "12 songs saved"). Settings:
