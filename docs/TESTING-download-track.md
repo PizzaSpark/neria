@@ -27,6 +27,12 @@ Design choices: `design/download-track.html` (all the recommended options were p
       cookies setting still works for sites without a Neria sign-in.
 - [ ] Release build (`windows_subsystem = "windows"`): the sign-in window opens without a
       console window.
+- [ ] Three signed-in YouTube downloads at once: all work, and `cookies/youtube.com.txt`
+      keeps its date (each run uses its own copy in `cache/cookie-runs/`, since yt-dlp
+      writes the file back when it ends; checked by hand that it does).
+- [ ] A signed-in download a few days after signing in (YouTube rotates its session
+      cookies; the copies don't feed the rotated ones back), and again after "Sign in
+      again".
 
 ## 2. Captions
 - [ ] A YouTube video with creator captions: "Captions: …" shows under the chips; the
@@ -96,6 +102,8 @@ Design choices: `design/download-track.html` (all the recommended options were p
       with 22.30 and 22:30; a bad time says "Type a time like 22:30".
 - [ ] A scheduled row survives a restart (still waits); Start now starts it at once.
 - [ ] A playlist downloaded later: every item waits; the card's Start now starts all.
+- [ ] Only starts if the PC is awake at that time (no wake timer): with the PC asleep at
+      02:00 it starts when it wakes. Decide whether the note should say so.
 
 ## 6. Picker: order, Reverse, format per item
 - [ ] A YouTube playlist: drag a row by ≡ up/down; a line shows where it lands; numbers
@@ -132,7 +140,25 @@ Design choices: `design/download-track.html` (all the recommended options were p
       builder says it's custom; picking a ready-made name goes back to pieces.
 - [ ] With a link previewed, the example uses its title.
 
-## Not built yet (next session): items 9–12
-Bulk paste / Paste & download / clipboard watcher, queue reordering, watch before
-downloading, follow a channel or playlist. Design picks are already made (all the
-recommended options in `design/download-track.html`).
+## Combinations (each feature was checked on its own)
+- [ ] Compatible preset + two audio languages: the audio is still AAC (the language
+      selectors may beat the preset's codec choice).
+- [ ] Captions "In the video" + webm: does the file have captions? (yt-dlp only embeds
+      VTT into webm.) ASS in mp4 becomes plain mov_text (styling lost).
+- [ ] A file name with a folder ("Playlist / 01 Title") + Audio only with two languages,
+      and + Separate chapters: where do " (Spanish)" and "03 Chapter" end up?
+- [ ] Smallest file + chapters as One file (forced keyframes under 480p).
+- [ ] Captions only, then paste the link again: no "You downloaded this" (fixed: captions
+      aren't recorded as the video).
+
+## 10. Queue order
+- [ ] Two links waiting and one running: the waiting ones read top-down in the order they
+      start; a new link lands below the last waiting row (not on top, as before).
+- [ ] Drag a waiting row's ≡ up past another: "Up 1" shows while dragging; it starts
+      first. Running and finished rows have no ≡ and stay where they are.
+- [ ] Tab to a ≡, press ↓ twice: the row moves twice (the focus stays on it).
+      Ctrl+↑ / Ctrl+↓: top / bottom. Same in the playlist picker.
+- [ ] ⋯ → Move to top / Move to bottom (wide and compact; compact has no ≡).
+- [ ] A waiting playlist card moves as one block; inside it, waiting songs move among
+      themselves. The card keeps its ≡ while its rows report progress.
+- [ ] The order survives a restart (`queue.json` is written in that order).
