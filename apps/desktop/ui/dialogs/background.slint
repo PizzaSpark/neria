@@ -1,0 +1,96 @@
+import { LineEdit } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { Background } from "../globals.slint";
+import { PrimaryButton, GhostButton, Hint, Tick, Dialog, ChoiceChips } from "../widgets.slint";
+
+// Closing Neria while downloads are going: keep them going from the tray, or stop.
+export component CloseAskDialog inherits Dialog {
+    title: Background.going == 1 ? "A download is still going" : Background.going + " downloads are still going";
+    card-width: 460px;
+    fit: true;
+    close => { Background.ask-open = false; }
+    Hint {
+        text: "Neria can keep them going from the tray (next to the clock) and tell you when they're done.";
+    }
+    HorizontalLayout {
+        alignment: start;
+        Tick {
+            text: "Don't ask again (change it in Settings → General)";
+            checked <=> Background.remember;
+        }
+    }
+    // Compact: the buttons stack, the main one on top.
+    if !Screen.compact: HorizontalLayout {
+        spacing: 12px;
+        alignment: end;
+        GhostButton {
+            text: "Stop and quit";
+            clicked => { Background.quit(); }
+        }
+        PrimaryButton {
+            text: "Keep going in the tray";
+            icon: "\u{E896}";
+            clicked => { Background.keep-going(); }
+        }
+    }
+    if Screen.compact: VerticalLayout {
+        spacing: 10px;
+        PrimaryButton {
+            text: "Keep going in the tray";
+            icon: "\u{E896}";
+            clicked => { Background.keep-going(); }
+        }
+        GhostButton {
+            text: "Stop and quit";
+            clicked => { Background.quit(); }
+        }
+    }
+}
+
+// "Download later": pick when, the row waits as "Starts at 02:00".
+export component LaterDialog inherits Dialog {
+    callback confirm();
+    title: "Download later";
+    subtitle: "The download waits in the queue until then.";
+    card-width: 480px;
+    fit: true;
+    close => { Background.later-open = false; }
+    ChoiceChips {
+        options: ["In an hour", "Tonight, 02:00", "Tomorrow, 08:00", "At a time…"];
+        current <=> Background.later-choice;
+        changed => { Background.later-changed(); }
+    }
+    if Background.later-choice == 3: HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        LineEdit {
+            width: 110px;
+            placeholder-text: "22:30";
+            text <=> Background.later-time;
+            edited => { Background.later-changed(); }
+            accepted => { Background.later-confirm(); }
+        }
+        Text {
+            text: "24-hour clock, today or tomorrow";
+            color: Theme.muted;
+            font-size: 12.5px;
+            vertical-alignment: center;
+        }
+    }
+    Hint {
+        text: Background.later-note + ". Neria has to be open then, or in the tray: closing it with a download waiting asks first.";
+    }
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: end;
+        GhostButton {
+            text: "Cancel";
+            clicked => { Background.later-open = false; }
+        }
+        PrimaryButton {
+            text: "Download later";
+            icon: "\u{E823}";
+            clicked => { Background.later-confirm(); }
+        }
+    }
+}

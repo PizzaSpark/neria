@@ -60,6 +60,9 @@ pub struct DownloadRequest {
     /// Tags for a file made from one chapter: its title and number.
     pub meta_title: Option<String>,
     pub track: Option<usize>,
+    /// "Download later": waits until this time (Unix seconds), shown as `start_label`.
+    pub start_at: Option<u64>,
+    pub start_label: String,
 }
 
 impl Default for DownloadRequest {
@@ -92,6 +95,8 @@ impl DownloadRequest {
             sections: Vec::new(),
             meta_title: None,
             track: None,
+            start_at: None,
+            start_label: String::new(),
         }
     }
 

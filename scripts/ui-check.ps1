@@ -86,6 +86,9 @@ $states = [ordered]@{
   "captions"   = @{ NERIA_DIALOG = "captions" }
   "audio"      = @{ NERIA_DIALOG = "audio" }
   "chapters"   = @{ NERIA_DIALOG = "chapters" }
+  "set-general" = @{ NERIA_SETTINGS = "general" }
+  "close-ask"  = @{ NERIA_DIALOG = "close"; NERIA_DEMO = "1" }
+  "later"      = @{ NERIA_DIALOG = "later" }
   "clip-ch"    = @{ NERIA_OPEN = $chaptered; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "10" }
   "match"      = @{ NERIA_DIALOG = "match" }
   "sync"       = @{ NERIA_DIALOG = "sync" }

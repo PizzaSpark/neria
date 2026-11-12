@@ -1,7 +1,7 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { Accounts } from "../globals.slint";
+import { Accounts, Background } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider } from "../widgets.slint";
 
 // One group of settings under a small heading.
@@ -82,7 +82,7 @@ component SectionLink inherits Rectangle {
 // Clip and Compress have no settings of their own: clips from links use the Download
 // formats, and both pages pick everything per file.
 export component SettingsDrawer inherits Rectangle {
-    // 0 Download, 1 Spotify, 2 Network, 3 Appearance, 4 About.
+    // 0 Download, 1 Spotify, 2 Network, 3 General (closing, notifications, theme), 4 About.
     in-out property <int> section;
 
     in property <string> output-dir;
@@ -146,7 +146,7 @@ export component SettingsDrawer inherits Rectangle {
         { icon: "\u{E896}", label: "Download" },
         { icon: "\u{E8D6}", label: "Spotify" },
         { icon: "\u{E774}", label: "Network" },
-        { icon: "\u{E790}", label: "Appearance" },
+        { icon: "\u{E790}", label: "General" },
         { icon: "\u{E946}", label: "About" },
     ];
 
@@ -571,7 +571,7 @@ export component SettingsDrawer inherits Rectangle {
                             }
                         }
 
-                        // ---- Appearance ----
+                        // ---- General: closing, notifications, theme ----
                         if root.section == 3: VerticalLayout {
                             spacing: 22px;
                             padding-top: Screen.compact ? 14px : 0px;
@@ -579,6 +579,59 @@ export component SettingsDrawer inherits Rectangle {
                             padding-right: Theme.lane;
                             padding-bottom: 22px;
                             alignment: start;
+
+                            Group {
+                                title: "When I close Neria";
+                                SettingRow {
+                                    label: "With downloads going";
+                                    ComboBox {
+                                        width: 150px;
+                                        model: ["Ask", "Keep going in the tray", "Stop and quit"];
+                                        current-index <=> Background.close-action;
+                                        selected => { Background.settings-changed(); }
+                                    }
+                                }
+                                Hint { text: "In the tray (next to the clock) downloads, Download later and followed channels keep going. With nothing going, closing just quits."; }
+                            }
+
+                            Group {
+                                title: "Notifications";
+                                Tick {
+                                    text: "Tell me when a download, clip or compress finishes or fails";
+                                    checked <=> Background.notify;
+                                    toggled => { Background.settings-changed(); }
+                                }
+                                if Background.notify: Tick {
+                                    text: "Only when I'm not looking at Neria";
+                                    checked <=> Background.notify-unfocused;
+                                    toggled => { Background.settings-changed(); }
+                                }
+                                if Background.notify: SettingRow {
+                                    label: "Sound when done";
+                                    ComboBox {
+                                        width: 150px;
+                                        model: ["Neria chime", "Windows' sound", "None"];
+                                        current-index <=> Background.sound-done;
+                                        selected => {
+                                            Background.settings-changed();
+                                            Background.test-sound(false);
+                                        }
+                                    }
+                                }
+                                if Background.notify: SettingRow {
+                                    label: "Sound when it fails";
+                                    ComboBox {
+                                        width: 150px;
+                                        model: ["Low chime", "Windows' sound", "None"];
+                                        current-index <=> Background.sound-failed;
+                                        selected => {
+                                            Background.settings-changed();
+                                            Background.test-sound(true);
+                                        }
+                                    }
+                                }
+                                if Background.notify: Hint { text: "A group (a playlist, an album) sends one: \"12 songs saved\"."; }
+                            }
 
                             Group {
                                 title: "Theme";

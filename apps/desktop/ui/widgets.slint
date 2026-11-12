@@ -42,9 +42,14 @@ export component PrimaryButton inherits Rectangle {
     in property <string> text;
     in property <string> icon;
     in property <bool> enabled: true;
+    // A split button: a ▾ part on the right opens more ways to do it (`menu-clicked`).
+    in property <bool> has-menu;
     callback clicked();
-    property <length> lift: !root.enabled ? 0px : ta.pressed ? 1px : 3px;
-    min-width: face-row.preferred-width + 3px;
+    callback menu-clicked();
+    property <length> menu-w: root.has-menu ? 34px : 0px;
+    property <bool> menu-pressed;
+    property <length> lift: !root.enabled ? 0px : ta.pressed || root.menu-pressed ? 1px : 3px;
+    min-width: face-row.preferred-width + 3px + root.menu-w;
     height: 44px;
     accessible-role: button;
     accessible-label: root.text;
@@ -75,8 +80,10 @@ export component PrimaryButton inherits Rectangle {
         background: !root.enabled ? Theme.raised : ta.has-hover ? Theme.pop-hover : Theme.pop;
         animate x, y { duration: 70ms; }
         face-row := HorizontalLayout {
+            width: parent.width - root.menu-w;
+            x: 0;
             padding-left: 18px;
-            padding-right: 18px;
+            padding-right: root.has-menu ? 14px : 18px;
             spacing: 8px;
             alignment: center;
             if root.icon != "": Icon {
@@ -93,11 +100,45 @@ export component PrimaryButton inherits Rectangle {
                 vertical-alignment: center;
             }
         }
+        if root.has-menu: Rectangle {
+            x: parent.width - root.menu-w - 1px;
+            width: 2px;
+            y: 8px;
+            height: parent.height - 16px;
+            background: root.enabled ? Theme.hard : Theme.line-strong;
+            opacity: 0.45;
+        }
+        if root.has-menu: Icon {
+            x: parent.width - root.menu-w;
+            width: root.menu-w;
+            text: "\u{E70D}";
+            font-size: 11px;
+            color: root.enabled ? Theme.on-pop : Theme.dim;
+        }
     }
     ta := TouchArea {
+        width: parent.width - root.menu-w;
+        x: 0;
         enabled: root.enabled;
         mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.clicked(); }
+    }
+    // The ▾ part: its own key stop, so Tab reaches "more ways" too.
+    if root.has-menu: Rectangle {
+        x: parent.width - root.menu-w - 3px;
+        width: root.menu-w + 3px;
+        accessible-role: button;
+        accessible-label: "More ways to download";
+        accessible-action-default => { root.menu-clicked(); }
+        KeyPress {
+            radius: 10px;
+            activated => { root.menu-clicked(); }
+        }
+        TouchArea {
+            changed pressed => { root.menu-pressed = self.pressed; }
+            mouse-cursor: pointer;
+            clicked => { root.menu-clicked(); }
+        }
     }
 }
 

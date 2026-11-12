@@ -5,7 +5,8 @@ import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
-import { Accounts, SiteItem, Extras, TrackRow } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions } from "globals.slint";
+import { CloseAskDialog, LaterDialog } from "dialogs/background.slint";
 import { TracksDialog } from "dialogs/tracks.slint";
 import { Sidebar, TabBar } from "components/sidebar.slint";
 import { DownloadPage } from "pages/download.slint";
@@ -18,7 +19,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -584,6 +585,20 @@ export component AppWindow inherits Window {
     }
 
     if Extras.open != 0: TracksDialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+    }
+
+    if Background.later-open: LaterDialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+    }
+
+    if Background.ask-open: CloseAskDialog {
         x: 0;
         y: 0;
         width: root.width;

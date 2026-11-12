@@ -1,6 +1,7 @@
 import { Theme } from "../theme.slint";
 import { JobItem } from "../types.slint";
 import { Icon, GhostButton, IconButton, Bar, Tag, Menu, MenuItem } from "../widgets.slint";
+import { QueueActions } from "../globals.slint";
 
 // One queue row: calm (hairline, no card), with labelled actions on the right.
 export component JobRow inherits Rectangle {
@@ -33,7 +34,8 @@ export component JobRow inherits Rectangle {
     // A saved song that may be the wrong version: "Unsure", or "Sounds different" when the
     // audio check says it's another recording.
     property <bool> flagged: root.done && root.job.warn && root.job.music && !root.job.header;
-    property <string> tag: root.job.state == 0 ? "Waiting"
+    property <string> tag: root.job.state == 0 && root.job.scheduled ? "Later"
+        : root.job.state == 0 ? "Waiting"
         : root.flagged ? (root.job.flag == 2 ? "Sounds different" : "Unsure")
         : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : root.paused ? "Paused" : "";
     property <int> tag-kind: root.flagged && root.job.flag == 2 ? 3 : root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
@@ -49,7 +51,7 @@ export component JobRow inherits Rectangle {
     // 4 pick match, 5 show, 6 cancel (waiting), 0 none.
     property <int> main: root.job.can-pause ? 1 : root.job.can-resume ? 2 : root.job.can-retry ? 3
         : root.can-match && root.job.warn ? 4 : root.can-show ? 5 : root.job.can-cancel ? 6 : 0;
-    property <bool> has-menu: (root.job.can-cancel && root.main != 6) || (root.can-show && root.main != 5)
+    property <bool> has-menu: root.job.scheduled || (root.job.can-cancel && root.main != 6) || (root.can-show && root.main != 5)
         || root.can-clip || (root.can-match && root.main != 4) || (root.job.can-retry && root.main != 3)
         || root.can-report || root.job.can-remove;
 
@@ -225,6 +227,11 @@ export component JobRow inherits Rectangle {
                 text: root.job.header && !root.narrow ? "Resume all" : "Resume";
                 clicked => { root.resume(); }
             }
+            if root.job.scheduled: GhostButton {
+                compact: true;
+                text: "Start now";
+                clicked => { QueueActions.start-now(root.job.id); }
+            }
             if root.job.can-cancel: GhostButton {
                 compact: true;
                 text: "Cancel";
@@ -315,6 +322,11 @@ export component JobRow inherits Rectangle {
                 icon: "\u{E73E}";
                 text: "It's right, keep it";
                 clicked => { root.accept(); }
+            }
+            if root.job.scheduled: MenuItem {
+                icon: "\u{E768}";
+                text: "Start now";
+                clicked => { QueueActions.start-now(root.job.id); }
             }
             if root.job.can-cancel && root.main != 6: MenuItem {
                 icon: "\u{E711}";

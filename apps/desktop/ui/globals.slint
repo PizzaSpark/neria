@@ -65,3 +65,34 @@ export global Extras {
     callback search(string);
     callback options-changed();
 }
+
+// Running in the background: the close question, "Download later", notifications.
+export global Background {
+    // Closing while downloads are going: "Keep going in the tray" / "Stop and quit".
+    in-out property <bool> ask-open;
+    in property <int> going; // downloads running or waiting (scheduled ones included)
+    in-out property <bool> remember;
+    callback keep-going();
+    callback quit();
+    // "Download later": 0 in an hour, 1 tonight at 02:00, 2 tomorrow at 08:00, 3 at a time.
+    in-out property <bool> later-open;
+    in-out property <int> later-choice: 1;
+    in-out property <string> later-time: "22:00";
+    in property <string> later-note; // "Starts tomorrow at 02:00"
+    callback later-changed();
+    callback later-confirm();
+    // Settings (General): 0 ask, 1 keep going in the tray, 2 quit.
+    in-out property <int> close-action;
+    in-out property <bool> notify: true;
+    in-out property <bool> notify-unfocused: true;
+    // 0 Neria chime, 1 Windows' sound, 2 none.
+    in-out property <int> sound-done;
+    in-out property <int> sound-failed;
+    callback settings-changed();
+    callback test-sound(bool); // failed?
+}
+
+// Queue actions that rows call directly.
+export global QueueActions {
+    callback start-now(int); // a "Download later" row (or a card: the group, negated)
+}

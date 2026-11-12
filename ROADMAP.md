@@ -251,12 +251,26 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    preview's); a chapter strip under the timeline sets In/Out to the clicked chapter.
    Left for the Clip track: filling the clip render queue (it doesn't exist yet).
    `NERIA_DIALOG=chapters`; ui-check makes a chaptered sample (`clip-ch`)
-5. **Tray, notifications and scheduling**: closing to the tray keeps downloads running
+5. ✅ **Tray, notifications and scheduling**: closing to the tray keeps downloads running
    (optional). A Windows notification when a download/compress/export finishes or fails
    (thumbnail, title, "Open" / "Show in folder"; a group sends one "12 songs saved"). Settings:
    on/off, only when Neria isn't focused, an optional sound (Neria chime, Windows' default or
    none; separate "failed" sound). **Download later** on the Download button's menu: pick a
    time or "overnight", the row waits as "Starts at 02:00" (needs the tray)
+   Built: closing with downloads going asks "Keep going in the tray" / "Stop and quit"
+   (Don't ask again); Settings → General (was Appearance): When I close Neria (Ask / Tray /
+   Quit), notifications on/off, only when not looking at Neria, sounds for done and failed
+   (Neria chime, made on the fly as a WAV; Windows' sound; none). The window hides instead
+   of closing (`run_event_loop_until_quit`); the tray icon (tray-icon) brings it back and has
+   Show / Pause all or Resume all / Quit, and a toast says once that Neria went on there.
+   Toasts (tauri-winrt-notification) with the thumbnail and Open / Show in folder; a group
+   sends one ("12 songs saved", "11 of 12 saved, 1 failed"); clip and compress send theirs.
+   Windows only shows toasts for a known app id, so Neria writes one per-user registry key
+   (`HKCU\Software\Classes\AppUserModelId\Neria.Downloader`: name and icon, no settings;
+   removed when notifications are turned off). Download is now a split button: ▾ →
+   Download now / Download later… (In an hour, Tonight 02:00, Tomorrow 08:00, At a time) /
+   Tonight at 02:00; rows wait as "Later · Starts at 02:00" with Start now, kept across
+   restarts. `NERIA_DIALOG=close|later`, `NERIA_SETTINGS=general`
 6. **More control in the picker**: drag rows into your own order before downloading (numbers
    follow your order); "Reverse" for newest-first playlists; remember the order on
    re-download; a container/audio format per item (today Settings' format applies to all)

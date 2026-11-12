@@ -92,6 +92,8 @@ export struct JobItem {
     can-cancel: bool,
     can-retry: bool,
     can-remove: bool,
+    // "Download later": waiting for its time (status says when); offers "Start now".
+    scheduled: bool,
 }
 
 // Formatting helpers implemented in Rust.

@@ -647,6 +647,16 @@ pub fn install(
                             let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                             ui.set_clip_status(format!("Saved · {name}").into());
                             ui.set_clip_has_output(true);
+                            crate::background_ui::notify(
+                                &ui,
+                                crate::background_ui::Note {
+                                    title: "Clip saved".into(),
+                                    body: name.clone(),
+                                    image: None,
+                                    file: Some(path.clone()),
+                                    failed: false,
+                                },
+                            );
                             *last_output.lock().unwrap() = Some(path);
                         }
                         Err(e) => ui.set_clip_status(e.to_string().into()),

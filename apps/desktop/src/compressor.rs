@@ -259,9 +259,35 @@ impl Compressor {
                             .into(),
                         );
                         ui.set_cmp_has_output(true);
+                        crate::background_ui::notify(
+                            &ui,
+                            crate::background_ui::Note {
+                                title: "Compressed".into(),
+                                body: format!(
+                                    "{} · {}",
+                                    out.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                                    fmt::bytes(out.bytes as f64)
+                                ),
+                                image: None,
+                                file: Some(out.path.clone()),
+                                failed: false,
+                            },
+                        );
                         *last_output.lock().unwrap() = Some(out.path);
                     }
-                    Err(e) => ui.set_cmp_status(e.to_string().into()),
+                    Err(e) => {
+                        crate::background_ui::notify(
+                            &ui,
+                            crate::background_ui::Note {
+                                title: "Couldn't compress it".into(),
+                                body: e.to_string(),
+                                image: None,
+                                file: None,
+                                failed: true,
+                            },
+                        );
+                        ui.set_cmp_status(e.to_string().into())
+                    }
                 }
                 ui.invoke_cmp_options_changed();
             });

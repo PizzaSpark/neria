@@ -91,6 +91,15 @@ pub struct Settings {
     pub caption_mode: crate::tracks::SubMode,
     /// Chapters: one file per chapter instead of one file.
     pub chapters_separate: bool,
+    /// Closing with downloads going: "ask", "tray" (keep going there) or "quit".
+    pub close_action: String,
+    /// Windows notifications when something finishes or fails.
+    pub notify: bool,
+    /// ...only while Neria isn't the window you're looking at.
+    pub notify_unfocused: bool,
+    /// "chime" (Neria's own), "windows" or "none"; separately for failures.
+    pub sound_done: String,
+    pub sound_failed: String,
 }
 
 impl Default for Settings {
@@ -129,6 +138,11 @@ impl Default for Settings {
             caption_format: Default::default(),
             caption_mode: Default::default(),
             chapters_separate: false,
+            close_action: "ask".into(),
+            notify: true,
+            notify_unfocused: true,
+            sound_done: "chime".into(),
+            sound_failed: "chime".into(),
         }
     }
 }

@@ -14,6 +14,7 @@ use neria_core::settings::{Quality, Settings};
 use neria_core::{fmt, history, post, probe, report, tools};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
+mod background_ui;
 mod clipper;
 mod compressor;
 mod drop_ui;
@@ -148,8 +149,16 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         can_cancel: state <= 2 || state == 6,
         can_retry: state == 4 || state == 5,
         can_remove: (3..=5).contains(&state),
+        scheduled: state == 0 && !s.starts.is_empty(),
         ..Default::default()
     }
+}
+
+/// The queue, for code that only has a job id (notifications' "Open").
+static QUEUE: std::sync::OnceLock<Queue> = std::sync::OnceLock::new();
+
+pub(crate) fn file_of_job(id: u64) -> Option<PathBuf> {
+    QUEUE.get()?.file_of(id)
 }
 
 thread_local! {
@@ -166,7 +175,7 @@ thread_local! {
     static RESET_VIEW: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
 }
 
-fn rows() -> Rc<VecModel<JobItem>> {
+pub(crate) fn rows() -> Rc<VecModel<JobItem>> {
     ROWS.with(|r| r.clone())
 }
 
@@ -313,6 +322,7 @@ fn group_card(group: i32, m: &[JobItem]) -> JobItem {
         can_cancel: m.iter().any(|j| j.can_cancel),
         can_retry: m.iter().any(|j| j.can_retry),
         can_remove: m.iter().all(|j| j.can_remove),
+        scheduled: running == 0 && m.iter().any(|j| j.scheduled),
         ..Default::default()
     }
 }
@@ -385,6 +395,8 @@ fn queue_update(weak: &slint::Weak<AppWindow>, pending: &Arc<Mutex<PendingJobs>>
                 refresh_group(g);
             }
             refresh_counts(&ui);
+            let snaps: Vec<JobSnapshot> = snaps.into_iter().map(|(s, _)| s).collect();
+            background_ui::after_updates(&ui, &snaps);
         });
     }
 }
@@ -612,7 +624,20 @@ fn demo_rows(ui: &AppWindow) {
         )
     });
     vec.push(row(9006, "https://vimeo.com/1", 4, 0.0, "This video was removed or doesn't exist", "", false, false));
+    vec.push(JobItem {
+        scheduled: true,
+        ..row(9008, "Lecture 12: Thermodynamics (2h 14m)", 0, 0.0, "Starts at 02:00", "", false, false)
+    });
     refresh_counts(ui);
+}
+
+/// Ends a "Download later" hold when the Download handler returns, however it returns.
+struct Release(Queue);
+
+impl Drop for Release {
+    fn drop(&mut self) {
+        self.0.hold_new(None);
+    }
 }
 
 /// Set by "Got it, download" so the next Download skips the Spotify heads-up once.
@@ -781,6 +806,17 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
                 ui.global::<Extras>().invoke_show(kind);
             }
         }
+        // Closing with downloads going, and "Download later".
+        "close" => {
+            let b = ui.global::<Background>();
+            b.set_going(3);
+            b.set_ask_open(true);
+        }
+        "later" => {
+            let b = ui.global::<Background>();
+            b.set_later_open(true);
+            b.invoke_later_changed();
+        }
         // A link that needs an account: "Sign in to YouTube" on the problem.
         "signin" => {
             let url = "https://www.youtube.com/watch?v=private123";
@@ -882,7 +918,8 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                 }
             }
             if let Ok(section) = std::env::var("NERIA_SETTINGS") {
-                let names = ["download", "spotify", "network", "appearance", "about"];
+                let names = ["download", "spotify", "network", "general", "about"];
+                let section = if section.eq_ignore_ascii_case("appearance") { "general".into() } else { section };
                 if let Some(i) = names.iter().position(|n| section.eq_ignore_ascii_case(n)) {
                     ui.set_settings_section(i as i32);
                 }
@@ -1221,6 +1258,7 @@ fn main() -> anyhow::Result<()> {
     // Bring back last session's queue; it carries on once the tools are checked.
     queue.set_ready(false);
     queue.enable_persistence();
+    let _ = QUEUE.set(queue.clone());
 
     let save = {
         let weak = ui.as_weak();
@@ -1325,6 +1363,10 @@ fn main() -> anyhow::Result<()> {
             if !ui.get_tools_ready() || ui.get_probe_blocked() {
                 return;
             }
+            // "Download later": what this Download adds waits until then.
+            let later = background_ui::take_later();
+            queue.hold_new(later.clone());
+            let _release = Release(queue.clone());
             // The first download: the "How it works" steps have done their job.
             ui.set_show_tips(false);
             save();
@@ -1555,6 +1597,7 @@ fn main() -> anyhow::Result<()> {
     setup_ui::install(&ui);
     drop_ui::install(&ui);
     signin_ui::install(&ui);
+    background_ui::install(&ui, queue.clone(), settings.clone());
     extras_ui::install(&ui);
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());
@@ -1578,7 +1621,10 @@ fn main() -> anyhow::Result<()> {
     };
 
     start_setup(&ui, settings.clone(), queue.clone());
-    ui.run()?;
+    // Not `ui.run()`: the window may hide to the tray and come back, so the event loop
+    // runs until Quit (background_ui) instead of until the window closes.
+    ui.show()?;
+    slint::run_event_loop_until_quit()?;
 
     // Save the queue for next time, then stop every yt-dlp/ffmpeg so none survives the window.
     queue.shutdown();

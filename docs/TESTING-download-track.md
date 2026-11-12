@@ -70,3 +70,29 @@ Design choices: `design/download-track.html` (all the recommended options were p
       metadata" on): the strip under the timeline; clicking a chapter sets In/Out and
       seeks; the picked one is filled. "Clip first" from a preview with chapters shows
       them too.
+
+## 5. Tray, notifications, Download later
+- [ ] Close with a download going: the question; "Keep going in the tray" hides the
+      window, a tray icon appears, a one-time toast says so; the download finishes.
+- [ ] Tray: left click (and double click) shows the window again; right click menu: Show
+      Neria, Pause all / Resume all (follows the queue), Quit Neria (queue saved, comes back
+      next start).
+- [ ] "Don't ask again" + either answer: Settings → General shows it; closing next time
+      does it without asking. Closing with nothing going just quits.
+- [ ] Toast on a finished download while Neria isn't focused: title, thumbnail, "Open"
+      and "Show in folder" work; clicking the toast body shows Neria. Shows "Neria" as the
+      app name with the Neria icon (registry key above). Failed download: "Couldn't
+      download it" with the error.
+- [ ] A 12-song album: one toast "12 songs saved" (not 12 toasts). With a failure:
+      "11 of 12 saved, 1 failed".
+- [ ] Clip export and compress: "Clip saved" / "Compressed" / "Couldn't compress it".
+- [ ] "Only when I'm not looking at Neria": no toast while Neria is the focused window.
+- [ ] Sounds: Neria chime (up), low chime on failure (down), Windows' sound, none; picking
+      one in Settings plays it.
+- [ ] Turning notifications off removes the registry key
+      (`reg query HKCU\Software\Classes\AppUserModelId\Neria.Downloader` fails).
+- [ ] Download ▾ → Download later… → Tonight, 02:00: the row says "Later · Starts at
+      02:00" with Start now; it starts by itself at 02:00 (Neria in the tray). "At a time"
+      with 22.30 and 22:30; a bad time says "Type a time like 22:30".
+- [ ] A scheduled row survives a restart (still waits); Start now starts it at once.
+- [ ] A playlist downloaded later: every item waits; the card's Start now starts all.

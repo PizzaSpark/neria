@@ -1,11 +1,11 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { JobItem, PickItem, SyncItem } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, Notice, Divider, Thumb } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, Notice, Divider, Thumb, Menu, MenuItem } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
-import { Accounts, Extras } from "../globals.slint";
+import { Accounts, Extras, Background } from "../globals.slint";
 import { ExtrasRow } from "../components/extras-row.slint";
 import { UpdateBanner } from "../components/update-banner.slint";
 
@@ -219,10 +219,13 @@ export component DownloadPage inherits Rectangle {
                     clicked => { root.paste(); }
                 }
             }
-            VerticalLayout {
+            dl := VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
                 PrimaryButton {
+                    // ▾: Download later (and more ways to download).
+                    has-menu: true;
+                    menu-clicked => { dl-menu.show(); }
                     text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
                         : root.picking && root.pick-checked > 1 ? "Download " + root.pick-checked + " items"
                         : root.dup-text != "" && root.probe-state == 2 ? "Download again"
@@ -231,6 +234,35 @@ export component DownloadPage inherits Rectangle {
                     enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0)
                         && (!root.picking || root.pick-checked > 0);
                     clicked => { root.start-download(); }
+                }
+            }
+        }
+
+        dl-menu := PopupWindow {
+            x: link.x + link.width - 220px;
+            y: link.y + link.height + 6px;
+            Menu {
+                width: 220px;
+                MenuItem {
+                    icon: "\u{E896}";
+                    text: "Download now";
+                    clicked => { root.start-download(); }
+                }
+                MenuItem {
+                    icon: "\u{E823}";
+                    text: "Download later…";
+                    clicked => {
+                        Background.later-open = true;
+                        Background.later-changed();
+                    }
+                }
+                MenuItem {
+                    icon: "\u{E708}";
+                    text: "Tonight, at 02:00";
+                    clicked => {
+                        Background.later-choice = 1;
+                        Background.later-confirm();
+                    }
                 }
             }
         }

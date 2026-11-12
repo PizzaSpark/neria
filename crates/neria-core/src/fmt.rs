@@ -59,6 +59,7 @@ pub fn postprocessor(name: &str) -> &'static str {
 /// (status line, stats line) for a job row.
 pub fn job_lines(s: &JobSnapshot) -> (String, String) {
     match s.state {
+        JobState::Queued if !s.starts.is_empty() => (format!("Starts at {}", s.starts), String::new()),
         JobState::Queued => ("Waiting in queue…".into(), String::new()),
         JobState::Downloading => {
             let status = if s.stages > 1 {

@@ -83,6 +83,8 @@ pub struct JobSnapshot {
     pub key: Option<String>,
     /// Brought back from the last session (the UI adds it whatever its state).
     pub restored: bool,
+    /// "Download later": waiting for its time ("02:00"), empty otherwise.
+    pub starts: String,
 }
 
 impl JobSnapshot {
@@ -114,6 +116,7 @@ impl JobSnapshot {
             verified: None,
             key: None,
             restored: false,
+            starts: String::new(),
         }
     }
 
@@ -337,6 +340,18 @@ fn merge_m3u(
     files
 }
 
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// "02:00" while a "Download later" request waits for its time, else empty.
+fn waiting_label(req: &DownloadRequest) -> String {
+    match req.start_at {
+        Some(t) if t > now_secs() => req.start_label.clone(),
+        _ => String::new(),
+    }
+}
+
 /// A piece of "chapters as one file" (`Title.neria-part002.mp4`).
 fn is_piece(path: &std::path::Path) -> bool {
     path.file_name().is_some_and(|n| n.to_string_lossy().contains(".neria-part"))
@@ -405,6 +420,8 @@ struct Inner {
     next_id: AtomicU64,
     /// When yt-dlp was last updated because a site broke it (one update at a time).
     ytdlp_updated: Mutex<Option<Instant>>,
+    /// "Download later": jobs added while this is set wait until then (time, "02:00").
+    hold: Mutex<Option<(u64, String)>>,
 }
 
 /// Cheap to clone; all clones share the same queue.
@@ -428,6 +445,7 @@ impl Queue {
                 notify: Box::new(notify),
                 next_id: AtomicU64::new(1),
                 ytdlp_updated: Mutex::new(None),
+                hold: Mutex::new(None),
             }),
         }
     }
@@ -452,7 +470,19 @@ impl Queue {
         self.save();
     }
 
-    fn add_to_group(&self, req: DownloadRequest, group: u64) -> u64 {
+    /// "Download later": what's added from now on waits until `at` (shown as `label`);
+    /// `None` goes back to starting right away.
+    pub fn hold_new(&self, until: Option<(u64, String)>) {
+        *self.inner.hold.lock().unwrap() = until;
+    }
+
+    fn add_to_group(&self, mut req: DownloadRequest, group: u64) -> u64 {
+        if req.start_at.is_none()
+            && let Some((at, label)) = self.inner.hold.lock().unwrap().clone()
+        {
+            req.start_at = Some(at);
+            req.start_label = label;
+        }
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let title = if req.title_hint.is_empty() { req.url.clone() } else { req.title_hint.clone() };
         let mut snap = JobSnapshot::new(id, group, title);
@@ -460,6 +490,7 @@ impl Queue {
         snap.music = req.music.is_some();
         snap.gif = req.gif;
         snap.key = req.key.clone();
+        snap.starts = waiting_label(&req);
         snap.thumbnail = req.music.as_ref().and_then(|m| m.track.cover_url.clone()).or_else(|| req.thumbnail.clone());
         (self.inner.notify)(snap.clone());
         self.inner.entries.lock().unwrap().push(Entry::new(snap, req));
@@ -499,10 +530,16 @@ impl Queue {
         // each time would keep a core busy. Write the latest state now and then instead.
         let queue = self.clone();
         thread::spawn(move || {
+            let mut ticks = 0u32;
             while !queue.inner.closing.load(Ordering::SeqCst) {
                 thread::sleep(Duration::from_millis(500));
                 if queue.inner.dirty.swap(false, Ordering::SeqCst) {
                     queue.write_saved();
+                }
+                // "Download later" rows whose time has come.
+                ticks += 1;
+                if ticks.is_multiple_of(20) && queue.has_due() {
+                    queue.pump();
                 }
             }
         });
@@ -534,6 +571,7 @@ impl Queue {
             snap.total = job.total;
             snap.progress = job.progress;
             snap.restored = true;
+            snap.starts = waiting_label(&job.req);
             snap.state = match job.state {
                 SavedState::Waiting => JobState::Queued,
                 SavedState::Paused => JobState::Paused,
@@ -903,6 +941,36 @@ impl Queue {
         }
     }
 
+    /// A "Download later" row whose time has come.
+    fn has_due(&self) -> bool {
+        let now = now_secs();
+        let entries = self.inner.entries.lock().unwrap();
+        entries.iter().any(|e| e.snap.state == JobState::Queued && e.req.start_at.is_some_and(|t| t <= now))
+    }
+
+    /// How many rows wait for a later start.
+    pub fn scheduled_count(&self) -> usize {
+        let now = now_secs();
+        let entries = self.inner.entries.lock().unwrap();
+        entries.iter().filter(|e| e.snap.state == JobState::Queued && e.req.start_at.is_some_and(|t| t > now)).count()
+    }
+
+    /// "Start now" on a row waiting for its time (or a group's card).
+    pub fn start_now(&self, id: u64, group: bool) {
+        {
+            let mut entries = self.inner.entries.lock().unwrap();
+            for e in entries.iter_mut().filter(|e| if group { e.snap.group == id } else { e.snap.id == id }) {
+                if e.req.start_at.take().is_some() {
+                    e.req.start_label.clear();
+                    e.snap.starts.clear();
+                    (self.inner.notify)(e.snap.clone());
+                }
+            }
+            self.save_locked(&entries);
+        }
+        self.pump();
+    }
+
     /// Start queued jobs while under the concurrency limit.
     fn pump(&self) {
         if !self.inner.ready.load(Ordering::SeqCst) || self.inner.closing.load(Ordering::SeqCst) {
@@ -920,6 +988,13 @@ impl Queue {
             }
             if e.snap.state != JobState::Queued {
                 continue;
+            }
+            // "Download later": not yet.
+            if e.req.start_at.is_some_and(|t| t > now_secs()) {
+                continue;
+            }
+            if !e.snap.starts.is_empty() {
+                e.snap.starts.clear();
             }
             e.snap.state = JobState::Downloading;
             (self.inner.notify)(e.snap.clone());
