@@ -27,3 +27,18 @@ Design choices: `design/download-track.html` (all the recommended options were p
       cookies setting still works for sites without a Neria sign-in.
 - [ ] Release build (`windows_subsystem = "windows"`): the sign-in window opens without a
       console window.
+
+## 2. Captions
+- [ ] A YouTube video with creator captions: "Captions: …" shows under the chips; the
+      picker lists "Made by the creator" then "Auto-generated", the video's language first.
+- [ ] Search (more than 8 languages) filters; All/None act on what the search shows.
+- [ ] SRT + Separate: `Title [id].en.srt` next to the video. VTT and ASS likewise.
+- [ ] Text: a `.txt` with just the words (no numbers/timings), no `.srt` left behind.
+- [ ] In the video (mp4 and mkv): VLC's Subtitle menu lists every ticked language; no
+      caption files left next to it. Both: the menu *and* the files.
+- [ ] Two auto-generated languages (e.g. English (Original) + a translation) download
+      (YouTube rate-limits translated captions sometimes: say what happens).
+- [ ] Captions only: no video, the row shows the caption file; "Show" finds it.
+- [ ] The picked languages are ticked again on the next video that has them.
+- [ ] A YouTube video without captions says "No captions on this video".
+- [ ] Audio only + captions: files are saved next to the mp3 (nothing to embed into).

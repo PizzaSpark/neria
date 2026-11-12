@@ -1,0 +1,39 @@
+import { Theme, Screen } from "../theme.slint";
+import { Extras } from "../globals.slint";
+import { GhostButton } from "../widgets.slint";
+
+// Under the quality chips of a single video: small buttons saying what's picked
+// ("Captions: English", "Audio: Original", "Chapters: all 9"), each opening its picker.
+// Only the ones the video has something to pick for; wraps on narrow windows.
+export component ExtrasRow inherits FlexboxLayout {
+    spacing: 8px;
+    // Like ChoiceChips: take the row's width, so it only wraps when it has to and never
+    // grows taller than its lines.
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    if Extras.captions-text != "": GhostButton {
+        compact: true;
+        icon: "\u{E7F0}";
+        text: Extras.captions-text;
+        clicked => { Extras.show(1); }
+    }
+    if Extras.audio-text != "": GhostButton {
+        compact: true;
+        icon: "\u{E8D6}";
+        text: Extras.audio-text;
+        clicked => { Extras.show(2); }
+    }
+    if Extras.chapters-text != "": GhostButton {
+        compact: true;
+        icon: "\u{E8FD}";
+        text: Extras.chapters-text;
+        clicked => { Extras.show(3); }
+    }
+    if Extras.no-captions: Text {
+        text: "No captions on this video";
+        color: Theme.muted;
+        font-size: 12px;
+        height: 30px;
+        vertical-alignment: center;
+    }
+}

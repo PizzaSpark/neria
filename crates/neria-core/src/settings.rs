@@ -85,6 +85,12 @@ pub struct Settings {
     /// The first-run "How it works" steps were seen through (a download started, or the
     /// user hid them).
     pub tips_done: bool,
+    /// Captions languages picked last time (ticked again when a video has them).
+    pub caption_langs: Vec<String>,
+    pub caption_format: crate::tracks::SubFormat,
+    pub caption_mode: crate::tracks::SubMode,
+    /// Chapters: one file per chapter instead of one file.
+    pub chapters_separate: bool,
 }
 
 impl Default for Settings {
@@ -119,6 +125,10 @@ impl Default for Settings {
             check_updates: true,
             theme: "system".into(),
             tips_done: false,
+            caption_langs: Vec::new(),
+            caption_format: Default::default(),
+            caption_mode: Default::default(),
+            chapters_separate: false,
         }
     }
 }

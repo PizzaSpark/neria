@@ -1,0 +1,141 @@
+import { ListView, LineEdit } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { Extras } from "../globals.slint";
+import { PrimaryButton, Hint, Tick, Dialog, Divider, ListRow, TextLink, ChoiceChips } from "../widgets.slint";
+
+// One picker for the three things inside a video: captions languages, audio tracks and
+// chapters. Calm rows with ticks, groups as small headings, the options below the list.
+export component TracksDialog inherits Dialog {
+    property <int> kind: Extras.open;
+    title: root.kind == 1 ? "Captions" : root.kind == 2 ? "Audio tracks" : "Chapters";
+    subtitle: root.kind == 1 ? "Tick the languages to save." : root.kind == 2 ? "Tick the languages to keep." : "Tick the parts to download.";
+    card-width: 560px;
+    card-height: 620px;
+    close => { Extras.open = 0; }
+
+    HorizontalLayout {
+        spacing: 14px;
+        if root.kind == 1 && Extras.total > 8: LineEdit {
+            horizontal-stretch: 1;
+            placeholder-text: "Search " + Extras.total + " languages";
+            text <=> Extras.query;
+            edited(t) => { Extras.search(t); }
+        }
+        if root.kind != 1 || Extras.total <= 8: Text {
+            horizontal-stretch: 1;
+            text: Extras.picked + " of " + Extras.total + " picked";
+            color: Theme.muted;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            TextLink {
+                text: "All";
+                clicked => { Extras.all(true); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            TextLink {
+                text: "None";
+                clicked => { Extras.all(false); }
+            }
+        }
+    }
+
+    VerticalLayout {
+        vertical-stretch: 1;
+        Divider { inset-right: Theme.lane; }
+        ListView {
+            vertical-stretch: 1;
+            for row in Extras.rows: ListRow {
+                height: row.header ? 34px : 44px;
+                HorizontalLayout {
+                    padding-left: 4px;
+                    padding-right: Theme.lane;
+                    spacing: 10px;
+                    if row.header: Text {
+                        text: row.label;
+                        color: Theme.muted;
+                        font-family: Theme.display;
+                        font-size: 11px;
+                        font-weight: 700;
+                        letter-spacing: 0.6px;
+                        vertical-alignment: bottom;
+                    }
+                    if !row.header: Tick {
+                        horizontal-stretch: 1;
+                        elide: true;
+                        text: row.label;
+                        checked: row.checked;
+                        toggled(on) => { Extras.toggle(row.key, on); }
+                    }
+                    if !row.header && row.detail != "": Text {
+                        horizontal-stretch: 0;
+                        text: row.detail;
+                        color: Theme.muted;
+                        font-family: Theme.mono;
+                        font-size: 11.5px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+        if Extras.rows.length == 0: Text {
+            text: "No language matches \"" + Extras.query + "\"";
+            color: Theme.muted;
+            font-size: 13px;
+        }
+    }
+
+    // Captions: how they're saved.
+    if root.kind == 1: VerticalLayout {
+        spacing: 8px;
+        ChoiceChips {
+            options: ["SRT", "VTT", "ASS", "Text"];
+            current <=> Extras.sub-format;
+            changed => { Extras.options-changed(); }
+        }
+        if !Extras.subs-only: ChoiceChips {
+            options: ["Separate file", "In the video", "Both"];
+            current <=> Extras.sub-mode;
+            changed => { Extras.options-changed(); }
+        }
+        if !Extras.subs-only && Extras.sub-mode != 0: Hint {
+            text: "In the video, each language is a track you switch in your player (VLC: Subtitle menu).";
+        }
+        HorizontalLayout {
+            alignment: start;
+            Tick {
+                text: "Captions only, skip the video";
+                checked <=> Extras.subs-only;
+                toggled => { Extras.options-changed(); }
+            }
+        }
+    }
+    if root.kind == 2: Hint {
+        text: "Several = one file with an audio track menu in your player. With Audio only, each language is its own file: Title (Spanish).mp3.";
+    }
+    // Chapters: one file or one per chapter.
+    if root.kind == 3: VerticalLayout {
+        spacing: 8px;
+        ChoiceChips {
+            options: ["One file", "Separate files"];
+            current <=> Extras.chapter-mode;
+            changed => { Extras.options-changed(); }
+        }
+    }
+    if Extras.note != "": Hint { text: Extras.note; }
+
+    HorizontalLayout {
+        alignment: end;
+        PrimaryButton {
+            text: "Done";
+            icon: "\u{E73E}";
+            clicked => { Extras.open = 0; }
+        }
+    }
+}

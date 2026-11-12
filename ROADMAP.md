@@ -210,11 +210,19 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    of the same site only (else the browser setting, as before). Settings → Network → Signed
    in: sites with Sign out, sign in to a typed site, import a `cookies.txt` (split per site).
    The link is looked up again after signing in. `NERIA_DIALOG=signin` for checks
-2. **Captions / subtitles**: a "Captions" picker on the preview listing every language,
+2. ✅ **Captions / subtitles**: a "Captions" picker on the preview listing every language,
    split into **Made by the creator** and **Auto-generated**, the video's own language on
    top; tick one or several (search for long lists, "All" / "None"). SRT (default), VTT, ASS
    or plain text. Separate files (`Title.en.srt`), embedded, or both. **Captions only**
    (`--skip-download`). Remembers the last picked languages; "No captions on this video"
+   Built: a quiet line of buttons under the quality chips ("Captions: English +2") opens
+   the shared picker dialog (`dialogs/tracks.slint`, state in the `Extras` global, Rust in
+   `extras_ui.rs`): search past 8 languages, groups, All/None, format and mode chips,
+   "Captions only". Several languages embedded = switchable tracks in the player. Text is
+   made from SRT afterwards (`tracks::srt_to_text`); captions-only rows point at the caption
+   file. Last languages, format and mode are kept in settings. "No captions on this video"
+   shows for YouTube videos without any. Also fixed: a preview with an empty queue no longer
+   spreads the free space between the title and the chips. `NERIA_DIALOG=extras|captions`
 3. **Audio tracks (languages)**: YouTube videos with several audio tracks (dubbed languages,
    descriptive audio, original): an "Audio" picker listing each track by language with
    "Original" marked (the default). Several ticked = separate tracks in one MKV/MP4

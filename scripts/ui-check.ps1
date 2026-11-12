@@ -72,6 +72,8 @@ $states = [ordered]@{
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-net"    = @{ NERIA_SETTINGS = "network" }
   "signin"     = @{ NERIA_DIALOG = "signin" }
+  "extras"     = @{ NERIA_DIALOG = "extras" }
+  "captions"   = @{ NERIA_DIALOG = "captions" }
   "match"      = @{ NERIA_DIALOG = "match" }
   "sync"       = @{ NERIA_DIALOG = "sync" }
   "spotify"    = @{ NERIA_DIALOG = "spotify" }

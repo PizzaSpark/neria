@@ -25,3 +25,43 @@ export global Accounts {
     callback sign-out(string);
     callback import-file();
 }
+
+// One row of the captions / audio / chapters picker. Header rows are group titles
+// ("Made by the creator", "Auto-generated").
+export struct TrackRow {
+    key: string,
+    label: string,
+    detail: string, // "video's language", "Original", "2:41"
+    checked: bool,
+    header: bool,
+}
+
+// Captions, audio tracks and chapters of the previewed video: the buttons under the quality
+// chips say what's picked, each opens the picker dialog.
+export global Extras {
+    // What each button says; "" = nothing to pick, no button.
+    in property <string> captions-text;
+    in property <string> audio-text;
+    in property <string> chapters-text;
+    // The video has no captions at all (said quietly when other buttons show).
+    in property <bool> no-captions;
+    // The picker: 0 closed, 1 captions, 2 audio tracks, 3 chapters.
+    in-out property <int> open;
+    in property <[TrackRow]> rows;
+    in property <int> total;
+    in property <int> picked;
+    in-out property <string> query;
+    // Captions: format 0 SRT, 1 VTT, 2 ASS, 3 text; mode 0 separate, 1 in the video, 2 both.
+    in-out property <int> sub-format;
+    in-out property <int> sub-mode;
+    in-out property <bool> subs-only;
+    // Chapters: 0 one file, 1 separate files.
+    in-out property <int> chapter-mode;
+    // Under the options ("Joins chapters 2–3 and 5, skips chapter 4").
+    in property <string> note;
+    callback show(int);
+    callback toggle(string, bool);
+    callback all(bool);
+    callback search(string);
+    callback options-changed();
+}

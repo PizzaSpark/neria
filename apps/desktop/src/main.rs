@@ -17,6 +17,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 mod clipper;
 mod compressor;
 mod drop_ui;
+mod extras_ui;
 mod match_ui;
 mod recent_ui;
 mod setup_ui;
@@ -730,6 +731,56 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             ui.set_pick_checked(checked);
             ui.set_pick_note("One video in this post couldn't be reached.".into());
         }
+        // A video with captions, dubbed audio and chapters; `captions` / `audio` / `chapters`
+        // also open that picker.
+        "extras" | "captions" | "audio" | "chapters" => {
+            use neria_core::tracks::{AudioTrack, Caption, Chapter};
+            let cap = |lang: &str, name: &str, auto: bool| Caption { lang: lang.into(), name: name.into(), auto };
+            let mut captions =
+                vec![cap("en", "English", false), cap("es", "Spanish", false), cap("de", "German", false)];
+            for (l, n) in [("en-orig", "English (Original)"), ("ar", "Arabic"), ("fr", "French"), ("hi", "Hindi")] {
+                captions.push(cap(l, n, true));
+            }
+            for (l, n) in [("it", "Italian"), ("ja", "Japanese"), ("ko", "Korean"), ("pt", "Portuguese")] {
+                captions.push(cap(l, n, true));
+            }
+            let track =
+                |lang: &str, name: &str, original: bool| AudioTrack { lang: lang.into(), name: name.into(), original };
+            let titles = ["Intro", "The twilight zone", "Midnight zone", "The abyss", "Hadal zone", "Credits"];
+            let info = probe::MediaInfo {
+                title: "How the Deep Sea Works, Explained".into(),
+                uploader: Some("Kurzgesagt".into()),
+                duration: Some(1122.0),
+                max_height: Some(2160),
+                captions,
+                audio_tracks: vec![
+                    track("en", "English", true),
+                    track("es", "Spanish", false),
+                    track("fr", "French", false),
+                ],
+                chapters: titles
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| Chapter { start: i as f64 * 187.0, end: (i + 1) as f64 * 187.0, title: (*t).into() })
+                    .collect(),
+                ..Default::default()
+            };
+            ui.set_url("https://www.youtube.com/watch?v=deepsea".into());
+            ui.set_probe_state(2);
+            ui.set_probe_title(info.title.as_str().into());
+            ui.set_probe_meta(info.meta_line().into());
+            let settings = Settings { caption_langs: vec!["en".into()], ..Settings::load() };
+            extras_ui::set_info(ui, &info, &settings);
+            let kind = match which {
+                "captions" => 1,
+                "audio" => 2,
+                "chapters" => 3,
+                _ => 0,
+            };
+            if kind > 0 {
+                ui.global::<Extras>().invoke_show(kind);
+            }
+        }
         // A link that needs an account: "Sign in to YouTube" on the problem.
         "signin" => {
             let url = "https://www.youtube.com/watch?v=private123";
@@ -975,6 +1026,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
     let Some(url) = link_of(text) else {
         state.generation.fetch_add(1, Ordering::SeqCst);
         clear_picker(ui, state);
+        extras_ui::clear(ui);
         clear_link_notes(ui, state);
         state.last_url.borrow_mut().clear();
         ui.set_probe_blocked(false);
@@ -990,6 +1042,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
     }
     *state.last_url.borrow_mut() = url.clone();
     signin_ui::show_for_problem(ui, &url, None);
+    extras_ui::clear(ui);
 
     let my_gen = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
     clear_picker(ui, state);
@@ -1039,6 +1092,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     ui.set_probe_title(info.title.as_str().into());
                     ui.set_probe_meta(info.meta_line().into());
                     ui.set_probe_is_gif(info.gif || is_single_gif(&info));
+                    extras_ui::set_info(&ui, &info, &settings);
                     if info.items.len() > 1
                         && let Some(state) = PICKER.with(|p| p.borrow().as_ref().and_then(|w| w.upgrade()))
                     {
@@ -1312,7 +1366,14 @@ fn main() -> anyhow::Result<()> {
                 req.key = probe_state.key.borrow().clone();
                 // "Download again": replace a file of the same name.
                 req.force = ui.get_dup_text() != "";
-                queue.add(req);
+                // Captions, audio tracks and chapters picked on the preview.
+                let reqs = extras_ui::requests(&ui, req);
+                extras_ui::remember(&ui, &settings);
+                if reqs.len() == 1 {
+                    queue.add(reqs.into_iter().next().unwrap());
+                } else {
+                    queue.add_group(&ui.get_probe_title(), false, reqs);
+                }
             }
 
             probe_state.generation.fetch_add(1, Ordering::SeqCst);
@@ -1324,6 +1385,7 @@ fn main() -> anyhow::Result<()> {
             ui.set_probe_is_gif(false);
             clear_picker(&ui, &probe_state);
             clear_link_notes(&ui, &probe_state);
+            extras_ui::clear(&ui);
         }
     });
 
@@ -1493,6 +1555,7 @@ fn main() -> anyhow::Result<()> {
     setup_ui::install(&ui);
     drop_ui::install(&ui);
     signin_ui::install(&ui);
+    extras_ui::install(&ui);
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());
         move || start_setup(&weak.unwrap(), settings.clone(), queue.clone())
