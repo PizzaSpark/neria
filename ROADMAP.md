@@ -271,6 +271,8 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    Download now / Download later… (In an hour, Tonight 02:00, Tomorrow 08:00, At a time) /
    Tonight at 02:00; rows wait as "Later · Starts at 02:00" with Start now, kept across
    restarts. `NERIA_DIALOG=close|later`, `NERIA_SETTINGS=general`
+   Next: "Your own sound…" in both sound menus (pick a `.wav`, copied into Neria's folder so
+   it stays portable; played with the same `PlaySound` as the chime)
 6. ✅ **More control in the picker**: drag rows into your own order before downloading (numbers
    follow your order); "Reverse" for newest-first playlists; remember the order on
    re-download; a container/audio format per item (today Settings' format applies to all)
@@ -367,6 +369,16 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
 5. **Rotate and flip** (90° steps, mirror), applied on export (forces re-encode; say so)
 6. **Preview the result** before exporting, with crop/rotate/audio changes applied
 7. Links: waveform for streamed links (needs the audio); test live/very long streams
+8. **Clip a livestream without recording all of it**, two ways:
+   - **Rewind the live stream** (YouTube, Twitch and other sites that keep the last hours
+     seekable): open the live link in the clipper, scrub back, mark In/Out, download only
+     that part (`--download-sections` on the live stream; check how far back each site goes)
+   - **Replay buffer** (any live stream, OBS-style): "Keep the last 10 minutes" (5 / 10 /
+     30 / 60) records the stream with ffmpeg into short pieces and deletes the oldest as new
+     ones arrive, so disk use stays fixed; "Clip the last…" joins what's kept and opens it in
+     the clipper. A calm row in the queue shows it's buffering (size, how much is kept,
+     Stop); keeps going in the tray. Use rewind where the site allows it, the buffer
+     elsewhere
 
 ### Compress: understandable for everyone, advanced when needed
 1. Plain goals instead of numbers: **For Discord** (20 MB) · **For email** (25 MB) · **For
