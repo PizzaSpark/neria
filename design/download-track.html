@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria download track</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#5f5d5a; --pop:#ffd23f; --onpop:#1a1405;
+    --popsh:#9a6f00; --hard:#000; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --badbg:#3a1a1a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 24px 90px; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 840px; line-height: 1.55; font-size: 15px; }
+  .lead b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 860px; margin-bottom: 18px; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 860px; line-height: 1.5; margin: 4px 0 12px; }
+  .opt p b { color: #151412; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; padding: 16px 22px 8px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); }
+  .q.wide { width: 760px; }
+  .q.narrow { width: 400px; padding: 14px 16px 8px; }
+  .i { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-style: normal; line-height: 1; }
+  .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mono { font-family: "JetBrains Mono", monospace; font-size: 11px; }
+  .grow { flex: 1; }
+  .head { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+  .head b { font: 700 15px "Space Grotesk"; }
+  .badge { background: var(--pop); color: var(--onpop); font: 500 11px "JetBrains Mono"; padding: 3px 6px; border-radius: 6px; }
+  .tlink { color: var(--muted); font-size: 12.5px; display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+  .tag { font: 700 10.5px "Space Grotesk"; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.bad { background: var(--badbg); color: var(--bad); }
+  .ghost { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;
+           color: var(--ink); font-size: 12px; font-weight: 500; white-space: nowrap; flex: none; }
+  .ghost.icon { width: 30px; padding: 0; justify-content: center; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .chip .n { font: 500 11px "JetBrains Mono"; color: var(--muted); }
+  .chip.on .n { color: #6d685e; }
+  .chip.att .n { color: var(--warn); }
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; padding: 4px 0 6px; }
+  .tabs { display: flex; gap: 18px; align-items: stretch; }
+  .tab { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 500; padding: 6px 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .tab .n { font: 500 11px "JetBrains Mono"; color: var(--dim); }
+  .tab.on { color: var(--ink); border-color: var(--ink); }
+  .tab.on .n { color: var(--muted); }
+  .tab.att .n { color: var(--warn); }
+  .seg { display: inline-flex; border: 2px solid var(--ls); border-radius: 9px; overflow: hidden; }
+  .seg span { padding: 5px 10px; font-size: 12.5px; color: var(--muted); }
+  .seg span.on { background: var(--ink); color: var(--bg); }
+  .strip { display: flex; align-items: center; gap: 10px; background: var(--warnbg); color: var(--warn); border-radius: 9px; padding: 8px 10px 8px 12px; font-size: 12.5px; margin: 6px 0 4px; }
+  .strip .ghost { border-color: #6b4f22; color: var(--warn); height: 28px; }
+  .div { height: 1px; background: var(--line); }
+
+  .job { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: center; margin-right: 24px; }
+  .job .th { width: 56px; height: 32px; border-radius: 6px; flex: none; }
+  .job .th.sq { width: 36px; height: 36px; margin: 0 10px; }
+  .job .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .job .t { font-size: 13.5px; font-weight: 500; }
+  .job .s { display: flex; gap: 7px; align-items: center; color: var(--muted); font-size: 11.5px; min-width: 0; }
+  .job .s.ink { color: var(--ink); }
+  .meter { height: 5px; border-radius: 3px; background: var(--line); }
+  .meter i { display: block; height: 100%; border-radius: 3px; background: var(--pop); }
+  .acts { display: flex; gap: 6px; align-items: center; flex: none; }
+  .resolve { margin: -2px 24px 0 68px; padding: 10px 12px; background: var(--raised); border-radius: 0 0 10px 10px; display: flex; gap: 8px; align-items: center; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+  .resolve .why2 { flex: 1; color: var(--ink); min-width: 0; }
+  .narrow .resolve { margin-left: 0; flex-wrap: wrap; }
+  .narrow .resolve .why2 { flex-basis: 100%; }
+  .narrow .job { margin-right: 18px; }
+  .t1 { background: linear-gradient(135deg, #3a2a5a, #c0566b 55%, #f2b06b); }
+  .t2 { background: linear-gradient(160deg, #0f3b3a, #2f8f7a 60%, #d8e3a0); }
+  .t3 { background: linear-gradient(120deg, #2b2b33, #6b6f86 50%, #c9ccd8); }
+  .t4 { background: linear-gradient(140deg, #4a1d1d, #b8432f 60%, #f0c27a); }
+  .t5 { background: linear-gradient(140deg, #1d2b4a, #2f6fb8 60%, #a0d0f0); }
+
+  .pv { display:flex; gap:14px; align-items:center; margin:4px 0 10px; }
+  .pv .th { width:150px; height:84px; border-radius:10px; flex:none; position:relative; }
+  .pv .th .play { position:absolute; inset:0; margin:auto; width:40px; height:40px; border-radius:10px; background:var(--pop); border:2px solid var(--hard); box-shadow:3px 3px 0 var(--popsh); display:flex; align-items:center; justify-content:center; color:var(--onpop); font-size:16px; }
+  .pv .tt { font-size:15px; font-weight:600; }
+  .pv .mm { color:var(--muted); font-size:12.5px; margin-top:4px; }
+  .prim { height:38px; padding:0 14px; background:var(--pop); color:var(--onpop); border:2px solid var(--hard); border-radius:10px; box-shadow:3px 3px 0 var(--popsh); font:700 14px "Space Grotesk"; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; flex:none; }
+  .prim .sep { width:2px; align-self:stretch; background:var(--hard); margin:0 2px 0 4px; opacity:.5; }
+  .field { display:flex; align-items:center; gap:8px; background:var(--panel); border:2px solid var(--ls); border-radius:12px; padding:6px 6px 6px 14px; margin-bottom:10px; }
+  .field .ph { flex:1; color:var(--muted); font-size:13.5px; min-width:0; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  .card { background:var(--panel); color:var(--ink); border:1px solid var(--ls); border-radius:12px; padding:16px 18px; font-size:13px; }
+  .card h4 { font:700 18px "Space Grotesk"; margin-bottom:4px; }
+  .card .sub { color:var(--muted); font-size:12.5px; margin-bottom:10px; line-height:1.45; }
+  .tick { width:18px; height:18px; border:2px solid #6d6c6e; border-radius:6px; flex:none; display:inline-flex; align-items:center; justify-content:center; font-size:11px; }
+  .tick.on { background:var(--ink); border-color:var(--ink); color:var(--bg); }
+  .li { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .li .d, .d { color:var(--muted); font:500 11px "JetBrains Mono"; }
+  .grp { font:700 11px "Space Grotesk"; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin:10px 0 2px; }
+  .search { border:2px solid var(--ls); border-radius:9px; padding:6px 10px; color:var(--muted); font-size:12.5px; margin-bottom:6px; }
+  .handle { color:var(--dim); font-size:14px; }
+  .sel { border:2px solid var(--ls); border-radius:8px; padding:4px 8px; font-size:12px; color:var(--ink); white-space:nowrap; }
+  .tok { display:inline-flex; align-items:center; gap:5px; padding:4px 8px; border-radius:8px; background:var(--raised); border:2px solid var(--ls); font-size:12.5px; white-space:nowrap; }
+  .tok.f { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+  .line { display:flex; flex-wrap:wrap; gap:4px; align-items:center; background:var(--bg); border:2px solid var(--ls); border-radius:10px; padding:8px; min-height:44px; }
+  .txt { color:var(--muted); font:500 12.5px "JetBrains Mono"; }
+  .win { border:1px solid var(--ls); border-radius:10px; overflow:hidden; background:#fff; color:#222; }
+  .win .bar { background:var(--bg); color:var(--ink); display:flex; align-items:center; gap:10px; padding:8px 12px; font-size:12.5px; }
+  .win .site { height:150px; display:flex; align-items:center; justify-content:center; color:#888; font-size:13px; background:repeating-linear-gradient(45deg,#f6f6f6,#f6f6f6 10px,#efefef 10px,#efefef 20px); }
+  .menu { background:var(--panel); color:var(--ink); border:1px solid var(--ls); border-radius:10px; padding:6px; width:230px; font-size:13px; margin-top:8px; }
+  .menu div { padding:7px 9px; border-radius:7px; display:flex; gap:9px; align-items:center; }
+  .menu div.h { background:var(--raised); }
+  .toastw { background:#202020; color:#fff; border-radius:8px; width:360px; padding:12px 14px; font:13px "Segoe UI", sans-serif; display:flex; gap:12px; }
+  .toastw .b { margin-top:10px; display:flex; gap:8px; } .toastw .b span { flex:1; background:#2d2d2d; border-radius:4px; padding:6px; text-align:center; font-size:12px; }
+  .rec { display:inline-block; font:500 10.5px "JetBrains Mono"; color:#151412; background:#ffd23f; padding:2px 6px; border-radius:5px; margin-left:8px; vertical-align:middle; }
+</style>
+</head>
+<body><div class="page">
+<h1>Download track: the visual choices</h1>
+<p class="lead">Mocks for the Download feature track (ROADMAP items 1–12), dark theme. Each question has 2–3 options;
+<b>the one marked “pick” is my recommendation</b>. Items without a real visual choice (queue reordering) just follow the design system.</p>
+
+<section>
+<div class="label"><span>Item 1</span><h2>Signing in to a site</h2></div>
+<p class="why">When a link needs an account (private, age-restricted, members-only, Instagram's limit), the preview says so. Neria
+opens the site's own sign-in page in a small window of its own (Windows' built-in Edge WebView2, nothing to install), keeps that
+site's cookies in Neria's folder, and only ever hands them to yt-dlp for links on that same site.</p>
+
+<div class="opt"><h3>A · “Sign in to YouTube” right on the problem <span class="rec">pick</span></h3>
+<p>The problem preview gets one button. The window has a calm Neria bar on top: what's happening, and <b>Done</b>. Neria notices
+when you're signed in and says so. Back in Neria the link is looked up again by itself.
+Settings → Network lists signed-in sites with <b>Sign out</b>, plus “Import cookies.txt”.</p>
+<div class="pair">
+ <div class="q wide">
+  <div class="field"><span class="ph">https://www.youtube.com/watch?v=private123</span><span class="prim" style="opacity:.45">Download</span></div>
+  <div class="pv"><div class="th" style="background:var(--raised)"></div><div><div class="tt" style="color:var(--warn)">This video is age-restricted</div>
+  <div class="mm">YouTube shows it only when you're signed in. Your password goes to YouTube, never to Neria.</div>
+  <div class="row"><span class="ghost"><i class="i">&#xE77B;</i>Sign in to YouTube</span><span class="tlink">or import cookies.txt</span></div></div></div>
+ </div>
+ <div class="win" style="width:360px"><div class="bar"><i class="i">&#xE72E;</i><span class="grow">Sign in to YouTube. Neria keeps only this site's cookies.</span><span class="ghost">Done</span></div><div class="site">youtube.com sign-in page</div></div>
+</div></div>
+
+<div class="opt"><h3>B · Explain first, in a Neria dialog</h3>
+<p>Same flow, but the button opens a Neria dialog first (what happens, where cookies are kept), then the window. One extra step, more reassurance.</p>
+<div class="pair"><div class="card" style="width:420px"><h4>Sign in to YouTube</h4><div class="sub">Neria opens YouTube's own sign-in page. Your password goes to YouTube only.
+Its cookies stay in Neria's folder on this PC and are only sent to YouTube.</div><div class="row"><span class="prim">Sign in</span><span class="ghost">Use a cookies.txt file</span></div></div></div></div>
+
+<div class="opt"><h3>C · Accounts live in Settings</h3>
+<p>The problem just says “Sign in under Settings → Network → Accounts”. Tidy, but you leave the link to do it.</p>
+<div class="pair"><div class="card" style="width:420px"><h4 style="font-size:15px">Accounts</h4>
+<div class="li"><span class="grow">YouTube <span class="d">signed in · 3 days ago</span></span><span class="tlink">Sign out</span></div>
+<div class="li"><span class="grow">Instagram</span><span class="ghost">Sign in</span></div>
+<div class="li"><span class="grow">Another site…</span><span class="tlink">Import cookies.txt</span></div></div></div></div>
+</section>
+
+<section>
+<div class="label"><span>Items 2–4</span><h2>Captions, audio tracks and chapters on the preview</h2></div>
+<p class="why">Three pickers that only appear when there is something to pick (captions exist, several audio tracks, chapters). One shared pattern for all three.</p>
+
+<div class="opt"><h3>A · A quiet “extras” line, each opens a dialog <span class="rec">pick</span></h3>
+<p>Under the quality chips: small ghost buttons that say the current choice. Each opens the shared Dialog with search, groups
+(“Made by the creator” / “Auto-generated”), ticks, and its options (SRT / VTT / ASS / text; separate · in the video · both;
+“Captions only”). On compact the line wraps.</p>
+<div class="pair">
+ <div class="q wide">
+  <div class="pv"><div class="th t2"></div><div class="grow"><div class="tt">How the Deep Sea Works, Explained</div><div class="mm">Kurzgesagt · 18:42 · up to 2160p</div>
+  <div class="row"><span class="chip on">Best quality</span><span class="chip">Compatible</span><span class="chip">Smallest</span><span class="chip">Audio only</span></div>
+  <div class="row"><span class="ghost"><i class="i">&#xE7F0;</i>Captions: English</span><span class="ghost"><i class="i">&#xE8D6;</i>Audio: Original</span><span class="ghost"><i class="i">&#xE8FD;</i>Chapters: all 9</span></div></div></div>
+ </div>
+ <div class="card" style="width:380px"><h4>Captions</h4><div class="sub">Tick the languages to save.</div><div class="search">Search 112 languages</div>
+  <div class="grp">Made by the creator</div>
+  <div class="li"><span class="tick on">✓</span><span class="grow">English <span class="d">video's language</span></span></div>
+  <div class="li"><span class="tick"></span><span class="grow">Spanish</span></div>
+  <div class="grp">Auto-generated</div>
+  <div class="li"><span class="tick"></span><span class="grow">English (auto)</span></div>
+  <div class="row" style="margin-top:10px"><span class="chip on">SRT</span><span class="chip">VTT</span><span class="chip">ASS</span><span class="chip">Text</span></div>
+  <div class="row"><span class="chip on">Separate file</span><span class="chip">In the video</span><span class="chip">Both</span></div>
+  <div class="row"><span class="tick"></span>Captions only, skip the video</div></div>
+</div></div>
+
+<div class="opt"><h3>B · Expand in place under the preview</h3>
+<p>Tabs Captions / Audio / Chapters open a panel inline (like the playlist picker). No dialog, but it pushes the queue down.</p>
+<div class="pair"><div class="q wide"><div class="tabs"><span class="tab on">Captions <span class="n">1</span></span><span class="tab">Audio <span class="n">1</span></span><span class="tab">Chapters <span class="n">9</span></span></div><div class="div"></div>
+<div class="li"><span class="tick on">✓</span><span class="grow">English</span></div><div class="li"><span class="tick"></span><span class="grow">Spanish</span></div></div></div></div>
+
+<div class="opt"><h3>C · One “More options” dialog</h3>
+<p>A single button; the dialog has the three as sections. Fewer buttons, but you can't see what's picked without opening it.</p>
+<div class="pair"><div class="q wide"><div class="row"><span class="chip on">Best quality</span><span class="chip">Compatible</span><span class="ghost"><i class="i">&#xE712;</i>More options · captions, chapters</span></div></div></div></div>
+</section>
+
+<section>
+<div class="label"><span>Item 5</span><h2>Closing with downloads running, notifications, “Download later”</h2></div>
+<div class="opt"><h3>A · Ask once when it matters <span class="rec">pick</span></h3>
+<p>Closing while something is downloading asks: “Keep going in the tray” / “Stop and quit”, with “Don't ask again”. Settings:
+<b>When I close Neria</b>: Ask · Keep going in the tray · Quit. Closing with nothing running just quits. “Download later” sits on a small ▾ beside Download.
+Windows notifications with the thumbnail, “Open” and “Show in folder”.</p>
+<div class="pair">
+ <div class="card" style="width:380px"><h4>3 downloads are still going</h4><div class="sub">Neria can keep them going from the tray (next to the clock) and tell you when they're done.</div>
+  <div class="row"><span class="prim">Keep going in the tray</span><span class="ghost">Stop and quit</span></div><div class="row"><span class="tick"></span>Don't ask again</div></div>
+ <div><div class="row"><span class="prim">Download<span class="sep"></span>▾</span></div>
+  <div class="menu"><div class="h"><i class="i">&#xE896;</i>Download now</div><div><i class="i">&#xE823;</i>Download later…</div><div><i class="i">&#xE708;</i>Overnight (02:00)</div></div></div>
+ <div class="toastw"><div style="width:48px;height:48px;border-radius:4px;flex:none" class="t2"></div><div class="grow"><b>Saved</b><div>How the Deep Sea Works, Explained</div><div class="b"><span>Open</span><span>Show in folder</span></div></div></div>
+</div></div>
+<div class="opt"><h3>B · Tray is a plain setting</h3>
+<p>“Keep running in the tray when closed”, off by default, no question. Simple, but people lose downloads by closing before they find it.</p></div>
+<div class="opt"><h3>C · Always to the tray</h3>
+<p>Like Discord/Steam: close = hide, “Quit” from the tray menu. Downloads never get lost; some people find it annoying.</p></div>
+</section>
+
+<section>
+<div class="label"><span>Item 6</span><h2>More control in the playlist/post picker</h2></div>
+<div class="opt"><h3>A · Handles always there, one menu per row <span class="rec">pick</span></h3>
+<p>Drag by the handle (or Alt+↑/↓), numbers follow. “Reverse” next to Select all. The row's menu holds quality <i>and</i> format: As above · Best · 1080p · 720p · 480p · mp3 · m4a · opus…</p>
+<div class="pair"><div class="q wide">
+ <div class="head"><b>12 of 12 picked</b><span class="grow"></span><span class="tlink"><i class="i">&#xE8CB;</i>Reverse</span><span class="tlink">None</span></div><div class="div"></div>
+ <div class="li"><span class="handle">⠿</span><span class="tick on">✓</span><span class="d">01</span><span class="t1" style="width:56px;height:32px;border-radius:6px"></span><span class="grow">Episode 12: the finale</span><span class="sel">As above ▾</span></div>
+ <div class="li"><span class="handle">⠿</span><span class="tick on">✓</span><span class="d">02</span><span class="t3" style="width:56px;height:32px;border-radius:6px"></span><span class="grow">Episode 11</span><span class="sel">Audio · mp3 ▾</span></div>
+ <div class="li" style="background:var(--raised)"><span class="handle" style="color:var(--ink)">⠿</span><span class="tick on">✓</span><span class="d">03</span><span class="t4" style="width:56px;height:32px;border-radius:6px"></span><span class="grow">Episode 10 (being dragged)</span><span class="sel">720p ▾</span></div>
+</div></div></div>
+<div class="opt"><h3>B · “Reorder” mode</h3><p>Handles only show after pressing “Reorder”; quality and format are two separate small menus. Calmer list, one extra step.</p></div>
+</section>
+
+<section>
+<div class="label"><span>Item 7</span><h2>Format presets instead of codec talk</h2></div>
+<div class="opt"><h3>A · Presets are the chips; “Advanced” folds out <span class="rec">pick</span></h3>
+<p>Best quality · Compatible (H.264 MP4, plays everywhere) · Smallest file · Audio only. A quiet “Advanced” link folds out the old
+resolution chips and the container right there.</p>
+<div class="pair"><div class="q wide">
+ <div class="row"><span class="chip on">Best quality</span><span class="chip">Compatible</span><span class="chip">Smallest file</span><span class="chip">Audio only</span><span class="grow"></span><span class="tlink">Advanced ▾</span></div>
+ <div class="row" style="padding-left:2px"><span class="txt">Up to</span><span class="chip on">Any</span><span class="chip">1080p</span><span class="chip">720p</span><span class="chip">480p</span><span class="txt" style="margin-left:8px">as</span><span class="chip on">mp4</span><span class="chip">mkv</span><span class="chip">webm</span></div>
+</div><div class="q narrow"><div class="row"><span class="chip on">Best</span><span class="chip">Compatible</span><span class="chip">Smallest</span><span class="chip">Audio</span></div><div class="row"><span class="tlink">Advanced ▾</span><span class="grow"></span><span class="ghost">mp4 · any codec</span></div></div></div></div>
+<div class="opt"><h3>B · Presets plus a resolution menu</h3><p>Four preset chips, and a small “Up to 1080p ▾” menu always next to them instead of Advanced.</p></div>
+<div class="opt"><h3>C · Advanced only in Settings</h3><p>Preview shows presets only; resolution and container live in Settings → Download. Cleanest, slower if you change resolution often.</p></div>
+</section>
+
+<section>
+<div class="label"><span>Item 8</span><h2>Filename builder</h2></div>
+<div class="opt"><h3>A · A dialog from Settings → Download <span class="rec">pick</span></h3>
+<p>Settings shows “File names: Title [ID] · Change”. The dialog: presets as chips, the line you build (drag field chips in, type text
+between them, <b>/</b> makes a folder), the fields to drag from, a live example from the current link, warnings, and the raw template under Advanced.</p>
+<div class="pair"><div class="card" style="width:600px"><h4>File names</h4>
+ <div class="row"><span class="chip">Title</span><span class="chip on">Channel - Title</span><span class="chip">Date - Title</span><span class="chip">Title [ID]</span><span class="chip">Playlist / 01 Title</span><span class="chip">+ Save mine</span></div>
+ <div class="line"><span class="tok f">Channel</span><span class="txt"> - </span><span class="tok f">Title</span><span class="txt" style="opacity:.6">|</span></div>
+ <div class="row" style="margin-top:10px"><span class="tok">Title</span><span class="tok">Channel</span><span class="tok">Upload date</span><span class="tok">Video ID</span><span class="tok">Playlist</span><span class="tok">Playlist #</span><span class="tok">Resolution</span><span class="tok">Duration</span><span class="tok">Site</span></div>
+ <div class="li" style="border:0"><span class="d">Example</span><span>Kurzgesagt - How the Deep Sea Works, Explained.mp4</span></div>
+ <div class="row"><span class="tag warn">Heads up</span><span style="font-size:12.5px;color:var(--muted)">Two videos with the same title would get the same name. Add Video ID or Date?</span></div>
+ <div class="row"><span class="tlink">Advanced: %(uploader)s - %(title)s.%(ext)s</span></div></div></div></div>
+<div class="opt"><h3>B · Inline in Settings</h3><p>The same builder sits directly in the Download section. Nothing to open, but Settings gets long and it's cramped at 400px.</p></div>
+</section>
+
+<section>
+<div class="label"><span>Item 9</span><h2>Several links, “Paste &amp; download”, the clipboard watcher</h2></div>
+<div class="opt"><h3>A · A list in the preview; watcher as a calm strip <span class="rec">pick</span></h3>
+<p>Pasting several links (or dropping a .txt) lists them like the playlist picker, each with its title as it loads; duplicates are
+greyed. “Paste &amp; download” is on the Download ▾ menu (and Ctrl+Shift+V). The watcher (off by default) shows a strip at the top when you
+copy a link while Neria is open; from the tray it sends a notification instead.</p>
+<div class="pair"><div class="q wide">
+ <div class="strip" style="background:var(--raised);color:var(--ink)"><i class="i">&#xE8C8;</i><span class="grow ell">Link copied: youtube.com/watch?v=dQw4w9WgXcQ</span><span class="ghost">Download</span><span class="ghost" style="color:var(--ink);border-color:var(--ls)">Preview</span><span class="tlink">✕</span></div>
+ <div class="head" style="margin-top:8px"><b>5 links</b><span class="tlink">· 1 already in the queue</span><span class="grow"></span><span class="prim">Download 4</span></div>
+ <div class="li"><span class="tick on">✓</span><span class="grow">How the Deep Sea Works, Explained</span><span class="d">18:42</span></div>
+ <div class="li"><span class="tick on">✓</span><span class="grow">Looking up vimeo.com/76979871…</span></div>
+ <div class="li" style="opacity:.5"><span class="tick"></span><span class="grow">Lo-fi beats to study to</span><span class="tag">In the queue</span></div>
+</div></div></div>
+<div class="opt"><h3>B · Each link becomes a queue row straight away</h3><p>No list step: rows appear waiting and look themselves up. Faster, but you can't untick anything first.</p></div>
+</section>
+
+<section>
+<div class="label"><span>Item 10</span><h2>Queue order (no real choice, for reference)</h2></div>
+<p class="why">Waiting rows get a drag handle, “Move to top / bottom” in the row menu, and Ctrl+↑ / Ctrl+↓. Running rows stay put.</p>
+</section>
+
+<section>
+<div class="label"><span>Item 11</span><h2>Watch the link before downloading</h2></div>
+<div class="opt"><h3>A · Play on the thumbnail → the player page <span class="rec">pick</span></h3>
+<p>A yellow play mark on the preview thumbnail. It opens the same player as Clip first, without In/Out: play, seek, volume, and “Download” / “Clip this”. Back returns to the preview. Reuses the tested player.</p>
+<div class="pair"><div class="q wide"><div class="pv"><div class="th t2"><span class="play">▶</span></div><div><div class="tt">How the Deep Sea Works, Explained</div><div class="mm">Kurzgesagt · 18:42</div></div></div></div></div></div>
+<div class="opt"><h3>B · Player in a dialog over the Download page</h3><p>Floats over the page; the queue stays visible behind it. Needs a second player in the app, more to go wrong.</p></div>
+<div class="opt"><h3>C · The thumbnail grows into a player in place</h3><p>Plays inside the preview area. Cute, but tiny on most windows and pushes everything around.</p></div>
+</section>
+
+<section>
+<div class="label"><span>Item 12</span><h2>Follow a channel or playlist</h2></div>
+<div class="opt"><h3>A · “Follow” on the preview, list in Settings <span class="rec">pick</span></h3>
+<p>Channel and playlist previews get “Follow” next to Download. Settings → Following lists them: how often (hourly · daily · weekly), last check, Pause, Unfollow, “Check now”. New uploads arrive as a group card in the queue. Checks run while Neria runs (tray included); a missed check runs at start-up. Following gets only <i>new</i> uploads.</p>
+<div class="pair"><div class="q wide"><div class="row"><span class="prim">Download 48 items</span><span class="ghost"><i class="i">&#xE710;</i>Follow</span><span class="txt">new uploads, checked daily</span></div></div>
+<div class="card" style="width:430px"><h4 style="font-size:15px">Following</h4>
+<div class="li"><span class="grow">Kurzgesagt <span class="d">· daily · checked 2 h ago · 1 new</span></span><span class="tlink">Check now</span><span class="tlink">Unfollow</span></div>
+<div class="li"><span class="grow">Lo-fi playlist <span class="d">· weekly · paused</span></span><span class="tlink">Resume</span><span class="tlink">Unfollow</span></div></div></div></div>
+<div class="opt"><h3>B · A “Following” page in the nav</h3><p>A fifth page with subscriptions and their new items, like a feed. More room, but a new place to learn, and Android tabs get crowded.</p></div>
+</section>
+</div></body></html>
