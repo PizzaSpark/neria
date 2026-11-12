@@ -105,6 +105,14 @@ export component PickList inherits VerticalLayout {
                                 root.move(i, i + d);
                             }
                         }
+                        jump(d) => {
+                            if d < 0 && i > 0 {
+                                root.move(i, 0);
+                            }
+                            if d > 0 && i < root.items.length - 1 {
+                                root.move(i, root.items.length - 1);
+                            }
+                        }
                         dragging(dy) => {
                             root.drag-from = i;
                             root.drag-to = max(0, min(root.items.length - 1, i + round(dy / root.row-h)));

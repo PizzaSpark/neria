@@ -95,6 +95,8 @@ export global Background {
 // Queue actions that rows call directly.
 export global QueueActions {
     callback start-now(int); // a "Download later" row (or a card: the group, negated)
+    // Move a waiting row (a card: the group, negated) by places; ±1000 = to the top / bottom.
+    callback move(int, int);
 }
 
 // The kind of file to download (the chips on the preview): 0 Best quality, 1 Compatible,

@@ -1,6 +1,6 @@
 import { Theme } from "../theme.slint";
 import { JobItem } from "../types.slint";
-import { Icon, GhostButton, IconButton, Bar, Tag, Menu, MenuItem } from "../widgets.slint";
+import { Icon, GhostButton, IconButton, Bar, Tag, Menu, MenuItem, DragHandle } from "../widgets.slint";
 import { QueueActions } from "../globals.slint";
 
 // One queue row: calm (hairline, no card), with labelled actions on the right.
@@ -53,7 +53,12 @@ export component JobRow inherits Rectangle {
         : root.can-match && root.job.warn ? 4 : root.can-show ? 5 : root.job.can-cancel ? 6 : 0;
     property <bool> has-menu: root.job.scheduled || (root.job.can-cancel && root.main != 6) || (root.can-show && root.main != 5)
         || root.can-clip || (root.can-match && root.main != 4) || (root.job.can-retry && root.main != 3)
-        || root.can-report || root.job.can-remove;
+        || root.can-report || root.job.can-remove || root.job.can-move;
+
+    // Being dragged by its grip: how many places it would move (rows are about this tall).
+    property <bool> held;
+    property <int> drag-steps;
+    background: root.held ? Theme.raised : transparent;
 
     // A paused download keeps its bar, greyed, so you see how far it got.
     property <bool> moving: root.job.state == 1 || root.job.state == 2 || (root.paused && root.job.progress > 0);
@@ -203,6 +208,31 @@ export component JobRow inherits Rectangle {
                 label: root.job.expanded ? "Close group" : "Open group";
                 clicked => { root.toggle(); }
             }
+            if root.job.can-move && root.drag-steps != 0: Text {
+                text: (root.drag-steps < 0 ? "Up " : "Down ") + abs(root.drag-steps);
+                color: Theme.muted;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+            if root.job.can-move: VerticalLayout {
+                alignment: center;
+                DragHandle {
+                    label: "Move " + root.job.title;
+                    step(d) => { QueueActions.move(root.job.id, d); }
+                    jump(d) => { QueueActions.move(root.job.id, d * 1000); }
+                    dragging(dy) => {
+                        root.held = true;
+                        root.drag-steps = round(dy / root.height);
+                    }
+                    dropped => {
+                        if root.drag-steps != 0 {
+                            QueueActions.move(root.job.id, root.drag-steps);
+                        }
+                        root.held = false;
+                        root.drag-steps = 0;
+                    }
+                }
+            }
           }
         }
 
@@ -303,6 +333,38 @@ export component JobRow inherits Rectangle {
                 label: root.job.expanded ? "Close group" : "Open group";
                 clicked => { root.toggle(); }
             }
+            if root.job.can-move: GhostButton {
+                compact: true;
+                width: 30px;
+                icon: "\u{E712}";
+                label: "More actions";
+                clicked => { move-menu.show(); }
+            }
+            if root.job.can-move && root.drag-steps != 0: Text {
+                text: (root.drag-steps < 0 ? "Up " : "Down ") + abs(root.drag-steps);
+                color: Theme.muted;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+            if root.job.can-move: VerticalLayout {
+                alignment: center;
+                DragHandle {
+                    label: "Move " + root.job.title;
+                    step(d) => { QueueActions.move(root.job.id, d); }
+                    jump(d) => { QueueActions.move(root.job.id, d * 1000); }
+                    dragging(dy) => {
+                        root.held = true;
+                        root.drag-steps = round(dy / root.height);
+                    }
+                    dropped => {
+                        if root.drag-steps != 0 {
+                            QueueActions.move(root.job.id, root.drag-steps);
+                        }
+                        root.held = false;
+                        root.drag-steps = 0;
+                    }
+                }
+            }
           }
         }
     }
@@ -313,6 +375,16 @@ export component JobRow inherits Rectangle {
         x: root.width - Theme.lane - (root.job.header ? 38px : 0px) - 200px;
         y: root.height / 2 + 19px;
         Menu {
+            if root.job.can-move: MenuItem {
+                icon: "\u{E74A}";
+                text: "Move to top";
+                clicked => { QueueActions.move(root.job.id, -1000); }
+            }
+            if root.job.can-move: MenuItem {
+                icon: "\u{E74B}";
+                text: "Move to bottom";
+                clicked => { QueueActions.move(root.job.id, 1000); }
+            }
             if root.flagged: MenuItem {
                 icon: "\u{E768}";
                 text: "Play";
@@ -367,6 +439,24 @@ export component JobRow inherits Rectangle {
                 icon: "\u{E74D}";
                 text: "Remove from list";
                 clicked => { root.remove(); }
+            }
+        }
+    }
+
+    // Wide and medium: the ⋯ next to a waiting row's buttons holds only the moves.
+    move-menu := PopupWindow {
+        x: root.width - Theme.lane - 60px - 200px;
+        y: root.height / 2 + 19px;
+        Menu {
+            if root.job.can-move: MenuItem {
+                icon: "\u{E74A}";
+                text: "Move to top";
+                clicked => { QueueActions.move(root.job.id, -1000); }
+            }
+            if root.job.can-move: MenuItem {
+                icon: "\u{E74B}";
+                text: "Move to bottom";
+                clicked => { QueueActions.move(root.job.id, 1000); }
             }
         }
     }

@@ -97,6 +97,8 @@ export struct JobItem {
     can-remove: bool,
     // "Download later": waiting for its time (status says when); offers "Start now".
     scheduled: bool,
+    // Waiting (or paused) next to other waiting rows: it can be moved up or down the queue.
+    can-move: bool,
 }
 
 // Formatting helpers implemented in Rust.

@@ -996,10 +996,12 @@ export component Toast inherits Rectangle {
 }
 
 // A handle to drag a row up or down a list (≡). With the keyboard: Tab to it, ↑ / ↓ move
-// the row one place. `dragging` reports how far the pointer is from where it was pressed.
+// the row one place, Ctrl+↑ / Ctrl+↓ to the top / bottom (`jump`). `dragging` reports how
+// far the pointer is from where it was pressed.
 export component DragHandle inherits Rectangle {
     in property <string> label: "Move";
     callback step(int);
+    callback jump(int);
     callback dragging(length);
     callback dropped();
     width: 24px;
@@ -1007,10 +1009,18 @@ export component DragHandle inherits Rectangle {
     border-radius: 6px;
     background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
     accessible-role: button;
-    accessible-label: root.label + " (up and down arrows)";
+    accessible-label: root.label + " (up and down arrows, Ctrl to go to the top or bottom)";
     fs := FocusScope {
         focus-on-click: false;
         key-pressed(event) => {
+            if event.modifiers.control && event.text == Key.UpArrow {
+                root.jump(-1);
+                return accept;
+            }
+            if event.modifiers.control && event.text == Key.DownArrow {
+                root.jump(1);
+                return accept;
+            }
             if event.text == Key.UpArrow {
                 root.step(-1);
                 return accept;

@@ -21,6 +21,7 @@ mod drop_ui;
 mod extras_ui;
 mod match_ui;
 mod names_ui;
+mod order_ui;
 mod recent_ui;
 mod setup_ui;
 mod signin;
@@ -162,6 +163,10 @@ static QUEUE: std::sync::OnceLock<Queue> = std::sync::OnceLock::new();
 
 pub(crate) fn file_of_job(id: u64) -> Option<PathBuf> {
     QUEUE.get()?.file_of(id)
+}
+
+pub(crate) fn queue() -> Option<&'static Queue> {
+    QUEUE.get()
 }
 
 thread_local! {
@@ -397,6 +402,8 @@ fn queue_update(weak: &slint::Weak<AppWindow>, pending: &Arc<Mutex<PendingJobs>>
             for g in groups {
                 refresh_group(g);
             }
+            order_ui::sync();
+            order_ui::refresh_movable();
             refresh_counts(&ui);
             let snaps: Vec<JobSnapshot> = snaps.into_iter().map(|(s, _)| s).collect();
             background_ui::after_updates(&ui, &snaps);
@@ -440,19 +447,26 @@ fn upsert_job(ui: &AppWindow, snap: &JobSnapshot, insertable: bool) {
     }
     match vec.iter().position(|j| j.id == item.id && !j.header) {
         Some(i) => {
-            item.child = vec.row_data(i).is_some_and(|r| r.child);
+            let old = vec.row_data(i).unwrap_or_default();
+            item.child = old.child;
+            item.can_move = old.can_move;
             vec.set_row_data(i, item)
         }
-        // New jobs go on top, except playlist/album items, which follow the previous
-        // item of their group so they read in order. Rows from the last session are
-        // added whatever their state. Updates for rows the user removed are ignored.
+        // New jobs go below the last waiting row (top when nothing waits), so waiting rows
+        // read in the order they'll start; playlist/album items follow the previous item of
+        // their group. Rows from the last session are added whatever their state. Updates
+        // for rows the user removed are ignored.
         None if insertable => {
             let after = if item.group != 0 {
                 vec.iter().enumerate().filter(|(_, j)| j.group == item.group).map(|(i, _)| i).last()
             } else {
                 None
             };
-            vec.insert(after.map_or(0, |i| i + 1), item);
+            let at = match after {
+                Some(i) => i + 1,
+                None => order_ui::insert_at(&vec.iter().collect::<Vec<_>>()),
+            };
+            vec.insert(at, item);
         }
         None => {}
     }
@@ -494,6 +508,7 @@ fn remove_rows(ui: &AppWindow, ids: &[u64]) {
     for g in groups.into_iter().filter(|g| *g != 0) {
         refresh_group(g);
     }
+    order_ui::refresh_movable();
     refresh_counts(ui);
 }
 
@@ -631,6 +646,7 @@ fn demo_rows(ui: &AppWindow) {
         scheduled: true,
         ..row(9008, "Lecture 12: Thermodynamics (2h 14m)", 0, 0.0, "Starts at 02:00", "", false, false)
     });
+    order_ui::refresh_movable();
     refresh_counts(ui);
 }
 
@@ -1419,6 +1435,7 @@ fn main() -> anyhow::Result<()> {
     spotify_ui::install_sync_review(&ui);
     match_ui::install(&ui, queue.clone());
     updates_ui::install(&ui);
+    order_ui::setup(&ui);
 
     ui.on_url_edited({
         let weak = ui.as_weak();

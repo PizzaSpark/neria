@@ -971,6 +971,38 @@ impl Queue {
         self.pump();
     }
 
+    /// Put waiting and paused jobs in this order (the order the list shows them): the next
+    /// free slot takes the first one still waiting. Running and finished jobs stay where
+    /// they are; ids that aren't waiting or paused are ignored.
+    pub fn reorder(&self, order: &[u64]) {
+        let rank: HashMap<u64, usize> = order.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+        let mut entries = self.inner.entries.lock().unwrap();
+        let movable = |e: &Entry| matches!(e.snap.state, JobState::Queued | JobState::Paused);
+        let slots: Vec<usize> =
+            (0..entries.len()).filter(|&i| movable(&entries[i]) && rank.contains_key(&entries[i].snap.id)).collect();
+        if slots.len() < 2 {
+            return;
+        }
+        // The same slots, taken in the new order.
+        let wanted = {
+            let mut w = slots.clone();
+            w.sort_by_key(|&i| rank[&entries[i].snap.id]);
+            w
+        };
+        if wanted == slots {
+            return;
+        }
+        let mut taken: Vec<Option<Entry>> = std::mem::take(&mut *entries).into_iter().map(Some).collect();
+        let mut moved = wanted.iter().map(|&i| taken[i].take()).collect::<Vec<_>>().into_iter();
+        *entries = taken.into_iter().map(|e| e.or_else(|| moved.next().flatten())).map(Option::unwrap).collect();
+        self.save_locked(&entries);
+    }
+
+    /// Ids of waiting and paused jobs, in the order they'll start.
+    pub fn waiting_order(&self) -> Vec<u64> {
+        self.ids_where(None, |s| matches!(s.state, JobState::Queued | JobState::Paused))
+    }
+
     /// Start queued jobs while under the concurrency limit.
     fn pump(&self) {
         if !self.inner.ready.load(Ordering::SeqCst) || self.inner.closing.load(Ordering::SeqCst) {
@@ -1746,6 +1778,24 @@ mod tests {
         left.sort();
         assert_eq!(left, ["Clip [abc] (compressed).mp4", "Clip [abcd].f401.mp4.part", "Other.mp4"]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reorders_only_waiting_jobs() {
+        let queue = Queue::new(Arc::new(Mutex::new(Settings::default())), |_| {});
+        queue.set_ready(false);
+        let ids: Vec<u64> = (0..4)
+            .map(|i| queue.add(DownloadRequest { url: format!("https://example.com/{i}"), ..Default::default() }))
+            .collect();
+        // The second one is "running": it keeps its place.
+        queue.update(ids[1], false, |s| s.state = JobState::Downloading);
+        queue.reorder(&[ids[3], ids[0], ids[1], ids[2]]);
+        assert_eq!(queue.waiting_order(), [ids[3], ids[0], ids[2]]);
+        let all: Vec<u64> = queue.inner.entries.lock().unwrap().iter().map(|e| e.snap.id).collect();
+        assert_eq!(all, [ids[3], ids[1], ids[0], ids[2]]);
+        // Unknown ids and a single row change nothing.
+        queue.reorder(&[999, ids[2]]);
+        assert_eq!(queue.waiting_order(), [ids[3], ids[0], ids[2]]);
     }
 
     #[test]
