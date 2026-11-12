@@ -355,9 +355,13 @@ fn refresh_group(group: i32) {
         return;
     }
     let items: Vec<JobItem> = members.iter().map(|(_, j)| j.clone()).collect();
-    let head = group_card(group, &items);
+    let mut head = group_card(group, &items);
     match card {
-        Some(h) => vec.set_row_data(h, head),
+        Some(h) => {
+            // Whether the card can move is worked out apart (order_ui); keep it.
+            head.can_move = vec.row_data(h).is_some_and(|r| r.can_move);
+            vec.set_row_data(h, head)
+        }
         None => vec.insert(members[0].0, head),
     }
 }

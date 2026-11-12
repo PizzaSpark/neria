@@ -1349,7 +1349,9 @@ impl Queue {
 
     /// A finished download goes in the history, for the duplicate check.
     fn remember(&self, id: u64, req: &DownloadRequest) {
-        if req.section.is_some() || req.music.is_some() {
+        // A clip, a song or just the captions isn't "the video": pasting it again shouldn't
+        // say you have it (and "Download again" would overwrite the caption file's name).
+        if req.section.is_some() || req.music.is_some() || req.captions_only() {
             return;
         }
         let snap = {
