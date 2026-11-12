@@ -11,7 +11,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::music::MusicJob;
-use crate::settings::{Quality, Settings};
+use crate::settings::{Preset, Quality, Settings};
 use crate::{paths, proc};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,6 +65,8 @@ pub struct DownloadRequest {
     pub start_label: String,
     /// This item's own container (video) or audio format, instead of Settings' (picker).
     pub format: Option<String>,
+    /// Best quality / Compatible / Smallest file (Audio only is `quality`).
+    pub preset: Preset,
 }
 
 impl Default for DownloadRequest {
@@ -100,6 +102,7 @@ impl DownloadRequest {
             start_at: None,
             start_label: String::new(),
             format: None,
+            preset: Preset::Best,
         }
     }
 
@@ -164,20 +167,27 @@ pub fn out_dir(req: &DownloadRequest, s: &Settings) -> PathBuf {
 }
 
 pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
-    // An item picked with its own format: as if Settings said so, for this one.
+    // A preset, or an item picked with its own format: as if Settings said so, for this one.
     let own;
-    let s = match req.format.as_deref().filter(|f| !f.is_empty()) {
-        Some(f) => {
-            let mut c = s.clone();
-            if req.quality == Quality::Audio {
-                c.audio_format = f.to_string();
-            } else {
-                c.container = f.to_string();
-            }
-            own = c;
-            &own
+    let video = req.quality != Quality::Audio;
+    let s = if req.format.as_deref().is_some_and(|f| !f.is_empty()) || (video && req.preset != Preset::Best) {
+        let mut c = s.clone();
+        if video && matches!(req.preset, Preset::Compatible | Preset::Smallest) {
+            // Plays everywhere: MP4, and H.264/AAC for Compatible.
+            c.container = "mp4".into();
+            c.prefer_h264 |= req.preset == Preset::Compatible;
         }
-        None => s,
+        if let Some(f) = req.format.as_deref().filter(|f| !f.is_empty()) {
+            if video {
+                c.container = f.to_string();
+            } else {
+                c.audio_format = f.to_string();
+            }
+        }
+        own = c;
+        &own
+    } else {
+        s
     };
     let mut a: Vec<String> = Vec::new();
     let mut push = |items: &[&str]| a.extend(items.iter().map(|x| x.to_string()));
@@ -265,8 +275,17 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
                 sort.push("vcodec:h264".to_string());
                 sort.push("acodec:aac".to_string());
             }
-            if let Some(h) = q.max_height() {
+            let cap = match req.preset {
+                Preset::Smallest => Some(q.max_height().unwrap_or(480).min(480)),
+                _ => q.max_height(),
+            };
+            if let Some(h) = cap {
                 sort.insert(0, format!("res:{h}"));
+            }
+            if req.preset == Preset::Smallest {
+                // Within that, the smallest streams.
+                sort.push("+size".into());
+                sort.push("+br".into());
             }
             if s.container == "webm" {
                 // webm only holds VP9/AV1 + Opus: pick webm streams where the site has them.
@@ -551,6 +570,22 @@ mod tests {
         assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "res:720,ext:webm:webm"));
         let audio = build_args(&DownloadRequest::new("https://x.y/z", Quality::Audio, ""), &Settings::default());
         assert!(!audio.contains(&"--remux-video".to_string()));
+    }
+
+    #[test]
+    fn preset_args() {
+        let mut req = DownloadRequest::new("https://x.y/z", Quality::Best, "");
+        req.preset = Preset::Compatible;
+        let s = Settings { container: "mkv".into(), ..Settings::default() };
+        let args = build_args(&req, &s);
+        assert!(args.windows(2).any(|w| w[0] == "--merge-output-format" && w[1] == "mp4"));
+        assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "vcodec:h264,acodec:aac"));
+        req.preset = Preset::Smallest;
+        let args = build_args(&req, &s);
+        assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "res:480,+size,+br"));
+        req.format = Some("mkv".into());
+        let args = build_args(&req, &s);
+        assert!(args.windows(2).any(|w| w[0] == "--merge-output-format" && w[1] == "mkv"));
     }
 
     #[test]

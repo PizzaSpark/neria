@@ -106,3 +106,12 @@ Design choices: `design/download-track.html` (all the recommended options were p
 - [ ] A row set to "Audio · m4a" saves an .m4a while the others stay video; "Best · mkv"
       saves that one as .mkv.
 - [ ] Thumbnails still land on the right rows after moving rows while they load.
+
+## 7. Format presets
+- [ ] Best quality: as before (container and "Up to" from Advanced).
+- [ ] Compatible: an MP4 with H.264 video and AAC sound (check in the file's properties or
+      `ffprobe`); plays in Windows' Photos/Films app.
+- [ ] Smallest file: an MP4 at 480p or less, noticeably smaller than Best.
+- [ ] Audio only: the audio format from Advanced (mp3 by default).
+- [ ] An old `settings.json` with `"quality": "audio"` opens with Audio only picked.
+- [ ] Clip first on a link: the same chips; the clip downloads with the picked preset.

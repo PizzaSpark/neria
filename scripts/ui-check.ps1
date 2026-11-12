@@ -83,6 +83,7 @@ $states = [ordered]@{
   "set-net"    = @{ NERIA_SETTINGS = "network" }
   "signin"     = @{ NERIA_DIALOG = "signin" }
   "extras"     = @{ NERIA_DIALOG = "extras" }
+  "advanced"   = @{ NERIA_DIALOG = "advanced" }
   "captions"   = @{ NERIA_DIALOG = "captions" }
   "audio"      = @{ NERIA_DIALOG = "audio" }
   "chapters"   = @{ NERIA_DIALOG = "chapters" }

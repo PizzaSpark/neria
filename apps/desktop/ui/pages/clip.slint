@@ -5,6 +5,7 @@ import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
+import { Presets } from "../globals.slint";
 
 // Trim a file, or preview a link and download only the selection. Takes the keyboard
 // (Space, I/O, J/L, arrows, `,` `.`, R, Home/End) while it's open.
@@ -40,6 +41,8 @@ export component ClipPage inherits FocusScope {
 
     // Link mode's quality row (shared with the Download page).
     in-out property <int> quality;
+    in-out property <int> container-index;
+    in-out property <int> audio-format-index;
     in property <string> video-format;
     in property <string> audio-format;
 
@@ -390,9 +393,11 @@ export component ClipPage inherits FocusScope {
         // (shared settings, so both pages always agree). Files keep their own.
         if root.loaded && root.is-link: QualityRow {
             quality <=> root.quality;
+            container-index <=> root.container-index;
+            audio-format-index <=> root.audio-format-index;
             spotify: root.gif;
             spotify-text: "Saved as a .gif (X keeps GIFs as short silent videos)";
-            format-text: root.gif ? "gif" : root.quality == 4 ? root.audio-format : root.video-format;
+            format-text: root.gif ? "gif" : Presets.preset == 3 ? root.audio-format : root.video-format;
             changed => { root.settings-changed(); }
             open-settings => { root.open-settings(); }
             show-clip: false;

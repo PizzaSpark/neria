@@ -5,7 +5,7 @@ import { Icon, PrimaryButton, GhostButton, PageTitle, SectionTitle, Tag, LinkFie
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
-import { Accounts, Extras, Background } from "../globals.slint";
+import { Accounts, Extras, Background, Presets } from "../globals.slint";
 import { ExtrasRow } from "../components/extras-row.slint";
 import { UpdateBanner } from "../components/update-banner.slint";
 
@@ -84,6 +84,8 @@ export component DownloadPage inherits Rectangle {
     in property <image> probe-thumb;
     in property <bool> probe-is-spotify;
     in-out property <int> quality;
+    in-out property <int> container-index;
+    in-out property <int> audio-format-index;
     // An X GIF that will be saved as a real .gif.
     in property <bool> gif-mode;
     in property <string> dup-text;
@@ -174,7 +176,7 @@ export component DownloadPage inherits Rectangle {
     property <string> no-quality-text: root.gif-mode ? "Saved as a .gif (X keeps GIFs as short silent videos)"
         : "Saved as " + root.audio-format + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
     property <string> format-text: root.gif-mode ? "gif"
-        : root.probe-is-spotify || root.quality == 4 ? root.audio-format : root.video-format;
+        : root.probe-is-spotify || Presets.preset == 3 ? root.audio-format : root.video-format;
 
     VerticalLayout {
         padding: Screen.pad;
@@ -358,6 +360,8 @@ export component DownloadPage inherits Rectangle {
                     padding-top: 8px;
                     QualityRow {
                         quality <=> root.quality;
+                        container-index <=> root.container-index;
+                        audio-format-index <=> root.audio-format-index;
                         spotify: root.no-quality;
                         spotify-text: root.no-quality-text;
                         format-text: root.format-text;
@@ -412,6 +416,8 @@ export component DownloadPage inherits Rectangle {
 
         if !root.chips-inline: QualityRow {
             quality <=> root.quality;
+            container-index <=> root.container-index;
+            audio-format-index <=> root.audio-format-index;
             spotify: root.no-quality;
             spotify-text: root.no-quality-text;
             format-text: root.format-text;

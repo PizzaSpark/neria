@@ -5,7 +5,7 @@ import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets } from "globals.slint";
 import { CloseAskDialog, LaterDialog } from "dialogs/background.slint";
 import { TracksDialog } from "dialogs/tracks.slint";
 import { Sidebar, TabBar } from "components/sidebar.slint";
@@ -19,7 +19,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -283,7 +283,8 @@ export component AppWindow inherits Window {
 
 
     // "mp4 · H.264" and "mp3": what the quality rows say you'll get.
-    property <string> video-format: Formats.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
+    property <string> video-format: Presets.preset == 1 ? "mp4 · H.264" : Presets.preset == 2 ? "mp4 · small"
+        : Formats.containers[root.container-index] + (root.prefer-h264 ? " · H.264" : "");
     property <string> audio-format: Formats.audio[root.audio-format-index];
 
     callback paste();
@@ -352,6 +353,8 @@ export component AppWindow inherits Window {
                     probe-thumb: root.probe-thumb;
                     probe-is-spotify: root.probe-is-spotify;
                     quality <=> root.quality;
+                    container-index <=> root.container-index;
+                    audio-format-index <=> root.audio-format-index;
                     gif-mode: root.gif-mode;
                     dup-text: root.dup-text;
                     dup-file: root.dup-file;
@@ -447,6 +450,8 @@ export component AppWindow inherits Window {
                     gif: root.clip-is-gif && root.x-gifs-as-gif;
                     buffering: root.clip-buffering;
                     quality <=> root.quality;
+                    container-index <=> root.container-index;
+                    audio-format-index <=> root.audio-format-index;
                     video-format: root.video-format;
                     audio-format: root.audio-format;
                     open-file => { root.clip-open(); }

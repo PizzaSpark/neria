@@ -114,8 +114,12 @@ pub fn header(settings: &Settings) -> String {
     s.push('\n');
 
     let quality = format!("{:?}", settings.quality).replace('P', "");
-    let mut opts =
-        vec![format!("quality {quality}"), settings.container.to_string(), format!("audio {}", settings.audio_format)];
+    let mut opts = vec![
+        format!("preset {:?}", settings.preset).to_lowercase(),
+        format!("quality {quality}"),
+        settings.container.to_string(),
+        format!("audio {}", settings.audio_format),
+    ];
     if settings.prefer_h264 {
         opts.push("H.264".into());
     }

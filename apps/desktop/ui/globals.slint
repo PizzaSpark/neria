@@ -96,3 +96,10 @@ export global Background {
 export global QueueActions {
     callback start-now(int); // a "Download later" row (or a card: the group, negated)
 }
+
+// The kind of file to download (the chips on the preview): 0 Best quality, 1 Compatible,
+// 2 Smallest file, 3 Audio only. `advanced` folds out resolution and container.
+export global Presets {
+    in-out property <int> preset;
+    in-out property <bool> advanced;
+}

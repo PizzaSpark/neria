@@ -56,7 +56,8 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_sort_folders(s.sort_folders);
     ui.set_number_items(s.number_items);
     ui.set_save_thumbnail(s.save_thumbnail);
-    ui.set_quality(s.quality.index());
+    ui.set_quality(s.quality.index().min(3));
+    ui.global::<Presets>().set_preset(s.preset.index());
     ui.set_container_index(index_of(&CONTAINERS, &s.container));
     ui.set_audio_format_index(index_of(&AUDIO_FORMATS, &s.audio_format));
     ui.set_prefer_h264(s.prefer_h264);
@@ -85,7 +86,8 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.sort_folders = ui.get_sort_folders();
     s.number_items = ui.get_number_items();
     s.save_thumbnail = ui.get_save_thumbnail();
-    s.quality = Quality::from_index(ui.get_quality());
+    s.quality = Quality::from_index(ui.get_quality().min(3));
+    s.preset = neria_core::settings::Preset::from_index(ui.global::<Presets>().get_preset());
     s.container = pick(&CONTAINERS, ui.get_container_index());
     s.audio_format = pick(&AUDIO_FORMATS, ui.get_audio_format_index());
     s.prefer_h264 = ui.get_prefer_h264();
@@ -760,7 +762,8 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
         }
         // A video with captions, dubbed audio and chapters; `captions` / `audio` / `chapters`
         // also open that picker.
-        "extras" | "captions" | "audio" | "chapters" => {
+        "extras" | "captions" | "audio" | "chapters" | "advanced" => {
+            ui.global::<Presets>().set_advanced(which == "advanced");
             use neria_core::tracks::{AudioTrack, Caption, Chapter};
             let cap = |lang: &str, name: &str, auto: bool| Caption { lang: lang.into(), name: name.into(), auto };
             let mut captions =
@@ -986,6 +989,16 @@ fn clear_picker(ui: &AppWindow, state: &ProbeState) {
     ui.set_pick_items(ModelRc::from(Rc::new(VecModel::<PickItem>::default())));
     ui.set_pick_checked(0);
     ui.set_pick_note("".into());
+}
+
+/// What the chips say: the quality (Audio for "Audio only", else the Advanced resolution
+/// cap) and the preset.
+pub(crate) fn chosen_quality(ui: &AppWindow) -> (Quality, neria_core::settings::Preset) {
+    use neria_core::settings::Preset;
+    match Preset::from_index(ui.global::<Presets>().get_preset()) {
+        Preset::Audio => (Quality::Audio, Preset::Audio),
+        p => (Quality::from_index(ui.get_quality().min(3)), p),
+    }
 }
 
 /// A picker row's menu entry as (quality, format): 0 = as the chips above.
@@ -1474,7 +1487,11 @@ fn main() -> anyhow::Result<()> {
                 }
                 let settings = settings.lock().unwrap().clone();
                 let title = ui.get_probe_title().to_string();
-                let reqs = post::requests(&title, &items, &picked, Quality::from_index(ui.get_quality()), &settings);
+                let (quality, preset) = chosen_quality(&ui);
+                let mut reqs = post::requests(&title, &items, &picked, quality, &settings);
+                for r in &mut reqs {
+                    r.preset = preset;
+                }
                 if reqs.is_empty() {
                     return;
                 }
@@ -1482,8 +1499,10 @@ fn main() -> anyhow::Result<()> {
                 queue.add_group(&title, post::is_playlist(&items), reqs);
             } else {
                 let title_hint = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { url.clone() };
-                let quality = if ui.get_probe_is_gif() { Quality::Best } else { Quality::from_index(ui.get_quality()) };
+                let (quality, preset) = chosen_quality(&ui);
+                let quality = if ui.get_probe_is_gif() { Quality::Best } else { quality };
                 let mut req = DownloadRequest::new(url, quality, title_hint);
+                req.preset = preset;
                 req.key = probe_state.key.borrow().clone();
                 // "Download again": replace a file of the same name.
                 req.force = ui.get_dup_text() != "";

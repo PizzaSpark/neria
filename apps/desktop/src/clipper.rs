@@ -604,9 +604,9 @@ pub fn install(
                     // Link mode: download only the selected part, in the chosen quality.
                     // Same rules as the Download page: GIFs come as they are; container,
                     // H.264 and audio format come from Settings when the job starts.
-                    let quality =
-                        if ui.get_clip_is_gif() { Quality::Best } else { Quality::from_index(ui.get_quality()) };
+                    let quality = if ui.get_clip_is_gif() { Quality::Best } else { crate::chosen_quality(&ui).0 };
                     let mut req = DownloadRequest::new(url, quality, ui.get_clip_name().to_string());
+                    req.preset = crate::chosen_quality(&ui).1;
                     req.section = Some((ui.get_clip_in() as f64, ui.get_clip_out() as f64));
                     req.exact_cuts = ui.get_clip_mode() == 1;
                     enqueue(req);

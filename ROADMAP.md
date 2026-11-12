@@ -281,9 +281,16 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    `pick_choice`); `DownloadRequest.format` overrides Settings for that item. The order is
    kept per playlist link in `orders.json` (50 lists) and used the next time it's opened;
    the playlist file (M3U) follows the numbers
-7. **Simple format presets** instead of codec/container talk: Best quality · Best
+7. ✅ **Simple format presets** instead of codec/container talk: Best quality · Best
    compatibility (H.264 MP4, plays everywhere) · Smallest file · Audio only; the current
    chips/containers move under Advanced
+   Built: the chips are now Best quality · Compatible · Smallest file · Audio only
+   (`settings::Preset`, `Presets` global); "Advanced" folds out "Up to" Any/1080p/720p/480p
+   and "As" mp4/mkv/webm (or the audio formats for Audio only), with a line saying what
+   Compatible / Smallest mean. Compatible = MP4 + H.264/AAC; Smallest = MP4, ≤480p,
+   `-S res:480,+size,+br`. A picker row's own format still wins. Old settings with
+   "Audio only" as the quality move to the Audio preset. The clipper's link mode uses the
+   same chips. `NERIA_DIALOG=advanced`
 8. **Filename builder** (drag and drop, no yt-dlp template syntax): field chips (Title,
    Channel, Upload date, Video ID, Playlist, Playlist #, Resolution, Duration, Site…) dragged
    into a line with plain text between them; a `/` makes a folder. Live example using the

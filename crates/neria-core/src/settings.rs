@@ -36,6 +36,34 @@ impl Quality {
     }
 }
 
+/// What kind of file, in plain words (the chips on the preview). The resolution cap and
+/// container under "Advanced" still apply to Best quality.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Preset {
+    /// The best the site has, in the container from Advanced.
+    #[default]
+    Best,
+    /// H.264 + AAC in MP4: plays on everything (YouTube: up to 1080p).
+    Compatible,
+    /// Up to 480p, the smallest streams: for phones, chats, slow connections.
+    Smallest,
+    /// Just the sound (Quality::Audio).
+    Audio,
+}
+
+impl Preset {
+    pub const ALL: [Preset; 4] = [Self::Best, Self::Compatible, Self::Smallest, Self::Audio];
+
+    pub fn from_index(i: i32) -> Self {
+        Self::ALL.get(i.max(0) as usize).copied().unwrap_or_default()
+    }
+
+    pub fn index(self) -> i32 {
+        Self::ALL.iter().position(|p| *p == self).unwrap_or(0) as i32
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Settings {
@@ -44,7 +72,9 @@ pub struct Settings {
     pub sort_folders: bool,
     /// Number items of a playlist/post by their place in it (`01 Title`).
     pub number_items: bool,
+    /// Highest resolution (Advanced); `Audio` only in settings from before presets.
     pub quality: Quality,
+    pub preset: Preset,
     /// Container for video downloads: mp4, mkv or webm.
     pub container: String,
     /// Target format for audio-only downloads: mp3, m4a, opus, flac, wav.
@@ -110,6 +140,7 @@ impl Default for Settings {
             sort_folders: true,
             number_items: true,
             quality: Quality::Best,
+            preset: Preset::Best,
             container: "mp4".into(),
             audio_format: "mp3".into(),
             prefer_h264: false,
@@ -155,6 +186,14 @@ impl Settings {
                 // Tolerate a UTF-8 BOM from hand-editing in Notepad/PowerShell.
                 let b = b.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&b);
                 serde_json::from_slice(b).ok()
+            })
+            .map(|mut s: Settings| {
+                // Before presets, "Audio only" was a quality.
+                if s.quality == Quality::Audio {
+                    s.quality = Quality::Best;
+                    s.preset = Preset::Audio;
+                }
+                s
             })
             .unwrap_or_default()
     }
