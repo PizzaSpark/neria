@@ -1,7 +1,7 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { Accounts, Background } from "../globals.slint";
+import { Accounts, Background, Names } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider } from "../widgets.slint";
 
 // One group of settings under a small heading.
@@ -376,11 +376,24 @@ export component SettingsDrawer inherits Rectangle {
 
                             Group {
                                 title: "File names";
-                                LineEdit {
-                                    text <=> root.filename-template;
-                                    edited => { root.settings-changed(); }
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    Text {
+                                        horizontal-stretch: 1;
+                                        text: Names.summary;
+                                        color: Theme.ink;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    GhostButton {
+                                        horizontal-stretch: 0;
+                                        compact: true;
+                                        text: "Change";
+                                        clicked => { Names.show(); }
+                                    }
                                 }
-                                Hint { text: "A yt-dlp template. The default is %(title)s [%(id)s].%(ext)s"; }
+                                Hint { text: "For single videos. Items picked from a playlist or post are named by their number and title."; }
                             }
                         }
 

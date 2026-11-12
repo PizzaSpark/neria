@@ -115,3 +115,19 @@ Design choices: `design/download-track.html` (all the recommended options were p
 - [ ] Audio only: the audio format from Advanced (mp3 by default).
 - [ ] An old `settings.json` with `"quality": "audio"` opens with Audio only picked.
 - [ ] Clip first on a link: the same chips; the clip downloads with the picked preset.
+
+## 8. Filename builder
+- [ ] Settings → Download → File names says "Title [Video ID]" (the old default) and
+      Change opens the builder showing Title, " [", Video ID, "]".
+- [ ] Each ready-made name: the line and example change; download a video, the file is
+      named like the example. "Playlist / 01 Title" with "Download whole playlists" on puts
+      a playlist in its own folder, numbered.
+- [ ] Click and drag fields up onto the line; drag pieces left/right; ←/→ and Delete on a
+      focused piece; × removes.
+- [ ] Add text " - ", and "/" (makes a folder): the example shows it.
+- [ ] Warnings: typing ":" or "?" in text; Title alone (could collide); a line without
+      fields; a "/" at the start or end.
+- [ ] + Save mine: it appears as a chip, survives a restart, picking it brings it back.
+- [ ] Advanced: type a template with an unknown part (e.g. `%(view_count)s`) + Enter: the
+      builder says it's custom; picking a ready-made name goes back to pieces.
+- [ ] With a link previewed, the example uses its title.

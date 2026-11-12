@@ -103,3 +103,37 @@ export global Presets {
     in-out property <int> preset;
     in-out property <bool> advanced;
 }
+
+// One piece of a file name in the builder: a field chip, or text you typed.
+export struct NamePiece {
+    text: string,
+    field: bool,
+}
+
+// The filename builder (Settings → Download → File names → Change).
+export global Names {
+    in-out property <bool> open;
+    // Settings' row: the current name in words ("Title [Video ID]").
+    in property <string> summary;
+    in property <[NamePiece]> pieces;
+    in property <[string]> fields;
+    in property <[string]> presets; // ready-made and saved
+    in property <int> preset; // -1 = none of them
+    in property <string> example;
+    in property <string> warning;
+    // The raw yt-dlp template (Advanced), and whether it's too custom for pieces.
+    in property <string> raw;
+    in property <bool> custom;
+    in-out property <bool> advanced;
+    in-out property <string> typing;
+    // A field chip held over the line (it lands at the end when dropped there).
+    in-out property <bool> dragging;
+    callback show();
+    callback add-field(int);
+    callback add-text(string);
+    callback remove(int);
+    callback move(int, int);
+    callback use-preset(int);
+    callback save-preset();
+    callback set-raw(string);
+}

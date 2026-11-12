@@ -291,12 +291,23 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    `-S res:480,+size,+br`. A picker row's own format still wins. Old settings with
    "Audio only" as the quality move to the Audio preset. The clipper's link mode uses the
    same chips. `NERIA_DIALOG=advanced`
-8. **Filename builder** (drag and drop, no yt-dlp template syntax): field chips (Title,
+8. ✅ **Filename builder** (drag and drop, no yt-dlp template syntax): field chips (Title,
    Channel, Upload date, Video ID, Playlist, Playlist #, Resolution, Duration, Site…) dragged
    into a line with plain text between them; a `/` makes a folder. Live example using the
    current link; warns about characters Windows doesn't allow and names that would collide.
    Presets ("Title", "Channel - Title", "Date - Title", "Title [ID]", "Playlist / 01 Title"),
    save your own; "Advanced" still shows the raw `-o` template
+   Built: Settings → Download → File names shows the name in words ("Title [Video ID]")
+   and Change opens the builder (`dialogs/names.slint`, `Names` global, `names_ui.rs`,
+   core `names.rs`): ready-made and saved names as chips (+ Save mine), the line of pieces
+   (drag a piece left/right, or ←/→ and Delete on it; × removes), "Add text", field chips
+   to click or drag up onto the line (they land at the end), the example (the previewed
+   video's title when there is one), one warning at a time (characters Windows won't take,
+   no field at all, names that could collide, a `/` with nothing on one side), and the raw
+   template under Advanced (applied on Enter; templates with unknown parts stay raw). The
+   template is still `filename_template`, so old settings keep working. Applies to single
+   videos; picked playlist/post items keep "01 Title". Later, if wanted: dropping a field at
+   an exact spot in the line. `NERIA_DIALOG=names`
 9. **Bulk and quick download**: paste several links at once (one per line, or a text file) →
    one row per link, skipping duplicates. "Paste & download" with your defaults (skips the
    preview) and an optional clipboard watcher that offers detected links

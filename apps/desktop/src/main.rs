@@ -20,6 +20,7 @@ mod compressor;
 mod drop_ui;
 mod extras_ui;
 mod match_ui;
+mod names_ui;
 mod recent_ui;
 mod setup_ui;
 mod signin;
@@ -811,6 +812,8 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
                 ui.global::<Extras>().invoke_show(kind);
             }
         }
+        // The filename builder.
+        "names" => ui.global::<Names>().invoke_show(),
         // Closing with downloads going, and "Download later".
         "close" => {
             let b = ui.global::<Background>();
@@ -1696,6 +1699,7 @@ fn main() -> anyhow::Result<()> {
     drop_ui::install(&ui);
     signin_ui::install(&ui);
     background_ui::install(&ui, queue.clone(), settings.clone());
+    names_ui::install(&ui, settings.clone());
     extras_ui::install(&ui);
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());

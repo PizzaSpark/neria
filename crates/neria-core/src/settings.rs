@@ -130,6 +130,8 @@ pub struct Settings {
     /// "chime" (Neria's own), "windows" or "none"; separately for failures.
     pub sound_done: String,
     pub sound_failed: String,
+    /// Names saved in the filename builder: (shown name, yt-dlp template).
+    pub saved_names: Vec<(String, String)>,
 }
 
 impl Default for Settings {
@@ -174,6 +176,7 @@ impl Default for Settings {
             notify_unfocused: true,
             sound_done: "chime".into(),
             sound_failed: "chime".into(),
+            saved_names: Vec::new(),
         }
     }
 }

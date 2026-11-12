@@ -1,0 +1,240 @@
+import { LineEdit } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { Names } from "../globals.slint";
+import { PrimaryButton, GhostButton, Hint, Dialog, Chip, Tag, TextLink, Icon, KeyPress } from "../widgets.slint";
+
+// A field or text in the name you're building: drag it left or right to move it,
+// × removes it. Keyboard: Tab to it, ← / → move it, Delete removes it.
+component PieceChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> field;
+    in property <int> index;
+    in property <int> count;
+    property <length> grab: 0px;
+    height: 30px;
+    width: row.preferred-width;
+    border-radius: 8px;
+    border-width: 2px;
+    border-color: root.field ? Theme.ink : Theme.line-strong;
+    background: root.field ? Theme.ink : Theme.raised;
+    accessible-role: button;
+    accessible-label: (root.field ? "Field " : "Text ") + root.text + ": arrows move it, Delete removes it";
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.LeftArrow && root.index > 0 {
+                Names.move(root.index, root.index - 1);
+                return accept;
+            }
+            if event.text == Key.RightArrow && root.index < root.count - 1 {
+                Names.move(root.index, root.index + 1);
+                return accept;
+            }
+            if event.text == Key.Delete || event.text == Key.Backspace {
+                Names.remove(root.index);
+                return accept;
+            }
+            reject
+        }
+    }
+    if fs.has-focus: Rectangle {
+        x: -4px;
+        y: -4px;
+        width: root.width + 8px;
+        height: root.height + 8px;
+        border-radius: 12px;
+        border-width: 2px;
+        border-color: Theme.focus;
+    }
+    ta := TouchArea {
+        mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+        moved => { root.grab = self.mouse-x - self.pressed-x; }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up {
+                // About one chip's width per place.
+                let to = max(0, min(root.count - 1, root.index + round(root.grab / 70px)));
+                if to != root.index {
+                    Names.move(root.index, to);
+                }
+                root.grab = 0px;
+            }
+        }
+    }
+    row := HorizontalLayout {
+        padding-left: 9px;
+        padding-right: 4px;
+        spacing: 4px;
+        Text {
+            text: root.field ? root.text : "\"" + root.text + "\"";
+            color: root.field ? Theme.bg : Theme.ink;
+            font-family: root.field ? Theme.body : Theme.mono;
+            font-size: 12.5px;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            width: 20px;
+            accessible-role: button;
+            accessible-label: "Remove " + root.text;
+            accessible-action-default => { Names.remove(root.index); }
+            KeyPress {
+                radius: 6px;
+                activated => { Names.remove(root.index); }
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Names.remove(root.index); }
+            }
+            Icon {
+                text: "\u{E711}";
+                font-size: 9px;
+                color: root.field ? Theme.bg : Theme.muted;
+            }
+        }
+    }
+}
+
+// A field to add: click it, or drag it onto the line.
+component FieldChip inherits Chip {
+    in property <int> index;
+    clicked => { Names.add-field(root.index); }
+    TouchArea {
+        mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+        moved => { Names.dragging = self.pressed && self.mouse-y - self.pressed-y < -12px; }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up {
+                // Dropped above (on the line), or a plain click.
+                if Names.dragging || abs(self.mouse-y - self.pressed-y) < 6px {
+                    Names.add-field(root.index);
+                }
+                Names.dragging = false;
+            }
+        }
+    }
+}
+
+// Settings → Download → File names → Change: build a name from fields and text.
+export component NamesDialog inherits Dialog {
+    title: "File names";
+    subtitle: "Click or drag fields onto the line. A / makes a folder.";
+    card-width: 640px;
+    fit: true;
+    close => { Names.open = false; }
+
+    // Ready-made names and your own.
+    FlexboxLayout {
+        spacing: 7px;
+        horizontal-stretch: 1;
+        vertical-stretch: 0;
+        for p[i] in Names.presets: Chip {
+            horizontal-stretch: 0;
+            text: p;
+            selected: Names.preset == i;
+            clicked => { Names.use-preset(i); }
+        }
+        if Names.preset < 0 && !Names.custom: Chip {
+            horizontal-stretch: 0;
+            text: "+ Save mine";
+            clicked => { Names.save-preset(); }
+        }
+    }
+
+    // The name you're building.
+    if !Names.custom: Rectangle {
+        min-height: 50px;
+        border-radius: 10px;
+        border-width: 2px;
+        border-color: Names.dragging ? Theme.ink : Theme.line-strong;
+        background: Theme.bg;
+        FlexboxLayout {
+            padding: 8px;
+            spacing: 5px;
+            for p[i] in Names.pieces: PieceChip {
+                text: p.text;
+                field: p.field;
+                index: i;
+                count: Names.pieces.length;
+            }
+            Text {
+                height: 30px;
+                text: Names.pieces.length == 0 ? "Click a field below to start" : ".ext";
+                color: Theme.muted;
+                font-family: Theme.mono;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+    }
+    if !Names.custom: HorizontalLayout {
+        spacing: 8px;
+        LineEdit {
+            horizontal-stretch: 1;
+            placeholder-text: "Text to add, e.g.  -  or  /";
+            text <=> Names.typing;
+            accepted => { Names.add-text(Names.typing); }
+        }
+        GhostButton {
+            horizontal-stretch: 0;
+            text: "Add text";
+            clicked => { Names.add-text(Names.typing); }
+        }
+    }
+    if !Names.custom: FlexboxLayout {
+        spacing: 7px;
+        horizontal-stretch: 1;
+        vertical-stretch: 0;
+        for f[i] in Names.fields: FieldChip {
+            horizontal-stretch: 0;
+            text: f;
+            index: i;
+        }
+    }
+    if Names.custom: Hint {
+        text: "This name uses yt-dlp template parts the builder doesn't know; edit it below, or pick a ready-made name above to start over.";
+    }
+
+    Text {
+        text: "Example: " + Names.example;
+        color: Theme.ink;
+        font-size: 13px;
+        wrap: word-wrap;
+    }
+    if Names.warning != "": HorizontalLayout {
+        spacing: 10px;
+        VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 0;
+            Tag {
+                text: "Heads up";
+                kind: 2;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: Names.warning;
+            color: Theme.muted;
+            font-size: 12.5px;
+            wrap: word-wrap;
+        }
+    }
+    HorizontalLayout {
+        alignment: start;
+        TextLink {
+            text: "Advanced: the yt-dlp template";
+            icon: Names.advanced ? "\u{E70E}" : "\u{E70D}";
+            clicked => { Names.advanced = !Names.advanced; }
+        }
+    }
+    if Names.advanced: LineEdit {
+        text: Names.raw;
+        // Applied on Enter, so typing isn't interrupted.
+        accepted(t) => { Names.set-raw(t); }
+    }
+    HorizontalLayout {
+        alignment: end;
+        PrimaryButton {
+            text: "Done";
+            icon: "\u{E73E}";
+            clicked => { Names.open = false; }
+        }
+    }
+}

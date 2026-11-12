@@ -15,6 +15,7 @@ pub mod gif;
 pub mod history;
 pub mod media;
 pub mod music;
+pub mod names;
 pub mod paths;
 pub mod post;
 pub mod probe;
