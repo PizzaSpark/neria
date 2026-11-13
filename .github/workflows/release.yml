@@ -40,6 +40,9 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test core
         run: cargo test -p neria-core --locked
+      # The desktop's unit tests and the UI guardrails (colours, keyboard, labels, widths).
+      - name: Test app and UI rules
+        run: cargo test -p neria --locked
       - name: Build
         run: cargo build --release -p neria --locked
       - name: Package

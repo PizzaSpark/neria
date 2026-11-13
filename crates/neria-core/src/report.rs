@@ -130,7 +130,7 @@ pub fn header(settings: &Settings) -> String {
         opts.push("SponsorBlock".into());
     }
     opts.push(match settings.cookies_browser.as_str() {
-        "" => "no cookies".into(),
+        "" => "no browser cookies".into(),
         b => format!("cookies from {b}"),
     });
     if !settings.rate_limit.trim().is_empty() {
@@ -171,6 +171,10 @@ pub fn job_report(settings: &Settings, job: &JobDetails) -> String {
     }
     if !job.url.is_empty() {
         s.push_str(&format!("Link: {}\n", job.url));
+        // A Neria sign-in beats the browser setting for this site (the header can't know).
+        if let Some(site) = crate::cookies::site_of(job.url).filter(|site| crate::cookies::signed_in(site)) {
+            s.push_str(&format!("Signed in to {site} in Neria (its cookies were used, not the browser's)\n"));
+        }
     }
     if !job.title.is_empty() && job.title != job.url {
         s.push_str(&format!("Title: {}\n", job.title));

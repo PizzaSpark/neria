@@ -77,7 +77,10 @@ data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, 
 `signin` (a problem that sign-in fixes), `extras` / `captions` / `audio` / `chapters` (a video with all three, the
 picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
-`NERIA_WINDOW` (window size in logical px, e.g. `780x580`), `NERIA_FAKE_FREE_MB` (pretend the
+`NERIA_WINDOW` (window size in logical px, e.g. `780x580`; resizing from outside with
+MoveWindow/SetWindowPos also works, but in PowerShell don't name the window handle `$h` next to
+a `$H` height: variable names ignore case, so the handle becomes the height and the window
+jumps to 32767px tall; Windows doesn't enforce the 400x600 minimum on scripted resizes), `NERIA_FAKE_FREE_MB` (pretend the
 drive has this much free, to test the free-space checks), `NERIA_DROP_HOVER` / `NERIA_DROP`
 (a file path or link: show the drag-and-drop overlay for it / act as if it was dropped),
 `NERIA_DROP_CLIPBOARD` (drop whatever is on the clipboard, through the real OLE drop code), `NERIA_DROP_LOG` (a file: log what each real drag offers and what Neria made of it), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),

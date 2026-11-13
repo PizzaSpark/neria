@@ -14,7 +14,15 @@ Windows 10/11 for now. Android is planned (see [ROADMAP.md](ROADMAP.md)).
 
 ## Getting it running
 
-There are no ready-made downloads yet, so you build it once.
+1. Download the latest `Neria-…-windows-x64.zip` from
+   [Releases](https://github.com/PizzaSpark/neria/releases/latest).
+2. Unzip it anywhere (a USB stick works too) and double-click `Neria.exe`.
+
+Windows may say "Windows protected your PC" because the exe isn't signed yet: press
+**More info → Run anyway**. Neria updates itself after that: when a new version is out, a
+banner offers **Update now**.
+
+### Or build it yourself
 
 1. Install **Rust**: <https://rustup.rs> (pick the default options). You also need the
    **Visual Studio C++ build tools**, which the Rust installer offers to set up.
@@ -47,7 +55,12 @@ Nothing is installed on your system. Neria keeps everything next to the exe:
 neria.exe
 settings.json      your settings
 bin\               yt-dlp, ffmpeg, ffprobe, deno, libmpv
+cookies\           sites you signed in to (only if you did)
 ```
+
+Notifications are the one exception: Windows only shows them for an app it knows, so Neria adds
+one entry for itself to your user's registry (its name and icon). Turning notifications off in
+Settings removes it.
 
 To move Neria, move the folder. To remove it, delete the folder.
 
@@ -62,8 +75,20 @@ The sidebar on the left has three pages, **Download**, **Clip** and **Compress**
 
 1. Copy a link, then press **Paste** (or paste into the box).
 2. A preview appears with the title, thumbnail, channel and length.
-3. Pick a quality: **Best**, **1080p**, **720p**, **480p** or **Audio only**.
+3. Pick what you want: **Best quality**, **Compatible** (an MP4 that plays everywhere),
+   **Smallest file** or **Audio only**. **Advanced** has the resolution and the file type.
 4. Press **Download** (or Enter).
+
+More ways in:
+
+- **Several links at once**: paste them (one per line), or drop a `.txt` with links. Each one
+  is looked up, and you untick the ones you don't want.
+- **Paste & download** (the ▾ next to Download, or Ctrl+Shift+V) skips the preview.
+- **Watch it first**: the ▶ on the preview plays the video before you download it.
+- **Follow** a channel or playlist (under its preview): its new uploads download by
+  themselves. Manage them in Settings → Following.
+- Playlists and posts list their items first: tick what you want, drag them into your own
+  order. Videos with captions, other audio languages or chapters show a line to pick those.
 
 The download shows up in the **Queue** below with its progress. When it's done, each row
 has buttons to:
@@ -169,18 +194,25 @@ preview). The sections are listed on the left:
 
 | Section | What's there |
 |---|---|
-| Download | Where files go (and the Audio / Video / Photos folders, numbering), video container (mp4 / mkv / webm), prefer H.264, subtitles, the audio format (mp3, m4a, opus, flac, wav; also used for Spotify songs), thumbnail and metadata, SponsorBlock, whole playlists, X GIFs, the file name template |
+| Download | Where files go (and the Audio / Video / Photos folders, numbering), video container (mp4 / mkv / webm), prefer H.264, subtitles, the audio format (mp3, m4a, opus, flac, wav; also used for Spotify songs), thumbnail and metadata, SponsorBlock, whole playlists, X GIFs, file names (built from pieces like Title and Channel), offering links you copy |
+| Following | Channels and playlists you follow: how often they're checked, Check now, Pause, Unfollow |
 | Spotify | Lyrics on/off, sound check on/off, the heads-up, your own Spotify key |
-| Network | Cookies from your browser, speed limit, how many downloads run at once, extra yt-dlp options |
-| Appearance | Same as Windows, dark or light |
+| Network | Sites you signed in to, cookies from your browser, speed limit, how many downloads run at once, extra yt-dlp options |
+| General | What closing Neria does (keep going in the tray), notifications and their sounds, same as Windows / dark / light |
 | About | Versions, updates for Neria and its tools, copy a report |
 
 Clip and Compress have no settings: you pick everything per file on those pages.
 
-### Cookies (age-restricted or "confirm you're not a bot" videos)
+### Signing in (private, age-restricted or members-only videos)
 
-Under **Network → Cookies**, pick the browser you're logged in to YouTube with.
-Neria borrows its cookies for downloads.
+When a video needs a sign-in, its preview offers **Sign in to YouTube** (or the site it's on).
+A small window opens; sign in there and press **Done**. Neria keeps that site's cookies in a
+`cookies` folder next to it and only sends them to that site. Sign out under
+**Settings → Network**. Keep in mind that anyone you give the Neria folder to gets your sign-in
+too.
+
+Under **Network → Cookies** you can also borrow a browser's sign-in instead (Firefox works
+best; Chrome and Edge lock theirs).
 
 ### Optional: your own Spotify key
 
@@ -201,7 +233,7 @@ back to the public page automatically.
 | Problem | Try |
 |---|---|
 | "Setup hit a snag" on first start | Check your internet connection and press **Try again** |
-| "YouTube wants a sign-in" | Settings → Network → Cookies |
+| "YouTube wants a sign-in" | Press **Sign in to YouTube** on the preview |
 | A site stopped working | Restart Neria: yt-dlp updates itself once a day |
 | A Spotify song is the wrong version | Press ⇄ on its row and pick the one marked ✓ Same recording |
 | A Spotify song failed with "Pick one yourself" | Press ⇄ and search for it in the box at the top |
