@@ -1328,6 +1328,12 @@ impl Queue {
                 }
             }
         }
+        // Put inside the video: the files yt-dlp also wrote aren't wanted.
+        if c.files_are_leftovers(req.quality == crate::settings::Quality::Audio) {
+            for f in subs(&["srt", "vtt", "ass"]) {
+                let _ = std::fs::remove_file(f);
+            }
+        }
         if req.captions_only() {
             let mut found = subs(&["srt", "vtt", "ass", "txt"]);
             found.sort();

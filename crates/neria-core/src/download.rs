@@ -218,9 +218,11 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     if let Some(t) = &req.name_tag {
         tags.push_str(&t.replace('%', "%%"));
     }
-    // Chapters as one file: each range is its own piece first, joined afterwards.
+    // Chapters as one file: each range is its own piece first, joined afterwards. Named by
+    // where it starts (time ranges have no `section_number`: it came out "NA" for all of
+    // them, so each piece overwrote the last), padded so the names sort in time order.
     if req.sections.len() > 1 {
-        tags.push_str(".neria-part%(section_number)03d");
+        tags.push_str(".neria-part%(section_start)07d");
     }
     let template = match template.strip_suffix(".%(ext)s") {
         Some(base) => format!("{base}{tags}.%(ext)s"),
@@ -305,11 +307,12 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     }
 
     // webm can't hold cover art; yt-dlp would just warn, so skip it.
-    let thumb_ok = req.quality == Quality::Audio || s.container != "webm";
+    // Captions only: no video to put a picture in, and none to save next to.
+    let thumb_ok = (req.quality == Quality::Audio || s.container != "webm") && !req.captions_only();
     if s.embed_thumbnail && thumb_ok {
         push(&["--embed-thumbnail"]);
     }
-    if s.save_thumbnail && req.music.is_none() {
+    if s.save_thumbnail && req.music.is_none() && !req.captions_only() {
         push(&["--write-thumbnail", "--convert-thumbnails", "jpg"]);
     }
     if s.embed_metadata || req.meta_title.is_some() {
@@ -325,7 +328,7 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
         push(&["--postprocessor-args", &ppa]);
     }
     match &req.captions {
-        Some(c) if !c.is_empty() => a.extend(c.args(req.quality == Quality::Audio)),
+        Some(c) if !c.is_empty() => a.extend(c.args(req.quality == Quality::Audio, &s.container)),
         Some(_) => {}
         None if s.embed_subs && req.quality != Quality::Audio => {
             a.extend(["--embed-subs", "--sub-langs", "all,-live_chat"].map(String::from));

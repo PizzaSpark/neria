@@ -237,14 +237,25 @@ impl CaptionChoice {
         self.langs.is_empty() && self.auto_langs.is_empty()
     }
 
-    /// yt-dlp options. `audio_only`: nothing to embed into, so files only.
-    pub fn args(&self, audio_only: bool) -> Vec<String> {
+    /// Captions go inside the file (a video, and not the plain-text format, which is only
+    /// ever a file of its own).
+    fn embeds(&self, audio_only: bool) -> bool {
+        !audio_only
+            && !self.only
+            && self.format != SubFormat::Txt
+            && matches!(self.mode, SubMode::Embed | SubMode::Both)
+    }
+
+    /// yt-dlp options. `audio_only`: nothing to embed into, so files only. `container`: webm
+    /// only takes WebVTT inside (yt-dlp silently skips anything else), so captions going into
+    /// a webm are made VTT.
+    pub fn args(&self, audio_only: bool, container: &str) -> Vec<String> {
         if self.is_empty() {
             return Vec::new();
         }
         let mut a: Vec<String> = Vec::new();
-        let embed = !audio_only && !self.only && matches!(self.mode, SubMode::Embed | SubMode::Both);
-        let files = self.only || audio_only || matches!(self.mode, SubMode::Separate | SubMode::Both);
+        let embed = self.embeds(audio_only);
+        let files = !embed || matches!(self.mode, SubMode::Separate | SubMode::Both);
         let mut langs: Vec<String> = self.langs.iter().chain(&self.auto_langs).map(|l| regex_escape(l)).collect();
         langs.dedup();
         if !self.langs.is_empty() || files {
@@ -257,7 +268,7 @@ impl CaptionChoice {
         a.push("--sub-langs".into());
         a.push(langs.join(","));
         a.push("--convert-subs".into());
-        a.push(self.format.convert_to().into());
+        a.push(if embed && container == "webm" { "vtt".into() } else { self.format.convert_to().into() });
         if embed {
             a.push("--embed-subs".into());
         }
@@ -269,7 +280,7 @@ impl CaptionChoice {
 
     /// Embedding only: the caption files yt-dlp wrote are leftovers to remove afterwards.
     pub fn files_are_leftovers(&self, audio_only: bool) -> bool {
-        !audio_only && !self.only && self.mode == SubMode::Embed
+        self.embeds(audio_only) && self.mode == SubMode::Embed
     }
 }
 
@@ -422,12 +433,12 @@ mod tests {
             mode: SubMode::Both,
             only: false,
         };
-        let a = c.args(false);
+        let a = c.args(false, "mp4");
         assert!(a.contains(&"--embed-subs".to_string()) && a.contains(&"--write-auto-subs".to_string()));
         assert!(a.windows(2).any(|w| w[0] == "--sub-langs" && w[1] == "en,fr"));
         let only = CaptionChoice { only: true, ..c };
-        assert!(only.args(false).contains(&"--skip-download".to_string()));
-        assert!(!only.args(false).contains(&"--embed-subs".to_string()));
+        assert!(only.args(false, "mp4").contains(&"--skip-download".to_string()));
+        assert!(!only.args(false, "mp4").contains(&"--embed-subs".to_string()));
         assert_eq!(
             srt_to_text(
                 "1\n00:00:01,000 --> 00:00:02,000\n<i>Hello</i>\n\n2\n00:00:02,000 --> 00:00:03,000\nHello\nworld\n"
