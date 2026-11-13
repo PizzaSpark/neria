@@ -368,8 +368,9 @@ fn joined_name(piece: &std::path::Path) -> PathBuf {
 }
 
 /// Join pieces of the same video end to end without re-encoding (they were cut on keyframes).
-fn join_pieces(pieces: &[PathBuf], out: &std::path::Path) -> anyhow::Result<()> {
-    let list = paths::cache_dir().join(format!("join-{}.txt", std::process::id()));
+fn join_pieces(id: u64, pieces: &[PathBuf], out: &std::path::Path) -> anyhow::Result<()> {
+    // One list per job: two joins can run at once.
+    let list = paths::cache_dir().join(format!("join-{}-{id}.txt", std::process::id()));
     let body: String =
         pieces.iter().map(|p| format!("file '{}'\n", p.to_string_lossy().replace('\'', "'\\''"))).collect();
     std::fs::write(&list, body)?;
@@ -398,6 +399,34 @@ fn join_pieces(pieces: &[PathBuf], out: &std::path::Path) -> anyhow::Result<()> 
     }
 }
 
+/// Caption files in `dir` and when they were last written (before a download, so its
+/// cleanup leaves the ones it didn't write alone).
+type Stamped = Vec<(PathBuf, Option<std::time::SystemTime>)>;
+
+fn caption_files(dir: &std::path::Path) -> Stamped {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|x| ["srt", "vtt", "ass", "txt"].contains(&x.to_string_lossy().to_lowercase().as_str()))
+        })
+        .map(|p| {
+            let at = std::fs::metadata(&p).and_then(|m| m.modified()).ok();
+            (p, at)
+        })
+        .collect()
+}
+
+/// `path` is as it was before the download (there already, not written since).
+fn untouched(before: &Stamped, path: &std::path::Path) -> bool {
+    before
+        .iter()
+        .any(|(p, at)| p == path && at.is_some() && std::fs::metadata(path).and_then(|m| m.modified()).ok() == *at)
+}
+
 fn is_picture(path: &std::path::Path) -> bool {
     path.extension().is_some_and(|e| {
         ["jpg", "jpeg", "png", "webp", "gif", "heic"].contains(&e.to_string_lossy().to_lowercase().as_str())
@@ -421,7 +450,8 @@ struct Inner {
     /// When yt-dlp was last updated because a site broke it (one update at a time).
     ytdlp_updated: Mutex<Option<Instant>>,
     /// "Download later": jobs added while this is set wait until then (time, "02:00").
-    hold: Mutex<Option<(u64, String)>>,
+    /// Only for adds from the thread that set it.
+    hold: Mutex<Option<(thread::ThreadId, u64, String)>>,
 }
 
 /// Cheap to clone; all clones share the same queue.
@@ -470,15 +500,17 @@ impl Queue {
         self.save();
     }
 
-    /// "Download later": what's added from now on waits until `at` (shown as `label`);
-    /// `None` goes back to starting right away.
+    /// "Download later": what this thread adds from now on waits until `at` (shown as
+    /// `label`); `None` goes back to starting right away. Other threads (a Following check)
+    /// aren't held.
     pub fn hold_new(&self, until: Option<(u64, String)>) {
-        *self.inner.hold.lock().unwrap() = until;
+        *self.inner.hold.lock().unwrap() = until.map(|(at, label)| (thread::current().id(), at, label));
     }
 
     fn add_to_group(&self, mut req: DownloadRequest, group: u64) -> u64 {
         if req.start_at.is_none()
-            && let Some((at, label)) = self.inner.hold.lock().unwrap().clone()
+            && let Some((thread_id, at, label)) = self.inner.hold.lock().unwrap().clone()
+            && thread_id == thread::current().id()
         {
             req.start_at = Some(at);
             req.start_label = label;
@@ -1109,6 +1141,9 @@ impl Queue {
         }
 
         let dir = download::out_dir(&req, &settings);
+        // Caption files already in the folder: not this download's, so never cleaned up.
+        let subs_before =
+            if req.captions.as_ref().is_some_and(|c| !c.is_empty()) { caption_files(&dir) } else { Vec::new() };
 
         // A playlist/post item that's already in its folder from last time: keep it.
         if req.music.is_none()
@@ -1213,7 +1248,7 @@ impl Queue {
         if matches!(result, Ok(true))
             && !cancelled
             && req.music.is_none()
-            && let Err(e) = self.finish_tracks(id, &req, &dir)
+            && let Err(e) = self.finish_tracks(id, &req, &dir, &subs_before)
         {
             result = Err(e);
         }
@@ -1275,7 +1310,13 @@ impl Queue {
     }
 
     /// What's left after yt-dlp for captions and chapters (see `finish_tracks`).
-    fn finish_tracks(&self, id: u64, req: &DownloadRequest, dir: &std::path::Path) -> anyhow::Result<()> {
+    fn finish_tracks(
+        &self,
+        id: u64,
+        req: &DownloadRequest,
+        dir: &std::path::Path,
+        before: &Stamped,
+    ) -> anyhow::Result<()> {
         let (files, dests) = {
             let entries = self.inner.entries.lock().unwrap();
             let Some(e) = entries.iter().find(|e| e.snap.id == id) else { return Ok(()) };
@@ -1291,7 +1332,7 @@ impl Queue {
                     s.state = JobState::Processing;
                     s.postprocessor = Some("Joining".into());
                 });
-                join_pieces(&pieces, &out)?;
+                join_pieces(id, &pieces, &out)?;
                 for p in &pieces {
                     let _ = std::fs::remove_file(p);
                 }
@@ -1315,7 +1356,9 @@ impl Queue {
                 .filter(|p| {
                     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                     let ext = p.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
-                    exts.contains(&ext.as_str()) && stems.iter().any(|s| name.starts_with(&format!("{s}.")))
+                    exts.contains(&ext.as_str())
+                        && stems.iter().any(|s| name.starts_with(&format!("{s}.")))
+                        && !untouched(before, p)
                 })
                 .collect()
         };
@@ -1786,6 +1829,27 @@ mod tests {
         left.sort();
         assert_eq!(left, ["Clip [abc] (compressed).mp4", "Clip [abcd].f401.mp4.part", "Other.mp4"]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn download_later_holds_only_its_own_adds() {
+        let queue = Queue::new(Arc::new(Mutex::new(Settings::default())), |_| {});
+        queue.set_ready(false);
+        queue.hold_new(Some((u64::MAX, "02:00".into())));
+        let mine = queue.add(DownloadRequest { url: "https://example.com/a".into(), ..Default::default() });
+        // A Following check adding from its own thread at the same moment isn't held.
+        let q = queue.clone();
+        let other = std::thread::spawn(move || {
+            q.add(DownloadRequest { url: "https://example.com/b".into(), ..Default::default() })
+        })
+        .join()
+        .unwrap();
+        queue.hold_new(None);
+        let starts = |id: u64| {
+            queue.inner.entries.lock().unwrap().iter().find(|e| e.snap.id == id).map(|e| e.snap.starts.clone())
+        };
+        assert_eq!(starts(mine).as_deref(), Some("02:00"));
+        assert_eq!(starts(other).as_deref(), Some(""));
     }
 
     #[test]

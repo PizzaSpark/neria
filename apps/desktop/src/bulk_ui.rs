@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use neria_core::download::DownloadRequest;
 use neria_core::queue::Queue;
-use neria_core::settings::{Quality, Settings};
+use neria_core::settings::Settings;
 use neria_core::{fmt, history, post, probe, spotify};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
@@ -244,8 +244,8 @@ pub(crate) fn enqueue(ui: &AppWindow, state: &ProbeState, queue: &Queue) {
 /// Queue these links with the chips as they are, without a preview. Spotify links need
 /// their look-up first, so they're left for the link box. Returns what to say.
 fn queue_links(ui: &AppWindow, queue: &Queue, links: &[String]) -> String {
+    // The chips as they are (not whatever the preview above is: these aren't that link).
     let (quality, preset) = crate::chosen_quality(ui);
-    let quality = if ui.get_probe_is_gif() { Quality::Best } else { quality };
     let (mut added, mut queued) = (0, 0);
     let mut spotify_links = Vec::new();
     for url in links {

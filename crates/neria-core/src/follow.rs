@@ -249,9 +249,12 @@ pub fn check(url: &str, settings: &Settings, queue: &Queue) -> anyhow::Result<us
             anyhow::bail!(msg);
         }
     };
+    // Read the history once, before taking the list's lock.
+    let downloaded = history::downloaded_urls();
     let (new, f) = edit(|all| {
         let Some(f) = all.iter_mut().find(|f| f.url == url) else { return (Vec::new(), None) };
-        let new = settle(f, &items, history::ever_downloaded, |link| queue.find_unfinished(None, link).is_some());
+        let new =
+            settle(f, &items, |link| downloaded.contains(link), |link| queue.find_unfinished(None, link).is_some());
         f.last_check = now;
         f.last_new = new.len();
         f.error = None;

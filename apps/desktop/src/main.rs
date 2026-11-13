@@ -678,6 +678,12 @@ impl Drop for Release {
 /// Set by "Got it, download" so the next Download skips the Spotify heads-up once.
 static HEADS_UP_OK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+thread_local! {
+    /// The "Download later" time of a Download stopped by the Spotify heads-up, for the
+    /// "Got it, download" that follows (any other Download drops it).
+    static HEADS_UP_LATER: RefCell<Option<(u64, String)>> = const { RefCell::new(None) };
+}
+
 /// Dev hook (`NERIA_DIALOG`): open a dialog with sample data, for design checks.
 /// `match`, `sync`, `spotify`, `toast`, `update`, `update-ready`, `update-failed`.
 fn demo_dialog(ui: &AppWindow, which: &str) {
@@ -1362,6 +1368,8 @@ fn main() -> anyhow::Result<()> {
 
     // Leftovers from an update (the replaced exe, old tool files).
     neria_core::update::cleanup();
+    // Copies of sign-ins made for last session's runs.
+    neria_core::cookies::clear_run_copies();
 
     let settings = Arc::new(Mutex::new(Settings::load()));
     let ui = AppWindow::new()?;
@@ -1516,7 +1524,8 @@ fn main() -> anyhow::Result<()> {
                 return;
             }
             // "Download later": what this Download adds waits until then.
-            let later = background_ui::take_later();
+            let held = HEADS_UP_LATER.with(|l| l.borrow_mut().take());
+            let later = background_ui::take_later().or(held.filter(|_| HEADS_UP_OK.load(Ordering::SeqCst)));
             queue.hold_new(later.clone());
             let _release = Release(queue.clone());
             // The first download: the "How it works" steps have done their job.
@@ -1531,6 +1540,8 @@ fn main() -> anyhow::Result<()> {
                 if looked_up && ui.get_spotify_explain() && !HEADS_UP_OK.swap(false, Ordering::SeqCst) {
                     ui.set_spotify_heads_up_skip(true);
                     ui.set_spotify_heads_up(true);
+                    // Keep "Download later" for the "Got it, download" that comes next.
+                    HEADS_UP_LATER.with(|l| *l.borrow_mut() = later.clone());
                     return;
                 }
                 // Spotify: download every song once the lookup has finished.
@@ -1797,5 +1808,6 @@ fn main() -> anyhow::Result<()> {
 
     // Save the queue for next time, then stop every yt-dlp/ffmpeg so none survives the window.
     queue.shutdown();
+    neria_core::cookies::clear_run_copies();
     Ok(())
 }

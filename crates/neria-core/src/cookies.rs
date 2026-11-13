@@ -237,11 +237,17 @@ fn import_in(dir: &Path, file: &Path) -> anyhow::Result<Vec<String>> {
     Ok(sites)
 }
 
-/// Forget a site's sign-in.
+/// Forget a site's sign-in, copies made for runs included.
 pub fn sign_out(site: &str) -> anyhow::Result<()> {
     let path = file_of(site);
     if path.is_file() {
         std::fs::remove_file(path)?;
+    }
+    let prefix = format!("{site}-");
+    for e in std::fs::read_dir(runs_dir()).into_iter().flatten().flatten() {
+        if e.file_name().to_string_lossy().starts_with(&prefix) {
+            let _ = std::fs::remove_file(e.path());
+        }
     }
     Ok(())
 }
@@ -272,7 +278,8 @@ pub fn list() -> Vec<(String, u64)> {
 /// (and its date keeps saying when you signed in).
 pub fn args_for(url: &str, settings: &Settings) -> Vec<String> {
     if let Some(f) = file_for(url) {
-        let file = private_copy(&f).unwrap_or(f);
+        let site = site_of(url).unwrap_or_default();
+        let file = private_copy(&site, &f).unwrap_or(f);
         return vec!["--cookies".into(), file.to_string_lossy().into_owned()];
     }
     if !settings.cookies_browser.is_empty() {
@@ -281,23 +288,35 @@ pub fn args_for(url: &str, settings: &Settings) -> Vec<String> {
     Vec::new()
 }
 
-/// A throwaway copy of a site's cookie file for one yt-dlp / gallery-dl run, in the cache.
-/// Copies older than a day (their run is long over) are removed on the way.
-fn private_copy(file: &Path) -> Option<PathBuf> {
+fn runs_dir() -> PathBuf {
+    paths::cache_dir().join("cookie-runs")
+}
+
+/// Remove every run copy left from earlier sessions (and this one's): for when Neria starts
+/// and quits, so copies of a sign-in don't outlive the runs that needed them.
+pub fn clear_run_copies() {
+    let _ = std::fs::remove_dir_all(runs_dir());
+}
+
+/// A throwaway copy of a site's cookie file for one yt-dlp / gallery-dl run, in the cache
+/// (`<site>-<pid>-<n>.txt`). Copies older than an hour are removed on the way (lookups and
+/// most downloads are long over by then; a longer run already read its cookies); the rest
+/// go when Neria quits or starts, or when you sign out of the site.
+fn private_copy(site: &str, file: &Path) -> Option<PathBuf> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let dir = paths::cache_dir().join("cookie-runs");
+    let dir = runs_dir();
     std::fs::create_dir_all(&dir).ok()?;
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for e in entries.flatten() {
             let old = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
-            if old.is_some_and(|age| age.as_secs() > 86_400) {
+            if old.is_some_and(|age| age.as_secs() > 3_600) {
                 let _ = std::fs::remove_file(e.path());
             }
         }
     }
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let copy = dir.join(format!("{}-{n}.txt", std::process::id()));
+    let copy = dir.join(format!("{site}-{}-{n}.txt", std::process::id()));
     std::fs::copy(file, &copy).ok()?;
     Some(copy)
 }

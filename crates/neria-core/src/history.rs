@@ -75,11 +75,11 @@ fn recent_in(all: &[Record], limit: usize, keep: impl Fn(&std::path::Path) -> bo
         .collect()
 }
 
-/// This link was downloaded at some point (even if its file was since moved or deleted):
-/// for followed channels, so a video you deleted isn't fetched again.
-pub fn ever_downloaded(url: &str) -> bool {
+/// Every link downloaded at some point (even if its file was since moved or deleted): for
+/// followed channels, so a video you deleted isn't fetched again. Read once per check.
+pub fn downloaded_urls() -> std::collections::HashSet<String> {
     let _guard = LOCK.lock().unwrap();
-    load().iter().any(|r| r.url == url)
+    load().into_iter().map(|r| r.url).collect()
 }
 
 fn find_in(all: &[Record], key: Option<&str>, url: &str) -> Option<Record> {

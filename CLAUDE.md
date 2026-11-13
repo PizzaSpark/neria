@@ -94,7 +94,10 @@ Videos folder).
 The window can be captured even when covered with `PrintWindow(..., PW_RENDERFULLCONTENT)`.
 
 ## Rules
-- Portable: settings and tools live next to the exe; nothing system-wide.
+- Portable: settings and tools live next to the exe; nothing system-wide. One exception:
+  notifications need Windows to know Neria's app id, a per-user registry entry
+  (`HKCU\Software\Classes\AppUserModelId\…`, name and icon only) that `background_ui.rs`
+  writes while notifications are on and removes when they're turned off. No others.
 - Spotify support = spotDL/Sunnify approach only (metadata from Spotify, audio from YouTube Music).
   Never add Zotify/streamrip-style downloading of DRM-protected streams.
 - spotDL and Sunnify are references, not dependencies. `docs/UPSTREAM.md` records the upstream
