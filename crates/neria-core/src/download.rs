@@ -294,6 +294,10 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
                 sort.push("ext:webm:webm".to_string());
             }
             if !sort.is_empty() {
+                // The video's own language first, as yt-dlp's default order has it: our fields
+                // come before its defaults, so "+size" or "acodec:aac" would otherwise pick
+                // whichever dub is smallest or AAC (Smallest file got a Vietnamese dub).
+                sort.insert(0, "lang".into());
                 push(&["-S", &sort.join(",")]);
             }
             push(&["--merge-output-format", &s.container]);
@@ -570,7 +574,7 @@ mod tests {
         s.container = "webm".into();
         let args = build_args(&req, &s);
         assert!(!args.contains(&"--remux-video".to_string()));
-        assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "res:720,ext:webm:webm"));
+        assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "lang,res:720,ext:webm:webm"));
         let audio = build_args(&DownloadRequest::new("https://x.y/z", Quality::Audio, ""), &Settings::default());
         assert!(!audio.contains(&"--remux-video".to_string()));
     }
@@ -582,10 +586,10 @@ mod tests {
         let s = Settings { container: "mkv".into(), ..Settings::default() };
         let args = build_args(&req, &s);
         assert!(args.windows(2).any(|w| w[0] == "--merge-output-format" && w[1] == "mp4"));
-        assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "vcodec:h264,acodec:aac"));
+        assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "lang,vcodec:h264,acodec:aac"));
         req.preset = Preset::Smallest;
         let args = build_args(&req, &s);
-        assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "res:480,+size,+br"));
+        assert!(args.windows(2).any(|w| w[0] == "-S" && w[1] == "lang,res:480,+size,+br"));
         req.format = Some("mkv".into());
         let args = build_args(&req, &s);
         assert!(args.windows(2).any(|w| w[0] == "--merge-output-format" && w[1] == "mkv"));
