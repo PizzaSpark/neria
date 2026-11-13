@@ -5,6 +5,25 @@ Everything here builds and passes the automated checks (`cargo test -p neria-cor
 screenshots, but none of it has been run against real sites yet. Tick items off as you go.
 Design choices: `design/download-track.html` (all the recommended options were picked).
 
+## Checked headless on real links (2026-11-13)
+With `--example smoke` (it now takes the Download page's picks as `NERIA_*` variables, see
+its header) and `--example follow --try-new`, on "Me at the zoo" (3 chapters, en/de captions)
+and MrBeast's "$456,000 Squid Game" (24 audio languages, first 30 s). Ticked below where
+that covers the whole line. Bugs this found, all fixed:
+- Chapters as one file kept only one piece (each piece was named "NA" and overwrote the
+  last): now named by where they start. 1+3 of the zoo video → one 7 s file (5 + 2).
+- Captions "In the video" left the `.srt` files next to it, and never got into a webm
+  (yt-dlp skips SRT there): files removed afterwards, VTT for webm.
+- Captions only left the video's thumbnail (`.webp`) behind.
+- Smallest file picked a Vietnamese dub (smallest stream first): every preset now prefers
+  the video's own language. Compatible kept English AAC too.
+Also seen working: SRT files (en + de), text, embedding into mp4 (mov_text, eng/deu), Audio
+only in two languages with a `%(uploader)s/` folder template (`Audio\MrBeast\… (Spanish).mp3`),
+Compatible = H.264 + AAC with English and Spanish tracks, Smallest ≤ 480p, and a full follow
+check (one new upload found, downloaded to `Audio\Kurzgesagt – In a Nutshell\`, seen
+afterwards, the next check finds nothing). Not covered headless: anything that needs the
+window, signing in, VLC's menus, Separate chapter files (built in the desktop app).
+
 ## 1. Private and signed-in downloads
 - [ ] Age-restricted YouTube video: the preview says "This video is age-restricted" with
       **Sign in to YouTube**. The window opens on Google's sign-in, the bar turns to
@@ -39,7 +58,7 @@ Design choices: `design/download-track.html` (all the recommended options were p
       picker lists "Made by the creator" then "Auto-generated", the video's language first.
 - [ ] Search (more than 8 languages) filters; All/None act on what the search shows.
 - [ ] SRT + Separate: `Title [id].en.srt` next to the video. VTT and ASS likewise.
-- [ ] Text: a `.txt` with just the words (no numbers/timings), no `.srt` left behind.
+- [x] Text: a `.txt` with just the words (no numbers/timings), no `.srt` left behind.
 - [ ] In the video (mp4 and mkv): VLC's Subtitle menu lists every ticked language; no
       caption files left next to it. Both: the menu *and* the files.
 - [ ] Two auto-generated languages (e.g. English (Original) + a translation) download
@@ -52,7 +71,7 @@ Design choices: `design/download-track.html` (all the recommended options were p
 ## 3. Audio tracks
 - [ ] A YouTube video with dubbed tracks (e.g. MrBeast uploads): "Audio: Original (…)"
       shows; the picker lists every language with "Original" marked.
-- [ ] Original + Spanish, mp4: one file; VLC's Audio → Audio Track menu shows both, named
+- [x] Original + Spanish, mp4: one file; VLC's Audio → Audio Track menu shows both, named
       by language. Same with mkv.
 - [ ] Only Spanish ticked: the file has just the Spanish track.
 - [ ] Audio only + two languages: two rows in one group, `… (Spanish).mp3` and
@@ -65,7 +84,7 @@ Design choices: `design/download-track.html` (all the recommended options were p
       video as before.
 - [ ] One file, chapters 2+3: one file, starts and ends at the chapter edges (named with
       "(clip …)").
-- [ ] One file, chapters 2+3+5: the line says "skips chapter 4"; one `… (chapters).mp4`
+- [x] One file, chapters 2+3+5: the line says "skips chapter 4"; one `… (chapters).mp4`
       that plays 2→3→5 without a glitch at the joins; no `.neria-part` files left.
 - [ ] Separate files, video: a folder named after the video with `01 Intro.mp4`, … each
       starting near its chapter (keyframe cut), title tag = chapter title.
@@ -117,9 +136,9 @@ Design choices: `design/download-track.html` (all the recommended options were p
 
 ## 7. Format presets
 - [ ] Best quality: as before (container and "Up to" from Advanced).
-- [ ] Compatible: an MP4 with H.264 video and AAC sound (check in the file's properties or
+- [x] Compatible: an MP4 with H.264 video and AAC sound (check in the file's properties or
       `ffprobe`); plays in Windows' Photos/Films app.
-- [ ] Smallest file: an MP4 at 480p or less, noticeably smaller than Best.
+- [x] Smallest file: an MP4 at 480p or less, noticeably smaller than Best.
 - [ ] Audio only: the audio format from Advanced (mp3 by default).
 - [ ] An old `settings.json` with `"quality": "audio"` opens with Audio only picked.
 - [ ] Clip first on a link: the same chips; the clip downloads with the picked preset.
@@ -141,9 +160,9 @@ Design choices: `design/download-track.html` (all the recommended options were p
 - [ ] With a link previewed, the example uses its title.
 
 ## Combinations (each feature was checked on its own)
-- [ ] Compatible preset + two audio languages: the audio is still AAC (the language
+- [x] Compatible preset + two audio languages: the audio is still AAC (the language
       selectors may beat the preset's codec choice).
-- [ ] Captions "In the video" + webm: does the file have captions? (yt-dlp only embeds
+- [x] Captions "In the video" + webm: does the file have captions? (yt-dlp only embeds
       VTT into webm.) ASS in mp4 becomes plain mov_text (styling lost).
 - [ ] A file name with a folder ("Playlist / 01 Title") + Audio only with two languages,
       and + Separate chapters: where do " (Spanish)" and "03 Chapter" end up?
@@ -194,11 +213,11 @@ Design choices: `design/download-track.html` (all the recommended options were p
 - [ ] Leave the Clip page while it plays (Download tab): the sound stops.
 
 ## 12. Follow a channel or playlist
-- [ ] Paste `https://www.youtube.com/@kurzgesagt`: the preview lists videos (not "Videos"
+- [x] Paste `https://www.youtube.com/@kurzgesagt`: the preview lists videos (not "Videos"
       and "Shorts"); "Follow" under the picker. Follow → toast, button says "Following".
 - [ ] Settings → Following: the channel, "daily · checked just now". Check now: nothing
       new (only uploads after following count).
-- [ ] Edit `following.json`: remove the newest link from `seen`, Check now: one card
+- [x] Edit `following.json`: remove the newest link from `seen`, Check now: one card
       "Kurzgesagt · 1 new", saved in `Video\Kurzgesagt – In a Nutshell\`. Next check:
       nothing new (it's pending, then seen once downloaded).
 - [ ] Delete that file and check again: it isn't downloaded again.

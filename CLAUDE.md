@@ -60,8 +60,12 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example verify -- <spotify track id> [--no-spotify] <file|youtube url>...`
   (audio check scores; `--no-spotify` forces the Deezer/Apple fallback reference)
-- `NERIA_HOME=target/debug cargo run -p neria-core --example follow -- <channel or playlist link>`
-  (what following it would see: the list a check reads and its newest entries; read-only)
+- `NERIA_HOME=target/debug cargo run -p neria-core --example follow -- <channel or playlist link> [--try-new]`
+  (what following it would see; `--try-new` really follows it, runs a check and downloads the
+  newest upload: use a scratch NERIA_HOME with a `bin` junction)
+  `smoke` also takes the Download page's picks: `NERIA_PRESET`, `NERIA_CONTAINER`, `NERIA_TEMPLATE`,
+  `NERIA_CAPTIONS` / `NERIA_CAPTIONS_AUTO` / `NERIA_SUB_FORMAT` / `NERIA_SUB_MODE` / `NERIA_SUBS_ONLY`,
+  `NERIA_AUDIO_LANGS`, `NERIA_CHAPTERS` (see the example's header)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example updates -- [--any-age] [--update <tool>]`
   (new Neria release / newer tool builds; `--update` re-downloads into NERIA_HOME/bin, use a scratch copy)
 
