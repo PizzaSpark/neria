@@ -15,6 +15,8 @@ that covers the whole line. Bugs this found, all fixed:
 - Captions "In the video" left the `.srt` files next to it, and never got into a webm
   (yt-dlp skips SRT there): files removed afterwards, VTT for webm.
 - Captions only left the video's thumbnail (`.webp`) behind.
+- Note: "Both" into a webm saves the caption files as VTT too, even with SRT picked (one
+  conversion serves both).
 - Smallest file picked a Vietnamese dub (smallest stream first): every preset now prefers
   the video's own language. Compatible kept English AAC too.
 Also seen working: SRT files (en + de), text, embedding into mp4 (mov_text, eng/deu), Audio
@@ -71,8 +73,10 @@ window, signing in, VLC's menus, Separate chapter files (built in the desktop ap
 ## 3. Audio tracks
 - [ ] A YouTube video with dubbed tracks (e.g. MrBeast uploads): "Audio: Original (…)"
       shows; the picker lists every language with "Original" marked.
-- [x] Original + Spanish, mp4: one file; VLC's Audio → Audio Track menu shows both, named
+- [ ] Original + Spanish, mp4: one file; VLC's Audio → Audio Track menu shows both, named
       by language. Same with mkv.
+      (Headless: the mp4 has English and Spanish AAC tracks, tagged eng/spa. Still open:
+      VLC's track menu, and mkv.)
 - [ ] Only Spanish ticked: the file has just the Spanish track.
 - [ ] Audio only + two languages: two rows in one group, `… (Spanish).mp3` and
       `… (English).mp3`.
@@ -84,8 +88,10 @@ window, signing in, VLC's menus, Separate chapter files (built in the desktop ap
       video as before.
 - [ ] One file, chapters 2+3: one file, starts and ends at the chapter edges (named with
       "(clip …)").
-- [x] One file, chapters 2+3+5: the line says "skips chapter 4"; one `… (chapters).mp4`
+- [ ] One file, chapters 2+3+5: the line says "skips chapter 4"; one `… (chapters).mp4`
       that plays 2→3→5 without a glitch at the joins; no `.neria-part` files left.
+      (Headless: chapters 1+3 joined into one 7 s file. Still open: 2+3+5, the "skips"
+      line in the window, glitches at the joins.)
 - [ ] Separate files, video: a folder named after the video with `01 Intro.mp4`, … each
       starting near its chapter (keyframe cut), title tag = chapter title.
 - [ ] Separate files + Audio only on a full-album upload: `01 Song.mp3`… with title and
@@ -136,9 +142,11 @@ window, signing in, VLC's menus, Separate chapter files (built in the desktop ap
 
 ## 7. Format presets
 - [ ] Best quality: as before (container and "Up to" from Advanced).
-- [x] Compatible: an MP4 with H.264 video and AAC sound (check in the file's properties or
+- [ ] Compatible: an MP4 with H.264 video and AAC sound (check in the file's properties or
       `ffprobe`); plays in Windows' Photos/Films app.
-- [x] Smallest file: an MP4 at 480p or less, noticeably smaller than Best.
+      (Headless: H.264 + AAC. Still open: plays in Windows' Photos/Films.)
+- [ ] Smallest file: an MP4 at 480p or less, noticeably smaller than Best.
+      (Headless: 480p, original language. Still open: compared with Best's size.)
 - [ ] Audio only: the audio format from Advanced (mp3 by default).
 - [ ] An old `settings.json` with `"quality": "audio"` opens with Audio only picked.
 - [ ] Clip first on a link: the same chips; the clip downloads with the picked preset.
@@ -213,13 +221,18 @@ window, signing in, VLC's menus, Separate chapter files (built in the desktop ap
 - [ ] Leave the Clip page while it plays (Download tab): the sound stops.
 
 ## 12. Follow a channel or playlist
-- [x] Paste `https://www.youtube.com/@kurzgesagt`: the preview lists videos (not "Videos"
+- [ ] Paste `https://www.youtube.com/@kurzgesagt`: the preview lists videos (not "Videos"
       and "Shorts"); "Follow" under the picker. Follow → toast, button says "Following".
+      (Headless: the preview lists 256 videos and is followable. Still open: the Follow
+      button, its toast and "Following" in the window.)
 - [ ] Settings → Following: the channel, "daily · checked just now". Check now: nothing
       new (only uploads after following count).
-- [x] Edit `following.json`: remove the newest link from `seen`, Check now: one card
+- [ ] Edit `following.json`: remove the newest link from `seen`, Check now: one card
       "Kurzgesagt · 1 new", saved in `Video\Kurzgesagt – In a Nutshell\`. Next check:
       nothing new (it's pending, then seen once downloaded).
+      (Headless with `--example follow --try-new`: found the one new upload, saved it as
+      audio in `Audio\Kurzgesagt - In a Nutshell\`, next check found nothing. Still
+      open: the card in the window, and video in `Video\...`.)
 - [ ] Delete that file and check again: it isn't downloaded again.
 - [ ] Hourly / Weekly, Pause (no checks; "paused"), Resume, Unfollow (gone; the preview's
       button says Follow again).
