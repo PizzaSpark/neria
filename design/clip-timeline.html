@@ -1,0 +1,374 @@
+<title>Neria Clip Timeline Ideas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column of four timeline studies, today's first, each a working toy on a dark "video" well. */
+:root {
+  --bg: #f4f0e6; --panel: #fffdf8; --raised: #ebe5d7; --line: #e2dccd; --line-strong: #cfc7b4;
+  --ink: #151412; --muted: #6b665c; --pop: #ffd23f; --on-pop: #1a1405; --pop-text: #846101;
+  --hard: #151412; --pop-shadow: #151412; --bad: #ba352c; --ok: #1c7649;
+  /* the timeline wells stay dark in both themes, like the app's video area */
+  --well: #101012; --well-line: #26262a; --well-ink: #f1efe9; --well-muted: #8e8c88;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141416; --panel: #1b1b1e; --raised: #222226; --line: #26262a; --line-strong: #34343a;
+  --ink: #f1efe9; --muted: #8e8c88; --pop-text: #ffd23f; --hard: #000000; --pop-shadow: #9a6f00;
+  --bad: #ff7b72; --ok: #7fd6a4; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #141416; --panel: #1b1b1e; --raised: #222226; --line: #26262a; --line-strong: #34343a;
+  --ink: #f1efe9; --muted: #8e8c88; --pop-text: #ffd23f; --hard: #000000; --pop-shadow: #9a6f00;
+  --bad: #ff7b72; --ok: #7fd6a4; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px }
+main { max-width: 980px; margin: 0 auto; display: grid; gap: 36px }
+h1, h2 { font-family: var(--display); letter-spacing: -0.02em; text-wrap: balance; margin: 0 }
+h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.1 }
+h2 { font-size: 22px }
+p { margin: 0; max-width: 68ch }
+.lede { color: var(--muted); margin-top: 10px }
+.how { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); font-size: 13px; margin-top: 12px }
+kbd { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line-strong); border-bottom-width: 2px;
+  border-radius: 5px; padding: 0 5px; color: var(--ink) }
+section.study { display: grid; gap: 12px }
+.study-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px }
+.tag { font-family: var(--display); font-weight: 700; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  border-radius: 6px; padding: 2px 8px; background: var(--raised); color: var(--muted) }
+.tag.today { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad) }
+.tag.idea { background: var(--pop); color: var(--on-pop) }
+.desc { color: var(--muted) }
+.well { background: var(--well); border-radius: 12px; padding: 14px; display: grid; gap: 10px; min-width: 0 }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px }
+.read { font-family: var(--mono); font-size: 12.5px; color: var(--well-ink); font-variant-numeric: tabular-nums }
+.read .m { color: var(--well-muted) }
+.spacer { flex: 1 }
+canvas { display: block; width: 100%; touch-action: none; border-radius: 8px; cursor: grab }
+canvas.mini { cursor: pointer }
+.btn { font: 500 13px var(--body); color: var(--well-ink); background: transparent; border: 2px solid #34343a;
+  border-radius: 8px; padding: 3px 10px; cursor: pointer }
+.btn:hover { border-color: var(--well-muted) }
+.btn.on { background: var(--well-ink); color: var(--well); border-color: var(--well-ink) }
+.btn.pop { background: var(--pop); color: var(--on-pop); border-color: #000; box-shadow: 0 2px 0 #9a6f00 }
+.btn:focus-visible, canvas:focus-visible { outline: 2px solid var(--pop); outline-offset: 2px }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px }
+.note { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 14px }
+.note b { font-family: var(--display) }
+.note ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted) }
+.ask { background: var(--panel); border: 2px solid var(--hard); box-shadow: 0 3px 0 var(--pop-shadow); border-radius: 12px; padding: 16px 18px }
+.ask h2 { font-size: 18px; margin-bottom: 6px }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important } }
+</style>
+
+<main>
+  <header>
+    <h1>Clip timeline ideas</h1>
+    <p class="lede">The clipper's timeline today always shows the whole video, so on a long video or a one-hour live window a 30-second clip is a sliver between two fat handles. Here are three other ways to do it, each one you can actually drag around. The sample is a 1:32:40 video; the last one is a live stream.</p>
+    <div class="how"><span><kbd>Ctrl</kbd> + scroll or pinch: zoom</span><span>Scroll or drag the strip: move along</span><span>Drag a handle: trim</span><span>Drag the band: move the clip</span><span>Click: move the playhead</span></div>
+  </header>
+
+  <section class="study" id="s-today">
+    <div class="study-head"><span class="tag today">Today</span><h2>The whole video, always</h2></div>
+    <p class="desc">What Neria does now. Try to make a 20-second clip at 51:10: you can't see it, and the handles cover it.</p>
+    <div class="well">
+      <canvas id="c-today" height="96" tabindex="0" aria-label="Today's timeline"></canvas>
+      <div class="row read" id="r-today"></div>
+    </div>
+  </section>
+
+  <section class="study" id="s-zoom">
+    <div class="study-head"><span class="tag idea">Idea A</span><h2>Zoom and scroll</h2></div>
+    <p class="desc">Like a video editor. Zoom in to seconds, scroll sideways along the strip, and a thin overview on top shows where you are (drag the window on it). Handles are thin lines with a grip, the clip is a band, and time marks adapt to the zoom.</p>
+    <div class="well">
+      <canvas id="m-zoom" class="mini" height="22" aria-label="Overview: drag the window"></canvas>
+      <canvas id="c-zoom" height="104" tabindex="0" aria-label="Zoomable timeline"></canvas>
+      <div class="row">
+        <button class="btn" data-z="zoom" data-act="out" aria-label="Zoom out">−</button>
+        <button class="btn" data-z="zoom" data-act="in" aria-label="Zoom in">+</button>
+        <button class="btn" data-z="zoom" data-act="fit-clip">Fit clip</button>
+        <button class="btn" data-z="zoom" data-act="fit-all">Whole video</button>
+        <span class="spacer"></span>
+        <span class="read" id="r-zoom"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="study" id="s-detail">
+    <div class="study-head"><span class="tag idea">Idea B</span><h2>Overview and close-up</h2></div>
+    <p class="desc">Two strips. The small one is always the whole video: click or drag on it to pick where you are. The big one is a close-up around your clip, where the trimming happens. Pick how close with the chips; there's no zooming to fiddle with.</p>
+    <div class="well">
+      <canvas id="m-detail" class="mini" height="30" aria-label="Whole video: click to jump"></canvas>
+      <canvas id="c-detail" height="112" tabindex="0" aria-label="Close-up timeline"></canvas>
+      <div class="row">
+        <span class="read m">Close-up:</span>
+        <button class="btn" data-span="10">10 s</button>
+        <button class="btn on" data-span="60">1 min</button>
+        <button class="btn" data-span="600">10 min</button>
+        <span class="spacer"></span>
+        <span class="read" id="r-detail"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="study" id="s-live">
+    <div class="study-head"><span class="tag idea">Idea C</span><h2>Live tape</h2></div>
+    <p class="desc">For live streams. Time reads backwards from now, the live edge sits on the right and keeps moving, and you see the last five minutes by default; scroll left to go back as far as the site keeps (an hour on YouTube). "Last 30 s" drops a clip at the edge you can then nudge.</p>
+    <div class="well">
+      <canvas id="c-live" height="104" tabindex="0" aria-label="Live timeline"></canvas>
+      <div class="row">
+        <button class="btn pop" data-last="30">Last 30 s</button>
+        <button class="btn" data-last="60">1 min</button>
+        <button class="btn" data-last="300">5 min</button>
+        <button class="btn" data-live="edge">Go live</button>
+        <span class="spacer"></span>
+        <span class="read" id="r-live"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="notes" aria-label="How they compare">
+    <div class="note"><b>A · Zoom and scroll</b><ul><li>Most powerful, familiar from editors</li><li>Zooming is one more thing to learn</li><li>Works for files, links and lives alike</li></ul></div>
+    <div class="note"><b>B · Overview and close-up</b><ul><li>No zoom to manage: two fixed views</li><li>Precise trimming in the close-up</li><li>Costs a little more height</li></ul></div>
+    <div class="note"><b>C · Live tape</b><ul><li>Only for live streams</li><li>Reads "how long ago", not a position</li><li>Pairs with A or B for everything else</li></ul></div>
+  </section>
+
+  <section class="ask">
+    <h2>What feels right?</h2>
+    <p>Play with each and tell me which one is closest, or what's still off. Mixing is fine too: for example B for videos and C for live streams, or A with B's chips.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  // ---------- sample content ----------
+  const DUR = 92 * 60 + 40;           // 1:32:40
+  const scenes = [];                  // scene cuts with a hue each, like a real filmstrip
+  { let t = 0, s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    while (t < DUR + 4000) { const len = 4 + rnd() * 40; scenes.push({ t, len, h: Math.floor(rnd() * 360), l: 28 + rnd() * 24 }); t += len; } }
+  // The scenes repeat past their end (the live sample uses large times).
+  const TOTAL = scenes[scenes.length - 1].t + scenes[scenes.length - 1].len;
+  const sceneAt = t => { t = ((t % TOTAL) + TOTAL) % TOTAL; let lo = 0, hi = scenes.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (scenes[m].t <= t) lo = m; else hi = m - 1; } return scenes[lo]; };
+  const wave = t => { const a = Math.sin(t * 0.9) * 0.5 + Math.sin(t * 2.3 + 1) * 0.3 + Math.sin(t * 0.07) * 0.4; return Math.min(1, Math.abs(a) * 0.7 + 0.15 + (Math.sin(t * 13.1) * 0.5 + 0.5) * 0.25); };
+
+  const fmt = (s, cs) => { s = Math.max(0, s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = Math.floor(s % 60);
+    const base = h ? `${h}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}` : `${m}:${String(x).padStart(2, "0")}`;
+    return cs ? base + "." + String(Math.floor((s % 1) * 10)) : base; };
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const POP = "#ffd23f";
+
+  // ---------- drawing ----------
+  function fitCanvas(c) { const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = +c.getAttribute("height");
+    if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + "px"; }
+    const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return [ctx, w, h]; }
+
+  // Strip of scenes + waveform for [a, b] seconds.
+  function strip(ctx, w, y, h, a, b, waveH) {
+    const span = b - a, px = span / w;
+    let t = a;
+    while (t < b) { const sc = sceneAt(t), tm = ((t % TOTAL) + TOTAL) % TOTAL;
+      // Always moves forward (at least 1 px), whatever the time.
+      const end = Math.min(b, Math.max(t + px, t + (sc.t + sc.len - tm)));
+      const x0 = (t - a) / px, x1 = (end - a) / px;
+      const g = ctx.createLinearGradient(x0, y, x1, y + h - waveH);
+      g.addColorStop(0, `hsl(${sc.h} 55% ${sc.l}%)`); g.addColorStop(1, `hsl(${(sc.h + 40) % 360} 60% ${sc.l - 12}%)`);
+      ctx.fillStyle = g; ctx.fillRect(x0, y, Math.max(1, x1 - x0), h - waveH);
+      if (x1 - x0 > 2) { ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(x1 - 1, y, 1, h - waveH); }
+      t = end + 1e-6; }
+    ctx.fillStyle = "#18181b"; ctx.fillRect(0, y + h - waveH, w, waveH);
+    ctx.fillStyle = "#8e8c88";
+    const mid = y + h - waveH / 2;
+    for (let x = 0; x < w; x += 2) { const v = wave(a + x * px) * (waveH / 2 - 2); ctx.fillRect(x, mid - v, 1.4, v * 2); }
+  }
+  // Time ruler with steps that suit the zoom; `label` turns seconds into text.
+  function ruler(ctx, w, y, a, b, label) {
+    const span = b - a, steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+    const step = steps.find(s => span / s <= w / 70) || 3600;
+    ctx.font = "11px " + css("--mono"); ctx.textBaseline = "top";
+    for (let t = Math.ceil(a / step) * step; t <= b; t += step) {
+      const x = (t - a) / span * w;
+      ctx.fillStyle = "#3a3a40"; ctx.fillRect(x, y, 1, 6);
+      ctx.fillStyle = "#8e8c88"; ctx.fillText(label(t), x + 3, y);
+    }
+    for (let t = Math.ceil(a / (step / 5)) * (step / 5); t <= b; t += step / 5) { const x = (t - a) / span * w; ctx.fillStyle = "#2c2c31"; ctx.fillRect(x, y, 1, 3); }
+  }
+  // Selection band with thin handles (the new style).
+  function band(ctx, w, y, h, a, b, s) {
+    const span = b - a, x0 = (s.in - a) / span * w, x1 = (s.out - a) / span * w;
+    ctx.fillStyle = "rgba(10,10,12,.55)"; ctx.fillRect(0, y, Math.max(0, x0), h); ctx.fillRect(x1, y, Math.max(0, w - x1), h);
+    ctx.fillStyle = "rgba(255,210,63,.12)"; ctx.fillRect(x0, y, x1 - x0, h);
+    ctx.strokeStyle = POP; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0, y + 1); ctx.lineTo(x1, y + 1); ctx.moveTo(x0, y + h - 1); ctx.lineTo(x1, y + h - 1); ctx.stroke();
+    for (const [x, side] of [[x0, 1], [x1, -1]]) {
+      ctx.fillStyle = POP; ctx.fillRect(x - 1.5, y, 3, h);
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - (side > 0 ? 1.5 : 7.5), y + h / 2 - 12, 9, 24, 3) : ctx.rect(x - 4, y + h / 2 - 12, 9, 24); ctx.fill();
+      ctx.fillStyle = "#1a1405"; ctx.fillRect(x + (side > 0 ? 2 : -4), y + h / 2 - 6, 1.5, 12);
+    }
+    if (x1 - x0 > 54) { ctx.fillStyle = POP; ctx.font = "600 11px " + css("--mono"); ctx.textBaseline = "top"; ctx.fillText(fmt(s.out - s.in, true), x0 + 6, y + 5); }
+  }
+  function playhead(ctx, w, y, h, a, b, p) { const x = (p - a) / (b - a) * w; if (x < -2 || x > w + 2) return;
+    ctx.fillStyle = "#fff"; ctx.fillRect(x - 1, y, 2, h); ctx.fillRect(x - 5, y, 10, 5); }
+
+  // ---------- shared interaction: handles, band, pan, zoom, seek ----------
+  function interact(c, st, opts) {
+    let drag = null; const pts = new Map();
+    const tAt = (x, w) => st.a + x / w * (st.b - st.a);
+    c.addEventListener("pointerdown", e => {
+      c.setPointerCapture(e.pointerId); pts.set(e.pointerId, e.clientX);
+      const r = c.getBoundingClientRect(), x = e.clientX - r.left, w = r.width, span = st.b - st.a;
+      const xi = (st.sel.in - st.a) / span * w, xo = (st.sel.out - st.a) / span * w;
+      if (pts.size === 2) { const [p1, p2] = [...pts.values()]; drag = { kind: "pinch", d0: Math.abs(p1 - p2), a: st.a, b: st.b }; return; }
+      if (Math.abs(x - xi) < 12) drag = { kind: "in" };
+      else if (Math.abs(x - xo) < 12) drag = { kind: "out" };
+      else if (x > xi && x < xo && opts.moveBand !== false) drag = { kind: "band", x0: x, in: st.sel.in, out: st.sel.out, moved: false };
+      else drag = { kind: "pan", x0: x, a: st.a, b: st.b, moved: false };
+      c.style.cursor = "grabbing";
+    });
+    c.addEventListener("pointermove", e => {
+      if (!drag) { const r = c.getBoundingClientRect(), x = e.clientX - r.left, span = st.b - st.a;
+        const xi = (st.sel.in - st.a) / span * r.width, xo = (st.sel.out - st.a) / span * r.width;
+        c.style.cursor = Math.abs(x - xi) < 12 || Math.abs(x - xo) < 12 ? "ew-resize" : "grab"; return; }
+      pts.set(e.pointerId, e.clientX);
+      const r = c.getBoundingClientRect(), x = e.clientX - r.left, w = r.width, span = st.b - st.a;
+      if (drag.kind === "pinch" && pts.size === 2) { const [p1, p2] = [...pts.values()]; const d = Math.max(10, Math.abs(p1 - p2));
+        const sp = (drag.b - drag.a) * drag.d0 / d, mid = (drag.a + drag.b) / 2; opts.setView(mid - sp / 2, mid + sp / 2); }
+      else if (drag.kind === "in") st.sel.in = Math.min(st.sel.out - 0.5, Math.max(opts.min(), tAt(x, w)));
+      else if (drag.kind === "out") st.sel.out = Math.max(st.sel.in + 0.5, Math.min(opts.max(), tAt(x, w)));
+      else if (drag.kind === "band") { const dt = (x - drag.x0) / w * span; if (Math.abs(x - drag.x0) > 3) drag.moved = true;
+        const len = drag.out - drag.in, ni = Math.min(opts.max() - len, Math.max(opts.min(), drag.in + dt)); st.sel.in = ni; st.sel.out = ni + len; }
+      else if (drag.kind === "pan" && opts.pan !== false) { if (Math.abs(x - drag.x0) > 3) drag.moved = true;
+        const dt = (x - drag.x0) / w * (drag.b - drag.a); opts.setView(drag.a - dt, drag.b - dt); }
+      opts.draw();
+    });
+    const up = e => { pts.delete(e.pointerId); if (!drag) return;
+      if ((drag.kind === "pan" || drag.kind === "band") && !drag.moved) { const r = c.getBoundingClientRect(); st.pos = tAt(e.clientX - r.left, r.width); }
+      drag = null; c.style.cursor = "grab"; opts.draw(); };
+    c.addEventListener("pointerup", up); c.addEventListener("pointercancel", up);
+    c.addEventListener("wheel", e => {
+      if (opts.zoom === false && !e.ctrlKey && opts.pan === false) return;
+      e.preventDefault(); const r = c.getBoundingClientRect(), x = e.clientX - r.left, span = st.b - st.a;
+      if (e.ctrlKey && opts.zoom !== false) { const k = Math.exp(e.deltaY * 0.0025), t = tAt(x, r.width), f = x / r.width, ns = span * k; opts.setView(t - f * ns, t - f * ns + ns); }
+      else if (opts.pan !== false) { const d = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) / r.width * span; opts.setView(st.a + d, st.b + d); }
+      opts.draw();
+    }, { passive: false });
+    c.addEventListener("keydown", e => {
+      const span = st.b - st.a;
+      if (e.key === "+" || e.key === "=") { const m = (st.a + st.b) / 2; opts.setView(m - span / 3, m + span / 3); }
+      else if (e.key === "-") { const m = (st.a + st.b) / 2; opts.setView(m - span * 0.75, m + span * 0.75); }
+      else if (e.key === "ArrowLeft") opts.setView(st.a - span * 0.1, st.b - span * 0.1);
+      else if (e.key === "ArrowRight") opts.setView(st.a + span * 0.1, st.b + span * 0.1);
+      else return; e.preventDefault(); opts.draw();
+    });
+  }
+  const clampView = (st, a, b, lo, hi, minSpan) => { let s = Math.max(minSpan, Math.min(hi - lo, b - a));
+    a = Math.max(lo, Math.min(hi - s, a)); st.a = a; st.b = a + s; };
+  const viewLabel = s => s < 90 ? `${Math.round(s)} s on screen` : `${fmt(s)} on screen`;
+
+  // ---------- Today ----------
+  { const c = document.getElementById("c-today"), st = { a: 0, b: DUR, sel: { in: 3070, out: 3090 }, pos: 3070 };
+    const draw = () => { const [ctx, w, h] = fitCanvas(c); ctx.clearRect(0, 0, w, h);
+      strip(ctx, w, 0, h, 0, DUR, 28);
+      const x0 = st.sel.in / DUR * w, x1 = st.sel.out / DUR * w;
+      ctx.fillStyle = "rgba(11,13,18,.78)"; ctx.fillRect(0, 0, x0, h); ctx.fillRect(x1, 0, w - x1, h);
+      // today's handles: 14 px yellow blocks on each side of the selection
+      ctx.fillStyle = POP; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x0 - 14, 0, x1 - x0 + 28, h, 8) : ctx.rect(x0 - 14, 0, x1 - x0 + 28, h); ctx.fill();
+      ctx.fillStyle = "#1a1405"; ctx.fillRect(x0 - 8, h / 2 - 10, 2, 20); ctx.fillRect(x1 + 6, h / 2 - 10, 2, 20);
+      playhead(ctx, w, 0, h, 0, DUR, st.pos);
+      document.getElementById("r-today").innerHTML = `In ${fmt(st.sel.in)} <span class="m">·</span> Out ${fmt(st.sel.out)} <span class="m">·</span> ${fmt(st.sel.out - st.sel.in)} <span class="m">· one pixel is ${Math.round(DUR / w)} s</span>`; };
+    interact(c, st, { draw, setView: () => {}, min: () => 0, max: () => DUR, pan: false, zoom: false, moveBand: false });
+    new ResizeObserver(draw).observe(c); }
+
+  // ---------- A: zoom and scroll ----------
+  { const c = document.getElementById("c-zoom"), m = document.getElementById("m-zoom");
+    const st = { a: 3040, b: 3130, sel: { in: 3070, out: 3090 }, pos: 3074 };
+    const setView = (a, b) => clampView(st, a, b, 0, DUR, 2);
+    const draw = () => {
+      const [ctx, w, h] = fitCanvas(c); ctx.clearRect(0, 0, w, h);
+      ruler(ctx, w, 0, st.a, st.b, t => fmt(t)); strip(ctx, w, 18, h - 18, st.a, st.b, 26);
+      band(ctx, w, 18, h - 18, st.a, st.b, st.sel); playhead(ctx, w, 18, h - 18, st.a, st.b, st.pos);
+      const [mc, mw, mh] = fitCanvas(m); mc.clearRect(0, 0, mw, mh); strip(mc, mw, 0, mh, 0, DUR, 0);
+      mc.fillStyle = "rgba(10,10,12,.6)"; mc.fillRect(0, 0, mw, mh);
+      const vx0 = st.a / DUR * mw, vx1 = Math.max(vx0 + 4, st.b / DUR * mw);
+      mc.clearRect(vx0, 0, vx1 - vx0, mh); strip(mc, mw, 0, mh, 0, DUR, 0); mc.fillStyle = "rgba(10,10,12,.6)"; mc.fillRect(0, 0, vx0, mh); mc.fillRect(vx1, 0, mw - vx1, mh);
+      mc.strokeStyle = "#f1efe9"; mc.lineWidth = 2; mc.strokeRect(vx0 + 1, 1, vx1 - vx0 - 2, mh - 2);
+      mc.fillStyle = POP; mc.fillRect(st.sel.in / DUR * mw, mh - 4, Math.max(2, (st.sel.out - st.sel.in) / DUR * mw), 4);
+      document.getElementById("r-zoom").innerHTML = `In ${fmt(st.sel.in, true)} <span class="m">·</span> Out ${fmt(st.sel.out, true)} <span class="m">·</span> ${fmt(st.sel.out - st.sel.in, true)} <span class="m">· ${viewLabel(st.b - st.a)}</span>`; };
+    interact(c, st, { draw, setView, min: () => 0, max: () => DUR });
+    // overview: drag the window
+    let md = null;
+    m.addEventListener("pointerdown", e => { m.setPointerCapture(e.pointerId); const r = m.getBoundingClientRect(), t = (e.clientX - r.left) / r.width * DUR;
+      if (t < st.a || t > st.b) { const s = st.b - st.a; setView(t - s / 2, t + s / 2); }
+      md = { x0: e.clientX, a: st.a, b: st.b }; draw(); });
+    m.addEventListener("pointermove", e => { if (!md) return; const r = m.getBoundingClientRect(), dt = (e.clientX - md.x0) / r.width * DUR; setView(md.a + dt, md.b + dt); draw(); });
+    m.addEventListener("pointerup", () => md = null);
+    document.querySelectorAll('[data-z="zoom"]').forEach(b => b.addEventListener("click", () => {
+      const span = st.b - st.a, mid = (st.a + st.b) / 2, act = b.dataset.act;
+      if (act === "in") setView(mid - span / 3, mid + span / 3);
+      if (act === "out") setView(mid - span * 0.75, mid + span * 0.75);
+      if (act === "fit-clip") { const pad = (st.sel.out - st.sel.in) * 0.4 + 1; setView(st.sel.in - pad, st.sel.out + pad); }
+      if (act === "fit-all") setView(0, DUR);
+      draw(); }));
+    new ResizeObserver(draw).observe(c); }
+
+  // ---------- B: overview and close-up ----------
+  { const c = document.getElementById("c-detail"), m = document.getElementById("m-detail");
+    const st = { span: 60, a: 0, b: 60, sel: { in: 3070, out: 3090 }, pos: 3074 };
+    const frame = () => { const mid = (st.sel.in + st.sel.out) / 2, s = Math.max(st.span, (st.sel.out - st.sel.in) * 1.25); clampView(st, mid - s / 2, mid + s / 2, 0, DUR, 2); };
+    const draw = () => {
+      const [mc, mw, mh] = fitCanvas(m); mc.clearRect(0, 0, mw, mh); strip(mc, mw, 0, mh, 0, DUR, 10);
+      const vx0 = st.a / DUR * mw, vx1 = Math.max(vx0 + 6, st.b / DUR * mw);
+      mc.fillStyle = "rgba(10,10,12,.55)"; mc.fillRect(0, 0, vx0, mh); mc.fillRect(vx1, 0, mw - vx1, mh);
+      mc.strokeStyle = POP; mc.lineWidth = 2; mc.strokeRect(vx0, 1, vx1 - vx0, mh - 2);
+      mc.fillStyle = "#fff"; mc.fillRect(st.pos / DUR * mw - 1, 0, 2, mh);
+      const [ctx, w, h] = fitCanvas(c); ctx.clearRect(0, 0, w, h);
+      ruler(ctx, w, 0, st.a, st.b, t => fmt(t)); strip(ctx, w, 18, h - 18, st.a, st.b, 30);
+      band(ctx, w, 18, h - 18, st.a, st.b, st.sel); playhead(ctx, w, 18, h - 18, st.a, st.b, st.pos);
+      document.getElementById("r-detail").innerHTML = `In ${fmt(st.sel.in, true)} <span class="m">·</span> Out ${fmt(st.sel.out, true)} <span class="m">·</span> ${fmt(st.sel.out - st.sel.in, true)}`; };
+    // the close-up doesn't pan or zoom: trimming and moving the band only, it re-frames on release
+    interact(c, st, { draw: () => draw(), setView: () => {}, min: () => st.a, max: () => st.b, pan: false, zoom: false });
+    c.addEventListener("pointerup", () => { frame(); draw(); });
+    let md = false;
+    const jump = e => { const r = m.getBoundingClientRect(), t = Math.max(0, Math.min(DUR, (e.clientX - r.left) / r.width * DUR));
+      const len = st.sel.out - st.sel.in; st.sel.in = Math.min(DUR - len, t); st.sel.out = st.sel.in + len; st.pos = st.sel.in; frame(); draw(); };
+    m.addEventListener("pointerdown", e => { m.setPointerCapture(e.pointerId); md = true; jump(e); });
+    m.addEventListener("pointermove", e => { if (md) jump(e); });
+    m.addEventListener("pointerup", () => md = false);
+    document.querySelectorAll("[data-span]").forEach(b => b.addEventListener("click", () => {
+      document.querySelectorAll("[data-span]").forEach(x => x.classList.toggle("on", x === b)); st.span = +b.dataset.span; frame(); draw(); }));
+    frame(); new ResizeObserver(draw).observe(c); }
+
+  // ---------- C: live tape ----------
+  { const c = document.getElementById("c-live"), KEEP = 3600;
+    // times are "seconds behind live" made absolute against a moving edge
+    let edge = 100000; const t0 = performance.now();
+    const st = { a: 0, b: 0, sel: { in: 0, out: 0 }, pos: 0 };
+    st.b = edge; st.a = edge - 300; st.sel.in = edge - 30; st.sel.out = edge; st.pos = edge - 4;
+    let follow = true;
+    const setView = (a, b) => { clampView(st, a, b, edge - KEEP, edge, 10); follow = st.b >= edge - 0.5; };
+    const draw = () => {
+      const [ctx, w, h] = fitCanvas(c); ctx.clearRect(0, 0, w, h);
+      ruler(ctx, w, 0, st.a, st.b, t => { const back = edge - t; return back < 1 ? "now" : "−" + fmt(back); });
+      strip(ctx, w, 18, h - 18, st.a, st.b, 26);
+      band(ctx, w, 18, h - 18, st.a, st.b, st.sel); playhead(ctx, w, 18, h - 18, st.a, st.b, st.pos);
+      const ex = (edge - st.a) / (st.b - st.a) * w;
+      if (ex <= w + 1) { const pulse = 0.55 + 0.45 * Math.sin((performance.now() - t0) / 300);
+        ctx.fillStyle = `rgba(255,123,114,${pulse})`; ctx.fillRect(ex - 3, 18, 3, h - 18);
+        ctx.fillStyle = "#ff7b72"; ctx.font = "700 10px " + css("--display"); ctx.textBaseline = "top"; ctx.fillText("LIVE", Math.min(ex - 30, w - 30), 20); }
+      const kept = st.a <= edge - KEEP + 1;
+      document.getElementById("r-live").innerHTML = `From ${fmt(edge - st.sel.in)} ago <span class="m">·</span> ${fmt(st.sel.out - st.sel.in)} long <span class="m">· ${kept ? "the site keeps 1:00:00, that's the start" : viewLabel(st.b - st.a)}</span>`; };
+    interact(c, st, { draw, setView, min: () => edge - KEEP, max: () => edge });
+    document.querySelectorAll("[data-last]").forEach(b => b.addEventListener("click", () => {
+      const n = +b.dataset.last; st.sel.in = edge - n; st.sel.out = edge; setView(Math.min(st.a, edge - n * 1.6), edge); follow = true; draw(); }));
+    document.querySelector('[data-live="edge"]').addEventListener("click", () => { const s = st.b - st.a; setView(edge - s, edge); st.pos = edge - 1; follow = true; draw(); });
+    // the edge keeps moving; the view follows it while it's showing the edge
+    let last = performance.now();
+    const tick = now => { const dt = (now - last) / 1000; last = now; edge += dt;
+      if (follow) { st.a += dt; st.b += dt; } st.pos = Math.min(edge, st.pos + dt);
+      draw(); requestAnimationFrame(tick); };
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) requestAnimationFrame(tick); else draw();
+    new ResizeObserver(draw).observe(c); }
+})();
+</script>

@@ -580,6 +580,19 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
    link clip, not run on a live one); other sites' windows. Dev hooks: `NERIA_LIVE_DEBUG`
    (mpv's timing when a live stream opens); ui-check `clip-live`, `clip-live-buffer`,
    `watch-live`
+9. **Timeline redesign** (picked 2026-11-14, not started; mocks: `design/clip-timeline.html`).
+   Today the timeline always shows the whole video, so on a long video or an hour of live
+   stream a short clip is a sliver hidden by two fat handles, with no zoom or scrolling.
+   - **A · Zoom and scroll**, for every video: Ctrl+scroll / pinch zooms around the
+     pointer, scroll or drag the strip to move along it, a thin overview strip on top shows
+     the visible part (drag its window); a time ruler whose marks suit the zoom; thin
+     handles with a grip and the clip as a see-through band you can drag; −, +, "Fit clip",
+     "Whole video" and "12 s on screen". Thumbnails and waveform need more detail when
+     zoomed in (today: 12 frames and one 1600 px waveform for the whole video)
+   - **C · Live tape**, for live streams: marks read back from now ("−4:00", "now"), the
+     live edge on the right, pulsing, and the view follows it while it shows the edge; the
+     last 5 minutes by default, scroll left as far back as the site keeps; "Last 30 s"
+     drops the clip at the edge to nudge
 
 ### Compress: understandable for everyone, advanced when needed
 1. Plain goals instead of numbers: **For Discord** (20 MB) · **For email** (25 MB) · **For
