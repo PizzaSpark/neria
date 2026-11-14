@@ -115,8 +115,8 @@ component SectionLink inherits Rectangle {
         clicked => { root.clicked(); }
     }
     HorizontalLayout {
-        padding-left: root.show-icon ? 10px : 9px;
-        padding-right: root.show-icon ? 8px : 9px;
+        padding-left: root.show-icon ? 10px : 6px;
+        padding-right: root.show-icon ? 8px : 6px;
         spacing: 9px;
         if root.show-icon: Icon {
             text: root.icon;
@@ -275,8 +275,8 @@ export component SettingsDrawer inherits Rectangle {
                         changed content-width => { self.reveal(); }
                         strip := HorizontalLayout {
                             alignment: start;
-                            padding-left: 10px;
-                            padding-right: 10px;
+                            padding-left: 6px;
+                            padding-right: 6px;
                             padding-bottom: 8px;
                             spacing: 2px;
                             for s[i] in root.sections: SectionLink {

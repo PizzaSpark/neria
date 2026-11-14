@@ -136,12 +136,39 @@ pub fn fetch(track: &Track, album: Option<&str>, prefs: Prefs) -> Found {
     found
 }
 
+/// LRCLIB asks apps to say who they are (https://lrclib.net/docs).
+const NERIA_UA: &str = concat!("Neria/", env!("CARGO_PKG_VERSION"), " (https://github.com/PizzaSpark/neria)");
+
 fn get(url: &str) -> Option<String> {
-    let resp = web::client().ok()?.get(url).timeout(TIMEOUT).send().ok()?;
-    if !resp.status().is_success() {
-        return None;
+    get_as(url, None)
+}
+
+/// GET with a short timeout. "Too many requests" (LRCLIB allows only a few a second) waits
+/// as long as the site says, up to a few times, instead of reading as "no lyrics".
+fn get_as(url: &str, user_agent: Option<&str>) -> Option<String> {
+    let client = web::client().ok()?;
+    for _ in 0..4 {
+        let mut req = client.get(url).timeout(TIMEOUT);
+        if let Some(ua) = user_agent {
+            req = req.header("user-agent", ua);
+        }
+        let resp = req.send().ok()?;
+        if resp.status().as_u16() == 429 {
+            let wait = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok()?.trim().parse::<u64>().ok())
+                .unwrap_or(1)
+                .clamp(1, 10);
+            std::thread::sleep(Duration::from_secs(wait));
+            continue;
+        }
+        if !resp.status().is_success() {
+            return None;
+        }
+        return Some(String::from_utf8_lossy(&resp.bytes().ok()?).into_owned());
     }
-    Some(String::from_utf8_lossy(&resp.bytes().ok()?).into_owned())
+    None
 }
 
 // ───────────── LRCLIB ─────────────
@@ -166,12 +193,15 @@ pub fn lrclib(track: &Track, album: Option<&str>) -> Option<Lyrics> {
             "https://lrclib.net/api/get?artist_name={artist}&track_name={title}&album_name={}&duration={secs}",
             web::encode(album)
         );
-        if let Some(l) = get(&url).and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| lrclib_entry(&v)) {
+        if let Some(l) = get_as(&url, Some(NERIA_UA))
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .and_then(|v| lrclib_entry(&v))
+        {
             return Some(l);
         }
     }
     let url = format!("https://lrclib.net/api/search?artist_name={artist}&track_name={title}");
-    let results: Value = serde_json::from_str(&get(&url)?).ok()?;
+    let results: Value = serde_json::from_str(&get_as(&url, Some(NERIA_UA))?).ok()?;
     let found: Vec<Lyrics> = results
         .as_array()?
         .iter()
@@ -650,7 +680,9 @@ pub mod spotify_lyrics {
             200 => Ok(parse(&body)),
             404 => Ok(None),
             401 | 403 => Err(stop(generation, RAN_OUT)),
-            429 => Err(stop(generation, "Spotify asked Neria to slow down; Spotify lyrics paused until Neria restarts")),
+            429 => {
+                Err(stop(generation, "Spotify asked Neria to slow down; Spotify lyrics paused until Neria restarts"))
+            }
             s => Err(format!("Spotify lyrics: HTTP {s}")),
         }
     }

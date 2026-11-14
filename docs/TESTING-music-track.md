@@ -2,13 +2,20 @@
 
 Everything here builds and passes `cargo test -p neria-core` and `cargo test -p neria --test
 ui_rules`, and was looked at in `scripts/ui-check.ps1` screenshots (`set-spotify`,
-`set-lyrics`, `dl-spotify`, at 1280 and 400 wide). Tick items off as you go.
+`set-lyrics`, `set-lyrics-in`, `dl-spotify`, at every width). Tick items off as you go.
 
 ## Checked headless on real links (2026-11-14)
 With `--example lyrics` and `--example spotify` (new flags: `--lyrics-only`, `--number`,
 `--add-lyrics`, `--no-lyrics`, `--no-verify`, `--no-spotify-preview`, `--spotify-lyrics`).
 - LRCLIB: synced lyrics for all 13 songs of Random Access Memories ("Motherboard" says
-  "instrumental, no lyrics"), each lookup 0.3–0.5 s.
+  "instrumental, no lyrics"), each lookup 0.3–0.5 s; 49 of Today's Top Hits' 50, twice in a
+  row (Dave's "Raindance" has plain text only).
+- Synced lyrics only: "Raindance" says "no synced lyrics found"; all sources off: "no
+  lyrics found".
+- In the window (dev hooks `NERIA_LYRICS_ONLY`, `NERIA_ADD_LYRICS`): "Lyrics only" on the
+  album made a "Lyrics · Random Access Memories" group of 13 rows with the `.lrc` names and
+  "synced lyrics from LRCLIB"; "Add lyrics" on a folder of 3 songs (lyrics stripped) put
+  `.lrc` files next to them and the words back inside.
 - Lyrics only (4 songs of that album): `01 Daft Punk - Give Life Back to Music.lrc` + `.txt`
   etc., in the album's folder, no audio.
 - Today's Top Hits, first 3 songs: downloaded unnumbered, then again with Number playlist
@@ -21,8 +28,15 @@ With `--example lyrics` and `--example spotify` (new flags: `--lyrics-only`, `--
 - Spotify's own lyrics, token step only: the secret is read from Spotify's web-player script
   (version 61) and an anonymous token comes back, so the TOTP is right.
 
-Bugs found and fixed on the way: the web-player script has other `{secret:` objects (its TOTP
-library) before the real list, so the first one wasn't it.
+Bugs found and fixed on the way:
+- The web-player script has other `{secret:` objects (its TOTP library) before the real
+  list, so the first one wasn't it.
+- LRCLIB's rate limit (429 after ~14 quick requests) read as "no lyrics found" for half a
+  playlist: now waited out.
+- Lyrics rows offered Clip and Compress on `.lrc` files.
+- Narrow windows (under 720 wide): "Paste" and "Download 13 songs" squeezed the link box down
+  to "http". Download now has its own full-width row under the box and Paste is the box's
+  icon. The Settings tabs cut "About" off at 400 wide: they fit now.
 
 Not covered headless: the real Spotify lyrics call (needs your spare account), anything in
 the window.
@@ -51,8 +65,10 @@ the window.
 - [ ] Synced lyrics only: a song with only plain lyrics says "no synced lyrics found" and gets
       no lyrics tag.
 - [ ] Turning "Add lyrics" off hides the source ticks, and rows say nothing about lyrics.
-- [ ] Genius: currently blocked for Neria (403). With LRCLIB off and Genius on, rows say "no
-      lyrics found". Decide what to do with it (ROADMAP Music 1).
+- [ ] Genius: blocked for Neria (403), so it's off and its tick hidden. Decide what to do
+      with it (ROADMAP Music 1).
+- [ ] Narrow window (400–719 wide): the link box has room, Download sits under it, its menu
+      opens under the button; Paste (icon) still pastes.
 
 ## 3. Lyrics only and Add lyrics, in the window
 - [ ] Paste a Spotify album: "Lyrics only" sits next to "Saved as mp3 …"; it's also in the

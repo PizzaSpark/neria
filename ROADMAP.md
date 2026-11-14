@@ -364,26 +364,28 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
 1. **Synced lyrics from more sources.** Order: LRCLIB → Spotify's own synced lyrics
    (Musixmatch, opt-in) → Genius (plain text). Findings per source: `docs/UPSTREAM.md` →
    Lyrics sources
-   - ✅ LRCLIB: synced for all of Random Access Memories ("Motherboard": instrumental), 3 chart
-     songs and a "Spotify Singles" track
+   - ✅ LRCLIB: synced for all of Random Access Memories ("Motherboard": instrumental), 49 of
+     Today's Top Hits' 50 (the 50th: plain text only) and a "Spotify Singles" track. Its rate
+     limit (429 after ~14 quick requests) is waited out, not read as "no lyrics"
    - Spotify's own synced lyrics: **needs your Spotify sign-in, so it isn't confirmed yet**.
      The anonymous route Musixmatch used to allow now returns decoy lyrics, so this follows
      spotify-lyrics-api's idea instead (user's call, 2026-11-14): off by default, a "use a
      spare account" warning before the sign-in, lyrics only, secret read from Spotify's own
      script. ✅ Token step checked without an account (`--example lyrics -- --token-check`)
    - Genius (plain text): written and unit-tested, but Genius answers Neria's requests with
-     403 (bot protection; curl gets through). Not worked around. Decide: keep, drop, or a
-     user's own Genius API token
+     403 (bot protection; curl gets through). Not worked around: off by default and its tick
+     hidden. Decide: drop it, or a user's own Genius API token
    - AZLyrics: dropped, the site now blocks automated requests ("request for access")
    - ✅ Each row says the source and "synced" / "plain text only" / "no lyrics found" (or
      "instrumental", or "no synced lyrics found" with Synced only); Settings has a tick per
-     source and "Synced lyrics only"
+     source and "Synced lyrics only" (checked: a plain-only song says "no synced lyrics
+     found", all sources off says "no lyrics found")
 2. ✅ **Lyrics only (Spotify links)**: a "Lyrics only" button next to the preview (and in the
    Download ▾ menu): `.lrc` when synced plus `.txt` with the words, named like the song would
-   be (checked on 4 album songs). ✅ **Add lyrics to songs I already have** (Settings →
+   be (checked on 4 album songs headless, and on the whole album in the window). ✅ **Add lyrics to songs I already have** (Settings →
    Spotify → Lyrics): picks a folder, reads each song's tags (Spotify id from the folder's
-   manifest), adds a `.lrc` and the words inside the song; skips songs that have a `.lrc`
-   (checked on 3 playlist songs)
+   manifest), adds a `.lrc` and the words inside the song; skips songs that have lyrics
+   already (checked on 3 playlist songs, headless and in the window)
    - Later, opt-in only: "Sign in to Spotify for more synced lyrics": now built as part of 1
 3. ✅ Optional "Number playlist songs" (Settings → Spotify, off by default): `01 Artist -
    Title`, padded to the playlist's length. Turning it on or off, or the playlist being
