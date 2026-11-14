@@ -46,10 +46,12 @@ Genius was dropped (it answers Neria with 403).
 ## 1. Spotify's own synced lyrics (needs a spare Spotify account)
 - [ ] Settings → Spotify → Lyrics: tick "Spotify's own synced lyrics". The "Use a spare
       account" tag and the warning show before anything else; then **Sign in to Spotify…**.
-- [x] The sign-in window opens on Spotify's login; after signing in the bar says "Signed in to
-      Spotify", Done closes it, the toast says "Neria uses it for lyrics only", and Settings
-      shows "Signed in to Spotify · Sign out".
-- [ ] `cookies/spotify.com.txt` holds only spotify.com cookies.
+- [x] The sign-in window opens and signing in saves `cookies/spotify.com.txt` with `sp_dc`
+      (seen 2026-11-14).
+- [ ] After signing in the bar says "Signed in to Spotify", Done closes it, the toast says
+      "Neria uses it for lyrics only", and Settings shows "Signed in to Spotify · Sign out"
+      (not watched).
+- [x] `cookies/spotify.com.txt` holds only spotify.com cookies (accounts., www. and spotify.com itself).
 - [x] Headless: `--example lyrics -- --only spotify --show <link>` shows "synced lyrics from
       Musixmatch via Spotify" and real LRC lines.
 - [ ] Download such a song: its row says "synced lyrics from Musixmatch via Spotify" and the
