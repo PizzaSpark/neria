@@ -523,7 +523,7 @@ impl Queue {
         let title = if req.title_hint.is_empty() { req.url.clone() } else { req.title_hint.clone() };
         let mut snap = JobSnapshot::new(id, group, title);
         snap.group_title = self.group_title(group);
-        snap.music = req.music.is_some();
+        snap.music = req.music.as_ref().is_some_and(|m| m.mode == music::Mode::Song);
         snap.gif = req.gif;
         snap.key = req.key.clone();
         snap.starts = waiting_label(&req);
@@ -595,7 +595,7 @@ impl Queue {
             let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
             let mut snap = JobSnapshot::new(id, group, job.title);
             snap.group_title = self.group_title(group);
-            snap.music = job.req.music.is_some();
+            snap.music = job.req.music.as_ref().is_some_and(|m| m.mode == music::Mode::Song);
             snap.gif = job.req.gif;
             snap.thumbnail = job.thumbnail;
             snap.key = job.key;
@@ -1088,6 +1088,43 @@ impl Queue {
         // A retry starts a fresh log.
         if let Some(e) = self.inner.entries.lock().unwrap().iter_mut().find(|e| e.snap.id == id) {
             e.log.clear();
+        }
+        // "Lyrics only" / "Add lyrics": no matching, no download.
+        if let Some(job) = req.music.clone().filter(|m| m.mode != music::Mode::Song) {
+            let lrc = job.dir.join(format!("{}.lrc", job.stem));
+            if job.mode == music::Mode::LyricsOnly && lrc.is_file() {
+                self.update(id, true, |s| {
+                    s.state = JobState::Done;
+                    s.progress = 1.0;
+                    s.file = Some(lrc);
+                    s.postprocessor = Some("AlreadyHave".into());
+                });
+                self.pump();
+                return;
+            }
+            self.update(id, true, |s| {
+                s.state = JobState::Processing;
+                s.postprocessor = Some("Lyrics".into());
+            });
+            let result = music::lyrics_job(&job);
+            let cancelled = cancel.load(Ordering::SeqCst);
+            self.update(id, true, |s| match result {
+                _ if cancelled => s.state = JobState::Cancelled,
+                Ok(done) => {
+                    s.state = JobState::Done;
+                    s.progress = 1.0;
+                    s.file = done.file;
+                    s.lyrics = Some(done.status);
+                    s.note = done.note;
+                    s.note_strong = false;
+                }
+                Err(e) => {
+                    s.state = JobState::Failed;
+                    s.error = Some(e.to_string());
+                }
+            });
+            self.pump();
+            return;
         }
         // Spotify track picked by hand: download that URL, overwriting the old file.
         if let Some(url) = req.music.as_ref().and_then(|m| m.forced.clone()) {

@@ -77,6 +77,12 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_extra_args(s.extra_args.as_str().into());
     ui.set_max_concurrent(s.max_concurrent as i32);
     ui.set_lyrics(s.lyrics);
+    let m = ui.global::<Music>();
+    m.set_lrclib(s.lyrics_lrclib);
+    m.set_spotify(s.lyrics_spotify);
+    m.set_genius(s.lyrics_genius);
+    m.set_synced_only(s.lyrics_synced_only);
+    m.set_number_songs(s.number_spotify);
     ui.set_verify_audio(s.verify_audio);
     ui.set_spotify_explain(s.spotify_explain);
     ui.set_spotify_client_id(s.spotify_client_id.as_str().into());
@@ -107,6 +113,12 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.extra_args = ui.get_extra_args().to_string();
     s.max_concurrent = ui.get_max_concurrent().clamp(1, 8) as u32;
     s.lyrics = ui.get_lyrics();
+    let m = ui.global::<Music>();
+    s.lyrics_lrclib = m.get_lrclib();
+    s.lyrics_spotify = m.get_spotify();
+    s.lyrics_genius = m.get_genius();
+    s.lyrics_synced_only = m.get_synced_only();
+    s.number_spotify = m.get_number_songs();
     s.verify_audio = ui.get_verify_audio();
     s.spotify_explain = ui.get_spotify_explain();
     s.spotify_client_id = ui.get_spotify_client_id().trim().to_string();
@@ -964,6 +976,10 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                     ui.invoke_queue_filter_changed(i as i32);
                 }
             }
+            // Settings → Spotify with Spotify's own lyrics ticked (its warning and sign-in).
+            if std::env::var_os("NERIA_LYRICS_SPOTIFY").is_some() {
+                ui.global::<Music>().set_spotify(true);
+            }
             if let Ok(section) = std::env::var("NERIA_SETTINGS") {
                 let names = ["download", "following", "spotify", "network", "general", "about"];
                 let section = if section.eq_ignore_ascii_case("appearance") { "general".into() } else { section };
@@ -1480,6 +1496,7 @@ fn main() -> anyhow::Result<()> {
         }
     });
     spotify_ui::install_sync_review(&ui);
+    spotify_ui::install_lyrics(&ui, probe_state.spotify.clone(), settings.clone(), queue.clone());
     match_ui::install(&ui, queue.clone());
     updates_ui::install(&ui);
     order_ui::setup(&ui);

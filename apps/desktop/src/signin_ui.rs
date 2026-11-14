@@ -7,7 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use neria_core::{cookies, probe};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::{Accounts, AppWindow, SiteItem, Theme, show_toast};
+use neria_core::lyrics::spotify_lyrics;
+
+use crate::{Accounts, AppWindow, Music, SiteItem, Theme, show_toast};
 
 static OPEN: AtomicBool = AtomicBool::new(false);
 
@@ -31,6 +33,9 @@ pub fn refresh(ui: &AppWindow) {
         })
         .collect();
     ui.global::<Accounts>().set_sites(ModelRc::from(Rc::new(VecModel::from(items))));
+    // Settings → Spotify → Lyrics: Spotify's own lyrics use this sign-in (and only they do).
+    ui.global::<Music>().set_spotify_signed_in(spotify_lyrics::signed_in());
+    spotify_lyrics::forget();
 }
 
 /// The link's problem: offer "Sign in to …" when signing in may help.
@@ -89,7 +94,9 @@ pub fn start(ui: &AppWindow, site: &str) {
             ui.global::<Accounts>().set_busy(false);
             refresh(&ui);
             let name = cookies::site_name(&site);
-            if saved {
+            if saved && site == spotify_lyrics::SITE {
+                show_toast(&ui, "Signed in to Spotify. Neria uses it for lyrics only.");
+            } else if saved {
                 show_toast(&ui, &format!("Signed in to {name}. Neria uses it for {name} links only."));
                 reprobe(&ui);
             } else {

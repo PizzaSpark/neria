@@ -194,3 +194,20 @@ export global Names {
     callback save-preset();
     callback set-raw(string);
 }
+
+// Music track: lyrics sources, "Lyrics only", numbering (Settings → Spotify, Download page).
+export global Music {
+    // Lyrics sources, asked in this order; synced lyrics end the search.
+    in-out property <bool> lrclib: true;
+    // Spotify's own synced lyrics (Musixmatch): opt-in, needs a Spotify sign-in.
+    in-out property <bool> spotify;
+    in-out property <bool> genius: true;
+    in-out property <bool> synced-only;
+    // Spotify playlists: "01 Artist - Title".
+    in-out property <bool> number-songs;
+    in property <bool> spotify-signed-in;
+    // A Spotify link's preview: save only the lyrics of its songs.
+    callback lyrics-only();
+    // Settings: pick a folder of songs and add lyrics to them.
+    callback add-lyrics();
+}

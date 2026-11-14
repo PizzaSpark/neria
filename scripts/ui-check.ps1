@@ -88,6 +88,9 @@ $states = [ordered]@{
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-net"    = @{ NERIA_SETTINGS = "network" }
   "set-follow" = @{ NERIA_SETTINGS = "following" }
+  "set-spotify" = @{ NERIA_SETTINGS = "spotify" }
+  "set-lyrics" = @{ NERIA_SETTINGS = "spotify"; NERIA_LYRICS_SPOTIFY = "1" }
+  "dl-spotify" = @{ NERIA_URL = "https://open.spotify.com/album/4m2880jivSbbyEGAKfITCa" }
   "signin"     = @{ NERIA_DIALOG = "signin" }
   "extras"     = @{ NERIA_DIALOG = "extras" }
   "advanced"   = @{ NERIA_DIALOG = "advanced" }

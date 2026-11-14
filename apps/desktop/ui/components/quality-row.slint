@@ -17,6 +17,9 @@ export component QualityRow inherits VerticalLayout {
     in property <string> spotify-text;
     in property <string> format-text;
     in property <bool> show-clip;
+    // A Spotify link: "Lyrics only" saves just the songs' lyrics.
+    in property <bool> show-lyrics;
+    callback lyrics-only();
     callback changed();
     callback open-settings();
     callback clip-first();
@@ -48,6 +51,17 @@ export component QualityRow inherits VerticalLayout {
                 text: "Clip first";
                 icon: "\u{E8C6}";
                 clicked => { root.clip-first(); }
+            }
+        }
+        if root.show-lyrics: VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 0;
+            padding-left: 4px;
+            GhostButton {
+                compact: true;
+                text: "Lyrics only";
+                icon: "\u{E8D2}";
+                clicked => { root.lyrics-only(); }
             }
         }
         if root.spotify: Rectangle { horizontal-stretch: 1; }

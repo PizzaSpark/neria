@@ -76,6 +76,13 @@ pub fn file_stem(track: &Track, kind: Kind) -> String {
     }
 }
 
+/// `01 Artist - Title` for "Number playlist songs": `pos` counts from 1, padded to the
+/// playlist's length (at least two digits) so the folder sorts in playlist order.
+pub fn numbered_stem(track: &Track, pos: usize, total: usize) -> String {
+    let width = total.to_string().len().max(2);
+    sanitize(&format!("{pos:0width$} {} - {}", track.main_artist(), track.title))
+}
+
 /// Folder for a collection: the Audio folder itself for single songs, else a folder per
 /// album/playlist inside it. Albums/playlists synced before the Audio folder existed keep
 /// their old place (straight in the output folder), so resume and sync still find them.
@@ -227,25 +234,52 @@ fn write_tags(
 /// Turn a collection into queue jobs: makes the folder, writes the M3U and
 /// the sync manifest, and returns one job per track (in playlist order).
 pub fn prepare(col: &Collection, settings: &crate::settings::Settings) -> Result<(PathBuf, Vec<MusicJob>)> {
+    prepare_as(col, settings, Mode::Song)
+}
+
+/// [`prepare`] for "Lyrics only": the same folder and names, no playlist files.
+pub fn prepare_lyrics_only(
+    col: &Collection,
+    settings: &crate::settings::Settings,
+) -> Result<(PathBuf, Vec<MusicJob>)> {
+    prepare_as(col, settings, Mode::LyricsOnly)
+}
+
+fn prepare_as(
+    col: &Collection,
+    settings: &crate::settings::Settings,
+    mode: Mode,
+) -> Result<(PathBuf, Vec<MusicJob>)> {
     let dir = collection_dir(settings, col);
     std::fs::create_dir_all(&dir).with_context(|| format!("can't create {}", dir.display()))?;
+    let numbered = col.kind == Kind::Playlist && settings.number_spotify;
+    let total = col.tracks.len();
 
     let jobs: Vec<MusicJob> = col
         .tracks
         .iter()
-        .map(|t| MusicJob {
+        .enumerate()
+        .map(|(i, t)| MusicJob {
             track: t.clone(),
             dir: dir.clone(),
-            stem: file_stem(t, col.kind),
+            stem: if numbered { numbered_stem(t, i + 1, total) } else { file_stem(t, col.kind) },
             lyrics: settings.lyrics,
             lyrics_prefs: lyrics::Prefs::from_settings(settings),
-            mode: Mode::Song,
+            mode,
             forced: None,
             verify: settings.verify_audio,
         })
         .collect();
 
+    if mode != Mode::Song {
+        return Ok((dir, jobs));
+    }
     if col.kind != Kind::Track {
+        // Numbering turned on/off, or the playlist reordered: rename what's already here
+        // (found by its Spotify id in the last manifest) instead of downloading it again.
+        if let Some(prev) = read_manifest(&dir) {
+            rename_moved(&dir, &prev, &jobs);
+        }
         let ext = &settings.audio_format;
         let entries: Vec<(String, f64, String)> = jobs
             .iter()
@@ -333,6 +367,191 @@ pub fn write_manifest(dir: &Path, m: &Manifest) -> Result<()> {
     Ok(())
 }
 
+/// Files whose song is still in the list under a new name (numbering, new position): the
+/// audio, `.lrc` and `.txt` move to the new name. Never overwrites a file. Returns how many
+/// songs moved.
+pub fn rename_moved(dir: &Path, prev: &Manifest, jobs: &[MusicJob]) -> usize {
+    let mut planned = Vec::new();
+    for j in jobs {
+        let Some(old) = prev.tracks.iter().find(|t| !t.id.is_empty() && t.id == j.track.id) else { continue };
+        if old.stem == j.stem || existing_file(dir, &j.stem).is_some() {
+            continue;
+        }
+        let Some(audio) = existing_file(dir, &old.stem) else { continue };
+        let mut files = vec![audio];
+        for ext in ["lrc", "txt"] {
+            let f = dir.join(format!("{}.{ext}", old.stem));
+            if f.is_file() {
+                files.push(f);
+            }
+        }
+        planned.push((files, j.stem.clone()));
+    }
+    // Through temporary names first, so two songs swapping places can't clash.
+    let mut staged = Vec::new();
+    for (n, (files, stem)) in planned.into_iter().enumerate() {
+        for (k, f) in files.into_iter().enumerate() {
+            let ext = f.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+            let tmp = dir.join(format!(".neria-rename-{n}-{k}.{ext}"));
+            if std::fs::rename(&f, &tmp).is_ok() {
+                staged.push((tmp, f, dir.join(format!("{stem}.{ext}")), k == 0));
+            }
+        }
+    }
+    let mut moved = 0;
+    for (tmp, old, new, is_audio) in staged {
+        let target = if new.exists() { old } else { new };
+        if std::fs::rename(&tmp, &target).is_ok() && is_audio {
+            moved += 1;
+        }
+    }
+    moved
+}
+
+// ───────────── Lyrics only / add lyrics to songs you have ─────────────
+
+/// What a lyrics job made.
+pub struct LyricsDone {
+    /// The `.lrc` (synced) or `.txt` written, or the song the lyrics went into.
+    pub file: Option<PathBuf>,
+    pub status: String,
+    /// Shown on the row when nothing was saved ("No lyrics found").
+    pub note: Option<String>,
+}
+
+/// "Lyrics only": `.lrc` when synced and `.txt` with the words, named like the song would
+/// be. "Add lyrics": the same `.lrc`, and the words inside the song itself.
+pub fn lyrics_job(job: &MusicJob) -> Result<LyricsDone> {
+    let lrc = job.dir.join(format!("{}.lrc", job.stem));
+    let txt = job.dir.join(format!("{}.txt", job.stem));
+    let song = if job.mode == Mode::AddLyrics { existing_file(&job.dir, &job.stem) } else { None };
+    if job.mode == Mode::AddLyrics && song.is_none() {
+        bail!("the song isn't in its folder any more");
+    }
+    let album = job.track.album.clone().or_else(|| song.as_deref().and_then(embedded_album));
+    let found = lyrics::fetch(&job.track, album.as_deref(), job.lyrics_prefs);
+    let status = found.status();
+    let Some(l) = found.lyrics.as_ref().filter(|l| !l.instrumental) else {
+        let note = if found.lyrics.is_some() { "Instrumental: no lyrics".to_string() } else { capitalize(&status) };
+        return Ok(LyricsDone { file: None, status, note: Some(note) });
+    };
+    let mut file = None;
+    if let Some(synced) = &l.synced {
+        std::fs::write(&lrc, synced)?;
+        file = Some(lrc);
+    }
+    if let Some(text) = l.text() {
+        if let Some(song) = &song {
+            embed_lyrics(song, &text)?;
+            file = Some(song.clone());
+        } else {
+            std::fs::write(&txt, text)?;
+            file = file.or(Some(txt));
+        }
+    }
+    Ok(LyricsDone { file, status, note: None })
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
+/// Put `text` into the song's lyrics tag, leaving everything else as it was.
+pub fn embed_lyrics(file: &Path, text: &str) -> Result<()> {
+    let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let tmp = file.with_extension(format!("tagging.{ext}"));
+    let mut cmd = proc::command(paths::tool("ffmpeg"));
+    cmd.args(["-hide_banner", "-v", "error", "-y", "-i"])
+        .arg(file)
+        .args(["-map", "0", "-map_metadata", "0", "-c", "copy", "-metadata"])
+        .arg(format!("lyrics={text}"));
+    if ext == "mp3" {
+        cmd.args(["-id3v2_version", "3"]);
+    }
+    let out =
+        cmd.arg(&tmp).stdout(Stdio::null()).stderr(Stdio::piped()).output().context("failed to start ffmpeg")?;
+    if !out.status.success() {
+        let _ = std::fs::remove_file(&tmp);
+        bail!("couldn't write the lyrics: {}", String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or(""));
+    }
+    std::fs::rename(&tmp, file)?;
+    Ok(())
+}
+
+/// A song's own tags (title, artist, album, length), read with ffprobe.
+fn song_from_tags(file: &Path) -> Option<Track> {
+    let out = proc::command(paths::tool("ffprobe"))
+        .args(["-v", "error", "-show_entries", "format=duration:format_tags", "-of", "json"])
+        .arg(file)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let f = &v["format"];
+    // Tag names differ in case between formats (TITLE in FLAC/Opus, title in MP3).
+    let tag = |k: &str| -> Option<String> {
+        let tags = f["tags"].as_object()?;
+        let (_, v) = tags.iter().find(|(name, _)| name.eq_ignore_ascii_case(k))?;
+        v.as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+    };
+    let title = tag("title")?;
+    let artist_line = tag("artist").or_else(|| tag("album_artist"))?;
+    // Neria writes "A, B & C" as the artist line: the first one is the main artist.
+    let main = artist_line.split(", ").next().unwrap_or(&artist_line).split(" & ").next().unwrap_or("").to_string();
+    let secs: f64 = f["duration"].as_str().and_then(|d| d.parse().ok()).unwrap_or(0.0);
+    let mut track = Track { title, artists: vec![main], album: tag("album"), ..Default::default() };
+    track.duration_ms = (secs * 1000.0) as u64;
+    Some(track)
+}
+
+/// A folder of songs Neria downloaded before (or any tagged songs): one "add lyrics" job
+/// per song without a `.lrc`. Also returns how many already had one, and how many have no
+/// title/artist tags to look them up by.
+pub fn add_lyrics_jobs(dir: &Path, settings: &crate::settings::Settings) -> (Vec<MusicJob>, usize, usize) {
+    let manifest = read_manifest(dir);
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.extension().is_some_and(|e| AUDIO_EXTS.iter().any(|a| e.eq_ignore_ascii_case(a)))
+                && !p.file_name().is_some_and(|n| n.to_string_lossy().contains(".tagging."))
+        })
+        .collect();
+    files.sort();
+    let (mut jobs, mut have, mut untagged) = (Vec::new(), 0, 0);
+    for f in files {
+        if f.with_extension("lrc").is_file() {
+            have += 1;
+            continue;
+        }
+        let stem = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let Some(mut track) = song_from_tags(&f) else {
+            untagged += 1;
+            continue;
+        };
+        // Neria's own folders know each song's Spotify id (Spotify's lyrics need it).
+        if let Some(m) = manifest.as_ref().and_then(|m| m.tracks.iter().find(|t| t.stem == stem)) {
+            track.id = m.id.clone();
+        }
+        jobs.push(MusicJob {
+            track,
+            dir: dir.to_path_buf(),
+            stem,
+            lyrics: true,
+            lyrics_prefs: lyrics::Prefs::from_settings(settings),
+            mode: Mode::AddLyrics,
+            forced: None,
+            verify: false,
+        });
+    }
+    (jobs, have, untagged)
+}
+
 /// A downloaded track that is no longer in the playlist.
 #[derive(Clone, Debug)]
 pub struct Removed {
@@ -376,6 +595,47 @@ mod tests {
         };
         assert_eq!(file_stem(&t, Kind::Album), "08 Daft Punk - Get Lucky");
         assert_eq!(file_stem(&t, Kind::Playlist), "Daft Punk - Get Lucky");
+    }
+
+    #[test]
+    fn numbering_pads_to_the_playlist() {
+        let t = Track { title: "Get Lucky".into(), artists: vec!["Daft Punk".into()], ..Default::default() };
+        assert_eq!(numbered_stem(&t, 3, 40), "03 Daft Punk - Get Lucky");
+        assert_eq!(numbered_stem(&t, 7, 120), "007 Daft Punk - Get Lucky");
+    }
+
+    #[test]
+    fn renames_songs_already_there() {
+        let dir = std::env::temp_dir().join(format!("neria-rename-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Downloaded unnumbered (A with lyrics), then numbering went on and B moved first.
+        std::fs::write(dir.join("X - A.mp3"), b"a").unwrap();
+        std::fs::write(dir.join("X - A.lrc"), b"la").unwrap();
+        std::fs::write(dir.join("X - B.mp3"), b"b").unwrap();
+        let entry = |id: &str, stem: &str| ManifestTrack { id: id.into(), stem: stem.into(), title: id.into() };
+        let job = |id: &str, stem: &str| MusicJob {
+            track: Track { id: id.into(), ..Default::default() },
+            dir: dir.clone(),
+            stem: stem.into(),
+            lyrics: false,
+            lyrics_prefs: Default::default(),
+            mode: Mode::Song,
+            forced: None,
+            verify: false,
+        };
+        let prev = Manifest { tracks: vec![entry("a", "X - A"), entry("b", "X - B")], ..Default::default() };
+        let jobs = vec![job("b", "01 X - B"), job("a", "02 X - A"), job("c", "03 X - C")];
+        assert_eq!(rename_moved(&dir, &prev, &jobs), 2);
+        assert_eq!(std::fs::read(dir.join("01 X - B.mp3")).unwrap(), b"b");
+        assert_eq!(std::fs::read(dir.join("02 X - A.mp3")).unwrap(), b"a");
+        assert_eq!(std::fs::read(dir.join("02 X - A.lrc")).unwrap(), b"la");
+        assert!(!dir.join("X - A.mp3").exists());
+        // Numbering off again: the same files move back.
+        let prev = Manifest { tracks: vec![entry("b", "01 X - B"), entry("a", "02 X - A")], ..Default::default() };
+        assert_eq!(rename_moved(&dir, &prev, &[job("a", "X - A"), job("b", "X - B")]), 2);
+        assert!(dir.join("X - A.mp3").is_file() && dir.join("X - B.mp3").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

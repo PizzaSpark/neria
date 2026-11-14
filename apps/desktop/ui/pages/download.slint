@@ -5,7 +5,7 @@ import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SectionTitle, 
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
-import { Accounts, Extras, Background, Presets, Bulk, Watch, Following } from "../globals.slint";
+import { Accounts, Extras, Background, Presets, Bulk, Watch, Following, Music } from "../globals.slint";
 import { ExtrasRow } from "../components/extras-row.slint";
 import { UpdateBanner } from "../components/update-banner.slint";
 
@@ -173,6 +173,8 @@ export component DownloadPage inherits Rectangle {
     property <bool> chips-inline: root.probe-state == 2 && Screen.wide;
     property <bool> short: root.window-height < 820px;
     property <bool> no-quality: root.probe-is-spotify || root.gif-mode;
+    // A looked-up Spotify link: "Lyrics only" can save just its songs' lyrics.
+    property <bool> lyrics-ready: root.probe-is-spotify && root.probe-state == 2 && root.spotify-count > 0 && root.tools-ready;
     property <string> no-quality-text: root.gif-mode ? "Saved as a .gif (X keeps GIFs as short silent videos)"
         : "Saved as " + root.audio-format + " with cover art, tags" + (root.lyrics ? " and lyrics" : "");
     property <string> format-text: root.gif-mode ? "gif"
@@ -305,6 +307,11 @@ export component DownloadPage inherits Rectangle {
                     icon: "\u{E896}";
                     text: "Download now";
                     clicked => { root.start-download(); }
+                }
+                if root.lyrics-ready: MenuItem {
+                    icon: "\u{E8D2}";
+                    text: "Lyrics only (.lrc / .txt)";
+                    clicked => { Music.lyrics-only(); }
                 }
                 // Every link on the clipboard, with the chips as they are; skips the preview.
                 MenuItem {
@@ -441,6 +448,8 @@ export component DownloadPage inherits Rectangle {
                         open-settings => { root.open-settings(); }
                         clip-first => { root.clip-open-link(root.url, root.probe-title); }
                         show-clip: root.pick-items.length == 0;
+                        show-lyrics: root.lyrics-ready;
+                        lyrics-only => { Music.lyrics-only(); }
                     }
                 }
                 if root.probe-state == 2 && !root.probe-is-spotify && !root.chips-inline && root.pick-items.length == 0: HorizontalLayout {
@@ -524,6 +533,8 @@ export component DownloadPage inherits Rectangle {
             open-settings => { root.open-settings(); }
             clip-first => { root.clip-open-link(root.url, root.probe-title); }
             show-clip: false;
+            show-lyrics: root.lyrics-ready;
+            lyrics-only => { Music.lyrics-only(); }
         }
 
         // Captions, audio tracks, chapters of a single video.

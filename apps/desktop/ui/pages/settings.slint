@@ -1,7 +1,7 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { Accounts, Background, Names, Bulk, Following, FollowItem } from "../globals.slint";
+import { Accounts, Background, Names, Bulk, Following, FollowItem, Music } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider } from "../widgets.slint";
 
 // One group of settings under a small heading.
@@ -501,10 +501,11 @@ export component SettingsDrawer inherits Rectangle {
                                 title: "Songs";
                                 Hint { text: "Song info comes from Spotify, audio from YouTube Music. Songs use the \"Audio only\" format under Download."; }
                                 Tick {
-                                    text: "Add lyrics (embedded + synced .lrc file)";
-                                    checked <=> root.lyrics;
+                                    text: "Number playlist songs (01 Artist - Title)";
+                                    checked <=> Music.number-songs;
                                     toggled => { root.settings-changed(); }
                                 }
+                                Hint { text: "So the folder sorts in playlist order. Songs you already have are renamed, not downloaded again. Albums are always numbered."; }
                                 Tick {
                                     text: "Check each song against Spotify's 30 s preview";
                                     checked <=> root.verify-audio;
@@ -516,6 +517,84 @@ export component SettingsDrawer inherits Rectangle {
                                     checked <=> root.spotify-explain;
                                     toggled => { root.settings-changed(); }
                                 }
+                            }
+
+                            Group {
+                                title: "Lyrics";
+                                Tick {
+                                    text: "Add lyrics (inside the song + a synced .lrc file next to it)";
+                                    checked <=> root.lyrics;
+                                    toggled => { root.settings-changed(); }
+                                }
+                                if root.lyrics: Hint { text: "Neria asks these in order and stops at the first synced lyrics. Each song's row says what it found."; }
+                                if root.lyrics: Tick {
+                                    text: "LRCLIB: synced, free and open";
+                                    checked <=> Music.lrclib;
+                                    toggled => { root.settings-changed(); }
+                                }
+                                if root.lyrics: Tick {
+                                    text: "Spotify's own synced lyrics (Musixmatch): needs a Spotify sign-in";
+                                    checked <=> Music.spotify;
+                                    toggled => { root.settings-changed(); }
+                                }
+                                // The warning comes before any sign-in, and stays while it's on.
+                                if root.lyrics && Music.spotify: HorizontalLayout {
+                                    alignment: start;
+                                    Tag {
+                                        text: "Use a spare account";
+                                        kind: 2;
+                                    }
+                                }
+                                if root.lyrics && Music.spotify: Hint {
+                                    text: "This reads lyrics the way Spotify's web player does, which is against Spotify's terms: the account could be restricted or banned. Sign in with a spare (burner) Spotify account, never your main one. Neria uses it for lyrics only, never for audio, and only when LRCLIB has no synced lyrics.";
+                                }
+                                if root.lyrics && Music.spotify && !Music.spotify-signed-in: HorizontalLayout {
+                                    alignment: start;
+                                    GhostButton {
+                                        text: Accounts.busy ? "Signing in…" : "Sign in to Spotify…";
+                                        icon: "\u{E77B}";
+                                        clicked => { Accounts.sign-in("spotify.com"); }
+                                    }
+                                }
+                                if root.lyrics && Music.spotify && Music.spotify-signed-in: HorizontalLayout {
+                                    spacing: 10px;
+                                    alignment: start;
+                                    Icon {
+                                        text: "\u{E73E}";
+                                        color: Theme.ok;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: "Signed in to Spotify";
+                                        color: Theme.ink;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                    TextLink {
+                                        text: "Sign out";
+                                        clicked => { Accounts.sign-out("spotify.com"); }
+                                    }
+                                }
+                                if root.lyrics: Tick {
+                                    text: "Genius: plain text only";
+                                    checked <=> Music.genius;
+                                    toggled => { root.settings-changed(); }
+                                }
+                                if root.lyrics: Tick {
+                                    text: "Synced lyrics only (never save plain text)";
+                                    checked <=> Music.synced-only;
+                                    toggled => { root.settings-changed(); }
+                                }
+                                HorizontalLayout {
+                                    alignment: start;
+                                    TextLink {
+                                        text: "Add lyrics to songs I already have…";
+                                        icon: "\u{E8B7}";
+                                        clicked => { Music.add-lyrics(); }
+                                    }
+                                }
+                                Hint { text: "Pick a folder of songs (tagged with artist and title, like Neria's): each gets lyrics inside it and a .lrc next to it. Songs that have a .lrc already are skipped."; }
                             }
 
                             Group {

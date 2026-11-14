@@ -14,7 +14,7 @@ use neria_core::spotify::{self, Collection, Kind, Link};
 use neria_core::{fmt, probe};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
-use crate::{AppWindow, SyncItem};
+use crate::{AppWindow, Music, SyncItem, show_toast};
 
 /// A looked-up Spotify link waiting for the Download button.
 pub struct Pending {
@@ -196,6 +196,66 @@ pub fn install_sync_review(ui: &AppWindow) {
             let ui = weak.unwrap();
             ui.set_sync_items(ModelRc::from(Rc::new(VecModel::<SyncItem>::default())));
             ui.set_sync_open(false);
+        }
+    });
+}
+
+/// "Lyrics only" on a Spotify preview, and Settings → Spotify → "Add lyrics to songs I
+/// already have".
+pub fn install_lyrics(ui: &AppWindow, slot: PendingSlot, settings: Arc<Mutex<Settings>>, queue: Queue) {
+    let music = ui.global::<Music>();
+    music.on_lyrics_only({
+        let weak = ui.as_weak();
+        let (settings, queue) = (settings.clone(), queue.clone());
+        move || {
+            let ui = weak.unwrap();
+            // The preview stays: "Download N songs" still works afterwards.
+            let Some(col) = slot.lock().unwrap().as_ref().map(|p| p.collection.clone()) else { return };
+            let settings = settings.lock().unwrap().clone();
+            match music::prepare_lyrics_only(&col, &settings) {
+                Ok((_dir, jobs)) => {
+                    let n = jobs.len();
+                    queue.add_group(&format!("Lyrics · {}", col.name), false, jobs.into_iter().map(DownloadRequest::music));
+                    let what = if n == 1 { "this song".to_string() } else { format!("{n} songs") };
+                    show_toast(&ui, &format!("Saving the lyrics of {what}: .lrc when synced, .txt with the words."));
+                }
+                Err(e) => show_toast(&ui, &format!("Couldn't prepare the folder: {e}")),
+            }
+        }
+    });
+    music.on_add_lyrics({
+        let weak = ui.as_weak();
+        move || {
+            let current = settings.lock().unwrap().clone();
+            let start = neria_core::folders::for_kind(&current, neria_core::folders::Kind::Audio);
+            let Some(dir) = rfd::FileDialog::new().set_directory(&start).pick_folder() else { return };
+            show_toast(&weak.unwrap(), "Reading the songs in that folder…");
+            let (weak, queue) = (weak.clone(), queue.clone());
+            std::thread::spawn(move || {
+                let (jobs, have, untagged) = music::add_lyrics_jobs(&dir, &current);
+                let n = jobs.len();
+                if n > 0 {
+                    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    queue.add_group(&format!("Lyrics · {name}"), false, jobs.into_iter().map(DownloadRequest::music));
+                }
+                let songs = |k: usize| if k == 1 { "1 song".to_string() } else { format!("{k} songs") };
+                let mut msg = match n {
+                    0 => "No songs there need lyrics".to_string(),
+                    _ => format!("Adding lyrics to {}", songs(n)),
+                };
+                let mut extra = Vec::new();
+                if have > 0 {
+                    extra.push(format!("{} already have a .lrc", songs(have)));
+                }
+                if untagged > 0 {
+                    extra.push(format!("{} have no artist/title tags", songs(untagged)));
+                }
+                if !extra.is_empty() {
+                    msg.push_str(&format!(" ({})", extra.join(", ")));
+                }
+                msg.push('.');
+                let _ = weak.upgrade_in_event_loop(move |ui| show_toast(&ui, &msg));
+            });
         }
     });
 }
