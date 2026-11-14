@@ -3,6 +3,10 @@
 //!
 //! `--rematch`: after downloading, re-download the first song from its 2nd-best
 //! candidate (exercises "pick another match").
+//! `--lyrics-only`: "Lyrics only" (.lrc / .txt, no audio). `--number`: "Number playlist
+//! songs". `--no-lyrics` / `--no-verify`: those settings off. `--add-lyrics`: afterwards,
+//! "Add lyrics to songs I already have" on the folder. `--spotify-lyrics`: Spotify's own
+//! lyrics on (needs `NERIA_HOME/cookies/spotify.com.txt`).
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -15,7 +19,15 @@ use neria_core::{fmt, music, spotify, ytmusic};
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let link = spotify::parse_link(&args[0]).expect("not a Spotify link");
-    let settings = Settings { output_dir: args[1].clone().into(), ..Settings::default() };
+    let flag = |f: &str| args.iter().any(|a| a == f);
+    let settings = Settings {
+        output_dir: args[1].clone().into(),
+        number_spotify: flag("--number"),
+        lyrics: !flag("--no-lyrics"),
+        verify_audio: !flag("--no-verify"),
+        lyrics_spotify: flag("--spotify-lyrics"),
+        ..Settings::default()
+    };
     let max: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(usize::MAX);
     let match_only = args.iter().any(|a| a == "--match-only");
 
@@ -55,8 +67,10 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let (dir, jobs) = music::prepare(&col, &settings)?;
+    let (dir, jobs) =
+        if flag("--lyrics-only") { music::prepare_lyrics_only(&col, &settings)? } else { music::prepare(&col, &settings)? };
     println!("folder: {}", dir.display());
+    let plain_settings = settings.clone();
     let settings = Arc::new(Mutex::new(settings));
     let (tx, rx) = std::sync::mpsc::channel();
     let queue = Queue::new(settings, move |s| {
@@ -77,7 +91,24 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if args.iter().any(|a| a == "--rematch") {
+    if flag("--add-lyrics") {
+        let (jobs, have, untagged) = music::add_lyrics_jobs(&dir, &plain_settings);
+        println!("add lyrics: {} songs ({have} have a .lrc, {untagged} untagged)", jobs.len());
+        let n = jobs.len();
+        let mut done = std::collections::HashSet::new();
+        for j in jobs {
+            queue.add(DownloadRequest::music(j));
+        }
+        while done.len() < n {
+            let s = rx.recv_timeout(Duration::from_secs(120))?;
+            if !s.state.is_active() && done.insert(s.id) {
+                let (status, stats) = fmt::job_lines(&s);
+                println!("[{:?}] {} :: {status} {stats} {}", s.state, s.title, s.error.clone().unwrap_or_default());
+            }
+        }
+    }
+
+    if flag("--rematch") {
         let id = first_id.expect("a job");
         let info = queue.match_info(id).expect("music job");
         let alt = match info.candidates.get(1) {
