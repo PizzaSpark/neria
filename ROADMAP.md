@@ -404,6 +404,16 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
      nothing, the song downloads and says "no preview to check against"
    - Own-key Web API path is written but untested (needs a real Client ID/secret)
    - Spotify playlists > 100 songs without a key: no workaround yet beyond the notice
+5. **YouTube Music Premium quality (untested, no Premium account to check with).** Spotify
+   songs are fetched from `music.youtube.com` links, so a YouTube sign-in (Settings → Network,
+   Download track 1) is already passed to yt-dlp for them, and `ba/b` already takes the best
+   audio. With a Premium account that should be the 256 kbps AAC stream instead of ~130–160
+   kbps, so in principle it works today. Still to do, once someone can test with Premium:
+   - Check which stream yt-dlp actually picks for a few Spotify songs when signed in
+   - Show it: "256 kbps (Premium)" on the song's row; a hint in Settings → Spotify
+   - The default mp3 re-encodes it (lossy to lossy): suggest m4a, which keeps it as is
+   - Same caution as Spotify lyrics: bulk downloads can get a YouTube account flagged, so
+     suggest a spare Premium account
 
 ### Clip / edit
 1. **Audio controls**, two separate things so it's clear what ends up in the file:
