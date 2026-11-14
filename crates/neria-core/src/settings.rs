@@ -101,6 +101,15 @@ pub struct Settings {
     pub last_update_check: u64,
     /// Spotify songs: fetch lyrics (embedded + .lrc next to the file).
     pub lyrics: bool,
+    /// Lyrics sources (Settings → Spotify): LRCLIB (synced, open), Spotify's own synced
+    /// lyrics (Musixmatch; opt-in, needs a Spotify sign-in), Genius (plain text).
+    pub lyrics_lrclib: bool,
+    pub lyrics_spotify: bool,
+    pub lyrics_genius: bool,
+    /// Only save synced lyrics; plain text never counts.
+    pub lyrics_synced_only: bool,
+    /// Spotify playlists: `01 Artist - Title`, so the folder sorts in playlist order.
+    pub number_spotify: bool,
     /// Spotify songs: compare with Spotify's 30 s preview, retry other versions on mismatch.
     pub verify_audio: bool,
     /// Spotify songs: explain where the audio comes from on the first Download.
@@ -163,6 +172,11 @@ impl Default for Settings {
             max_concurrent: 2,
             last_update_check: 0,
             lyrics: true,
+            lyrics_lrclib: true,
+            lyrics_spotify: false,
+            lyrics_genius: true,
+            lyrics_synced_only: false,
+            number_spotify: false,
             verify_audio: true,
             spotify_explain: true,
             spotify_client_id: String::new(),

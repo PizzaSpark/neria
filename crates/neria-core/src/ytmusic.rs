@@ -185,7 +185,7 @@ fn words(s: &str) -> Vec<&str> {
     s.split(' ').filter(|w| !w.is_empty()).collect()
 }
 
-fn title_similarity(a: &str, b: &str) -> f64 {
+pub fn title_similarity(a: &str, b: &str) -> f64 {
     let (na, nb) = (normalize(a), normalize(b));
     if na.is_empty() || nb.is_empty() {
         return 0.0;

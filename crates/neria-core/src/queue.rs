@@ -79,6 +79,9 @@ pub struct JobSnapshot {
     /// Spotify track audio check: Some(source) when it matched that preview,
     /// Some("none") when no preview existed anywhere, None when not checked.
     pub verified: Option<&'static str>,
+    /// Spotify song: what was found for its lyrics ("synced lyrics from LRCLIB", "no
+    /// lyrics found"…); None when lyrics are off or weren't looked up.
+    pub lyrics: Option<String>,
     /// `Extractor:id` of what's being downloaded, once known.
     pub key: Option<String>,
     /// Brought back from the last session (the UI adds it whatever its state).
@@ -114,6 +117,7 @@ impl JobSnapshot {
             pending_gif: false,
             files: Vec::new(),
             verified: None,
+            lyrics: None,
             key: None,
             restored: false,
             starts: String::new(),
@@ -1255,6 +1259,7 @@ impl Queue {
 
         // Spotify track downloaded: add Spotify tags, cover art and lyrics.
         let mut tag_error = None;
+        let mut lyrics_status = None;
         if let (Some(job), Ok(true), false) = (&req.music, &result, cancelled) {
             let file = {
                 let entries = self.inner.entries.lock().unwrap();
@@ -1266,13 +1271,19 @@ impl Queue {
                     s.state = JobState::Processing;
                     s.postprocessor = Some("Tagging".into());
                 });
-                tag_error = music::finish(&file, job).err().map(|e| e.to_string());
+                match music::finish(&file, job) {
+                    Ok(status) => lyrics_status = status,
+                    Err(e) => tag_error = Some(e.to_string()),
+                }
             }
         }
 
         self.update(id, true, |s| {
             if let Some(e) = &tag_error {
                 s.error = Some(format!("Saved, but tagging failed: {e}"));
+            }
+            if lyrics_status.is_some() {
+                s.lyrics = lyrics_status.clone();
             }
             if let Some(e) = &gif_error {
                 s.note = Some(e.clone());

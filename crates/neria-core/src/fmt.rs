@@ -99,12 +99,18 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
                 .and_then(|p| std::fs::metadata(p).ok())
                 .map(|m| bytes(m.len() as f64))
                 .unwrap_or_default();
+            let mut parts = Vec::new();
             match s.verified {
-                Some("none") => (name, format!("no preview to check against  ·  {size}")),
-                Some("Spotify") => (name, format!("✓ sounds like Spotify  ·  {size}")),
-                Some(src) => (name, format!("✓ matches the {src} preview  ·  {size}")),
-                None => (name, size),
+                Some("none") => parts.push("no preview to check against".to_string()),
+                Some("Spotify") => parts.push("✓ sounds like Spotify".into()),
+                Some(src) => parts.push(format!("✓ matches the {src} preview")),
+                None => {}
             }
+            parts.extend(s.lyrics.clone());
+            if !size.is_empty() {
+                parts.push(size);
+            }
+            (name, parts.join("  ·  "))
         }
         JobState::Failed => (s.error.clone().unwrap_or_else(|| "Download failed".into()), String::new()),
         JobState::Cancelled => ("Cancelled".into(), String::new()),

@@ -68,6 +68,7 @@ pub fn site_name(site: &str) -> String {
         "bilibili.com" => "Bilibili",
         "dailymotion.com" => "Dailymotion",
         "nicovideo.jp" => "Niconico",
+        "spotify.com" => "Spotify",
         other => other,
     }
     .to_string()
@@ -89,6 +90,7 @@ pub fn sign_in_url(site: &str) -> String {
         "reddit.com" => "https://www.reddit.com/login/".into(),
         "patreon.com" => "https://www.patreon.com/login".into(),
         "soundcloud.com" => "https://soundcloud.com/signin".into(),
+        "spotify.com" => "https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F".into(),
         other => format!("https://www.{other}/"),
     }
 }
@@ -107,6 +109,7 @@ pub fn signed_in_markers(site: &str) -> &'static [&'static str] {
         "reddit.com" => &["reddit_session", "token_v2"],
         "patreon.com" => &["session_id"],
         "soundcloud.com" => &["oauth_token"],
+        "spotify.com" => &["sp_dc"],
         _ => &[],
     }
 }
@@ -191,6 +194,12 @@ pub fn file_for(url: &str) -> Option<PathBuf> {
     let site = site_of(url)?;
     let f = file_of(&site);
     f.is_file().then_some(f)
+}
+
+/// One cookie's value from a site's sign-in (e.g. Spotify's `sp_dc` for lyrics).
+pub fn value(site: &str, name: &str) -> Option<String> {
+    let text = std::fs::read_to_string(file_of(site)).ok()?;
+    parse_netscape(&text).into_iter().find(|c| c.name == name && !c.value.is_empty()).map(|c| c.value)
 }
 
 /// Is there a sign-in for this site?

@@ -14,6 +14,7 @@ pub mod folders;
 pub mod follow;
 pub mod gif;
 pub mod history;
+pub mod lyrics;
 pub mod media;
 pub mod music;
 pub mod names;

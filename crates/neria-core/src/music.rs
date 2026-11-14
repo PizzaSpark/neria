@@ -6,11 +6,11 @@ use std::process::Stdio;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::spotify::{Collection, Kind, Track};
 use crate::ytmusic::{self, Candidate};
-use crate::{paths, probe, proc, web};
+use crate::lyrics;
+use crate::{paths, probe, proc};
 
 /// Matches scoring below this are downloaded but flagged for the user to check
 /// (e.g. only a re-recording exists on YouTube Music).
@@ -25,11 +25,30 @@ pub struct MusicJob {
     pub dir: PathBuf,
     pub stem: String,
     pub lyrics: bool,
+    /// Which lyrics sources to ask (Settings → Spotify).
+    #[serde(default)]
+    pub lyrics_prefs: crate::lyrics::Prefs,
+    /// What to make: the song (default), or only its lyrics.
+    #[serde(default)]
+    pub mode: Mode,
     /// The user picked this YouTube Music URL ("pick another match"):
     /// skip matching and overwrite the existing file.
     pub forced: Option<String>,
     /// Check the download against Spotify's 30 s preview (and retry on mismatch).
     pub verify: bool,
+}
+
+/// What a Spotify job makes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Mode {
+    /// The song: matched on YouTube Music, downloaded, tagged, with lyrics if on.
+    #[default]
+    Song,
+    /// "Lyrics only": `.lrc` / `.txt` named like the song would be, no audio.
+    LyricsOnly,
+    /// "Add lyrics to songs I already have": the song is `dir/stem.<ext>` already; add
+    /// its lyrics inside it and next to it.
+    AddLyrics,
 }
 
 /// Remove characters Windows forbids in file names and tidy the result.
@@ -84,48 +103,6 @@ pub fn find_match(job: &MusicJob) -> Result<(Vec<Candidate>, Option<Candidate>)>
     Ok((all, best))
 }
 
-// ───────────── Lyrics (LRCLIB) ─────────────
-
-#[derive(Clone, Debug, Default)]
-pub struct Lyrics {
-    pub synced: Option<String>,
-    pub plain: Option<String>,
-}
-
-fn lyrics_from(v: &Value) -> Option<Lyrics> {
-    if v["instrumental"].as_bool() == Some(true) {
-        return None;
-    }
-    let text = |k: &str| v[k].as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
-    let l = Lyrics { synced: text("syncedLyrics"), plain: text("plainLyrics") };
-    (l.synced.is_some() || l.plain.is_some()).then_some(l)
-}
-
-/// Synced + plain lyrics from lrclib.net (free, no key). `album` helps the exact lookup.
-pub fn fetch_lyrics(track: &Track, album: Option<&str>) -> Option<Lyrics> {
-    let (artist, title) = (web::encode(track.main_artist()), web::encode(&ytmusic::normalize_title(&track.title)));
-    let secs = track.duration_secs().round() as u64;
-    if let Some(album) = album {
-        let url = format!(
-            "https://lrclib.net/api/get?artist_name={artist}&track_name={title}&album_name={}&duration={secs}",
-            web::encode(album)
-        );
-        if let Some(l) =
-            web::get_text(&url).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| lyrics_from(&v))
-        {
-            return Some(l);
-        }
-    }
-    let url = format!("https://lrclib.net/api/search?artist_name={artist}&track_name={title}");
-    let results: Value = serde_json::from_str(&web::get_text(&url).ok()?).ok()?;
-    results
-        .as_array()?
-        .iter()
-        .filter(|r| (r["duration"].as_f64().unwrap_or(0.0) - track.duration_secs()).abs() <= 3.0)
-        .filter_map(lyrics_from)
-        .max_by_key(|l| l.synced.is_some())
-}
-
 // ───────────── Tagging ─────────────
 
 /// Read the album name yt-dlp embedded from YouTube Music (used when Spotify had none).
@@ -141,8 +118,9 @@ fn embedded_album(file: &Path) -> Option<String> {
     (!a.is_empty()).then_some(a)
 }
 
-/// Tag `file` with Spotify metadata, cover art and lyrics (+ a `.lrc` next to it).
-pub fn finish(file: &Path, job: &MusicJob) -> Result<()> {
+/// Tag `file` with Spotify metadata, cover art and lyrics (+ a `.lrc` next to it). Returns
+/// what the row says about the lyrics (None when lyrics are off).
+pub fn finish(file: &Path, job: &MusicJob) -> Result<Option<String>> {
     let mut track = job.track.clone();
     // Playlist tracks come without cover/date: one cheap embed lookup fills them in.
     if (track.cover_url.is_none() || track.release_date.is_none())
@@ -154,12 +132,14 @@ pub fn finish(file: &Path, job: &MusicJob) -> Result<()> {
     }
     let album = track.album.clone().or_else(|| embedded_album(file));
     let cover = track.cover_url.as_deref().and_then(|u| probe::fetch_thumbnail(u).ok());
-    let lyrics = if job.lyrics { fetch_lyrics(&track, album.as_deref()) } else { None };
+    let found = job.lyrics.then(|| lyrics::fetch(&track, album.as_deref(), job.lyrics_prefs));
+    let lyrics = found.as_ref().and_then(|f| f.lyrics.as_ref());
 
-    if let Some(synced) = lyrics.as_ref().and_then(|l| l.synced.as_ref()) {
+    if let Some(synced) = lyrics.and_then(|l| l.synced.as_ref()) {
         let _ = std::fs::write(file.with_extension("lrc"), synced);
     }
-    write_tags(file, &track, album.as_deref(), cover.as_deref(), lyrics.as_ref())
+    write_tags(file, &track, album.as_deref(), cover.as_deref(), lyrics)?;
+    Ok(found.map(|f| f.status()))
 }
 
 fn write_tags(
@@ -167,7 +147,7 @@ fn write_tags(
     t: &Track,
     album: Option<&str>,
     cover: Option<&Path>,
-    lyrics: Option<&Lyrics>,
+    lyrics: Option<&lyrics::Lyrics>,
 ) -> Result<()> {
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     // ffmpeg can attach cover art to these containers; others just get text tags.
@@ -258,6 +238,8 @@ pub fn prepare(col: &Collection, settings: &crate::settings::Settings) -> Result
             dir: dir.clone(),
             stem: file_stem(t, col.kind),
             lyrics: settings.lyrics,
+            lyrics_prefs: lyrics::Prefs::from_settings(settings),
+            mode: Mode::Song,
             forced: None,
             verify: settings.verify_audio,
         })
