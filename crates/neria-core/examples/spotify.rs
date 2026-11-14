@@ -6,7 +6,9 @@
 //! `--lyrics-only`: "Lyrics only" (.lrc / .txt, no audio). `--number`: "Number playlist
 //! songs". `--no-lyrics` / `--no-verify`: those settings off. `--add-lyrics`: afterwards,
 //! "Add lyrics to songs I already have" on the folder. `--spotify-lyrics`: Spotify's own
-//! lyrics on (needs `NERIA_HOME/cookies/spotify.com.txt`).
+//! lyrics on (needs `NERIA_HOME/cookies/spotify.com.txt`). `--no-spotify-preview`: act as
+//! if Spotify had no preview (with a Spotify-only recording, e.g. a "Spotify Singles"
+//! track, nothing has one: the "no preview to check against" path).
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -43,6 +45,12 @@ fn main() -> anyhow::Result<()> {
         t.elapsed().as_secs_f32()
     );
     col.tracks.truncate(max);
+    if flag("--no-spotify-preview") {
+        for t in &mut col.tracks {
+            t.preview_url = None;
+            t.id.clear(); // stops the check from looking Spotify's preview up again
+        }
+    }
 
     if match_only {
         for tr in &col.tracks {
