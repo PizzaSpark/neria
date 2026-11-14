@@ -7,9 +7,9 @@ use std::process::Stdio;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+use crate::lyrics;
 use crate::spotify::{Collection, Kind, Track};
 use crate::ytmusic::{self, Candidate};
-use crate::lyrics;
 use crate::{paths, probe, proc};
 
 /// Matches scoring below this are downloaded but flagged for the user to check
@@ -238,18 +238,11 @@ pub fn prepare(col: &Collection, settings: &crate::settings::Settings) -> Result
 }
 
 /// [`prepare`] for "Lyrics only": the same folder and names, no playlist files.
-pub fn prepare_lyrics_only(
-    col: &Collection,
-    settings: &crate::settings::Settings,
-) -> Result<(PathBuf, Vec<MusicJob>)> {
+pub fn prepare_lyrics_only(col: &Collection, settings: &crate::settings::Settings) -> Result<(PathBuf, Vec<MusicJob>)> {
     prepare_as(col, settings, Mode::LyricsOnly)
 }
 
-fn prepare_as(
-    col: &Collection,
-    settings: &crate::settings::Settings,
-    mode: Mode,
-) -> Result<(PathBuf, Vec<MusicJob>)> {
+fn prepare_as(col: &Collection, settings: &crate::settings::Settings, mode: Mode) -> Result<(PathBuf, Vec<MusicJob>)> {
     let dir = collection_dir(settings, col);
     std::fs::create_dir_all(&dir).with_context(|| format!("can't create {}", dir.display()))?;
     let numbered = col.kind == Kind::Playlist && settings.number_spotify;
@@ -469,8 +462,7 @@ pub fn embed_lyrics(file: &Path, text: &str) -> Result<()> {
     if ext == "mp3" {
         cmd.args(["-id3v2_version", "3"]);
     }
-    let out =
-        cmd.arg(&tmp).stdout(Stdio::null()).stderr(Stdio::piped()).output().context("failed to start ffmpeg")?;
+    let out = cmd.arg(&tmp).stdout(Stdio::null()).stderr(Stdio::piped()).output().context("failed to start ffmpeg")?;
     if !out.status.success() {
         let _ = std::fs::remove_file(&tmp);
         bail!("couldn't write the lyrics: {}", String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or(""));

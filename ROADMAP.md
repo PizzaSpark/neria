@@ -359,25 +359,45 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
     of their tabs (`probe::channel_videos_url`). Example: `--example follow`
 
 ### Music (Spotify and lyrics)
-1. **Synced lyrics from more sources (Musixmatch first).** Musixmatch is where Spotify's own
-   synced lyrics come from. Order: LRCLIB (free, open) → Musixmatch (synced) → plain-text
-   fallbacks (Genius, AZLyrics, as spotDL does; MIT, port with credit)
-   - No user login. Musixmatch's official API only gives synced lyrics on paid plans, so look
-     at how spotDL / the `syncedlyrics` project reach it without a key, check it still works
-     and what the terms risk is, and record it in `docs/UPSTREAM.md`
-   - Fully in our code: no keys or files fetched from third-party repos at runtime
-   - Each row says the source and "synced" / "plain text only" / "no lyrics found"; Settings
-     lets you turn sources on/off and pick "synced only"
-2. **Lyrics only (Spotify links)**: a "Lyrics only" choice next to "Download N songs" that
-   saves synced `.lrc` (and/or `.txt`) per song named like the audio would be. Also "Add
-   lyrics to songs I already have" for a folder Neria downloaded before
-   - Later, opt-in only: "Sign in to Spotify for more synced lyrics", off by default with a
-     clear warning about account risk; would need a CLAUDE.md rule change first
-3. Optional "Number Spotify playlist songs" (`01 Artist - Title`) so the folder sorts in
-   playlist order without the M3U (albums are numbered already)
+Built 2026-11-14 (`lyrics.rs`, `music.rs`, Settings → Spotify → Lyrics). Ticked only where a
+real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
+1. **Synced lyrics from more sources.** Order: LRCLIB → Spotify's own synced lyrics
+   (Musixmatch, opt-in) → Genius (plain text). Findings per source: `docs/UPSTREAM.md` →
+   Lyrics sources
+   - ✅ LRCLIB: synced for all of Random Access Memories ("Motherboard": instrumental), 3 chart
+     songs and a "Spotify Singles" track
+   - Spotify's own synced lyrics: **needs your Spotify sign-in, so it isn't confirmed yet**.
+     The anonymous route Musixmatch used to allow now returns decoy lyrics, so this follows
+     spotify-lyrics-api's idea instead (user's call, 2026-11-14): off by default, a "use a
+     spare account" warning before the sign-in, lyrics only, secret read from Spotify's own
+     script. ✅ Token step checked without an account (`--example lyrics -- --token-check`)
+   - Genius (plain text): written and unit-tested, but Genius answers Neria's requests with
+     403 (bot protection; curl gets through). Not worked around. Decide: keep, drop, or a
+     user's own Genius API token
+   - AZLyrics: dropped, the site now blocks automated requests ("request for access")
+   - ✅ Each row says the source and "synced" / "plain text only" / "no lyrics found" (or
+     "instrumental", or "no synced lyrics found" with Synced only); Settings has a tick per
+     source and "Synced lyrics only"
+2. ✅ **Lyrics only (Spotify links)**: a "Lyrics only" button next to the preview (and in the
+   Download ▾ menu): `.lrc` when synced plus `.txt` with the words, named like the song would
+   be (checked on 4 album songs). ✅ **Add lyrics to songs I already have** (Settings →
+   Spotify → Lyrics): picks a folder, reads each song's tags (Spotify id from the folder's
+   manifest), adds a `.lrc` and the words inside the song; skips songs that have a `.lrc`
+   (checked on 3 playlist songs)
+   - Later, opt-in only: "Sign in to Spotify for more synced lyrics": now built as part of 1
+3. ✅ Optional "Number playlist songs" (Settings → Spotify, off by default): `01 Artist -
+   Title`, padded to the playlist's length. Turning it on or off, or the playlist being
+   reordered, renames what's there (by Spotify id) instead of downloading again (checked on
+   3 songs: renamed, "Already downloaded", M3U follows)
 4. Loose ends from the Spotify work:
-   - Faster candidate checks (yt-dlp start-up + YouTube's JS challenge dominate the ~10 s)
-   - No-preview-anywhere path is written but not exercised on a real track
+   - Faster candidate checks: measured, not changed. A check is ~8 s: yt-dlp start-up 1.3 s,
+     YouTube page + JS challenge ~2.5 s, the audio ~4 s, and a smaller audio format doesn't
+     help (1.5 MB took as long as 4 MB). The dialog already checks candidates in parallel.
+     The real win is yt-dlp's onedir build (`yt-dlp_win.zip`, starts faster) but it can't
+     `-U` itself, so it needs Neria's own tool updater: its own item, for every download
+   - ✅ No-preview-anywhere path exercised on a real track: a "Spotify Singles" recording with
+     Spotify's preview set aside (`--no-spotify-preview`): Deezer and Apple rightly find
+     nothing, the song downloads and says "no preview to check against"
    - Own-key Web API path is written but untested (needs a real Client ID/secret)
    - Spotify playlists > 100 songs without a key: no workaround yet beyond the notice
 

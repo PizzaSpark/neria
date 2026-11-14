@@ -215,7 +215,11 @@ pub fn install_lyrics(ui: &AppWindow, slot: PendingSlot, settings: Arc<Mutex<Set
             match music::prepare_lyrics_only(&col, &settings) {
                 Ok((_dir, jobs)) => {
                     let n = jobs.len();
-                    queue.add_group(&format!("Lyrics · {}", col.name), false, jobs.into_iter().map(DownloadRequest::music));
+                    queue.add_group(
+                        &format!("Lyrics · {}", col.name),
+                        false,
+                        jobs.into_iter().map(DownloadRequest::music),
+                    );
                     let what = if n == 1 { "this song".to_string() } else { format!("{n} songs") };
                     show_toast(&ui, &format!("Saving the lyrics of {what}: .lrc when synced, .txt with the words."));
                 }

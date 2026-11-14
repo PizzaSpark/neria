@@ -19,7 +19,11 @@ fn main() -> anyhow::Result<()> {
         let (key, version) = spotify_lyrics::load_secret().map_err(anyhow::Error::msg)?;
         println!("web-player secret: version {version}, key {} bytes [{:.1}s]", key.len(), t.elapsed().as_secs_f32());
         let (token, expires, anonymous) = spotify_lyrics::token(&key, version, None).map_err(anyhow::Error::msg)?;
-        println!("token: {} chars, anonymous {anonymous}, expires in {} min", token.len(), expires.saturating_sub(now_ms()) / 60_000);
+        println!(
+            "token: {} chars, anonymous {anonymous}, expires in {} min",
+            token.len(),
+            expires.saturating_sub(now_ms()) / 60_000
+        );
         return Ok(());
     }
     let only = args.iter().position(|a| a == "--only").and_then(|i| args.get(i + 1)).cloned();

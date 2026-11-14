@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::spotify::Track;
-use crate::ytmusic::{normalize, normalize_title, title_similarity};
 use crate::web;
+use crate::ytmusic::{normalize, normalize_title, title_similarity};
 
 /// One lyrics lookup never holds a song up for long: each request gets this long.
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -151,7 +151,8 @@ fn lrclib_entry(v: &Value) -> Option<Lyrics> {
         return Some(Lyrics { source: LRCLIB.into(), instrumental: true, ..Default::default() });
     }
     let text = |k: &str| v[k].as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
-    let l = Lyrics { synced: text("syncedLyrics"), plain: text("plainLyrics"), source: LRCLIB.into(), instrumental: false };
+    let l =
+        Lyrics { synced: text("syncedLyrics"), plain: text("plainLyrics"), source: LRCLIB.into(), instrumental: false };
     (l.synced.is_some() || l.plain.is_some()).then_some(l)
 }
 
@@ -165,8 +166,7 @@ pub fn lrclib(track: &Track, album: Option<&str>) -> Option<Lyrics> {
             "https://lrclib.net/api/get?artist_name={artist}&track_name={title}&album_name={}&duration={secs}",
             web::encode(album)
         );
-        if let Some(l) = get(&url).and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| lrclib_entry(&v))
-        {
+        if let Some(l) = get(&url).and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| lrclib_entry(&v)) {
             return Some(l);
         }
     }
@@ -179,7 +179,15 @@ pub fn lrclib(track: &Track, album: Option<&str>) -> Option<Lyrics> {
         .filter_map(lrclib_entry)
         .collect();
     // Synced beats plain; a lone "instrumental" only counts when nothing has words.
-    let rank = |l: &Lyrics| if l.synced.is_some() { 2 } else if l.plain.is_some() { 1 } else { 0 };
+    let rank = |l: &Lyrics| {
+        if l.synced.is_some() {
+            2
+        } else if l.plain.is_some() {
+            1
+        } else {
+            0
+        }
+    };
     found.into_iter().max_by_key(rank)
 }
 
@@ -426,10 +434,8 @@ pub mod spotify_lyrics {
         mac.update(&(unix_secs / 30).to_be_bytes());
         let h = mac.finalize().into_bytes();
         let o = (h[19] & 0x0f) as usize;
-        let bin = (u32::from(h[o]) & 0x7f) << 24
-            | u32::from(h[o + 1]) << 16
-            | u32::from(h[o + 2]) << 8
-            | u32::from(h[o + 3]);
+        let bin =
+            (u32::from(h[o]) & 0x7f) << 24 | u32::from(h[o + 1]) << 16 | u32::from(h[o + 2]) << 8 | u32::from(h[o + 3]);
         format!("{:06}", bin % 1_000_000)
     }
 
@@ -494,7 +500,9 @@ pub mod spotify_lyrics {
         let (_, home) = get("https://open.spotify.com/", &[])?;
         let script = home
             .split('"')
-            .find(|s| s.starts_with("https://open.spotifycdn.com/cdn/build/web-player/web-player.") && s.ends_with(".js"))
+            .find(|s| {
+                s.starts_with("https://open.spotifycdn.com/cdn/build/web-player/web-player.") && s.ends_with(".js")
+            })
             .ok_or(CHANGED)?
             .to_string();
         let (_, js) = get(&script, &[])?;
@@ -649,7 +657,11 @@ mod tests {
 
     #[test]
     fn genius_hits_must_be_the_song() {
-        let t = Track { title: "Get Lucky (feat. Pharrell Williams)".into(), artists: vec!["Daft Punk".into()], ..Default::default() };
+        let t = Track {
+            title: "Get Lucky (feat. Pharrell Williams)".into(),
+            artists: vec!["Daft Punk".into()],
+            ..Default::default()
+        };
         assert!(genius_hit_matches(&t, "Daft Punk (Ft. Nile Rodgers & Pharrell Williams)", "Get Lucky"));
         assert!(!genius_hit_matches(&t, "Genius English Translations", "Daft Punk - Get Lucky (English Translation)"));
         assert!(!genius_hit_matches(&t, "Daft Punk", "Around the World"));

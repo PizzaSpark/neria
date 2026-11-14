@@ -76,9 +76,15 @@ Tested on Random Access Memories (13/13 matched at 1.00, whole album in 83 s) an
 - Sunnify (sunnypatell/sunnify-spotify-downloader) does exactly this flow (public embed pages,
   no login; YouTube match on title + artist + duration). Its code is under a custom
   educational-use license, so Neria reimplements the approach rather than copying code
-- akashrchandran/spotify-lyrics-api (Spotify's own Musixmatch lyrics): not used. It needs the
-  user's Spotify login cookie (`sp_dc`), its README says it's probably against Spotify's terms
-  (account risk), and it's GPL-3.0. Ideas-only reference, like Sunnify
+- Lyrics (`lyrics.rs`): LRCLIB → Spotify's own synced lyrics (Musixmatch, opt-in, the
+  user's own Spotify sign-in, the idea of akashrchandran/spotify-lyrics-api, GPL so ideas
+  only) → Genius. Off by default, with a "use a spare account" warning: it's against
+  Spotify's terms and risks the account. Lyrics only, never audio. Details, and why
+  Musixmatch without an account and AZLyrics aren't used: `docs/UPSTREAM.md` → Lyrics sources
+- "Lyrics only" (a Spotify preview) and "Add lyrics to songs I already have" (Settings →
+  Spotify) are `music::Mode` jobs in the queue: no matching, no download
+- "Number playlist songs" (off by default): `01 Artist - Title`; when it or the order
+  changes, `music::rename_moved` renames files by Spotify id from the old manifest
 - Not planned: Zotify-style downloading of Spotify's own encrypted streams, or streamrip-style
   downloading from Qobuz/Tidal/Deezer accounts (DRM/protection circumvention; gets accounts
   banned). SoundCloud already works through yt-dlp

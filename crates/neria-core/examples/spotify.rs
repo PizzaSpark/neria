@@ -75,8 +75,11 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let (dir, jobs) =
-        if flag("--lyrics-only") { music::prepare_lyrics_only(&col, &settings)? } else { music::prepare(&col, &settings)? };
+    let (dir, jobs) = if flag("--lyrics-only") {
+        music::prepare_lyrics_only(&col, &settings)?
+    } else {
+        music::prepare(&col, &settings)?
+    };
     println!("folder: {}", dir.display());
     let plain_settings = settings.clone();
     let settings = Arc::new(Mutex::new(settings));

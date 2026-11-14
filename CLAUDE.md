@@ -9,7 +9,8 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
 ## Layout
 - `crates/neria-core`: everything non-UI (tool fetch, yt-dlp probe/download queue, clip export,
   compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
-  `music.rs` tags/lyrics/M3U/sync, `post.rs` items of posts/playlists for the picker,
+  `music.rs` tags/M3U/sync/Lyrics only/numbering, `lyrics.rs` lyrics sources (LRCLIB,
+  Spotify's own with a sign-in, Genius), `post.rs` items of posts/playlists for the picker,
   `folders.rs` Audio/Video/Photos folders). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI in `ui/`:
@@ -58,6 +59,11 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example clip -- <file> <start> <end> [fast|exact]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example compress -- <file> <mb|q0.0-1.0> [h264|hevc|av1] [cpu|gpu]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
+  (`--lyrics-only`, `--number`, `--add-lyrics`, `--no-lyrics`, `--no-verify`,
+  `--no-spotify-preview`, `--spotify-lyrics`: see the example's header)
+- `NERIA_HOME=target/debug cargo run -p neria-core --example lyrics -- <spotify link>... [--only lrclib|spotify|genius] [--synced-only] [--show]`
+  (what each lyrics source finds; `--token-check`: Spotify's web-player secret + an anonymous
+  token, no account needed)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example verify -- <spotify track id> [--no-spotify] <file|youtube url>...`
   (audio check scores; `--no-spotify` forces the Deezer/Apple fallback reference)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example follow -- <channel or playlist link> [--try-new]`
@@ -73,7 +79,7 @@ Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_C
 `NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
 (auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
-failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_SETTINGS` (open the settings drawer; `download`, `following`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_COPIED` (a link: show the clipboard watcher's "Link copied" strip), `NERIA_WATCH` (a file or link: open it in watch mode), `NERIA_UPDATE_URL` (check this "latest
+failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_LYRICS_SPOTIFY` (tick Spotify's own lyrics, to see its warning and sign-in), `NERIA_SETTINGS` (open the settings drawer; `download`, `following`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_COPIED` (a link: show the clipboard watcher's "Link copied" strip), `NERIA_WATCH` (a file or link: open it in watch mode), `NERIA_UPDATE_URL` (check this "latest
 release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),
 `NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_DEMO` (sample queue
 rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog), `NERIA_DIALOG` (open a dialog with sample
@@ -99,7 +105,11 @@ The window can be captured even when covered with `PrintWindow(..., PW_RENDERFUL
   (`HKCU\Software\Classes\AppUserModelId\…`, name and icon only) that `background_ui.rs`
   writes while notifications are on and removes when they're turned off. No others.
 - Spotify support = spotDL/Sunnify approach only (metadata from Spotify, audio from YouTube Music).
-  Never add Zotify/streamrip-style downloading of DRM-protected streams.
+  Never add Zotify/streamrip-style downloading of DRM-protected streams. One exception, asked
+  for by the user: Spotify's own synced lyrics through an opt-in Spotify sign-in (off by
+  default, with a "use a spare account" warning), for lyrics only, never audio, metadata or
+  playlists (`lyrics.rs`, see `docs/UPSTREAM.md` → Lyrics sources). Nothing (keys, secrets,
+  code) is fetched from third-party repos at runtime.
 - spotDL and Sunnify are references, not dependencies. `docs/UPSTREAM.md` records the upstream
   commit we last studied. When Spotify/YouTube matching breaks, check upstream changes since that
   baseline first, port the fix (spotDL is MIT; Sunnify is ideas-only), then move the baseline and
