@@ -40,7 +40,7 @@ pub struct Prefs {
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { lrclib: true, spotify: false, genius: true, synced_only: false }
+        Self { lrclib: true, spotify: false, genius: false, synced_only: false }
     }
 }
 
@@ -386,7 +386,8 @@ pub fn plain_from_synced(lrc: &str) -> String {
 /// third-party repo. The cookie and the token stay in memory and are never logged.
 pub mod spotify_lyrics {
     use std::sync::Mutex;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use hmac::{Hmac, Mac};
     use serde_json::Value;
@@ -399,6 +400,7 @@ pub mod spotify_lyrics {
     const RAN_OUT: &str = "Spotify sign-in ran out: sign in again in Settings → Spotify";
     const CHANGED: &str = "Spotify changed its web player; Spotify lyrics need a Neria update";
 
+    #[derive(Clone)]
     struct Token {
         value: String,
         expires_ms: u64,
@@ -413,10 +415,22 @@ pub mod spotify_lyrics {
         stopped: Option<String>,
     }
 
+    /// Only ever held for a moment, never across a request: the UI thread takes it too
+    /// (signing in or out calls [`forget`]).
     static STATE: Mutex<Option<State>> = Mutex::new(None);
+    /// Held by the one song thread fetching the secret / a token, so the others wait for it
+    /// instead of all asking Spotify at once.
+    static REFRESH: Mutex<()> = Mutex::new(());
+    /// Bumped by [`forget`]: answers to requests made before it are dropped.
+    static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+    fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> T {
+        f(STATE.lock().unwrap().get_or_insert_with(State::default))
+    }
 
     /// Drop the cached token (signed out, or signed in again).
     pub fn forget() {
+        GENERATION.fetch_add(1, Ordering::SeqCst);
         *STATE.lock().unwrap() = None;
     }
 
@@ -484,8 +498,12 @@ pub mod spotify_lyrics {
     }
 
     fn get(url: &str, headers: &[(&str, String)]) -> Result<(u16, String), String> {
+        get_within(url, headers, TIMEOUT)
+    }
+
+    fn get_within(url: &str, headers: &[(&str, String)], timeout: Duration) -> Result<(u16, String), String> {
         let client = web::client().map_err(|_| "no network".to_string())?;
-        let mut req = client.get(url).timeout(TIMEOUT);
+        let mut req = client.get(url).timeout(timeout);
         for (k, v) in headers {
             req = req.header(*k, v);
         }
@@ -505,7 +523,8 @@ pub mod spotify_lyrics {
             })
             .ok_or(CHANGED)?
             .to_string();
-        let (_, js) = get(&script, &[])?;
+        // A few MB: more time than the small requests get.
+        let (_, js) = get_within(&script, &[], Duration::from_secs(45))?;
         let (secret, version) = secret_in_script(&js).ok_or(CHANGED)?;
         Ok((key_from_secret(&secret), version))
     }
@@ -567,43 +586,71 @@ pub mod spotify_lyrics {
         Some(Lyrics { synced, plain: Some(plain.join("\n").trim().to_string()), source, instrumental: false })
     }
 
-    fn stop(st: &mut State, why: &str) -> String {
-        st.stopped = Some(why.to_string());
+    /// Switch the source off for this session (unless a sign-in/out came in meanwhile).
+    fn stop(generation: u64, why: &str) -> String {
+        with_state(|st| {
+            if GENERATION.load(Ordering::SeqCst) == generation {
+                st.stopped = Some(why.to_string());
+            }
+        });
         why.to_string()
+    }
+
+    fn fresh_token() -> Option<Token> {
+        with_state(|st| st.token.clone().filter(|t| t.expires_ms > now_ms() + 60_000))
+    }
+
+    /// A signed-in token: the cached one, or a new one (one thread at a time asks).
+    fn signed_in_token(sp_dc: &str, generation: u64) -> Result<Token, String> {
+        if let Some(t) = fresh_token() {
+            return Ok(t);
+        }
+        let _one_at_a_time = REFRESH.lock().unwrap();
+        if let Some(t) = fresh_token() {
+            return Ok(t);
+        }
+        if let Some(why) = with_state(|st| st.stopped.clone()) {
+            return Err(why);
+        }
+        let (key, version) = match with_state(|st| st.secret.clone()) {
+            Some(s) => s,
+            // Not found once means not found for this session: no 4 MB script per song.
+            None => load_secret().map_err(|e| stop(generation, &e))?,
+        };
+        let token = match token(&key, version, Some(sp_dc)) {
+            Ok((_, _, true)) => return Err(stop(generation, RAN_OUT)),
+            Ok((value, expires_ms, false)) => Token { value, expires_ms },
+            Err(e) => return Err(stop(generation, &e)),
+        };
+        with_state(|st| {
+            if GENERATION.load(Ordering::SeqCst) == generation {
+                st.secret = Some((key, version));
+                st.token = Some(token.clone());
+            }
+        });
+        Ok(token)
     }
 
     /// Spotify's lyrics for a track id. `Err` says why the source can't be used; after a
     /// refusal it stays off for this session, so a playlist doesn't keep knocking.
     pub fn fetch(track_id: &str) -> Result<Option<Lyrics>, String> {
-        let mut guard = STATE.lock().unwrap();
-        let st = guard.get_or_insert_with(State::default);
-        if let Some(why) = &st.stopped {
-            return Err(why.clone());
+        let generation = GENERATION.load(Ordering::SeqCst);
+        if let Some(why) = with_state(|st| st.stopped.clone()) {
+            return Err(why);
         }
         let Some(sp_dc) = crate::cookies::value(SITE, "sp_dc") else {
             return Err("Spotify lyrics are on but you're not signed in to Spotify".into());
         };
-        if !st.token.as_ref().is_some_and(|t| t.expires_ms > now_ms() + 60_000) {
-            if st.secret.is_none() {
-                st.secret = Some(load_secret()?);
-            }
-            let (key, version) = st.secret.clone().unwrap_or_default();
-            match token(&key, version, Some(&sp_dc)) {
-                Ok((_, _, true)) => return Err(stop(st, RAN_OUT)),
-                Ok((value, expires_ms, false)) => st.token = Some(Token { value, expires_ms }),
-                Err(e) => return Err(stop(st, &e)),
-            }
-        }
-        let token = st.token.as_ref().map(|t| t.value.clone()).unwrap_or_default();
+        let token = signed_in_token(&sp_dc, generation)?;
         let url =
             format!("https://spclient.wg.spotify.com/color-lyrics/v2/track/{track_id}?format=json&market=from_token");
-        let (status, body) =
-            get(&url, &[("app-platform", "WebPlayer".into()), ("authorization", format!("Bearer {token}"))])?;
+        let auth = [("app-platform", "WebPlayer".to_string()), ("authorization", format!("Bearer {}", token.value))];
+        let (status, body) = get(&url, &auth)?;
         match status {
             200 => Ok(parse(&body)),
             404 => Ok(None),
-            401 | 403 => Err(stop(st, RAN_OUT)),
-            429 => Err(stop(st, "Spotify asked Neria to slow down; Spotify lyrics paused until Neria restarts")),
+            401 | 403 => Err(stop(generation, RAN_OUT)),
+            429 => Err(stop(generation, "Spotify asked Neria to slow down; Spotify lyrics paused until Neria restarts")),
             s => Err(format!("Spotify lyrics: HTTP {s}")),
         }
     }

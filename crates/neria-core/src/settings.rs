@@ -174,7 +174,7 @@ impl Default for Settings {
             lyrics: true,
             lyrics_lrclib: true,
             lyrics_spotify: false,
-            lyrics_genius: true,
+            lyrics_genius: false,
             lyrics_synced_only: false,
             number_spotify: false,
             verify_audio: true,

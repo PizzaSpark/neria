@@ -189,17 +189,24 @@ fn file_of(site: &str) -> PathBuf {
     dir().join(format!("{site}.txt"))
 }
 
+/// Sites whose sign-in Neria keeps for its own use only, never handed to yt-dlp or
+/// gallery-dl: Spotify's is for lyrics only (`lyrics::spotify_lyrics`).
+const NEVER_PASSED: [&str; 1] = ["spotify.com"];
+
 /// The cookie file for this link's site, if the user signed in there.
 pub fn file_for(url: &str) -> Option<PathBuf> {
-    let site = site_of(url)?;
+    let site = site_of(url).filter(|s| !NEVER_PASSED.contains(&s.as_str()))?;
     let f = file_of(&site);
     f.is_file().then_some(f)
 }
 
 /// One cookie's value from a site's sign-in (e.g. Spotify's `sp_dc` for lyrics).
 pub fn value(site: &str, name: &str) -> Option<String> {
-    let text = std::fs::read_to_string(file_of(site)).ok()?;
-    parse_netscape(&text).into_iter().find(|c| c.name == name && !c.value.is_empty()).map(|c| c.value)
+    value_in(&std::fs::read_to_string(file_of(site)).ok()?, name)
+}
+
+fn value_in(text: &str, name: &str) -> Option<String> {
+    parse_netscape(text).into_iter().find(|c| c.name == name && !c.value.is_empty()).map(|c| c.value)
 }
 
 /// Is there a sign-in for this site?
@@ -393,5 +400,15 @@ mod tests {
         let yt = std::fs::read_to_string(jar.join("youtube.com.txt")).unwrap();
         assert!(yt.contains("SID\t1") && !yt.contains("SID\t2"));
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn spotify_sign_in_is_for_lyrics_only() {
+        // sp_dc is HttpOnly, so the sign-in window writes it on a `#HttpOnly_` line.
+        let text = "# Netscape HTTP Cookie File\n#HttpOnly_.spotify.com\tTRUE\t/\tTRUE\t1900000000\tsp_dc\tAQB-x\n.spotify.com\tTRUE\t/\tTRUE\t0\tsp_t\ty\n";
+        assert_eq!(value_in(text, "sp_dc").as_deref(), Some("AQB-x"));
+        assert_eq!(value_in(text, "nope"), None);
+        // Never passed to yt-dlp, whatever Spotify link reaches it.
+        assert!(file_for("https://open.spotify.com/episode/abc").is_none());
     }
 }

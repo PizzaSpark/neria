@@ -156,9 +156,13 @@ fn job_item(s: &JobSnapshot) -> JobItem {
             1
         },
         music: s.music,
-        still: s.file.as_ref().and_then(|f| f.extension()).is_some_and(|e| {
-            ["jpg", "jpeg", "png", "webp", "gif", "heic"].contains(&e.to_string_lossy().to_lowercase().as_str())
-        }),
+        // Nothing to clip or compress: a photo, a lyrics file, or no file at all (lyrics not
+        // found).
+        still: s.state == JobState::Done && s.file.is_none()
+            || s.file.as_ref().and_then(|f| f.extension()).is_some_and(|e| {
+                ["jpg", "jpeg", "png", "webp", "gif", "heic", "lrc", "txt"]
+                    .contains(&e.to_string_lossy().to_lowercase().as_str())
+            }),
         thumb: s.thumbnail.as_deref().and_then(cached_thumb).unwrap_or_default(),
         thumb_url: s.thumbnail.clone().unwrap_or_default().into(),
         // Spotify songs are matched and checked in steps: no pausing half-way.
@@ -977,8 +981,15 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                 }
             }
             // Settings → Spotify with Spotify's own lyrics ticked (its warning and sign-in).
-            if std::env::var_os("NERIA_LYRICS_SPOTIFY").is_some() {
+            // ("signed-in": as if signed in to Spotify).
+            if let Some(v) = std::env::var_os("NERIA_LYRICS_SPOTIFY") {
                 ui.global::<Music>().set_spotify(true);
+                if v == "signed-in" {
+                    ui.global::<Music>().set_spotify_signed_in(true);
+                }
+            }
+            if std::env::var_os("NERIA_ADD_LYRICS").is_some() {
+                ui.global::<Music>().invoke_add_lyrics();
             }
             if let Ok(section) = std::env::var("NERIA_SETTINGS") {
                 let names = ["download", "following", "spotify", "network", "general", "about"];

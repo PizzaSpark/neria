@@ -97,6 +97,8 @@ pub fn preview(
                     // Dev hooks for scripted checks.
                     if std::env::var_os("NERIA_SYNC_REVIEW").is_some() && ui.get_sync_items().row_count() > 0 {
                         ui.set_sync_open(true);
+                    } else if std::env::var_os("NERIA_LYRICS_ONLY").is_some() {
+                        ui.global::<Music>().invoke_lyrics_only();
                     } else if std::env::var_os("NERIA_URL_START").is_some() {
                         ui.invoke_start_download();
                     }
@@ -232,7 +234,12 @@ pub fn install_lyrics(ui: &AppWindow, slot: PendingSlot, settings: Arc<Mutex<Set
         move || {
             let current = settings.lock().unwrap().clone();
             let start = neria_core::folders::for_kind(&current, neria_core::folders::Kind::Audio);
-            let Some(dir) = rfd::FileDialog::new().set_directory(&start).pick_folder() else { return };
+            // Dev hook: that folder, without the picker.
+            let picked = match std::env::var_os("NERIA_ADD_LYRICS") {
+                Some(d) => Some(std::path::PathBuf::from(d)),
+                None => rfd::FileDialog::new().set_directory(&start).pick_folder(),
+            };
+            let Some(dir) = picked else { return };
             show_toast(&weak.unwrap(), "Reading the songs in that folder…");
             let (weak, queue) = (weak.clone(), queue.clone());
             std::thread::spawn(move || {
@@ -249,7 +256,7 @@ pub fn install_lyrics(ui: &AppWindow, slot: PendingSlot, settings: Arc<Mutex<Set
                 };
                 let mut extra = Vec::new();
                 if have > 0 {
-                    extra.push(format!("{} already have a .lrc", songs(have)));
+                    extra.push(format!("{} already have lyrics", songs(have)));
                 }
                 if untagged > 0 {
                     extra.push(format!("{} have no artist/title tags", songs(untagged)));

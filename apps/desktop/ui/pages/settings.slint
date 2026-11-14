@@ -576,13 +576,10 @@ export component SettingsDrawer inherits Rectangle {
                                         clicked => { Accounts.sign-out("spotify.com"); }
                                     }
                                 }
+                                // Genius (plain text) stays hidden while it blocks Neria (403):
+                                // see ROADMAP → Music 1.
                                 if root.lyrics: Tick {
-                                    text: "Genius: plain text only";
-                                    checked <=> Music.genius;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                if root.lyrics: Tick {
-                                    text: "Synced lyrics only (never save plain text)";
+                                    text: "Synced lyrics only (skip songs with plain text only)";
                                     checked <=> Music.synced-only;
                                     toggled => { root.settings-changed(); }
                                 }
@@ -594,7 +591,7 @@ export component SettingsDrawer inherits Rectangle {
                                         clicked => { Music.add-lyrics(); }
                                     }
                                 }
-                                Hint { text: "Pick a folder of songs (tagged with artist and title, like Neria's): each gets lyrics inside it and a .lrc next to it. Songs that have a .lrc already are skipped."; }
+                                Hint { text: "Pick a folder of songs (tagged with artist and title, like Neria's): each gets lyrics inside it and a .lrc next to it. Songs that have lyrics already are skipped."; }
                             }
 
                             Group {

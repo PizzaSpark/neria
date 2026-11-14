@@ -201,7 +201,8 @@ export global Music {
     in-out property <bool> lrclib: true;
     // Spotify's own synced lyrics (Musixmatch): opt-in, needs a Spotify sign-in.
     in-out property <bool> spotify;
-    in-out property <bool> genius: true;
+    // Off and not shown while Genius blocks Neria (403); kept for when that changes.
+    in-out property <bool> genius;
     in-out property <bool> synced-only;
     // Spotify playlists: "01 Artist - Title".
     in-out property <bool> number-songs;

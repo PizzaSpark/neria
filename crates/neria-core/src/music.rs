@@ -265,6 +265,19 @@ fn prepare_as(col: &Collection, settings: &crate::settings::Settings, mode: Mode
         .collect();
 
     if mode != Mode::Song {
+        // Lyrics go next to the songs already here, under their names (e.g. downloaded
+        // before "Number playlist songs" was turned on).
+        let mut jobs = jobs;
+        if let Some(prev) = read_manifest(&dir) {
+            for j in &mut jobs {
+                if let Some(old) = prev.tracks.iter().find(|t| !t.id.is_empty() && t.id == j.track.id)
+                    && existing_file(&dir, &j.stem).is_none()
+                    && existing_file(&dir, &old.stem).is_some()
+                {
+                    j.stem = old.stem.clone();
+                }
+            }
+        }
         return Ok((dir, jobs));
     }
     if col.kind != Kind::Track {
@@ -472,7 +485,8 @@ pub fn embed_lyrics(file: &Path, text: &str) -> Result<()> {
 }
 
 /// A song's own tags (title, artist, album, length), read with ffprobe.
-fn song_from_tags(file: &Path) -> Option<Track> {
+/// The song's tags as a track, and whether it has lyrics inside already.
+fn song_from_tags(file: &Path) -> Option<(Track, bool)> {
     let out = proc::command(paths::tool("ffprobe"))
         .args(["-v", "error", "-show_entries", "format=duration:format_tags", "-of", "json"])
         .arg(file)
@@ -495,12 +509,12 @@ fn song_from_tags(file: &Path) -> Option<Track> {
     let secs: f64 = f["duration"].as_str().and_then(|d| d.parse().ok()).unwrap_or(0.0);
     let mut track = Track { title, artists: vec![main], album: tag("album"), ..Default::default() };
     track.duration_ms = (secs * 1000.0) as u64;
-    Some(track)
+    Some((track, tag("lyrics").is_some()))
 }
 
 /// A folder of songs Neria downloaded before (or any tagged songs): one "add lyrics" job
-/// per song without a `.lrc`. Also returns how many already had one, and how many have no
-/// title/artist tags to look them up by.
+/// per song without a `.lrc` or lyrics inside. Also returns how many already had lyrics, and
+/// how many have no title/artist tags to look them up by.
 pub fn add_lyrics_jobs(dir: &Path, settings: &crate::settings::Settings) -> (Vec<MusicJob>, usize, usize) {
     let manifest = read_manifest(dir);
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
@@ -522,10 +536,14 @@ pub fn add_lyrics_jobs(dir: &Path, settings: &crate::settings::Settings) -> (Vec
             continue;
         }
         let stem = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let Some(mut track) = song_from_tags(&f) else {
+        let Some((mut track, has_lyrics)) = song_from_tags(&f) else {
             untagged += 1;
             continue;
         };
+        if has_lyrics {
+            have += 1;
+            continue;
+        }
         // Neria's own folders know each song's Spotify id (Spotify's lyrics need it).
         if let Some(m) = manifest.as_ref().and_then(|m| m.tracks.iter().find(|t| t.stem == stem)) {
             track.id = m.id.clone();

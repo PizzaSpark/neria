@@ -173,6 +173,13 @@ export component DownloadPage inherits Rectangle {
     property <bool> chips-inline: root.probe-state == 2 && Screen.wide;
     property <bool> short: root.window-height < 820px;
     property <bool> no-quality: root.probe-is-spotify || root.gif-mode;
+    // The Download button (in the link box, or under it on narrow windows).
+    property <string> dl-text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
+        : root.picking && root.pick-checked > 1 ? "Download " + root.pick-checked + " items"
+        : root.dup-text != "" && root.probe-state == 2 ? "Download again"
+        : "Download";
+    property <bool> dl-enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0)
+        && (!root.picking || root.pick-checked > 0);
     // A looked-up Spotify link: "Lyrics only" can save just its songs' lyrics.
     property <bool> lyrics-ready: root.probe-is-spotify && root.probe-state == 2 && root.spotify-count > 0 && root.tools-ready;
     property <string> no-quality-text: root.gif-mode ? "Saved as a .gif (X keeps GIFs as short silent videos)"
@@ -269,38 +276,47 @@ export component DownloadPage inherits Rectangle {
             edited(t) => { root.url-edited(t); }
             accepted => { root.start-download(); }
             paste-download => { Bulk.paste-download(); }
+            // Narrow windows: the link keeps the box (Paste becomes its icon) and Download
+            // gets its own full-width row below, so a long label never squeezes the link.
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
                 // Regular size: the same height as Download next to it.
                 GhostButton {
-                    text: "Paste";
+                    text: Screen.compact ? "" : "Paste";
+                    label: "Paste";
                     icon: "\u{E77F}";
                     clicked => { root.paste(); }
                 }
             }
-            dl := VerticalLayout {
+            if !Screen.compact: VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
                 PrimaryButton {
                     // ▾: Download later (and more ways to download).
                     has-menu: true;
                     menu-clicked => { dl-menu.show(); }
-                    text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
-                        : root.picking && root.pick-checked > 1 ? "Download " + root.pick-checked + " items"
-                        : root.dup-text != "" && root.probe-state == 2 ? "Download again"
-                        : "Download";
+                    text: root.dl-text;
                     icon: "\u{E896}";
-                    enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0)
-                        && (!root.picking || root.pick-checked > 0);
+                    enabled: root.dl-enabled;
                     clicked => { root.start-download(); }
                 }
             }
         }
 
+        if Screen.compact: PrimaryButton {
+            has-menu: true;
+            menu-clicked => { dl-menu.show(); }
+            text: root.dl-text;
+            icon: "\u{E896}";
+            enabled: root.dl-enabled;
+            clicked => { root.start-download(); }
+        }
+
         dl-menu := PopupWindow {
             x: link.x + link.width - 260px;
-            y: link.y + link.height + 6px;
+            // Under the Download button: in the box, or the row below it on narrow windows.
+            y: link.y + link.height + (Screen.compact ? 12px + 44px : 0px) + 6px;
             Menu {
                 width: 260px;
                 MenuItem {

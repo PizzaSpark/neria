@@ -45,9 +45,10 @@ fn main() -> anyhow::Result<()> {
             let started = Instant::now();
             let found = lyrics::fetch(t, t.album.as_deref().or(album.as_deref()), prefs);
             println!(
-                "  {} - {}: {} [{:.1}s]",
+                "  {} - {} ({:.0} s): {} [{:.1}s]",
                 t.main_artist(),
                 t.title,
+                t.duration_secs(),
                 found.status(),
                 started.elapsed().as_secs_f32()
             );
