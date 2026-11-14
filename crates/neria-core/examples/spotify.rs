@@ -28,6 +28,11 @@ fn main() -> anyhow::Result<()> {
         lyrics: !flag("--no-lyrics"),
         verify_audio: !flag("--no-verify"),
         lyrics_spotify: flag("--spotify-lyrics"),
+        max_concurrent: args
+            .iter()
+            .position(|a| a == "--concurrent")
+            .and_then(|i| args.get(i + 1)?.parse().ok())
+            .unwrap_or(2),
         ..Settings::default()
     };
     let max: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(usize::MAX);

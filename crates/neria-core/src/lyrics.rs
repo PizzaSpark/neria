@@ -10,7 +10,8 @@
 //! `providers/lyrics/genius.py` (MIT). Musixmatch without an account and AZLyrics were
 //! looked at and left out: see `docs/UPSTREAM.md` ("Lyrics sources").
 
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -105,14 +106,15 @@ impl Found {
 pub fn fetch(track: &Track, album: Option<&str>, prefs: Prefs) -> Found {
     let mut found = Found::default();
     let mut plain: Option<Lyrics> = None;
-    if prefs.lrclib
-        && let Some(l) = lrclib(track, album)
-    {
-        if l.synced.is_some() || l.instrumental {
-            found.lyrics = Some(l);
-            return found;
+    if prefs.lrclib {
+        match lrclib(track, album) {
+            Ok(Some(l)) if l.synced.is_some() || l.instrumental => {
+                found.lyrics = Some(l);
+                return found;
+            }
+            Ok(l) => plain = l,
+            Err(e) => found.problem = Some(e),
         }
-        plain = Some(l);
     }
     if prefs.spotify && !track.id.is_empty() {
         match spotify_lyrics::fetch(&track.id) {
@@ -136,12 +138,40 @@ pub fn fetch(track: &Track, album: Option<&str>, prefs: Prefs) -> Found {
     found
 }
 
-/// GET with a short timeout. "Too many requests" (LRCLIB allows only a few a second) waits
-/// as long as the site says, up to a few times, instead of reading as "no lyrics".
-fn get(url: &str) -> Option<String> {
-    let client = web::client().ok()?;
-    for _ in 0..4 {
-        let resp = client.get(url).timeout(TIMEOUT).send().ok()?;
+/// What a request came back with.
+enum Got {
+    Body(String),
+    /// The site answered: nothing there.
+    Nothing,
+    /// Still "too many requests" after waiting, or no answer at all.
+    Failed(&'static str),
+}
+
+/// LRCLIB allows only a few requests a second per address, and a playlist's songs look up
+/// their lyrics several at a time: every LRCLIB request takes the next free slot.
+static LRCLIB_NEXT: Mutex<Option<Instant>> = Mutex::new(None);
+const LRCLIB_GAP: Duration = Duration::from_millis(500);
+
+fn lrclib_slot() {
+    let wait = {
+        let mut next = LRCLIB_NEXT.lock().unwrap();
+        let now = Instant::now();
+        let at = next.map_or(now, |n| n.max(now));
+        *next = Some(at + LRCLIB_GAP);
+        at - now
+    };
+    std::thread::sleep(wait);
+}
+
+/// GET with a short timeout. "Too many requests" waits as long as the site says and asks
+/// again, instead of reading as "no lyrics".
+fn get_paced(url: &str, paced: bool) -> Got {
+    let Ok(client) = web::client() else { return Got::Failed("no network") };
+    for _ in 0..6 {
+        if paced {
+            lrclib_slot();
+        }
+        let Ok(resp) = client.get(url).timeout(TIMEOUT).send() else { return Got::Failed("couldn't reach it") };
         if resp.status().as_u16() == 429 {
             let wait = resp
                 .headers()
@@ -153,11 +183,21 @@ fn get(url: &str) -> Option<String> {
             continue;
         }
         if !resp.status().is_success() {
-            return None;
+            return Got::Nothing;
         }
-        return Some(String::from_utf8_lossy(&resp.bytes().ok()?).into_owned());
+        return match resp.bytes() {
+            Ok(b) => Got::Body(String::from_utf8_lossy(&b).into_owned()),
+            Err(_) => Got::Failed("couldn't reach it"),
+        };
     }
-    None
+    Got::Failed("too busy")
+}
+
+fn get(url: &str) -> Option<String> {
+    match get_paced(url, false) {
+        Got::Body(b) => Some(b),
+        _ => None,
+    }
 }
 
 // ───────────── LRCLIB ─────────────
@@ -173,8 +213,10 @@ fn lrclib_entry(v: &Value) -> Option<Lyrics> {
 }
 
 /// lrclib.net (free, open, no key): the exact lookup first (album + duration), then a search
-/// within 3 s of the song's length, synced preferred.
-pub fn lrclib(track: &Track, album: Option<&str>) -> Option<Lyrics> {
+/// within 3 s of the song's length, synced preferred. `Err` when LRCLIB couldn't be asked
+/// (busy or unreachable), so the row doesn't wrongly say "no lyrics found".
+pub fn lrclib(track: &Track, album: Option<&str>) -> Result<Option<Lyrics>, String> {
+    let fail = |why: &str| format!("LRCLIB {why}: try again later");
     let (artist, title) = (web::encode(track.main_artist()), web::encode(&normalize_title(&track.title)));
     let secs = track.duration_secs().round() as u64;
     if let Some(album) = album {
@@ -182,14 +224,26 @@ pub fn lrclib(track: &Track, album: Option<&str>) -> Option<Lyrics> {
             "https://lrclib.net/api/get?artist_name={artist}&track_name={title}&album_name={}&duration={secs}",
             web::encode(album)
         );
-        if let Some(l) = get(&url).and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| lrclib_entry(&v)) {
-            return Some(l);
+        match get_paced(&url, true) {
+            Got::Body(t) => {
+                if let Some(l) = serde_json::from_str::<Value>(&t).ok().and_then(|v| lrclib_entry(&v)) {
+                    return Ok(Some(l));
+                }
+            }
+            Got::Nothing => {}
+            Got::Failed(why) => return Err(fail(why)),
         }
     }
     let url = format!("https://lrclib.net/api/search?artist_name={artist}&track_name={title}");
-    let results: Value = serde_json::from_str(&get(&url)?).ok()?;
+    let body = match get_paced(&url, true) {
+        Got::Body(t) => t,
+        Got::Nothing => return Ok(None),
+        Got::Failed(why) => return Err(fail(why)),
+    };
+    let Some(results) = serde_json::from_str::<Value>(&body).ok().and_then(|v| v.as_array().cloned()) else {
+        return Ok(None);
+    };
     let found: Vec<Lyrics> = results
-        .as_array()?
         .iter()
         .filter(|r| (r["duration"].as_f64().unwrap_or(0.0) - track.duration_secs()).abs() <= 3.0)
         .filter_map(lrclib_entry)
@@ -204,7 +258,7 @@ pub fn lrclib(track: &Track, album: Option<&str>) -> Option<Lyrics> {
             0
         }
     };
-    found.into_iter().max_by_key(rank)
+    Ok(found.into_iter().max_by_key(rank))
 }
 
 // ───────────── Genius (plain text) ─────────────
