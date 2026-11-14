@@ -113,6 +113,9 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
     sheet with the sections as words along the top; Clip stacks (In / Out on their own row, no
     shortcut line, Export across the bottom); Compress puts each label above its chips and
     Compress across the bottom; header buttons go icon-only; dialogs go nearly edge to edge.
+    The link box keeps its whole width for the link: Paste becomes the box's icon and
+    Download (whose label grows: "Download 13 songs") gets its own full-width row under it.
+    Any row of a text field plus buttons does the same: the text it holds comes first.
   - Chip rows (`ChoiceChips`) wrap onto more lines instead of clipping, at every width.
 - **Narrow windows**: secondary row actions shrink to icons; preview thumbnail shrinks on short
   windows; long option lists scroll while the main action stays pinned.
@@ -144,7 +147,9 @@ the shared pieces; the rest is checked.
 4. **Icon-only buttons get a `label`** (what a screen reader says).
 5. **Check it:** `cargo test -p neria --test ui_rules` (colours, keyboard, labels, widths,
    contrast; fails with what to do), then `scripts/ui-check.ps1` for screenshots of every page
-   and dialog at 1280 / 900 / 720 / 400 wide. Add the new screen to the script's list (a dev
+   and dialog at 1280 / 900 / 720 / 400 wide. Look at every shot for what the user has to
+   read or press, at 400 first: a field squeezed by its buttons, a label cut off, a tab off
+   the edge. Add the new screen to the script's list (a dev
    hook in `main.rs` that opens it, like `NERIA_DIALOG`).
 
 ## Themes

@@ -374,7 +374,8 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
      script. ✅ Token step checked without an account (`--example lyrics -- --token-check`)
    - Genius (plain text): written and unit-tested, but Genius answers Neria's requests with
      403 (bot protection; curl gets through). Not worked around: off by default and its tick
-     hidden. Decide: drop it, or a user's own Genius API token
+     hidden. Decide: drop it (recommended), or try a user's own Genius API token (untested:
+     the API gives no lyrics text, and the song page may still answer 403)
    - AZLyrics: dropped, the site now blocks automated requests ("request for access")
    - ✅ Each row says the source and "synced" / "plain text only" / "no lyrics found" (or
      "instrumental", or "no synced lyrics found" with Synced only); Settings has a tick per

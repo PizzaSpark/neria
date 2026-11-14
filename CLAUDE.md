@@ -17,7 +17,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
   - `app.slint`: `AppWindow` only, the one API Rust sees (all properties/callbacks); wires them
     into the pages and overlays. Re-exports the structs and `Fmt` from `types.slint`, and the
     feature globals from `globals.slint` (`Accounts`, `Extras`, `Background`, `QueueActions`,
-    `Presets`, `Names`): newer features keep their state there and pages import them directly,
+    `Presets`, `Names`, `Music` (lyrics sources, Lyrics only, numbering)): newer features keep their state there and pages import them directly,
     instead of threading every property through `app.slint` (Rust: `ui.global::<Extras>()`).
   - `pages/`: `download`, `clip`, `compress`, `settings` (drawer), `setup` (first run).
   - `dialogs/`: `match` (pick another match), `sync` (removed songs), `spotify` (heads-up),
