@@ -194,6 +194,24 @@ export global ClipPicture {
     callback reset();
 }
 
+// Clip page with a live stream open (Clip track 8). Sites that keep the last part of the
+// stream (YouTube: an hour) can be rewound: marks are pinned to the clock and found again
+// when the download starts. Others get the replay buffer: "Keep the last 10 min".
+export global ClipLive {
+    in property <bool> on;
+    // The site keeps a part to rewind in (more than a minute and a half).
+    in property <bool> can-rewind;
+    // Replay buffer: how much to keep, 0 5 min, 1 10 min, 2 30 min, 3 60 min.
+    in-out property <int> keep: 1;
+    in property <bool> buffering;
+    // "3:12 kept · 48 MB", or why it stopped.
+    in property <string> buffer-text;
+    callback last(float); // save the last N seconds (rewind, or from the buffer)
+    callback go-live();
+    callback buffer-start();
+    callback buffer-stop();
+}
+
 // One clip of the clip list.
 export struct ClipItem {
     name: string,

@@ -163,6 +163,76 @@ fn cache_for(path: &Path) -> PathBuf {
     dir
 }
 
+/// Longest link that gets a waveform: it means fetching all of its sound (the smallest
+/// format, ~30 MB an hour), so very long ones keep the filmstrip only.
+pub const LINK_WAVEFORM_MAX_SECS: f64 = 3.0 * 3600.0;
+
+/// The waveform of a link: its smallest sound-only format is fetched into the cache (with
+/// the site's sign-in, if any), drawn like a file's, and the sound is thrown away again.
+/// Cached per link. Stops (and cleans up) once `cancel` is set. Not for live streams.
+pub fn waveform_link(
+    url: &str,
+    settings: &crate::settings::Settings,
+    width: u32,
+    height: u32,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<PathBuf> {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in url.bytes() {
+        hash = (hash ^ b as u64).wrapping_mul(0x100000001b3);
+    }
+    let dir = paths::cache_dir().join(format!("link-{hash:016x}"));
+    let png = dir.join(format!("wave-8e8c88-{width}x{height}.png"));
+    if png.is_file() {
+        return Ok(png);
+    }
+    std::fs::create_dir_all(&dir)?;
+    let mut cmd = proc::command(paths::tool("yt-dlp"));
+    // A site with no sound-only format falls back to a whole small video: capped.
+    cmd.args(["--no-warnings", "--no-playlist", "--no-part", "--quiet", "-f", "wa/ba/w", "--max-filesize", "300M"]);
+    cmd.args(crate::cookies::args_for(url, settings));
+    cmd.args(["--ffmpeg-location", &paths::bin_dir().to_string_lossy()]);
+    cmd.arg("-o").arg(dir.join("sound.%(ext)s"));
+    let mut child = cmd.arg("--").arg(url).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+    let sound = |dir: &Path| {
+        std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| p.file_stem().is_some_and(|s| s == "sound"))
+    };
+    let cleanup = |dir: &Path| {
+        if let Some(p) = sound(dir) {
+            let _ = std::fs::remove_file(p);
+        }
+    };
+    loop {
+        if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            proc::kill_tree(&mut child);
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            cleanup(&dir);
+            bail!("Cancelled");
+        }
+        match child.try_wait()? {
+            Some(status) if status.success() => break,
+            Some(_) => {
+                cleanup(&dir);
+                bail!("couldn't fetch the sound");
+            }
+            None => std::thread::sleep(std::time::Duration::from_millis(150)),
+        }
+    }
+    let audio = sound(&dir).context("couldn't fetch the sound")?;
+    let drawn = waveform(&audio, width, height);
+    let result = drawn.and_then(|p| {
+        std::fs::rename(&p, &png)?;
+        Ok(png.clone())
+    });
+    let _ = std::fs::remove_file(&audio);
+    result
+}
+
 /// Evenly spaced frames for the timeline filmstrip. Fast: each is a keyframe seek.
 pub fn thumbnails(path: &Path, duration: f64, count: usize, height: u32) -> Vec<PathBuf> {
     thumbnails_into(path.as_os_str().to_owned(), &cache_for(path), duration, count, height)

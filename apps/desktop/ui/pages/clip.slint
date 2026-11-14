@@ -1,12 +1,78 @@
 import { Theme, Screen } from "../theme.slint";
 import { Fmt } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, PageTitle, Notice, Divider, Tag, Hint, CropFrame } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, Chip, PageTitle, Notice, Divider, Tag, Hint, CropFrame } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList } from "../globals.slint";
+import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive } from "../globals.slint";
 import { Menu, MenuItem } from "../widgets.slint";
+
+// A live stream: save the last bit with one press (rewound from the site's window, or from
+// the replay buffer), go back to live, or keep the last few minutes when the site can't
+// rewind. Wraps on narrow windows.
+component LiveRow inherits FlexboxLayout {
+    spacing: 8px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    // Not rewindable: how much to keep (one row of chips, so it wraps as a whole), then go.
+    if !ClipLive.can-rewind && !ClipLive.buffering && !Screen.compact: Text {
+        text: "Keep the last";
+        color: Theme.muted;
+        font-size: 12px;
+        height: 30px;
+        vertical-alignment: center;
+    }
+    for m[i] in (!ClipLive.can-rewind && !ClipLive.buffering ? ["5 min", "10 min", "30 min", "60 min"] : []): Chip {
+        text: m;
+        selected: ClipLive.keep == i;
+        clicked => { ClipLive.keep = i; }
+    }
+    if !ClipLive.can-rewind && !ClipLive.buffering: GhostButton {
+        compact: true;
+        icon: "\u{E7C8}";
+        text: "Start keeping";
+        label: "Keep the last " + (ClipLive.keep == 0 ? "5" : ClipLive.keep == 1 ? "10" : ClipLive.keep == 2 ? "30" : "60") + " minutes";
+        clicked => { ClipLive.buffer-start(); }
+    }
+    if (ClipLive.can-rewind || ClipLive.buffering) && !Screen.compact: Text {
+        text: "Save the last";
+        color: Theme.muted;
+        font-size: 12px;
+        height: 30px;
+        vertical-alignment: center;
+    }
+    if ClipLive.can-rewind || ClipLive.buffering: GhostButton {
+        compact: true;
+        text: Screen.compact ? "Last 30 s" : "30 s";
+        label: "Save the last 30 seconds";
+        clicked => { ClipLive.last(30); }
+    }
+    if ClipLive.can-rewind || ClipLive.buffering: GhostButton {
+        compact: true;
+        text: "1 min";
+        label: "Save the last minute";
+        clicked => { ClipLive.last(60); }
+    }
+    if ClipLive.can-rewind || ClipLive.buffering: GhostButton {
+        compact: true;
+        text: "5 min";
+        label: "Save the last 5 minutes";
+        clicked => { ClipLive.last(300); }
+    }
+    if ClipLive.can-rewind || ClipLive.buffering: GhostButton {
+        compact: true;
+        text: "10 min";
+        label: "Save the last 10 minutes";
+        clicked => { ClipLive.last(600); }
+    }
+    if ClipLive.buffering: GhostButton {
+        compact: true;
+        icon: "\u{E71A}";
+        text: "Stop keeping";
+        clicked => { ClipLive.buffer-stop(); }
+    }
+}
 
 // Clip page → Picture: the shape chips, turn and mirror, Reset and Done. Takes the place of
 // the bottom bar while the crop frame is up.
@@ -210,7 +276,12 @@ export component ClipPage inherits FocusScope {
     property <bool> early-start: !root.is-link && !root.sound-only && !root.gif-file && !root.picture-changed
         && root.clips == 0 && root.mode == 0 && root.effective-in < root.in-time - 0.05;
     // What the export will do (or how it went), next to the Export button.
-    property <string> status-text: root.status != "" ? root.status
+    // While the buffer keeps, its line stays (a save's "Saved · …" goes after it).
+    property <string> status-text: ClipLive.on && ClipLive.buffering
+            ? ClipLive.buffer-text + (root.status != "" ? "  ·  " + root.status : "")
+        : root.status != "" ? root.status
+        : ClipLive.on ? (ClipLive.can-rewind ? "Downloads " + Fmt.time(root.out-time - root.in-time) + " from " + Fmt.time(max(0, root.duration - root.in-time)) + " ago  ·  the site keeps the last " + Fmt.time(root.duration)
+            : ClipLive.buffering ? ClipLive.buffer-text : "This stream can't be rewound: keep the last few minutes to save them")
         : root.clips > 0 ? ClipList.note + "  ·  " + root.clips-how
         : root.gif-file ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  saved as a GIF again"
         : root.picture-changed && !root.is-link ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  frame-exact, the picture changed"
@@ -224,8 +295,14 @@ export component ClipPage inherits FocusScope {
     property <string> export-text: root.clips > 0 ? (root.is-link ? "Download " : "Export ") + root.clips + (root.clips == 1 ? " clip" : " clips")
         : root.is-link ? "Download clip" : root.sound-only ? "Export sound" : "Export clip";
     // The Export button's ▾ (Make a GIF): not while exporting, nor for an X GIF link.
-    property <bool> gif-menu: !root.exporting && !root.gif && root.has-video;
+    property <bool> gif-menu: !root.exporting && !root.gif && root.has-video && !ClipLive.on;
 
+    // In / Out make sense: not on a live stream the site can't rewind (the buffer saves it).
+    property <bool> marks: !ClipLive.on || ClipLive.can-rewind;
+    // A mark on a live stream reads as time behind live ("−4:30").
+    function mark(t: float) -> string {
+        ClipLive.on ? "−" + Fmt.time(max(0, root.duration - t)) : Fmt.time(t)
+    }
     function set-in() {
         root.in-time = min(root.position, root.duration);
         if root.out-time <= root.in-time + 0.05 {
@@ -297,7 +374,8 @@ export component ClipPage inherits FocusScope {
             return accept;
         }
         // A: add the selection to the clip list.
-        if (event.text == "a" || event.text == "A") && root.out-time > root.in-time {
+        // Not where the Clips button is hidden (live streams, watching, X GIFs).
+        if (event.text == "a" || event.text == "A") && root.out-time > root.in-time && !ClipLive.on && !Watch.on && !root.gif {
             ClipList.add();
             return accept;
         }
@@ -471,6 +549,14 @@ export component ClipPage inherits FocusScope {
                     moved => { ClipPicture.changed(); }
                 }
                 // What plays is the finished picture (cropped, turned): say so.
+                if ClipLive.on: Tag {
+                    x: parent.width - self.width - 10px;
+                    y: 10px;
+                    width: self.preferred-width;
+                    height: self.preferred-height;
+                    text: "LIVE";
+                    kind: 3;
+                }
                 if !ClipPicture.editing && root.picture-changed: Tag {
                     x: 10px;
                     y: 10px;
@@ -526,13 +612,27 @@ export component ClipPage inherits FocusScope {
                 }
             }
             Text {
-                text: Fmt.time(root.position) + "  /  " + Fmt.time(root.duration);
+                text: ClipLive.on ? (!ClipLive.can-rewind || root.duration - root.position < 15 ? "Live" : Fmt.time(root.duration - root.position) + " behind live") : Fmt.time(root.position) + "  /  " + Fmt.time(root.duration);
                 color: Theme.text;
                 font-family: Theme.mono;
                 font-size: 13px;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
                 overflow: elide;
+            }
+            // Behind live: back to the live edge.
+            if ClipLive.on && ClipLive.can-rewind && root.duration - root.position >= 15: VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                GhostButton {
+                    compact: true;
+                    icon: "\u{E893}";
+                    // Room for the time first: an icon below wide windows (not on compact,
+                    // where this row has the room).
+                    text: Screen.wide || Screen.compact ? "Go live" : "";
+                    label: "Go live";
+                    clicked => { ClipLive.go-live(); }
+                }
             }
             // Listening volume: the player's own, never what gets saved.
             VerticalLayout {
@@ -547,7 +647,8 @@ export component ClipPage inherits FocusScope {
                     }
                 }
             }
-            if !Screen.compact: Slider {
+            // A live stream below wide windows: the time behind live comes first.
+            if !Screen.compact && (Screen.wide || !ClipLive.on): Slider {
                 width: 96px;
                 horizontal-stretch: 0;
                 minimum: 0;
@@ -559,34 +660,34 @@ export component ClipPage inherits FocusScope {
                     Watch.volume-changed();
                 }
             }
-            if !Screen.compact && !Watch.on: GhostButton {
+            if !Screen.compact && !Watch.on && root.marks: GhostButton {
                 horizontal-stretch: 0;
-                text: "In  " + Fmt.time(root.in-time);
+                text: "In  " + root.mark(root.in-time);
                 clicked => { root.set-in(); }
             }
-            if !Screen.compact && !Watch.on: GhostButton {
+            if !Screen.compact && !Watch.on && root.marks: GhostButton {
                 horizontal-stretch: 0;
-                text: "Out  " + Fmt.time(root.out-time);
+                text: "Out  " + root.mark(root.out-time);
                 clicked => { root.set-out(); }
             }
         }
 
         // Compact: In and Out get a row of their own, half each.
-        if root.loaded && Screen.compact && !Watch.on: HorizontalLayout {
+        if root.loaded && Screen.compact && !Watch.on && root.marks: HorizontalLayout {
             spacing: 8px;
             GhostButton {
                 horizontal-stretch: 1;
                 compact: true;
-                text: "In  " + Fmt.time(root.in-time);
+                text: "In  " + root.mark(root.in-time);
                 clicked => { root.set-in(); }
             }
             GhostButton {
                 horizontal-stretch: 1;
                 compact: true;
-                text: "Out  " + Fmt.time(root.out-time);
+                text: "Out  " + root.mark(root.out-time);
                 clicked => { root.set-out(); }
             }
-            if !root.gif: GhostButton {
+            if !root.gif && !ClipLive.on: GhostButton {
                 horizontal-stretch: 0;
                 compact: true;
                 icon: "\u{E8FD}";
@@ -632,7 +733,9 @@ export component ClipPage inherits FocusScope {
         }
 
         // Keyboard shortcuts (not on compact: no keyboard on a phone), and the clip list.
-        if root.loaded && !Screen.compact && !ClipPicture.editing: HorizontalLayout {
+        // A live stream: the live row takes the shortcuts' place.
+        if root.loaded && !Screen.compact && !ClipPicture.editing && ClipLive.on && !Watch.on: LiveRow { }
+        if root.loaded && !Screen.compact && !ClipPicture.editing && !(ClipLive.on && !Watch.on): HorizontalLayout {
             spacing: 8px;
             Text {
                 horizontal-stretch: 1;
@@ -642,7 +745,7 @@ export component ClipPage inherits FocusScope {
                 overflow: elide;
                 vertical-alignment: center;
             }
-            if !Watch.on && !root.gif: GhostButton {
+            if !Watch.on && !root.gif && !ClipLive.on: GhostButton {
                 horizontal-stretch: 0;
                 compact: true;
                 icon: "\u{E8FD}";
@@ -704,7 +807,8 @@ export component ClipPage inherits FocusScope {
                 spacing: 8px;
                 // A .gif has no chips: the icons keep their size, on the left.
                 alignment: root.gif-file ? start : stretch;
-                if !root.gif-file: ChoiceChips {
+                if ClipLive.on: LiveRow { }
+                if !root.gif-file && !ClipLive.on: ChoiceChips {
                     options: ["Fast · lossless", "Exact · re-encode"];
                     current <=> root.mode;
                 }
@@ -761,7 +865,7 @@ export component ClipPage inherits FocusScope {
                     icon: "\u{E838}";
                     clicked => { root.show-output(); }
                 }
-                if root.is-link && root.status != "": GhostButton {
+                if root.is-link && root.status != "" && !root.has-output: GhostButton {
                     horizontal-stretch: 0;
                     compact: true;
                     text: "View queue";
@@ -771,7 +875,7 @@ export component ClipPage inherits FocusScope {
             ExportButton {
                 text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%" : root.export-text;
                 icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
-                enabled: (root.clips > 0 || root.out-time > root.in-time) && root.tools-ready;
+                enabled: (root.clips > 0 || root.out-time > root.in-time) && root.tools-ready && (!ClipLive.on || ClipLive.can-rewind);
                 has-menu: root.gif-menu;
                 menu-text: root.export-text;
                 menu-icon: root.is-link ? "\u{E896}" : "\u{E8C6}";
@@ -817,7 +921,7 @@ export component ClipPage inherits FocusScope {
                     icon: "\u{E838}";
                     clicked => { root.show-output(); }
                 }
-                if root.is-link && root.status != "": GhostButton {
+                if root.is-link && root.status != "" && !root.has-output: GhostButton {
                     horizontal-stretch: 0;
                     compact: true;
                     text: "View queue";
@@ -827,7 +931,7 @@ export component ClipPage inherits FocusScope {
             HorizontalLayout {
                 spacing: 8px;
                 // Medium: short chip names (the line above says what they mean).
-                if !root.gif-file: ChoiceChips {
+                if !root.gif-file && !ClipLive.on: ChoiceChips {
                     horizontal-stretch: 0;
                     options: root.one-bar ? ["Fast · lossless", "Exact · re-encode"] : ["Fast", "Exact"];
                     current <=> root.mode;
@@ -874,7 +978,7 @@ export component ClipPage inherits FocusScope {
                     icon: "\u{E838}";
                     clicked => { root.show-output(); }
                 }
-                if root.one-bar && root.is-link && root.status != "": GhostButton {
+                if root.one-bar && root.is-link && root.status != "" && !root.has-output: GhostButton {
                     horizontal-stretch: 0;
                     text: "View queue";
                     clicked => { root.view-queue(); }
@@ -883,7 +987,7 @@ export component ClipPage inherits FocusScope {
                     horizontal-stretch: 0;
                     text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%" : root.export-text;
                     icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
-                    enabled: (root.clips > 0 || root.out-time > root.in-time) && root.tools-ready;
+                    enabled: (root.clips > 0 || root.out-time > root.in-time) && root.tools-ready && (!ClipLive.on || ClipLive.can-rewind);
                     has-menu: root.gif-menu;
                     menu-text: root.export-text;
                     menu-icon: root.is-link ? "\u{E896}" : "\u{E8C6}";

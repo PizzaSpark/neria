@@ -1906,6 +1906,8 @@ fn main() -> anyhow::Result<()> {
         compressor::install(&ui, move |id| queue.file_of(id))
     };
 
+    // A replay buffer cut short by a crash leaves its pieces: not kept across runs.
+    neria_core::live::clean_leftovers();
     start_setup(&ui, settings.clone(), queue.clone());
     // Not `ui.run()`: the window may hide to the tray and come back, so the event loop
     // runs until Quit (background_ui) instead of until the window closes.
@@ -1913,6 +1915,7 @@ fn main() -> anyhow::Result<()> {
     slint::run_event_loop_until_quit()?;
 
     // Save the queue for next time, then stop every yt-dlp/ffmpeg so none survives the window.
+    _clipper.borrow_mut().stop_buffer();
     queue.shutdown();
     neria_core::cookies::clear_run_copies();
     Ok(())

@@ -1205,10 +1205,18 @@ impl Queue {
             return;
         }
 
-        let mut result = match disk::check(&dir, 0) {
-            Ok(()) if req.direct.is_some() => self.download_direct(id, &req, &dir, &cancel),
-            Ok(()) => self.download_once(id, &req, &settings, &dir, &cancel, &child),
-            Err(msg) => Err(anyhow::anyhow!("{msg} {SPACE_ADVICE}")),
+        // A part of a live stream, pinned to the clock: where it is in the site's window now.
+        let live_part = match req.live_window {
+            Some((from, to)) => crate::live::section_now(&req.url, &settings, from, to).map(|s| {
+                req.section = Some(s);
+            }),
+            None => Ok(()),
+        };
+        let mut result = match (live_part, disk::check(&dir, 0)) {
+            (Err(e), _) => Err(e),
+            (Ok(()), Ok(())) if req.direct.is_some() => self.download_direct(id, &req, &dir, &cancel),
+            (Ok(()), Ok(())) => self.download_once(id, &req, &settings, &dir, &cancel, &child),
+            (Ok(()), Err(msg)) => Err(anyhow::anyhow!("{msg} {SPACE_ADVICE}")),
         };
 
         // The site changed under yt-dlp: get a newer one right away and try once more,
@@ -1216,6 +1224,9 @@ impl Queue {
         if !matches!(result, Ok(true))
             && req.direct.is_none()
             && !cancel.load(Ordering::SeqCst)
+            // A live part that couldn't be found must never retry without its section: that
+            // would record the stream until it ends.
+            && (req.live_window.is_none() || req.section.is_some())
             && self.broke_ytdlp(id, &result)
             && self.update_ytdlp(id)
         {
@@ -1593,6 +1604,10 @@ impl Queue {
         cancel: &AtomicBool,
         child: &Mutex<Option<Child>>,
     ) -> anyhow::Result<bool> {
+        // A live part always goes with its section: without one yt-dlp would record the stream.
+        if req.live_window.is_some() && req.section.is_none() {
+            anyhow::bail!("That part of the live stream couldn't be found. Mark it again in the clipper.");
+        }
         let mut last_emit = Instant::now() - Duration::from_secs(1);
         // Post items ("Post title #2" from yt-dlp) keep the picker's "Post · Video 2".
         let keep_title = req.music.is_some() || req.playlist_index.is_some();

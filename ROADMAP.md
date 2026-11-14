@@ -526,17 +526,60 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
    and typing a clip's name only built, not driven. `NERIA_DIALOG=picture|picture-result|clips|clips-page` (with
    `NERIA_OPEN`); `--example clip` takes `--turn/--flip-h/--flip-v/--aspect/--crop` and
    `--clips a-b,c-d [--names] [--join]`; `--example smoke` takes `NERIA_ASPECT`/`NERIA_TURN`
-7. Links: waveform for streamed links (needs the audio); test live/very long streams
-8. **Clip a livestream without recording all of it**, two ways:
-   - **Rewind the live stream** (YouTube, Twitch and other sites that keep the last hours
+7. ✅ Links: waveform for streamed links (needs the audio); test live/very long streams
+   Built (`media::waveform_link`): after the filmstrip, a link's smallest sound-only format
+   is fetched into the cache (with the site's sign-in), drawn like a file's, and thrown away;
+   cached per link, stopped when another source opens, only for links of a known length up
+   to 3 h (never a live stream). A 90-minute video: 32 MB, ~45 s to fetch, 5 s to draw, so
+   the waveform turns up after the filmstrip; seeking to 50:00 and marking In/Out worked
+   (no part of it downloaded). A site with no sound-only format falls back to a small whole
+   video, capped at 300 MB. Not yet: a non-YouTube link, cancelling mid-fetch. Live: see 8.
+8. ✅ **Clip a livestream without recording all of it**, two ways:
+   - ✅ **Rewind the live stream** (YouTube, Twitch and other sites that keep the last hours
      seekable): open the live link in the clipper, scrub back, mark In/Out, download only
      that part (`--download-sections` on the live stream; check how far back each site goes)
-   - **Replay buffer** (any live stream, OBS-style): "Keep the last 10 minutes" (5 / 10 /
+   - ✅ **Replay buffer** (any live stream, OBS-style): "Keep the last 10 minutes" (5 / 10 /
      30 / 60) records the stream with ffmpeg into short pieces and deletes the oldest as new
      ones arrive, so disk use stays fixed; "Clip the last…" joins what's kept and opens it in
      the clipper. A calm row in the queue shows it's buffering (size, how much is kept,
      Stop); keeps going in the tray. Use rewind where the site allows it, the buffer
      elsewhere
+   Built (core `live.rs`, `ClipLive` global, `LiveRow` on the Clip page; `--example live`):
+   a live link (mpv's yt-dlp info says `is_live`) gets a LIVE tag, times as "4:30 behind
+   live" (marks as "In −5:00"), Go live, and no Fast / Exact, Clips or Make a GIF. How far
+   back: YouTube keeps an hour (its HLS playlist is a DVR window, `playlist_duration/3600`;
+   read on two streams; all three tried offer the rewindable formats); Twitch keeps nothing to rewind. **Rewind** (a window over a
+   minute and a half): "Save the last 30 s / 1 min / 5 min / 10 min", or marks; the selection
+   starts as the last half minute ("Save the last…" takes the clock, not mpv's length, which
+   can stall while paused). A mark is pinned to the clock when the stream opens
+   (`now − where mpv's cache ends`: mpv's `duration` lags it by three 5 s pieces) and turned
+   back into seconds of the site's window when the download starts (`live::section_now`), so
+   waiting in the queue doesn't shift it; a mark that has scrolled out fails with "the site
+   keeps only the last 1:00:00. Mark it again" (checked: nothing downloaded), and one in the
+   future (a wrong PC clock) says so instead of handing ffmpeg a bad range; a live part never
+   retries or downloads without its section (it would record the stream). Parts are named by
+   the clock: `Title (live 21.19.03, 0m30s).mp4`. yt-dlp can't cut the live-from-start (DASH)
+   formats, so it's the HLS ones. Checked against the Starship stream's on-screen clock: the
+   same mark downloaded right away and 3 minutes later starts on the same second, and a part
+   marked in the app starts on the second the player showed at In (T+13:19:48 both; a 15 s
+   part comes out ~19 s, cut on the 5 s pieces), and "Save the last 30 s" pressed after 5
+   minutes paused starts on the same second as a direct fetch of that clock time. **Replay buffer** (sites that can't
+   rewind, e.g. Twitch): "Keep the last 5 / 10 / 30 / 60 min" → "Start keeping": ffmpeg
+   writes 6 s pieces into `replay/` next to Neria, wrapping so the space stays put (a 1 min
+   buffer held ~49 MB at Twitch 1080p); "Save the last…" joins the newest pieces (not the
+   one being written) into the Videos folder; the stream address is looked up again when
+   ffmpeg stops; Stop keeping, another video, or quitting stops it and deletes the pieces
+   (checked: quitting 2 s or 12 s after starting leaves no ffmpeg and no folder; leftovers
+   from a crash go at the next start). Differences from the plan: the buffer's line is on
+   the Clip page (not a queue row), saved parts go to the Videos folder with Show file
+   (not straight into the clipper), and the close-to-tray question doesn't count it:
+   closing with no downloads going quits and drops what was kept (with "Keep going in the
+   tray" chosen it keeps going there). No hint yet of how much space 60 minutes takes
+   (~2.5 GB at Twitch 1080p) and no free-space check. Not
+   yet: a person using it; Sound / Picture changes on a live part (same post-step as any
+   link clip, not run on a live one); other sites' windows. Dev hooks: `NERIA_LIVE_DEBUG`
+   (mpv's timing when a live stream opens); ui-check `clip-live`, `clip-live-buffer`,
+   `watch-live`
 
 ### Compress: understandable for everyone, advanced when needed
 1. Plain goals instead of numbers: **For Discord** (20 MB) · **For email** (25 MB) · **For

@@ -39,6 +39,13 @@ if (-not (Test-Path (Join-Path $home_ "bin"))) {
   cmd /c mklink /J "$(Join-Path $home_ 'bin')" "$bin" | Out-Null
 }
 
+# Downloads from scripted checks land in target/ui-check/downloads, never your own folder.
+$settingsFile = Join-Path $home_ "settings.json"
+$dl = Join-Path $out "downloads"
+$cfg = if (Test-Path $settingsFile) { Get-Content -Raw $settingsFile | ConvertFrom-Json } else { [pscustomobject]@{} }
+$cfg | Add-Member -NotePropertyName output_dir -NotePropertyValue $dl -Force
+[IO.File]::WriteAllText($settingsFile, ($cfg | ConvertTo-Json -Depth 10))
+
 # Sample media and a download history (for the Clip / Compress "Recent downloads").
 $ff = Join-Path $bin "ffmpeg.exe"
 $samples = @(
@@ -119,6 +126,10 @@ $states = [ordered]@{
   "sound-only" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-only"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
   # A link in the clipper: the quality row too (looked up for real, like "bulk").
   "clip-link"  = @{ NERIA_OPEN = "https://www.youtube.com/watch?v=jNQXAC9IVRw" }
+  # A live stream in the clipper (a 24/7 channel; needs the internet and a long -Wait).
+  "clip-live"  = @{ NERIA_OPEN = "https://www.youtube.com/@aljazeeraenglish/live" }
+  "clip-live-buffer" = @{ NERIA_OPEN = "https://www.twitch.tv/lofigirl" }
+  "watch-live" = @{ NERIA_WATCH = "https://www.youtube.com/@aljazeeraenglish/live" }
   "match"      = @{ NERIA_DIALOG = "match" }
   "sync"       = @{ NERIA_DIALOG = "sync" }
   "spotify"    = @{ NERIA_DIALOG = "spotify" }

@@ -18,7 +18,7 @@ use neria_core::{gif, media, paths, probe};
 use neria_player::{GlRenderer, Mpv};
 use slint::{ComponentHandle, GraphicsAPI, Model, ModelRc, RenderingState, VecModel};
 
-use crate::{AppWindow, ClipGif, ClipList, ClipPicture, ClipSound, Fmt, Watch};
+use crate::{AppWindow, ClipGif, ClipList, ClipLive, ClipPicture, ClipSound, Fmt, Watch};
 
 const MEDIA_EXTENSIONS: &[&str] =
     &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "gif", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac"];
@@ -77,6 +77,12 @@ pub struct Clipper {
     rotation: Arc<AtomicI64>,
     /// Our filters do the turning (mpv's own is off): the frame size already includes it.
     filters_turn: std::cell::Cell<bool>,
+    /// Stops the open link's waveform fetch when another source opens.
+    link_cancel: Arc<AtomicBool>,
+    /// A live stream's replay buffer ("Keep the last 10 min"); stops when dropped.
+    buffer: Option<neria_core::live::ReplayBuffer>,
+    /// Ticks since the buffer's line was last refreshed.
+    buffer_ticks: u32,
 }
 
 impl Clipper {
@@ -127,6 +133,17 @@ impl Clipper {
         self.duration_applied = false;
         // Known once ffprobe has read the file (links: none).
         self.rotation.store(0, Ordering::SeqCst);
+        // The last link's waveform fetch isn't wanted any more.
+        self.link_cancel.store(true, Ordering::SeqCst);
+        self.link_cancel = Arc::new(AtomicBool::new(false));
+        // Live: known once it plays; a replay buffer belongs to the stream it keeps.
+        LIVE_ANCHOR.with(|a| a.set(None));
+        self.buffer = None;
+        let live = ui.global::<ClipLive>();
+        live.set_on(false);
+        live.set_can_rewind(false);
+        live.set_buffering(false);
+        live.set_buffer_text("".into());
         self.last_pos = 0.0;
         self.pending_load = true;
         *self.last_output.lock().unwrap() = None;
@@ -205,6 +222,38 @@ impl Clipper {
         if mpv.get_flag("pause") == Some(true) {
             let _ = mpv.command(&["seek", "0", "relative+exact"]);
         }
+    }
+
+    /// Stop a running replay buffer (on quit: its ffmpeg mustn't outlive Neria).
+    pub fn stop_buffer(&mut self) {
+        self.buffer = None;
+    }
+
+    /// The replay buffer's line ("Keeping the last 10 min · 3:12 kept · 48 MB"), or why it
+    /// stopped.
+    fn refresh_buffer(&mut self, ui: &AppWindow) {
+        let g = ui.global::<ClipLive>();
+        let Some(b) = &self.buffer else {
+            g.set_buffering(false);
+            return;
+        };
+        if !b.running() {
+            let why = b.problem.lock().unwrap().clone();
+            g.set_buffer_text(format!("Stopped keeping it: {why}").into());
+            g.set_buffering(false);
+            self.buffer = None;
+            return;
+        }
+        let (secs, bytes) = b.kept();
+        g.set_buffer_text(
+            format!(
+                "Keeping the last {} min  ·  {} kept  ·  {}",
+                b.minutes,
+                neria_core::fmt::duration(secs),
+                neria_core::fmt::bytes(bytes as f64)
+            )
+            .into(),
+        );
     }
 
     /// The picture before turning (decoded size, after the file's own rotation), for the
@@ -297,16 +346,33 @@ impl Clipper {
         let weak = ui.as_weak();
         let settings = neria_core::settings::Settings::load();
         let need_title = !self.title_known;
+        let cancel = self.link_cancel.clone();
         std::thread::spawn(move || {
             // Storyboards first (YouTube blocks direct stream reads); stream frames as a fallback.
-            let (title, thumbs) = match media::storyboard_strip(&url, &settings, 12, 120) {
-                Ok((title, _, thumbs)) => (title, thumbs),
+            let (title, duration, thumbs) = match media::storyboard_strip(&url, &settings, 12, 120) {
+                Ok((title, duration, thumbs)) => (title, duration, thumbs),
                 Err(_) => {
                     let Ok(preview) = neria_core::probe::preview_stream(&url, &settings) else { return };
                     let thumbs = media::thumbnails_remote(&preview.stream_url, &url, preview.duration, 12, 120);
-                    (preview.title, thumbs)
+                    (preview.title, preview.duration, thumbs)
                 }
             };
+            // Then the waveform: it fetches the whole sound (smallest format), so only for
+            // links of a known, not too long length (never a live stream: it has none).
+            if duration > 0.0 && duration <= media::LINK_WAVEFORM_MAX_SECS {
+                let (weak, load_gen, url, settings, cancel) =
+                    (weak.clone(), load_gen.clone(), url.clone(), settings.clone(), cancel.clone());
+                std::thread::spawn(move || {
+                    let Ok(png) = media::waveform_link(&url, &settings, 1600, 68, &cancel) else { return };
+                    let _ = weak.upgrade_in_event_loop(move |ui| {
+                        if load_gen.load(Ordering::SeqCst) == generation
+                            && let Ok(img) = slint::Image::load_from_path(&png)
+                        {
+                            ui.set_clip_wave(img);
+                        }
+                    });
+                });
+            }
             if need_title && !title.is_empty() {
                 let load_gen = load_gen.clone();
                 let _ = weak.upgrade_in_event_loop(move |ui| {
@@ -394,12 +460,22 @@ impl Clipper {
 
     /// Poll playback state (cheap) and push it to the UI.
     fn tick(&mut self, ui: &AppWindow) {
+        // The replay buffer's line, about once a second.
+        self.buffer_ticks += 1;
+        if self.buffer.is_some() && self.buffer_ticks >= 30 {
+            self.buffer_ticks = 0;
+            self.refresh_buffer(ui);
+        }
         let Some(mpv) = &self.mpv else { return };
         mpv.drain_events();
         if let Some(d) = mpv.get_f64("duration").filter(|d| *d > 0.0) {
             ui.set_clip_duration(d as f32);
             if !self.duration_applied {
                 self.duration_applied = true;
+                // A live stream's edge on mpv's timeline: where its cache ends (the playlist's
+                // end; `duration` lags it by a few pieces at first, 3585 vs 3600). Read before
+                // any seek: seeking back empties the cache.
+                let live_edge = mpv.get_f64("demuxer-cache-time").filter(|t| *t > d).unwrap_or(d);
                 // NERIA_CLIP_IN / NERIA_CLIP_OUT: dev hooks for scripted checks.
                 let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<f32>().ok());
                 ui.set_clip_in(env("NERIA_CLIP_IN").unwrap_or(0.0));
@@ -417,6 +493,37 @@ impl Clipper {
                 }
                 if std::env::var_os("NERIA_CLIP_LOOP").is_some() {
                     ui.set_clip_loop(true);
+                }
+                // A live stream: its timeline is the part the site keeps (it grows), pinned
+                // to the clock from here; the selection starts as the last half minute.
+                let live = mpv
+                    .get_string("user-data/mpv/ytdl/json-subprocess-result")
+                    .is_some_and(|j| j.contains("\"is_live\": true") || j.contains("\\\"is_live\\\": true"));
+                // NERIA_LIVE_DEBUG=<file>: mpv's timing properties when a live stream starts.
+                if live && let Some(f) = std::env::var_os("NERIA_LIVE_DEBUG") {
+                    let names = mpv.get_string("property-list").unwrap_or_default();
+                    let mut out = format!("now={} duration={d}\n", neria_core::live::now());
+                    for n in names.split(',').filter(|n| n.contains("start") || n.contains("time") || n.contains("cache") || *n == "duration") {
+                        out.push_str(&format!("{n}={}\n", mpv.get_string(n).unwrap_or_default()));
+                    }
+                    let _ = std::fs::write(f, out);
+                }
+                if live {
+                    LIVE_ANCHOR.with(|a| a.set(Some(neria_core::live::now() - live_edge)));
+                    // No filmstrip look-up for a live stream, so no title from there: mpv's.
+                    if !self.title_known
+                        && let Some(t) = mpv.get_string("media-title").filter(|t| !t.trim().is_empty() && !t.contains("://"))
+                    {
+                        ui.set_clip_name(t.into());
+                        self.title_known = true;
+                    }
+                    let g = ui.global::<ClipLive>();
+                    g.set_on(true);
+                    g.set_can_rewind(d > 90.0);
+                    if std::env::var_os("NERIA_CLIP_IN").is_none() {
+                        ui.set_clip_in((d - 30.0).max(0.0) as f32);
+                        ui.set_clip_out(d as f32);
+                    }
                 }
             }
         }
@@ -636,10 +743,12 @@ fn format_time(t: f32) -> String {
     if h > 0 { format!("{h}:{m:02}:{s:02}.{cs:02}") } else { format!("{m}:{s:02}.{cs:02}") }
 }
 
-/// Wire the clip page into the window. Returns the polling timer (keep it alive).
-///
-/// `file_for_job` finds a finished download's file; `enqueue` sends a
-/// section download (link mode) to the download queue.
+thread_local! {
+    /// The open live stream's timeline start on the clock (Unix seconds): a mark at `t` is
+    /// `anchor + t`. `None` when what's open isn't live.
+    static LIVE_ANCHOR: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+}
+
 fn is_gif_file(path: &Path) -> bool {
     path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gif"))
 }
@@ -661,6 +770,19 @@ fn link_request(ui: &AppWindow, url: String) -> Option<DownloadRequest> {
     req.audio_edit = (!sound.is_none()).then_some(sound);
     let picture = crate::picture_ui::picture(ui);
     req.picture = (!picture.is_none() && quality != Quality::Audio).then_some(picture);
+    // A live stream: the part is pinned to the clock and found in the site's window when the
+    // download starts (it keeps sliding meanwhile).
+    if let Some(anchor) = LIVE_ANCHOR.with(|a| a.get()) {
+        let (a, b) = req.section.take().unwrap_or_default();
+        req.live_window = Some((anchor + a, anchor + b));
+        req.exact_cuts = false;
+        // Named by the clock time it starts at (window seconds would mean nothing, and two
+        // parts of one length would share a name): "Title (live 20.35.10, 0m30s)".
+        let start = chrono::DateTime::from_timestamp((anchor + a) as i64, 0)
+            .map(|t| t.with_timezone(&chrono::Local).format("%H.%M.%S").to_string())
+            .unwrap_or_default();
+        req.name_tag = Some(format!(" (live {start}, {})", clip::stamp(b - a)));
+    }
     Some(req)
 }
 
@@ -748,6 +870,10 @@ fn start_export(
     });
 }
 
+/// Wire the clip page into the window. Returns the polling timer (keep it alive).
+///
+/// `file_for_job` finds a finished download's file; `enqueue` sends a
+/// section download (link mode) to the download queue.
 pub fn install(
     ui: &AppWindow,
     file_for_job: impl Fn(u64) -> Option<PathBuf> + 'static,
@@ -969,6 +1095,78 @@ pub fn install(
         }
     });
     crate::clips_ui::install(ui);
+
+    // A live stream: save the last bit, go back to live, keep the last few minutes.
+    let live = ui.global::<ClipLive>();
+    live.on_last({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move |secs| {
+            let ui = weak.unwrap();
+            let secs = secs as f64;
+            let mut c = clipper.borrow_mut();
+            if let Some(b) = &c.buffer {
+                // From the replay buffer, into the Videos folder (off the UI thread).
+                let pieces = b.dir.clone();
+                let title = ui.get_clip_name().to_string();
+                ui.set_clip_status("Saving…".into());
+                start_export(&ui, &mut c, "Live clip saved", move |_cancel, progress| {
+                    let dir = neria_core::folders::for_kind(
+                        &neria_core::settings::Settings::load(),
+                        neria_core::folders::Kind::Video,
+                    );
+                    let out = neria_core::live::clip_last_in(&pieces, secs, &dir, &title);
+                    progress(1.0);
+                    out
+                });
+                return;
+            }
+            // Rewound from the site's window: the last `secs` up to the live edge, taken from
+            // the clock (mpv's length can stall while paused; the anchor can't).
+            let edge = LIVE_ANCHOR
+                .with(|a| a.get())
+                .map_or(ui.get_clip_duration() as f64, |anchor| neria_core::live::now() - anchor);
+            ui.set_clip_in((edge - secs).max(0.0) as f32);
+            ui.set_clip_out(edge as f32);
+            drop(c);
+            ui.invoke_clip_export();
+        }
+    });
+    live.on_go_live({
+        let clipper = clipper.clone();
+        move || {
+            if let Some(mpv) = &clipper.borrow().mpv {
+                let _ = mpv.command(&["seek", "100", "absolute-percent"]);
+                let _ = mpv.set_property("pause", "no");
+            }
+        }
+    });
+    live.on_buffer_start({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            let mut c = clipper.borrow_mut();
+            let Some(Source::Link(url)) = c.source.clone() else { return };
+            let minutes = [5, 10, 30, 60][ui.global::<ClipLive>().get_keep().clamp(0, 3) as usize];
+            match neria_core::live::ReplayBuffer::start(&url, &neria_core::settings::Settings::load(), minutes) {
+                Ok(b) => {
+                    c.buffer = Some(b);
+                    c.buffer_ticks = 0;
+                    ui.global::<ClipLive>().set_buffering(true);
+                    ui.global::<ClipLive>().set_buffer_text(format!("Keeping the last {minutes} min  ·  starting…").into());
+                }
+                Err(e) => ui.set_clip_status(format!("Couldn't keep it: {e}").into()),
+            }
+        }
+    });
+    live.on_buffer_stop({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            clipper.borrow_mut().buffer = None;
+            ui.global::<ClipLive>().set_buffering(false);
+            ui.global::<ClipLive>().set_buffer_text("".into());
+        }
+    });
 
     // Export ▾ → Make a GIF → Make: from the file, or the link's selection after downloading it.
     let clip_gif = ui.global::<ClipGif>();

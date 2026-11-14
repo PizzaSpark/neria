@@ -71,6 +71,9 @@ pub struct DownloadRequest {
     pub audio_edit: Option<crate::sound::AudioEdit>,
     /// A link clip's picture, turned / mirrored / cropped after the download (same pass).
     pub picture: Option<crate::picture::Picture>,
+    /// A part of a live stream, pinned to the clock (Unix seconds): turned into `section`
+    /// in the site's window when the download starts (it keeps sliding), see `live.rs`.
+    pub live_window: Option<(f64, f64)>,
     /// A link clip made into a GIF / WebP / GIF-like MP4 after the download (Make a GIF).
     pub gif_spec: Option<crate::gif::GifSpec>,
 }
@@ -112,6 +115,7 @@ impl DownloadRequest {
             audio_edit: None,
             picture: None,
             gif_spec: None,
+            live_window: None,
         }
     }
 
@@ -221,7 +225,8 @@ pub fn build_args(req: &DownloadRequest, s: &Settings) -> Vec<String> {
     };
     // A clip of a link says which part it is; a chapter's fixed name already does.
     let mut tags = String::new();
-    if let (Some((a, b)), None) = (req.section, stem) {
+    // (A live part names itself by the clock instead, in `name_tag`.)
+    if let (Some((a, b)), None, None) = (req.section, stem, req.live_window) {
         tags.push_str(&format!(" (clip {}-{})", crate::clip::stamp(a), crate::clip::stamp(b)));
     }
     if let Some(t) = &req.name_tag {
