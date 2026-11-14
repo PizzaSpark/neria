@@ -135,6 +135,15 @@ them; related ideas are merged into one item so they get built together.
   links (with "Allow playlists" off they only fetch the one video)
 - **Queue thumbnails for playlist items**: YouTube sent WebP named `.jpg`, which didn't load
 
+### v0.4.0: Download and Music tracks (2026-11-14)
+- **Download track**, items 1–12 under "Then: feature tracks → Download": signed-in
+  downloads, captions, audio tracks, chapters, tray + notifications + Download later,
+  picker order, presets, filename builder, bulk links, queue order, Watch it first, Follow
+- **Music track**, items 1–4 under "Music": synced lyrics (LRCLIB, opt-in Spotify/Musixmatch),
+  Lyrics only, Add lyrics to songs you have, Number playlist songs
+- Narrow windows: Download gets its own row under the link box
+- Notes: `docs/releases/v0.4.0.md`
+
 ## Now: after v0.3.0
 Loose ends left from v0.3 (released 2026-11-12 without them).
 1. **Check what's left on real links**: an Instagram carousel all the way through with
