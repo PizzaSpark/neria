@@ -5,7 +5,7 @@ import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets, Watch } from "../globals.slint";
+import { Presets, Watch, ClipSound } from "../globals.slint";
 import { Slider } from "std-widgets.slint";
 
 // Trim a file, or preview a link and download only the selection. Takes the keyboard
@@ -14,6 +14,8 @@ export component ClipPage inherits FocusScope {
     in property <bool> tools-ready;
     in property <bool> loaded;
     in property <bool> has-video;
+    // False for a silent video: no Sound button then.
+    in property <bool> has-audio: true;
     in property <string> name;
     in property <image> frame;
     in property <float> duration;
@@ -63,11 +65,14 @@ export component ClipPage inherits FocusScope {
     callback open-settings();
 
     property <float> effective-in: Fmt.keyframe-before(root.in-time, root.keyframes);
-    property <bool> early-start: !root.is-link && root.mode == 0 && root.effective-in < root.in-time - 0.05;
+    // Sound only (files) cuts exactly at In, whatever the mode.
+    property <bool> sound-only: !root.is-link && root.has-video && ClipSound.save == 1;
+    property <bool> early-start: !root.is-link && !root.sound-only && root.mode == 0 && root.effective-in < root.in-time - 0.05;
     // What the export will do (or how it went), next to the Export button.
     property <string> status-text: root.status != "" ? root.status
         : root.is-link ? "Downloads only " + Fmt.time(root.out-time - root.in-time)
             + (root.mode == 0 ? "  ·  fast, may start a few seconds early" : "  ·  frame-exact (slower)")
+        : root.sound-only ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  sound only"
         : root.mode == 1 ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  frame-exact H.264"
         : root.early-start ? "Lossless cut starts earlier, at " + Fmt.time(root.effective-in) + " (keyframe)"
         : "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  lossless, starts on a keyframe";
@@ -87,6 +92,13 @@ export component ClipPage inherits FocusScope {
     }
 
     init => { self.focus(); }
+    // The Sound dialog took the keyboard; give it back when it closes (Space, I/O…).
+    property <bool> sound-open: ClipSound.open;
+    changed sound-open => {
+        if !self.sound-open {
+            self.focus();
+        }
+    }
     key-pressed(event) => {
         if !root.loaded {
             return reject;
@@ -238,7 +250,7 @@ export component ClipPage inherits FocusScope {
         // window); 16:9 until the first frame arrives or for audio files.
         if root.loaded: Rectangle {
             vertical-stretch: 1;
-            min-height: Screen.compact ? 90px : 180px;
+            min-height: Screen.compact ? 64px : Screen.wide ? 180px : 120px;
             // Fixed hints so the inner box (sized from this one) can't feed its
             // size back into the page layout.
             min-width: 0px;
@@ -486,9 +498,23 @@ export component ClipPage inherits FocusScope {
             // Spare height goes to the player, not here.
             vertical-stretch: 0;
             spacing: 8px;
-            ChoiceChips {
-                options: ["Fast · lossless", "Exact · re-encode"];
-                current <=> root.mode;
+            HorizontalLayout {
+                spacing: 8px;
+                ChoiceChips {
+                    options: ["Fast · lossless", "Exact · re-encode"];
+                    current <=> root.mode;
+                }
+                if root.has-audio && !root.gif: VerticalLayout {
+                    alignment: start;
+                    horizontal-stretch: 0;
+                    GhostButton {
+                        compact: true;
+                        text: ClipSound.short-text;
+                        icon: "\u{E767}";
+                        label: ClipSound.button-text;
+                        clicked => { ClipSound.open = true; }
+                    }
+                }
             }
             HorizontalLayout {
                 spacing: 6px;
@@ -526,7 +552,7 @@ export component ClipPage inherits FocusScope {
             }
             PrimaryButton {
                 text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%"
-                    : root.is-link ? "Download clip" : "Export clip";
+                    : root.is-link ? "Download clip" : root.sound-only ? "Export sound" : "Export clip";
                 icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
                 enabled: root.out-time > root.in-time && root.tools-ready;
                 clicked => {
@@ -539,52 +565,99 @@ export component ClipPage inherits FocusScope {
             }
         }
 
-        if root.loaded && !Screen.compact && !Watch.on: HorizontalLayout {
-            spacing: 8px;
-            ChoiceChips {
-                horizontal-stretch: 0;
-                options: ["Fast · lossless", "Exact · re-encode"];
-                current <=> root.mode;
-            }
-            Text {
-                horizontal-stretch: 1;
-                text: root.status-text;
-                color: root.status-warn ? Theme.warn : Theme.muted;
-                font-size: 12px;
-                overflow: elide;
-                vertical-alignment: center;
-                horizontal-alignment: right;
-            }
-            if root.status-warn: GhostButton {
-                horizontal-stretch: 0;
-                text: "Snap to keyframe";
-                clicked => {
-                    root.in-time = root.effective-in;
-                    root.seek(root.in-time);
+        // Wide: one bar. Medium: what it'll do (and its fixes) on a line above the buttons,
+        // so neither squeezes the other.
+        if root.loaded && !Screen.compact && !Watch.on: VerticalLayout {
+            vertical-stretch: 0;
+            spacing: 6px;
+            if !Screen.wide: HorizontalLayout {
+                spacing: 8px;
+                min-height: 30px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.status-text;
+                    color: root.status-warn ? Theme.warn : Theme.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                if root.status-warn: GhostButton {
+                    horizontal-stretch: 0;
+                    compact: true;
+                    text: "Snap to keyframe";
+                    clicked => {
+                        root.in-time = root.effective-in;
+                        root.seek(root.in-time);
+                    }
+                }
+                if root.has-output && !root.exporting: GhostButton {
+                    horizontal-stretch: 0;
+                    compact: true;
+                    text: "Show file";
+                    icon: "\u{E838}";
+                    clicked => { root.show-output(); }
+                }
+                if root.is-link && root.status != "": GhostButton {
+                    horizontal-stretch: 0;
+                    compact: true;
+                    text: "View queue";
+                    clicked => { root.view-queue(); }
                 }
             }
-            if root.has-output && !root.exporting: GhostButton {
-                horizontal-stretch: 0;
-                text: "Show file";
-                icon: "\u{E838}";
-                clicked => { root.show-output(); }
-            }
-            if root.is-link && root.status != "": GhostButton {
-                horizontal-stretch: 0;
-                text: "View queue";
-                clicked => { root.view-queue(); }
-            }
-            PrimaryButton {
-                horizontal-stretch: 0;
-                text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%"
-                    : root.is-link ? "Download clip" : "Export clip";
-                icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
-                enabled: root.out-time > root.in-time && root.tools-ready;
-                clicked => {
-                    if root.exporting {
-                        root.cancel-export();
-                    } else {
-                        root.export-clip();
+            HorizontalLayout {
+                spacing: 8px;
+                ChoiceChips {
+                    horizontal-stretch: 0;
+                    options: ["Fast · lossless", "Exact · re-encode"];
+                    current <=> root.mode;
+                }
+                if root.has-audio && !root.gif: GhostButton {
+                    horizontal-stretch: 0;
+                    text: Screen.wide ? ClipSound.button-text : ClipSound.short-text;
+                    label: ClipSound.button-text;
+                    icon: "\u{E767}";
+                    clicked => { ClipSound.open = true; }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: Screen.wide ? root.status-text : "";
+                    color: root.status-warn ? Theme.warn : Theme.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                }
+                if Screen.wide && root.status-warn: GhostButton {
+                    horizontal-stretch: 0;
+                    text: "Snap to keyframe";
+                    clicked => {
+                        root.in-time = root.effective-in;
+                        root.seek(root.in-time);
+                    }
+                }
+                if Screen.wide && root.has-output && !root.exporting: GhostButton {
+                    horizontal-stretch: 0;
+                    text: "Show file";
+                    icon: "\u{E838}";
+                    clicked => { root.show-output(); }
+                }
+                if Screen.wide && root.is-link && root.status != "": GhostButton {
+                    horizontal-stretch: 0;
+                    text: "View queue";
+                    clicked => { root.view-queue(); }
+                }
+                PrimaryButton {
+                    horizontal-stretch: 0;
+                    text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%"
+                        : root.is-link ? "Download clip" : root.sound-only ? "Export sound" : "Export clip";
+                    icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
+                    enabled: root.out-time > root.in-time && root.tools-ready;
+                    clicked => {
+                        if root.exporting {
+                            root.cancel-export();
+                        } else {
+                            root.export-clip();
+                        }
                     }
                 }
             }

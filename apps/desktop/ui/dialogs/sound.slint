@@ -1,0 +1,125 @@
+import { ScrollView, Slider } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { ClipSound } from "../globals.slint";
+import { PrimaryButton, GhostButton, SectionTitle, Hint, Dialog, ChoiceChips } from "../widgets.slint";
+
+// A small heading with its chips under it.
+component Part inherits VerticalLayout {
+    in property <string> title;
+    spacing: 8px;
+    SectionTitle { text: root.title; }
+    @children
+}
+
+// Clip page → Sound: how loud, fades, and (files) saving the sound only. Applied when the
+// clip is saved; the level also plays in the player so you hear it first.
+export component SoundDialog inherits Dialog {
+    // Mute and "Sound only" need a picture to keep; links pick sound only with Audio only.
+    in property <bool> has-video;
+    in property <bool> is-link;
+    title: "Sound";
+    subtitle: "What the saved clip sounds like.";
+    card-width: 520px;
+    card-height: 640px;
+    close => { ClipSound.open = false; }
+
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            spacing: 18px;
+            padding-right: Theme.lane;
+            Part {
+                title: "Volume";
+                ChoiceChips {
+                    options: root.has-video && ClipSound.save == 0
+                        ? ["As is", "Louder or quieter", "Even out", "Mute"]
+                        : ["As is", "Louder or quieter", "Even out"];
+                    current <=> ClipSound.level;
+                    changed => { ClipSound.changed(); }
+                }
+                if ClipSound.level == 1: HorizontalLayout {
+                    spacing: 12px;
+                    Slider {
+                        horizontal-stretch: 1;
+                        minimum: -12;
+                        maximum: 12;
+                        step: 1;
+                        value <=> ClipSound.gain;
+                        accessible-label: "Louder or quieter, in decibels";
+                        changed => { ClipSound.changed(); }
+                    }
+                    Text {
+                        horizontal-stretch: 0;
+                        min-width: 52px;
+                        text: (ClipSound.gain > 0 ? "+" : "") + Math.round(ClipSound.gain) + " dB";
+                        color: Theme.ink;
+                        font-family: Theme.mono;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                }
+                if ClipSound.level == 2: ChoiceChips {
+                    options: ["Online video · -14 LUFS", "Podcast · -16 LUFS"];
+                    current <=> ClipSound.target;
+                    changed => { ClipSound.changed(); }
+                }
+                if ClipSound.level == 1: Hint {
+                    text: "Louder never distorts: peaks are kept just under the limit.";
+                }
+                if ClipSound.level == 2: Hint {
+                    text: ClipSound.target == 0
+                        ? "The loudness YouTube, TikTok and Discord play at, so the clip isn't quieter or louder than the rest."
+                        : "A little quieter, the usual level for podcasts and voice.";
+                }
+                if ClipSound.level == 3: Hint {
+                    text: "No sound at all. A lossless cut stays lossless.";
+                }
+            }
+            if ClipSound.level != 3: Part {
+                title: "Fade in";
+                ChoiceChips {
+                    options: ["Off", "0.5 s", "1 s", "2 s", "3 s"];
+                    current <=> ClipSound.fade-in;
+                    changed => { ClipSound.changed(); }
+                }
+            }
+            if ClipSound.level != 3: Part {
+                title: "Fade out";
+                ChoiceChips {
+                    options: ["Off", "0.5 s", "1 s", "2 s", "3 s"];
+                    current <=> ClipSound.fade-out;
+                    changed => { ClipSound.changed(); }
+                }
+            }
+            if root.has-video && !root.is-link && ClipSound.level != 3: Part {
+                title: "Save";
+                ChoiceChips {
+                    options: ["The video", "Sound only"];
+                    current <=> ClipSound.save;
+                    changed => { ClipSound.changed(); }
+                }
+                if ClipSound.save == 1: ChoiceChips {
+                    options: ["mp3", "m4a", "opus", "flac", "wav"];
+                    current <=> ClipSound.save-format;
+                    changed => { ClipSound.changed(); }
+                }
+            }
+        }
+    }
+    if ClipSound.note != "": Hint { text: ClipSound.note; }
+
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: end;
+        GhostButton {
+            text: "Reset";
+            clicked => { ClipSound.reset(); }
+        }
+        PrimaryButton {
+            text: "Done";
+            icon: "\u{E73E}";
+            clicked => { ClipSound.open = false; }
+        }
+    }
+}

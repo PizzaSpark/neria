@@ -5,7 +5,8 @@ import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound } from "globals.slint";
+import { SoundDialog } from "dialogs/sound.slint";
 import { NamesDialog } from "dialogs/names.slint";
 import { CloseAskDialog, LaterDialog } from "dialogs/background.slint";
 import { TracksDialog } from "dialogs/tracks.slint";
@@ -20,7 +21,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -207,6 +208,7 @@ export component AppWindow inherits Window {
     // Clipper
     in property <bool> clip-loaded;
     in property <bool> clip-has-video;
+    in property <bool> clip-has-audio: true;
     in property <string> clip-name;
     in property <image> clip-frame;
     in property <float> clip-duration;
@@ -429,6 +431,7 @@ export component AppWindow inherits Window {
                     tools-ready: root.tools-ready;
                     loaded: root.clip-loaded;
                     has-video: root.clip-has-video;
+                    has-audio: root.clip-has-audio;
                     name: root.clip-name;
                     frame: root.clip-frame;
                     duration: root.clip-duration;
@@ -606,6 +609,15 @@ export component AppWindow inherits Window {
         y: 0;
         width: root.width;
         height: root.height;
+    }
+
+    if ClipSound.open: SoundDialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        has-video: root.clip-has-video;
+        is-link: root.clip-is-link;
     }
 
     if Background.later-open: LaterDialog {

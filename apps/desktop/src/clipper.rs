@@ -18,7 +18,7 @@ use neria_core::{media, paths, probe};
 use neria_player::{GlRenderer, Mpv};
 use slint::{ComponentHandle, GraphicsAPI, Model, ModelRc, RenderingState, VecModel};
 
-use crate::{AppWindow, Fmt, Watch};
+use crate::{AppWindow, ClipSound, Fmt, Watch};
 
 const MEDIA_EXTENSIONS: &[&str] =
     &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac"];
@@ -137,6 +137,9 @@ impl Clipper {
         ui.set_clip_out(0.0);
         ui.set_clip_playing(false);
         ui.set_clip_has_video(true);
+        ui.set_clip_has_audio(true);
+        crate::sound_ui::fit_to_clip(ui);
+        self.apply_sound(ui);
         ui.set_clip_thumbs(ModelRc::from(Rc::new(VecModel::<slint::Image>::default())));
         ui.set_clip_keyframes(ModelRc::from(Rc::new(VecModel::<f32>::default())));
         ui.set_clip_keyframe_ticks(ModelRc::from(Rc::new(VecModel::<f32>::default())));
@@ -170,6 +173,15 @@ impl Clipper {
         let _ = mpv.set_property("mute", if w.get_muted() { "yes" } else { "no" });
     }
 
+    /// The clip's sound level (Sound dialog), played so you hear it before saving. Fades
+    /// are left for the export. Watching plays the link as it is.
+    fn apply_sound(&self, ui: &AppWindow) {
+        let Some(mpv) = &self.mpv else { return };
+        let chain = if ui.global::<Watch>().get_on() { String::new() } else { crate::sound_ui::edit(ui).preview() };
+        let af = if chain.is_empty() { String::new() } else { format!("lavfi=[{chain}]") };
+        let _ = mpv.set_property("af", &af);
+    }
+
     /// Watch the Download page's previewed link: the player without In/Out.
     fn watch(&mut self, ui: &AppWindow, url: &str, title: &str) {
         let same = matches!(&self.source, Some(Source::Link(u)) if u == url);
@@ -193,6 +205,7 @@ impl Clipper {
             self.autoplay = true;
         }
         ui.global::<Watch>().set_on(true);
+        self.apply_sound(ui);
     }
 
     /// Leave watching: stop, and put back what was open before (or nothing).
@@ -203,6 +216,7 @@ impl Clipper {
         self.autoplay = false;
         if std::mem::take(&mut self.keep_open) {
             ui.global::<Watch>().set_on(false);
+            self.apply_sound(ui);
             return;
         }
         match self.previous.take() {
@@ -290,9 +304,14 @@ impl Clipper {
                 }
             };
             let has_video = info.has_video;
+            let has_audio = info.has_audio;
             let chapters = info.chapters.clone();
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 ui.set_clip_has_video(has_video);
+                ui.set_clip_has_audio(has_audio);
+                // A sound-only file can't be muted or saved as sound only: back to as is.
+                crate::sound_ui::fit_to_clip(&ui);
+                ui.global::<ClipSound>().invoke_changed();
                 set_chapters(&ui, &chapters);
             });
 
@@ -707,19 +726,27 @@ pub fn install(
                     req.preset = crate::chosen_quality(&ui).1;
                     req.section = Some((ui.get_clip_in() as f64, ui.get_clip_out() as f64));
                     req.exact_cuts = ui.get_clip_mode() == 1;
+                    let sound = crate::sound_ui::edit(&ui);
+                    if sound.mutes() && quality == Quality::Audio {
+                        ui.set_clip_status("Muted with Audio only would leave nothing to save. Change the Sound.".into());
+                        return;
+                    }
+                    req.audio_edit = (!sound.is_none()).then_some(sound);
                     enqueue(req);
                     ui.set_clip_status("Added to the download queue".into());
                     return;
                 }
                 None => return,
             };
-            let req = ClipRequest {
+            let mut req = ClipRequest::new(
                 input,
-                start: ui.get_clip_in() as f64,
-                end: ui.get_clip_out() as f64,
-                mode: if ui.get_clip_mode() == 0 { ClipMode::Fast } else { ClipMode::Exact },
-                has_video: ui.get_clip_has_video(),
-            };
+                ui.get_clip_in() as f64,
+                ui.get_clip_out() as f64,
+                if ui.get_clip_mode() == 0 { ClipMode::Fast } else { ClipMode::Exact },
+                ui.get_clip_has_video(),
+            );
+            req.audio = crate::sound_ui::edit(&ui);
+            req.audio_only = crate::sound_ui::audio_only(&ui);
             let cancel = Arc::new(AtomicBool::new(false));
             c.export_cancel = Some(cancel.clone());
             let last_output = c.last_output.clone();
@@ -817,6 +844,24 @@ pub fn install(
             // Clipping the link now: what was open before stays closed.
             clipper.borrow_mut().previous = None;
             ui.global::<Watch>().set_on(false);
+            clipper.borrow().apply_sound(&ui);
+        }
+    });
+    let sound = ui.global::<ClipSound>();
+    sound.on_changed({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            crate::sound_ui::refresh(&ui);
+            clipper.borrow().apply_sound(&ui);
+        }
+    });
+    sound.on_reset({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            crate::sound_ui::reset(&ui);
+            clipper.borrow().apply_sound(&ui);
         }
     });
     watch.on_volume_changed({

@@ -67,6 +67,8 @@ pub struct DownloadRequest {
     pub format: Option<String>,
     /// Best quality / Compatible / Smallest file (Audio only is `quality`).
     pub preset: Preset,
+    /// A link clip's sound, changed after the download (Clip page → Sound).
+    pub audio_edit: Option<crate::sound::AudioEdit>,
 }
 
 impl Default for DownloadRequest {
@@ -103,6 +105,7 @@ impl DownloadRequest {
             start_label: String::new(),
             format: None,
             preset: Preset::Best,
+            audio_edit: None,
         }
     }
 

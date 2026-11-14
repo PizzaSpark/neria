@@ -52,6 +52,8 @@ pub fn postprocessor(name: &str) -> &'static str {
         "Tagging" => "Adding cover, tags and lyrics…",
         "Lyrics" => "Looking for lyrics…",
         "MakingGif" => "Turning it into a GIF…",
+        "Sound" => "Changing the sound…",
+        "Joining" => "Joining the chapters…",
         "UpdatingYtdlp" => "The site changed. Updating the downloader, then trying again…",
         _ => "Processing…",
     }

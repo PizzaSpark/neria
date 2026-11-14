@@ -8,6 +8,8 @@
 //!   `NERIA_SUB_FORMAT=srt|vtt|ass|text`, `NERIA_SUB_MODE=separate|embed|both`, `NERIA_SUBS_ONLY=1`
 //! - `NERIA_AUDIO_LANGS=en,es` (audio tracks; with audio + several: one file each)
 //! - `NERIA_CHAPTERS=2,3,5` (1-based): only those parts, joined into one file
+//! - `NERIA_SOUND=even:-14,fade-in:1,fade-out:2` (or `gain:6`, `mute`): the Clip page's
+//!   Sound, changed after the download as a link clip gets it
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -72,6 +74,24 @@ fn main() -> anyhow::Result<()> {
         req.key = info.key.clone();
         req.section = section;
         req.exact_cuts = exact_cuts;
+        // `NERIA_SOUND=even:-14,fade-out:1` / `gain:6` / `mute`: a link clip's Sound dialog.
+        if let Some(spec) = env("NERIA_SOUND") {
+            let mut e = neria_core::sound::AudioEdit::default();
+            for part in spec.split(',') {
+                let (k, v) = part.split_once(':').unwrap_or((part, ""));
+                let n = v.parse::<f64>().unwrap_or(0.0);
+                match k.trim() {
+                    "mute" => e.level = neria_core::sound::Level::Mute,
+                    "gain" => e.level = neria_core::sound::Level::Gain(n as f32),
+                    "even" => e.level = neria_core::sound::Level::Normalize(n as f32),
+                    "fade-in" => e.fade_in = n,
+                    "fade-out" => e.fade_out = n,
+                    _ => {}
+                }
+            }
+            println!("sound: {}", e.summary());
+            req.audio_edit = Some(e);
+        }
         let (langs, auto_langs) = (list("NERIA_CAPTIONS"), list("NERIA_CAPTIONS_AUTO"));
         if !langs.is_empty() || !auto_langs.is_empty() {
             req.captions = Some(CaptionChoice {

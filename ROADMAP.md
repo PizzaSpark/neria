@@ -428,11 +428,32 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
 1. **Audio controls**, two separate things so it's clear what ends up in the file:
    - ✅ **Preview volume**: a volume slider + mute for listening (mpv `volume`); never changes
      the exported clip (built with Download track 11: `Watch.volume` / `Watch.muted`, M)
-   - **Clip audio**, applied on export: keep / mute / gain (± dB) / **normalize** (ffmpeg
+   - ✅ **Clip audio**, applied on export: keep / mute / gain (± dB) / **normalize** (ffmpeg
      `loudnorm`, presets like -14 LUFS for YouTube/TikTok/Discord, -16 for podcasts) / fade
      in / fade out, with a live preview. Fast · lossless still works: only the audio is
      re-encoded (say so)
-   - "Save audio only": extract the selection as MP3/M4A/Opus
+   - ✅ "Save audio only": extract the selection as MP3/M4A/Opus
+   Built (core `sound.rs`, `ClipSound` global, `dialogs/sound.slint`, `sound_ui.rs`): a
+   "Sound: as is" button next to Fast / Exact opens the Sound dialog: Volume (As is ·
+   Louder or quieter -12..+12 dB with a limiter above 0 · Even out to -14 or -16 LUFS ·
+   Mute), Fade in / Fade out (0.5–3 s), and for files with a picture Save: The video / Sound
+   only (mp3, m4a, opus, flac, wav). One filter chain serves the export and the player: the
+   level plays live (mpv `af`), fades are added on export (the dialog says so). Evening out
+   is two passes (measure, then `loudnorm` linear at 48 kHz). Fast · lossless with new
+   sound copies the picture and re-encodes only the sound, both starting on the keyframe
+   before In (fades counted from there); Mute drops the sound, so it stays lossless. Link
+   clips get the sound changed after the download ("Changing the sound…" on the row).
+   Silent videos and X GIFs have no Sound button (and "Sound only" on one says there's no
+   sound). Below wide windows the Clip bar is two rows (status above the buttons) so nothing
+   is squeezed; on compact windows the timeline is shorter, so a link's "Download clip" no
+   longer falls off the bottom at 400 × 600. Checked on generated files: -14.5 LUFS with
+   fades (target -14), -16.0 for a Sound only mp3, -14.0 on a 2 s clip, +6 dB exact, fades
+   measured as ramps, sound and picture starting together in lossless webm and mp4 cuts from
+   a non-keyframe In, mp3 files in Fast and Exact; a real YouTube link clip through the queue
+   went from -24.5 to -13.9 LUFS ("Changing the sound…"); mpv's log shows the live loudnorm.
+   Not yet: heard by a person, Cancel during "Changing the sound…" (should end Cancelled).
+   `NERIA_DIALOG=sound|sound-gain|sound-only`; `--example clip` takes `--gain/--even/--mute/
+   --fade-in/--fade-out/--audio-only/--in-place`; `--example smoke` takes `NERIA_SOUND`
 2. **GIFs**:
    - **Open and trim a `.gif`** in the clipper (today only video and audio files open), save
      as GIF again or as MP4/WebP, which are much smaller

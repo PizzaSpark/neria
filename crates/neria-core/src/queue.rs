@@ -1236,7 +1236,7 @@ impl Queue {
             result = self.verify_and_retry(id, &mut req, &job, &settings, &cancel, &child, result);
         }
 
-        let cancelled = cancel.load(Ordering::SeqCst);
+        let mut cancelled = cancel.load(Ordering::SeqCst);
         let paused = paused.load(Ordering::SeqCst);
 
         // X "GIF" (really a silent MP4): save it as the .gif people expect.
@@ -1292,6 +1292,26 @@ impl Queue {
             && let Err(e) = self.finish_tracks(id, &req, &dir, &subs_before)
         {
             result = Err(e);
+        }
+
+        // A link clip with its sound changed on the Clip page (fades, louder, evened out, muted).
+        if let (Some(edit), Ok(true), false) = (req.audio_edit.filter(|e| !e.is_none()), &result, cancelled) {
+            let file = {
+                let entries = self.inner.entries.lock().unwrap();
+                entries.iter().find(|e| e.snap.id == id).and_then(|e| e.snap.file.clone())
+            };
+            if let Some(file) = file.filter(|f| f.is_file()) {
+                self.update(id, true, |s| {
+                    s.state = JobState::Processing;
+                    s.postprocessor = Some("Sound".into());
+                });
+                match crate::sound::apply_in_place(&file, &edit, &cancel, |_| {}) {
+                    // Cancelled while changing it: the row says Cancelled, not a failure.
+                    Err(_) if cancel.load(Ordering::SeqCst) => cancelled = true,
+                    Err(e) => result = Err(e),
+                    Ok(()) => {}
+                }
+            }
         }
 
         // Spotify track downloaded: add Spotify tags, cover art and lyrics.

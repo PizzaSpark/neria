@@ -28,6 +28,7 @@ mod recent_ui;
 mod setup_ui;
 mod signin;
 mod signin_ui;
+mod sound_ui;
 mod spotify_ui;
 mod updates_ui;
 
@@ -877,6 +878,27 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             let b = ui.global::<Background>();
             b.set_later_open(true);
             b.invoke_later_changed();
+        }
+        // Clip page → Sound (with NERIA_OPEN for a real clip): evened out with a fade out;
+        // `sound-gain` +4 dB with the slider; `sound-only` saving the sound as mp3.
+        "sound" | "sound-gain" | "sound-only" => {
+            let s = ui.global::<ClipSound>();
+            match which {
+                "sound-gain" => {
+                    s.set_level(1);
+                    s.set_gain(4.0);
+                }
+                "sound-only" => {
+                    s.set_save(1);
+                    s.set_fade_in(2);
+                }
+                _ => {
+                    s.set_level(2);
+                    s.set_fade_out(3);
+                }
+            }
+            s.set_open(true);
+            s.invoke_changed();
         }
         // A link that needs an account: "Sign in to YouTube" on the problem.
         "signin" => {

@@ -17,14 +17,16 @@
 param(
   [string[]]$Sizes = @("1280x800", "900x640", "720x600", "400x600"),
   [string[]]$Only = @(),
-  [int]$Wait = 5
+  [int]$Wait = 5,
+  # Another build (e.g. target\clip\debug\neria.exe while the usual one is running).
+  [string]$Exe = ""
 )
 $ErrorActionPreference = "Stop"
 # "-Only a,b" through powershell -File arrives as one string.
 $Sizes = @($Sizes | ForEach-Object { $_ -split "," } | Where-Object { $_ })
 $Only = @($Only | ForEach-Object { $_ -split "," } | Where-Object { $_ })
 $root = Split-Path $PSScriptRoot -Parent
-$exe = Join-Path $root "target\debug\neria.exe"
+$exe = if ($Exe) { (Resolve-Path $Exe).Path } else { Join-Path $root "target\debug\neria.exe" }
 $bin = Join-Path $root "target\debug\bin"
 $out = Join-Path $root "target\ui-check"
 $home_ = Join-Path $out "home"
@@ -103,6 +105,11 @@ $states = [ordered]@{
   "later"      = @{ NERIA_DIALOG = "later" }
   "names"      = @{ NERIA_DIALOG = "names" }
   "clip-ch"    = @{ NERIA_OPEN = $chaptered; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "10" }
+  "sound"      = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound" }
+  "sound-gain" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-gain" }
+  "sound-only" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-only"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
+  # A link in the clipper: the quality row too (looked up for real, like "bulk").
+  "clip-link"  = @{ NERIA_OPEN = "https://www.youtube.com/watch?v=jNQXAC9IVRw" }
   "match"      = @{ NERIA_DIALOG = "match" }
   "sync"       = @{ NERIA_DIALOG = "sync" }
   "spotify"    = @{ NERIA_DIALOG = "spotify" }

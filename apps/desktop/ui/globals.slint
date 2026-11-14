@@ -120,6 +120,33 @@ export global Watch {
     callback volume-changed();
 }
 
+// Clip page → Sound (Clip track 1): what the saved clip sounds like. Never the listening
+// volume (that's `Watch.volume`), though the player plays the level so you hear it.
+export global ClipSound {
+    in-out property <bool> open;
+    // 0 as is, 1 louder or quieter, 2 even out, 3 mute
+    in-out property <int> level;
+    // Louder or quieter, in dB (-12..12, whole steps).
+    in-out property <float> gain;
+    // Even out to: 0 online video (-14 LUFS), 1 podcast (-16 LUFS)
+    in-out property <int> target;
+    // Fades: 0 off, 1 0.5 s, 2 1 s, 3 2 s, 4 3 s
+    in-out property <int> fade-in;
+    in-out property <int> fade-out;
+    // 0 the video with its sound, 1 the sound only (files only)
+    in-out property <int> save;
+    // Sound only as: mp3, m4a, opus, flac, wav
+    in-out property <int> save-format;
+    // The button on the Clip page ("Sound: as is", "Sound only · mp3").
+    in property <string> button-text: "Sound: as is";
+    // The same in a word or two, below wide windows ("Sound", "+3 dB", "Muted").
+    in property <string> short-text: "Sound";
+    // One line on what it'll do (re-encoding, when you hear it).
+    in property <string> note;
+    callback changed();
+    callback reset();
+}
+
 // One followed channel or playlist in Settings → Following.
 export struct FollowItem {
     url: string,

@@ -1,4 +1,4 @@
-import { Theme } from "../theme.slint";
+import { Theme, Screen } from "../theme.slint";
 import { ChapterMark } from "../types.slint";
 import { KeyPress } from "../widgets.slint";
 
@@ -26,9 +26,10 @@ export component Timeline inherits Rectangle {
     property <length> in-x: root.width * (root.in-time / root.dur);
     property <length> out-x: root.width * (root.out-time / root.dur);
     property <length> pos-x: root.width * (root.position / root.dur);
-    property <length> strip-h: root.has-video ? 66px : 0px;
+    // Compact windows: a shorter strip, so the page's main button stays in view.
+    property <length> strip-h: !root.has-video ? 0px : Screen.compact ? 50px : 66px;
 
-    height: root.has-video ? 100px : 64px;
+    height: !root.has-video ? 64px : Screen.compact ? 76px : 100px;
     border-radius: 10px;
     background: Theme.surface-hi;
     clip: true;

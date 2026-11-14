@@ -25,6 +25,7 @@ pub mod proc;
 pub mod queue;
 pub mod report;
 pub mod settings;
+pub mod sound;
 pub mod spotify;
 pub mod tools;
 pub mod tracks;
