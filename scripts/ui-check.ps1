@@ -112,6 +112,10 @@ $states = [ordered]@{
   "sound-gain" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-gain" }
   "gif"        = @{ NERIA_OPEN = $video; NERIA_DIALOG = "gif"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
   "clip-gif"   = @{ NERIA_OPEN = $gifFile }
+  "picture"    = @{ NERIA_OPEN = $video; NERIA_DIALOG = "picture" }
+  "picture-result" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "picture-result" }
+  "clips"      = @{ NERIA_OPEN = $chaptered; NERIA_DIALOG = "clips" }
+  "clips-page" = @{ NERIA_OPEN = $chaptered; NERIA_DIALOG = "clips-page" }
   "sound-only" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-only"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
   # A link in the clipper: the quality row too (looked up for real, like "bulk").
   "clip-link"  = @{ NERIA_OPEN = "https://www.youtube.com/watch?v=jNQXAC9IVRw" }

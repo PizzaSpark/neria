@@ -23,6 +23,9 @@ pub struct FileInfo {
     pub has_audio: bool,
     /// Chapter marks stored in the file (yt-dlp embeds YouTube's).
     pub chapters: Vec<crate::tracks::Chapter>,
+    /// The video is shown turned by this much (phone footage), in degrees, clockwise.
+    /// `width` × `height` are as stored; ffmpeg and mpv show it turned.
+    pub rotation: i32,
 }
 
 fn parse_rate(s: &str) -> f64 {
@@ -61,6 +64,14 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
                     info.video_codec = s["codec_name"].as_str().unwrap_or("").to_string();
                     let avg = parse_rate(s["avg_frame_rate"].as_str().unwrap_or(""));
                     info.fps = if avg > 0.0 { avg } else { parse_rate(s["r_frame_rate"].as_str().unwrap_or("")) };
+                    // The display matrix says counter-clockwise; 90 here = shown turned left.
+                    let r = s["side_data_list"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .find_map(|d| d["rotation"].as_f64())
+                        .unwrap_or(0.0) as i32;
+                    info.rotation = (-r).rem_euclid(360);
                 }
                 info.has_video = true;
             }

@@ -31,6 +31,7 @@ pub fn spec(ui: &AppWindow) -> GifSpec {
         width: WIDTHS.get(g.get_size().max(0) as usize).copied().unwrap_or(480),
         fps: FPS.get(g.get_fps().max(0) as usize).copied().unwrap_or(15.0),
         loop_forever: g.get_loop() == 0,
+        picture: crate::picture_ui::picture(ui),
     }
 }
 

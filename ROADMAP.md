@@ -476,14 +476,56 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
    placement at 900 and 400 wide. Not yet: looked at by a person in an image viewer or
    Discord. `NERIA_DIALOG=gif`; `--example clip -- … --gif gif|webp|mp4 [--width] [--fps]
    [--once]`; `--example smoke` takes `NERIA_GIF`
-3. **Clip render queue**: several In/Out ranges on one video, listed as clips (rename,
+3. ✅ **Clip render queue**: several In/Out ranges on one video, listed as clips (rename,
    reorder, remove, jump to each), exported in one go (files through a local export queue,
    links as several `--download-sections` jobs); option to join them into one file. Chapters
    (Download track) feed into this
-4. **Crop and aspect ratio**: draw a crop box, or pick 9:16 (Shorts/TikTok), 1:1, 4:5, 16:9
+   Built (`ClipList` global, `dialogs/clips.slint`, `clips_ui.rs`, core `clip::export_many`):
+   a "Clips" button by the shortcuts line (compact: next to In/Out) opens the list: "Add
+   0:12 – 0:20" (or A on the page), "Add all chapters" (named after them), each row with a
+   ≡ grip (drag or ↑/↓), its name to type, its range, ▷ (In/Out to it) and ✕; "Join them
+   into one file, in this order"; "Clear the list". Saved clips show as numbered bands on
+   the timeline and Export becomes "Export 3 clips". Files: one file each (`video - Intro.mp4`,
+   names made file-safe), or joined: the pieces are cut frame-exact (a lossless cut would
+   carry extra footage at every seam), joined as they are, then the sound is changed once
+   over the whole (fades at its ends only); Sound and Picture apply to every clip. Links:
+   one download per clip as one queue card, or one download of all the ranges (overlaps
+   merged) joined in time order. The list is cleared when another video opens.
+4. ✅ **Crop and aspect ratio**: draw a crop box, or pick 9:16 (Shorts/TikTok), 1:1, 4:5, 16:9
    with a draggable frame
-5. **Rotate and flip** (90° steps, mirror), applied on export (forces re-encode; say so)
-6. **Preview the result** before exporting, with crop/rotate/audio changes applied
+5. ✅ **Rotate and flip** (90° steps, mirror), applied on export (forces re-encode; say so)
+6. ✅ **Preview the result** before exporting, with crop/rotate/audio changes applied (fades
+   are still only heard in the saved file: the dialog says so)
+   Built (core `picture.rs`, `ClipPicture` global, `CropFrame` in widgets.slint,
+   `picture_ui.rs`): a "Picture" button next to Sound turns the page into Picture mode: the
+   bottom bar becomes shape chips (Whole picture · Free · 9:16 · 1:1 · 4:5 · 16:9), Turn
+   left / right, Mirror, Upside down, Reset and Done, and a crop frame sits on the video
+   (drag it, drag a corner; keeps its shape; arrows / Shift+arrows). Order: turn, mirror,
+   then crop, so the chips are the saved file's shape; the crop is fractions of the turned
+   picture written as `iw`/`ih` expressions (even sides), so it fits links whose size is
+   only known later. While editing the player shows the turned picture with the frame;
+   after Done it plays the finished picture (mpv `vf`, updated while paused too) with a
+   "Result: 9:16" tag. Any picture change re-encodes the video (Fast says frame-exact);
+   Make a GIF applies it too; link clips get sound and picture in one pass after the
+   download ("Cropping and turning the picture…"; a .webm becomes .mp4; only the sound
+   changing keeps every stream, cover art too, and a new picture alone copies the sound).
+   Phone footage (a rotation tag): ffprobe's rotation (`FileInfo.rotation`) is used, mpv's
+   own turning is switched off while there are filters and the same turn goes first in
+   them, so the player shows what ffmpeg saves; the player box is now upright for such
+   videos with no changes too (it was letterboxed 16:9 before). Below 1200 px the Clip
+   bar is two rows (the long Sound / Picture labels squeezed the status at ~1000).
+   Checked: 9:16 / 4:5 / turn + mirror / 1:1 GIF sizes with ffprobe and a frame by eye,
+   three named clips separate and joined (6.52 s for 6.5 s of clips, fades), a .webm
+   cropped and turned in place to a 720×720 .mp4, an mp3 with cover art evened out in
+   place (cover kept, -14.3 LUFS), a YouTube link clip cropped through the queue, a phone
+   sample (90° tag): player result and saved frame match, the frame moved and resized with
+   posted mouse drags, Export pressed in the app for three clips (three named files) and
+   for a turned 1:1 crop (720×720), screenshots at every width (picture mode, result, clip
+   list, timeline marks). Not yet: a person using it; link clip lists (one card of several
+   downloads, or joined in time order) not run end to end; dragging rows in the clip list
+   and typing a clip's name only built, not driven. `NERIA_DIALOG=picture|picture-result|clips|clips-page` (with
+   `NERIA_OPEN`); `--example clip` takes `--turn/--flip-h/--flip-v/--aspect/--crop` and
+   `--clips a-b,c-d [--names] [--join]`; `--example smoke` takes `NERIA_ASPECT`/`NERIA_TURN`
 7. Links: waveform for streamed links (needs the audio); test live/very long streams
 8. **Clip a livestream without recording all of it**, two ways:
    - **Rewind the live stream** (YouTube, Twitch and other sites that keep the last hours

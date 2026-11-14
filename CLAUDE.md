@@ -12,24 +12,24 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
   compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
   `music.rs` tags/M3U/sync/Lyrics only/numbering, `lyrics.rs` lyrics sources (LRCLIB,
   Spotify's own with a sign-in), `post.rs` items of posts/playlists for the picker,
-  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate). Shared with the future Android app, so no UI code here.
+  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate, `picture.rs` turn/mirror/crop filters). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI in `ui/`:
   - `app.slint`: `AppWindow` only, the one API Rust sees (all properties/callbacks); wires them
     into the pages and overlays. Re-exports the structs and `Fmt` from `types.slint`, and the
     feature globals from `globals.slint` (`Accounts`, `Extras`, `Background`, `QueueActions`,
-    `Presets`, `Names`, `Music` (lyrics sources, Lyrics only, numbering), `ClipSound` (Clip page → Sound), `ClipGif` (Make a GIF)): newer features keep their state there and pages import them directly,
+    `Presets`, `Names`, `Music` (lyrics sources, Lyrics only, numbering), `ClipSound` (Clip page → Sound), `ClipGif` (Make a GIF), `ClipPicture` (Picture mode), `ClipList` (the clip list)): newer features keep their state there and pages import them directly,
     instead of threading every property through `app.slint` (Rust: `ui.global::<Extras>()`).
   - `pages/`: `download`, `clip`, `compress`, `settings` (drawer), `setup` (first run).
   - `dialogs/`: `match` (pick another match), `sync` (removed songs), `spotify` (heads-up),
     `drop` (drag-and-drop overlay + clip/compress choice), `tracks` (captions / audio tracks /
     chapters picker), `background` (close-to-tray question, Download later), `names`
-    (filename builder), `sound` (Clip page → Sound: volume, fades, sound only), `gif` (Make a GIF).
+    (filename builder), `sound` (Clip page → Sound: volume, fades, sound only), `gif` (Make a GIF), `clips` (the clip list).
   - `components/`: `job-row`, `quality-row` (presets + Advanced), `pick-list`, `timeline` (+
     `ChapterStrip`), `extras-row`, `sidebar` (rail + compact `TabBar`), `update-banner`.
   - `widgets.slint`: the one shared control set (buttons, chips, `ChoiceChips`, `Tick`, `Tag`,
     `Notice`, `Divider`, `ListRow`, `Thumb`, `Sticker`/`LogoMark`, `EmptyState`, `Dialog`, `Menu`,
-    `Toast`…). `theme.slint`'s `Screen` global holds the width breakpoints (wide / medium /
+    `Toast`, `CropFrame`…). `theme.slint`'s `Screen` global holds the width breakpoints (wide / medium /
     compact, see `docs/DESIGN.md`); pages read `Screen.compact` etc. instead of taking the width.
     Reuse these instead of restyling per page. `theme.slint`: tokens + bundled fonts in `ui/fonts/`.
   - Pages take plain properties (no `clip-`/`cmp-` prefixes) and are bound in `app.slint`.
@@ -38,7 +38,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
     as a Slint image), `compressor.rs` (compress page), `signin.rs` (`neria --sign-in <site>`:
     the WebView2 sign-in window, its own process) + `signin_ui.rs`, `extras_ui.rs` (captions,
     audio tracks, chapters), `background_ui.rs` (tray, notifications, Download later),
-    `names_ui.rs` (filename builder), `sound_ui.rs` (Clip page → Sound), `gif_ui.rs` (Make a GIF), `order_ui.rs` (queue order: the list is the truth, the
+    `names_ui.rs` (filename builder), `sound_ui.rs` (Clip page → Sound), `gif_ui.rs` (Make a GIF), `picture_ui.rs` (Picture mode), `clips_ui.rs` (clip list), `order_ui.rs` (queue order: the list is the truth, the
     queue is told the order it shows), `bulk_ui.rs` (several links, Paste & download, clipboard
     watcher), `follow_ui.rs` (Follow, Settings → Following, the checks). Watch mode lives in
     `clipper.rs` (`Watch` global). Core: `cookies.rs` (per-site cookie files, only ever
@@ -60,7 +60,9 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example clip -- <file> <start> <end> [fast|exact]`
   (sound: `--gain <dB>`, `--even <LUFS>`, `--mute`, `--fade-in <s>`, `--fade-out <s>`,
   `--audio-only <fmt>`; `--in-place <file>` changes a whole file as a link clip gets it;
-  `--gif gif|webp|mp4 [--width] [--fps] [--once]` prints the size estimate, then makes it)
+  `--gif gif|webp|mp4 [--width] [--fps] [--once]` prints the size estimate, then makes it;
+  picture: `--turn <1-3>`, `--flip-h`, `--flip-v`, `--aspect 9:16`, `--crop x,y,w,h`;
+  `--clips a-b,c-d [--names A,B] [--join]` for the clip list)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example compress -- <file> <mb|q0.0-1.0> [h264|hevc|av1] [cpu|gpu]`
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
   (`--lyrics-only`, `--number`, `--add-lyrics`, `--no-lyrics`, `--no-verify`,
@@ -75,7 +77,7 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   newest upload: use a scratch NERIA_HOME with a `bin` junction)
   `smoke` also takes the Download page's picks: `NERIA_PRESET`, `NERIA_CONTAINER`, `NERIA_TEMPLATE`,
   `NERIA_CAPTIONS` / `NERIA_CAPTIONS_AUTO` / `NERIA_SUB_FORMAT` / `NERIA_SUB_MODE` / `NERIA_SUBS_ONLY`,
-  `NERIA_AUDIO_LANGS`, `NERIA_CHAPTERS`, `NERIA_SOUND` (a link clip's Sound), `NERIA_GIF` (Make a GIF from a link clip) (see the example's header)
+  `NERIA_AUDIO_LANGS`, `NERIA_CHAPTERS`, `NERIA_SOUND` (a link clip's Sound), `NERIA_GIF` (Make a GIF from a link clip), `NERIA_ASPECT` / `NERIA_TURN` (Picture) (see the example's header)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example updates -- [--any-age] [--update <tool>]`
   (new Neria release / newer tool builds; `--update` re-downloads into NERIA_HOME/bin, use a scratch copy)
 
@@ -89,7 +91,7 @@ release" JSON instead of GitHub; test self-update with a local server and a copy
 rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog), `NERIA_DIALOG` (open a dialog with sample
 data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, `update-ready`, `update-failed`,
 `signin` (a problem that sign-in fixes), `extras` / `captions` / `audio` / `chapters` (a video with all three, the
-picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`, `sound` / `sound-gain` / `sound-only` (Clip page → Sound, with `NERIA_OPEN`), `gif` (Make a GIF, with `NERIA_OPEN`: a real estimate)),
+picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`, `sound` / `sound-gain` / `sound-only` (Clip page → Sound, with `NERIA_OPEN`), `gif` (Make a GIF, with `NERIA_OPEN`: a real estimate), `picture` / `picture-result` / `clips` / `clips-page` (Picture mode, its result, the clip list; with `NERIA_OPEN`)),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
 `NERIA_WINDOW` (window size in logical px, e.g. `780x580`; resizing from outside with
 MoveWindow/SetWindowPos also works, but in PowerShell don't name the window handle `$h` next to

@@ -1,12 +1,92 @@
 import { Theme, Screen } from "../theme.slint";
 import { Fmt } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, PageTitle, Notice, Divider } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, PageTitle, Notice, Divider, Tag, Hint, CropFrame } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets, Watch, ClipSound, ClipGif } from "../globals.slint";
+import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList } from "../globals.slint";
 import { Menu, MenuItem } from "../widgets.slint";
+
+// Clip page → Picture: the shape chips, turn and mirror, Reset and Done. Takes the place of
+// the bottom bar while the crop frame is up.
+component PictureBar inherits VerticalLayout {
+    spacing: 8px;
+    vertical-stretch: 0;
+    ChoiceChips {
+        options: ["Whole picture", "Free", "9:16", "1:1", "4:5", "16:9"];
+        current <=> ClipPicture.aspect;
+        changed => { ClipPicture.aspect-picked(); }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        GhostButton {
+            horizontal-stretch: 0;
+            compact: Screen.compact;
+            icon: "\u{E7A7}";
+            text: Screen.wide ? "Turn left" : "";
+            label: "Turn left";
+            clicked => {
+                ClipPicture.turns = Math.mod(ClipPicture.turns + 3, 4);
+                ClipPicture.aspect-picked();
+            }
+        }
+        GhostButton {
+            horizontal-stretch: 0;
+            compact: Screen.compact;
+            icon: "\u{E7A6}";
+            text: Screen.wide ? "Turn right" : "";
+            label: "Turn right";
+            clicked => {
+                ClipPicture.turns = Math.mod(ClipPicture.turns + 1, 4);
+                ClipPicture.aspect-picked();
+            }
+        }
+        GhostButton {
+            horizontal-stretch: 0;
+            compact: Screen.compact;
+            icon: "\u{E8AB}";
+            text: Screen.wide ? "Mirror" : "";
+            label: "Mirror left to right";
+            on: ClipPicture.flip-h;
+            clicked => {
+                ClipPicture.flip-h = !ClipPicture.flip-h;
+                ClipPicture.changed();
+            }
+        }
+        GhostButton {
+            horizontal-stretch: 0;
+            compact: Screen.compact;
+            icon: "\u{E8CB}";
+            text: Screen.wide ? "Upside down" : "";
+            label: "Flip upside down";
+            on: ClipPicture.flip-v;
+            clicked => {
+                ClipPicture.flip-v = !ClipPicture.flip-v;
+                ClipPicture.changed();
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        GhostButton {
+            horizontal-stretch: 0;
+            compact: Screen.compact;
+            text: "Reset";
+            clicked => { ClipPicture.reset(); }
+        }
+        PrimaryButton {
+            horizontal-stretch: 0;
+            text: "Done";
+            icon: "\u{E73E}";
+            clicked => {
+                ClipPicture.editing = false;
+                ClipPicture.changed();
+            }
+        }
+    }
+    if !Screen.compact: Hint {
+        text: "Turning, mirroring and cropping re-encode the video, so it's saved frame-exact. Drag the frame to move it, a corner to size it.";
+    }
+}
 import { Slider } from "std-widgets.slint";
 
 // The Export button with its ▾: the same export, or Make a GIF. The menu opens upwards,
@@ -113,10 +193,27 @@ export component ClipPage inherits FocusScope {
     property <float> effective-in: Fmt.keyframe-before(root.in-time, root.keyframes);
     // Sound only (files) cuts exactly at In, whatever the mode.
     property <bool> sound-only: !root.is-link && root.has-video && ClipSound.save == 1;
-    property <bool> early-start: !root.is-link && !root.sound-only && !root.gif-file && root.mode == 0 && root.effective-in < root.in-time - 0.05;
+    // A changed picture is always re-encoded (frame-exact), whatever the mode says.
+    property <bool> picture-changed: root.has-video && ClipPicture.changed-any && !root.sound-only;
+    property <int> clips: ClipList.items.length;
+    // The bottom bar fits on one line (chips, Sound, Picture, status, Export) only from here;
+    // narrower, the status gets its own line above.
+    property <bool> one-bar: Screen.width >= 1200px;
+    // The clip list: how it'll be saved, from the choices as they are now.
+    property <string> clips-how: ClipList.join && root.clips > 1
+        ? (root.is-link ? "joined into one file, in time order" : "joined into one file (cut frame-exact)")
+        : root.is-link ? root.clips + " downloads"
+        : root.gif-file ? "one GIF each"
+        : root.mode == 0 && root.has-video && !root.picture-changed && !root.sound-only
+            ? "one file each, each starts on the keyframe before its In"
+        : "one file each";
+    property <bool> early-start: !root.is-link && !root.sound-only && !root.gif-file && !root.picture-changed
+        && root.clips == 0 && root.mode == 0 && root.effective-in < root.in-time - 0.05;
     // What the export will do (or how it went), next to the Export button.
     property <string> status-text: root.status != "" ? root.status
+        : root.clips > 0 ? ClipList.note + "  ·  " + root.clips-how
         : root.gif-file ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  saved as a GIF again"
+        : root.picture-changed && !root.is-link ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  frame-exact, the picture changed"
         : root.is-link ? "Downloads only " + Fmt.time(root.out-time - root.in-time)
             + (root.mode == 0 ? "  ·  fast, may start a few seconds early" : "  ·  frame-exact (slower)")
         : root.sound-only ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  sound only"
@@ -124,7 +221,8 @@ export component ClipPage inherits FocusScope {
         : root.early-start ? "Lossless cut starts earlier, at " + Fmt.time(root.effective-in) + " (keyframe)"
         : "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  lossless, starts on a keyframe";
     property <bool> status-warn: root.status == "" && root.early-start;
-    property <string> export-text: root.is-link ? "Download clip" : root.sound-only ? "Export sound" : "Export clip";
+    property <string> export-text: root.clips > 0 ? (root.is-link ? "Download " : "Export ") + root.clips + (root.clips == 1 ? " clip" : " clips")
+        : root.is-link ? "Download clip" : root.sound-only ? "Export sound" : "Export clip";
     // The Export button's ▾ (Make a GIF): not while exporting, nor for an X GIF link.
     property <bool> gif-menu: !root.exporting && !root.gif && root.has-video;
 
@@ -142,8 +240,8 @@ export component ClipPage inherits FocusScope {
     }
 
     init => { self.focus(); }
-    // The Sound or GIF dialog took the keyboard; give it back when it closes (Space, I/O…).
-    property <bool> sound-open: ClipSound.open || ClipGif.open;
+    // A dialog or the crop frame took the keyboard; give it back when it closes (Space, I/O…).
+    property <bool> sound-open: ClipSound.open || ClipGif.open || ClipList.open || ClipPicture.editing;
     changed sound-open => {
         if !self.sound-open {
             self.focus();
@@ -196,6 +294,11 @@ export component ClipPage inherits FocusScope {
         }
         if event.text == "r" || event.text == "R" {
             root.loop = !root.loop;
+            return accept;
+        }
+        // A: add the selection to the clip list.
+        if (event.text == "a" || event.text == "A") && root.out-time > root.in-time {
+            ClipList.add();
             return accept;
         }
         if event.text == Key.Home {
@@ -355,6 +458,28 @@ export component ClipPage inherits FocusScope {
                         root.focus();
                     }
                 }
+                // Picture mode: the crop frame over the turned picture.
+                if ClipPicture.editing && ClipPicture.aspect != 0 && root.has-video: CropFrame {
+                    width: parent.width;
+                    height: parent.height;
+                    cx <=> ClipPicture.cx;
+                    cy <=> ClipPicture.cy;
+                    cw <=> ClipPicture.cw;
+                    ch <=> ClipPicture.ch;
+                    ratio: ClipPicture.aspect == 2 ? 9 / 16 : ClipPicture.aspect == 3 ? 1 : ClipPicture.aspect == 4 ? 4 / 5
+                        : ClipPicture.aspect == 5 ? 16 / 9 : 0;
+                    moved => { ClipPicture.changed(); }
+                }
+                // What plays is the finished picture (cropped, turned): say so.
+                if !ClipPicture.editing && root.picture-changed: Tag {
+                    x: 10px;
+                    y: 10px;
+                    // Its own size (placed by hand, not in a layout).
+                    width: self.preferred-width;
+                    height: self.preferred-height;
+                    text: "Result: " + ClipPicture.short-text;
+                    kind: 4;
+                }
             }
         }
 
@@ -461,6 +586,15 @@ export component ClipPage inherits FocusScope {
                 text: "Out  " + Fmt.time(root.out-time);
                 clicked => { root.set-out(); }
             }
+            if !root.gif: GhostButton {
+                horizontal-stretch: 0;
+                compact: true;
+                icon: "\u{E8FD}";
+                text: root.clips > 0 ? "" + root.clips : "";
+                label: root.clips > 0 ? "Clips: " + root.clips : "Clips";
+                on: root.clips > 0;
+                clicked => { ClipList.open = true; }
+            }
         }
 
         if root.loaded: Timeline {
@@ -475,6 +609,7 @@ export component ClipPage inherits FocusScope {
             handles: !Watch.on;
             keyframe-ticks: root.keyframe-ticks;
             effective-in: root.effective-in;
+            marks: Watch.on ? [] : ClipList.items;
             seek(t) => {
                 root.seek(t);
                 root.focus();
@@ -496,17 +631,33 @@ export component ClipPage inherits FocusScope {
             }
         }
 
-        // Keyboard shortcuts: not on compact (and no keyboard on a phone).
-        if root.loaded && !Screen.compact: Text {
-            text: Watch.on ? "Space play / pause  ·  ← → 5s (Shift 1s)  ·  M mute  ·  Home / End start / end" : "Space play clip  ·  I / O set in / out  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  Home / End jump to in / out";
-            color: Theme.muted;
-            font-size: 11px;
-            overflow: elide;
+        // Keyboard shortcuts (not on compact: no keyboard on a phone), and the clip list.
+        if root.loaded && !Screen.compact && !ClipPicture.editing: HorizontalLayout {
+            spacing: 8px;
+            Text {
+                horizontal-stretch: 1;
+                text: Watch.on ? "Space play / pause  ·  ← → 5s (Shift 1s)  ·  M mute  ·  Home / End start / end" : "Space play clip  ·  I / O set in / out  ·  A add to clips  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  Home / End jump to in / out";
+                color: Theme.muted;
+                font-size: 11px;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            if !Watch.on && !root.gif: GhostButton {
+                horizontal-stretch: 0;
+                compact: true;
+                icon: "\u{E8FD}";
+                text: root.clips > 0 ? "Clips · " + root.clips : "Clips";
+                on: root.clips > 0;
+                clicked => { ClipList.open = true; }
+            }
         }
+
+        // Picture mode: shape, turn, mirror in place of the bottom bar.
+        if root.loaded && ClipPicture.editing && !Watch.on: PictureBar { }
 
         // Link mode: the same quality and file type as the Download page
         // (shared settings, so both pages always agree). Files keep their own.
-        if root.loaded && root.is-link: QualityRow {
+        if root.loaded && root.is-link && !ClipPicture.editing: QualityRow {
             quality <=> root.quality;
             container-index <=> root.container-index;
             audio-format-index <=> root.audio-format-index;
@@ -544,12 +695,15 @@ export component ClipPage inherits FocusScope {
             }
         }
 
-        if root.loaded && Screen.compact && !Watch.on: VerticalLayout {
+        if root.loaded && Screen.compact && !Watch.on && !ClipPicture.editing: VerticalLayout {
             // Spare height goes to the player, not here.
             vertical-stretch: 0;
             spacing: 8px;
+            // Sound and Picture are icons here; a yellow outline says something's set.
             HorizontalLayout {
                 spacing: 8px;
+                // A .gif has no chips: the icons keep their size, on the left.
+                alignment: root.gif-file ? start : stretch;
                 if !root.gif-file: ChoiceChips {
                     options: ["Fast · lossless", "Exact · re-encode"];
                     current <=> root.mode;
@@ -559,10 +713,24 @@ export component ClipPage inherits FocusScope {
                     horizontal-stretch: 0;
                     GhostButton {
                         compact: true;
-                        text: ClipSound.short-text;
                         icon: "\u{E767}";
                         label: ClipSound.button-text;
+                        on: ClipSound.button-text != "Sound: as is";
                         clicked => { ClipSound.open = true; }
+                    }
+                }
+                if root.has-video && !root.gif: VerticalLayout {
+                    alignment: start;
+                    horizontal-stretch: 0;
+                    GhostButton {
+                        compact: true;
+                        icon: "\u{E7A8}";
+                        label: ClipPicture.button-text;
+                        on: root.picture-changed;
+                        clicked => {
+                            ClipPicture.editing = true;
+                            ClipPicture.changed();
+                        }
                     }
                 }
             }
@@ -603,7 +771,7 @@ export component ClipPage inherits FocusScope {
             ExportButton {
                 text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%" : root.export-text;
                 icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
-                enabled: root.out-time > root.in-time && root.tools-ready;
+                enabled: (root.clips > 0 || root.out-time > root.in-time) && root.tools-ready;
                 has-menu: root.gif-menu;
                 menu-text: root.export-text;
                 menu-icon: root.is-link ? "\u{E896}" : "\u{E8C6}";
@@ -617,12 +785,12 @@ export component ClipPage inherits FocusScope {
             }
         }
 
-        // Wide: one bar. Medium: what it'll do (and its fixes) on a line above the buttons,
+        // 1200 px and up: one bar. Narrower: what it'll do (and its fixes) on a line above the buttons,
         // so neither squeezes the other.
-        if root.loaded && !Screen.compact && !Watch.on: VerticalLayout {
+        if root.loaded && !Screen.compact && !Watch.on && !ClipPicture.editing: VerticalLayout {
             vertical-stretch: 0;
             spacing: 6px;
-            if !Screen.wide: HorizontalLayout {
+            if !root.one-bar: HorizontalLayout {
                 spacing: 8px;
                 min-height: 30px;
                 Text {
@@ -658,28 +826,41 @@ export component ClipPage inherits FocusScope {
             }
             HorizontalLayout {
                 spacing: 8px;
+                // Medium: short chip names (the line above says what they mean).
                 if !root.gif-file: ChoiceChips {
                     horizontal-stretch: 0;
-                    options: ["Fast · lossless", "Exact · re-encode"];
+                    options: root.one-bar ? ["Fast · lossless", "Exact · re-encode"] : ["Fast", "Exact"];
                     current <=> root.mode;
                 }
                 if root.has-audio && !root.gif: GhostButton {
                     horizontal-stretch: 0;
-                    text: Screen.wide ? ClipSound.button-text : ClipSound.short-text;
+                    text: root.one-bar ? ClipSound.button-text : ClipSound.short-text;
                     label: ClipSound.button-text;
                     icon: "\u{E767}";
+                    on: ClipSound.button-text != "Sound: as is";
                     clicked => { ClipSound.open = true; }
+                }
+                if root.has-video && !root.gif: GhostButton {
+                    horizontal-stretch: 0;
+                    text: root.one-bar ? ClipPicture.button-text : ClipPicture.short-text;
+                    label: ClipPicture.button-text;
+                    icon: "\u{E7A8}";
+                    on: root.picture-changed;
+                    clicked => {
+                        ClipPicture.editing = true;
+                        ClipPicture.changed();
+                    }
                 }
                 Text {
                     horizontal-stretch: 1;
-                    text: Screen.wide ? root.status-text : "";
+                    text: root.one-bar ? root.status-text : "";
                     color: root.status-warn ? Theme.warn : Theme.muted;
                     font-size: 12px;
                     overflow: elide;
                     vertical-alignment: center;
                     horizontal-alignment: right;
                 }
-                if Screen.wide && root.status-warn: GhostButton {
+                if root.one-bar && root.status-warn: GhostButton {
                     horizontal-stretch: 0;
                     text: "Snap to keyframe";
                     clicked => {
@@ -687,13 +868,13 @@ export component ClipPage inherits FocusScope {
                         root.seek(root.in-time);
                     }
                 }
-                if Screen.wide && root.has-output && !root.exporting: GhostButton {
+                if root.one-bar && root.has-output && !root.exporting: GhostButton {
                     horizontal-stretch: 0;
                     text: "Show file";
                     icon: "\u{E838}";
                     clicked => { root.show-output(); }
                 }
-                if Screen.wide && root.is-link && root.status != "": GhostButton {
+                if root.one-bar && root.is-link && root.status != "": GhostButton {
                     horizontal-stretch: 0;
                     text: "View queue";
                     clicked => { root.view-queue(); }
@@ -702,7 +883,7 @@ export component ClipPage inherits FocusScope {
                     horizontal-stretch: 0;
                     text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%" : root.export-text;
                     icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
-                    enabled: root.out-time > root.in-time && root.tools-ready;
+                    enabled: (root.clips > 0 || root.out-time > root.in-time) && root.tools-ready;
                     has-menu: root.gif-menu;
                     menu-text: root.export-text;
                     menu-icon: root.is-link ? "\u{E896}" : "\u{E8C6}";

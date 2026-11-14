@@ -169,6 +169,58 @@ export global ClipGif {
     callback make();
 }
 
+// Clip page → Picture (Clip track 4–6): turn, mirror and crop. The crop is fractions of
+// the turned picture; while editing, the player shows the turned picture with the frame
+// on it, otherwise the finished result.
+export global ClipPicture {
+    in-out property <bool> editing;
+    // Clockwise quarter turns, 0–3.
+    in-out property <int> turns;
+    in-out property <bool> flip-h;
+    in-out property <bool> flip-v;
+    // 0 whole picture, 1 free, 2 9:16, 3 1:1, 4 4:5, 5 16:9
+    in-out property <int> aspect;
+    in-out property <float> cx;
+    in-out property <float> cy;
+    in-out property <float> cw: 1;
+    in-out property <float> ch: 1;
+    // "Picture: as is", "Picture: cropped · turned" (wide) and a word for narrow windows.
+    in property <string> button-text: "Picture: as is";
+    in property <string> short-text: "Picture";
+    // Something's changed: the player shows the result (and the page says so).
+    in property <bool> changed-any;
+    callback changed(); // turn / mirror / crop moved: Rust updates the player
+    callback aspect-picked(); // a shape chip: Rust centres the biggest crop of it
+    callback reset();
+}
+
+// One clip of the clip list.
+export struct ClipItem {
+    name: string,
+    start: float,
+    end: float,
+    // "0:12 – 0:20 · 8 s"
+    range: string,
+}
+
+// Clip page → Clips (Clip track 3): several selections of one video, saved in one go.
+export global ClipList {
+    in-out property <bool> open;
+    in property <[ClipItem]> items;
+    // Saved as one file, one after the other.
+    in-out property <bool> join;
+    // "Fast · lossless: each clip starts on the keyframe before its In" and the like.
+    in property <string> note;
+    callback add(); // the current selection (A on the page)
+    callback add-chapters();
+    callback remove(int);
+    callback rename(int, string);
+    callback move(int, int); // from, to
+    callback pick(int); // In / Out to that clip
+    callback clear();
+    callback join-changed();
+}
+
 // One followed channel or playlist in Settings → Following.
 export struct FollowItem {
     url: string,

@@ -5,7 +5,8 @@ import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem } from "globals.slint";
+import { ClipsDialog } from "dialogs/clips.slint";
 import { GifDialog } from "dialogs/gif.slint";
 import { SoundDialog } from "dialogs/sound.slint";
 import { NamesDialog } from "dialogs/names.slint";
@@ -22,7 +23,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -621,6 +622,17 @@ export component AppWindow inherits Window {
         height: root.height;
         has-video: root.clip-has-video;
         is-link: root.clip-is-link;
+    }
+
+    if ClipList.open: ClipsDialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        has-chapters: root.clip-chapters.length > 0;
+        can-join: !root.clip-gif-file;
+        is-link: root.clip-is-link;
+        selection: root.clip-out > root.clip-in ? Fmt.time(root.clip-in) + " – " + Fmt.time(root.clip-out) : "";
     }
 
     if ClipGif.open: GifDialog {

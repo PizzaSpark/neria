@@ -1294,8 +1294,11 @@ impl Queue {
             result = Err(e);
         }
 
-        // A link clip with its sound changed on the Clip page (fades, louder, evened out, muted).
-        if let (Some(edit), Ok(true), false) = (req.audio_edit.filter(|e| !e.is_none()), &result, cancelled) {
+        // A link clip with its sound or picture changed on the Clip page, in one pass (a GIF
+        // gets its picture changes while it's made, below).
+        let edit = req.audio_edit.unwrap_or_default();
+        let picture = req.picture.unwrap_or_default();
+        if (!edit.is_none() || !picture.is_none()) && req.gif_spec.is_none() && matches!(result, Ok(true)) && !cancelled {
             let file = {
                 let entries = self.inner.entries.lock().unwrap();
                 entries.iter().find(|e| e.snap.id == id).and_then(|e| e.snap.file.clone())
@@ -1303,13 +1306,13 @@ impl Queue {
             if let Some(file) = file.filter(|f| f.is_file()) {
                 self.update(id, true, |s| {
                     s.state = JobState::Processing;
-                    s.postprocessor = Some("Sound".into());
+                    s.postprocessor = Some(if picture.is_none() { "Sound" } else { "Picture" }.into());
                 });
-                match crate::sound::apply_in_place(&file, &edit, &cancel, |_| {}) {
+                match crate::sound::edit_in_place(&file, &edit, &picture, &cancel, |_| {}) {
+                    Ok(out) => self.update(id, true, |s| s.file = Some(out)),
                     // Cancelled while changing it: the row says Cancelled, not a failure.
                     Err(_) if cancel.load(Ordering::SeqCst) => cancelled = true,
                     Err(e) => result = Err(e),
-                    Ok(()) => {}
                 }
             }
         }

@@ -149,6 +149,9 @@ export component GhostButton inherits Rectangle {
     in property <bool> compact;
     // What a screen reader says; needed when the button is an icon only.
     in property <string> label: root.text;
+    // Something is set here (Sound, Picture changed): a yellow outline says so, also when
+    // the button is only an icon.
+    in property <bool> on;
     callback clicked();
     // Regular size matches PrimaryButton exactly: the same 44px slot with a 41px face at
     // the top (the yellow button's 3px shadow sits below its face), so a pair lines up.
@@ -166,7 +169,7 @@ export component GhostButton inherits Rectangle {
         border-radius: root.compact ? 8px : 10px;
         background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
         border-width: 2px;
-        border-color: ta.has-hover ? Theme.muted : Theme.line-strong;
+        border-color: root.on ? Theme.accent-hi : ta.has-hover ? Theme.muted : Theme.line-strong;
         animate background, border-color { duration: 100ms; }
         KeyPress {
             radius: parent.border-radius;
@@ -1063,6 +1066,172 @@ export component Toast inherits Rectangle {
 // A handle to drag a row up or down a list (≡). With the keyboard: Tab to it, ↑ / ↓ move
 // the row one place, Ctrl+↑ / Ctrl+↓ to the top / bottom (`jump`). `dragging` reports how
 // far the pointer is from where it was pressed.
+// The crop frame over a picture (Clip page → Picture): the part kept is clear, the rest
+// shaded. Drag inside to move it, drag a corner to size it. `ratio` (width / height, in
+// pixels) keeps the shape; 0 = any shape. Keyboard: arrows move it, Shift+arrows size it.
+// cx/cy/cw/ch are fractions 0..1 of the picture.
+export component CropFrame inherits Rectangle {
+    in-out property <float> cx;
+    in-out property <float> cy;
+    in-out property <float> cw: 1;
+    in-out property <float> ch: 1;
+    in property <float> ratio;
+    // A drag or key ended: the frame is where the user left it.
+    callback moved();
+    property <length> fx: root.cx * root.width;
+    property <length> fy: root.cy * root.height;
+    property <length> fw: root.cw * root.width;
+    property <length> fh: root.ch * root.height;
+    // 0 moving, 1 top-left corner, 2 bottom-right corner, -1 nothing
+    property <int> grab: -1;
+    property <float> sx;
+    property <float> sy;
+    property <float> sw;
+    property <float> sh;
+    property <float> pic: root.width / max(1px, root.height);
+
+    // Size from one corner, the other corner staying put; keeps `ratio` when set.
+    function resize(nw: float, nh: float, from-tl: bool) {
+        let right = root.sx + root.sw;
+        let bottom = root.sy + root.sh;
+        let room-w = from-tl ? right : 1 - root.sx;
+        let room-h = from-tl ? bottom : 1 - root.sy;
+        let w0 = max(0.05, min(room-w, nw));
+        let h0 = root.ratio > 0 ? w0 * root.pic / root.ratio : max(0.05, min(room-h, nh));
+        let h = min(room-h, h0);
+        let w = root.ratio > 0 ? h * root.ratio / root.pic : w0;
+        root.cw = w;
+        root.ch = h;
+        root.cx = from-tl ? right - w : root.sx;
+        root.cy = from-tl ? bottom - h : root.sy;
+    }
+    function start() {
+        root.sx = root.cx;
+        root.sy = root.cy;
+        root.sw = root.cw;
+        root.sh = root.ch;
+    }
+
+    // Shade outside the frame.
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.fy;
+        background: Theme.video-veil;
+    }
+    Rectangle {
+        x: 0;
+        y: root.fy + root.fh;
+        width: root.width;
+        height: max(0px, root.height - root.fy - root.fh);
+        background: Theme.video-veil;
+    }
+    Rectangle {
+        x: 0;
+        y: root.fy;
+        width: root.fx;
+        height: root.fh;
+        background: Theme.video-veil;
+    }
+    Rectangle {
+        x: root.fx + root.fw;
+        y: root.fy;
+        width: max(0px, root.width - root.fx - root.fw);
+        height: root.fh;
+        background: Theme.video-veil;
+    }
+    // The frame, thirds lines and two corner grips.
+    Rectangle {
+        x: root.fx;
+        y: root.fy;
+        width: root.fw;
+        height: root.fh;
+        border-width: 2px;
+        border-color: keys.has-focus ? Theme.focus : Theme.accent-hi;
+        Rectangle { x: parent.width / 3; width: 1px; height: parent.height; background: Theme.accent-hi.with-alpha(0.35); }
+        Rectangle { x: parent.width * 2 / 3; width: 1px; height: parent.height; background: Theme.accent-hi.with-alpha(0.35); }
+        Rectangle { y: parent.height / 3; width: parent.width; height: 1px; background: Theme.accent-hi.with-alpha(0.35); }
+        Rectangle { y: parent.height * 2 / 3; width: parent.width; height: 1px; background: Theme.accent-hi.with-alpha(0.35); }
+    }
+    Rectangle {
+        x: root.fx - 6px;
+        y: root.fy - 6px;
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        background: Theme.accent-hi;
+    }
+    Rectangle {
+        x: root.fx + root.fw - 8px;
+        y: root.fy + root.fh - 8px;
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        background: Theme.accent-hi;
+    }
+
+    keys := FocusScope {
+        accessible-role: groupbox;
+        accessible-label: "Crop frame: arrows move it, Shift and arrows change its size";
+        key-pressed(event) => {
+            let step = 0.01;
+            root.start();
+            if event.modifiers.shift && (event.text == Key.RightArrow || event.text == Key.LeftArrow
+                    || event.text == Key.UpArrow || event.text == Key.DownArrow) {
+                let grow = event.text == Key.RightArrow || event.text == Key.DownArrow ? step : -step;
+                root.resize(root.cw + grow, root.ch + grow, false);
+                root.moved();
+                return accept;
+            }
+            if event.text == Key.LeftArrow || event.text == Key.RightArrow {
+                root.cx = max(0, min(1 - root.cw, root.cx + (event.text == Key.RightArrow ? step : -step)));
+                root.moved();
+                return accept;
+            }
+            if event.text == Key.UpArrow || event.text == Key.DownArrow {
+                root.cy = max(0, min(1 - root.ch, root.cy + (event.text == Key.DownArrow ? step : -step)));
+                root.moved();
+                return accept;
+            }
+            reject
+        }
+    }
+    TouchArea {
+        mouse-cursor: root.grab == 0 ? MouseCursor.grabbing : MouseCursor.crosshair;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                keys.focus();
+                root.start();
+                let px = self.mouse-x;
+                let py = self.mouse-y;
+                root.grab = abs(px - root.fx - root.fw) < 18px && abs(py - root.fy - root.fh) < 18px ? 2
+                    : abs(px - root.fx) < 18px && abs(py - root.fy) < 18px ? 1
+                    : px > root.fx && px < root.fx + root.fw && py > root.fy && py < root.fy + root.fh ? 0
+                    : -1;
+            }
+            if e.kind == PointerEventKind.up && root.grab >= 0 {
+                root.grab = -1;
+                root.moved();
+            }
+        }
+        moved => {
+            if self.pressed && root.grab >= 0 {
+                let dx = (self.mouse-x - self.pressed-x) / max(1px, root.width);
+                let dy = (self.mouse-y - self.pressed-y) / max(1px, root.height);
+                if root.grab == 0 {
+                    root.cx = max(0, min(1 - root.cw, root.sx + dx));
+                    root.cy = max(0, min(1 - root.ch, root.sy + dy));
+                } else if root.grab == 2 {
+                    root.resize(root.sw + dx, root.sh + dy, false);
+                } else {
+                    root.resize(root.sw - dx, root.sh - dy, true);
+                }
+            }
+        }
+    }
+}
+
 export component DragHandle inherits Rectangle {
     in property <string> label: "Move";
     // Take the keyboard when this turns true (or the handle is created with it true): a list

@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,7 +18,7 @@ use neria_core::{gif, media, paths, probe};
 use neria_player::{GlRenderer, Mpv};
 use slint::{ComponentHandle, GraphicsAPI, Model, ModelRc, RenderingState, VecModel};
 
-use crate::{AppWindow, ClipGif, ClipSound, Fmt, Watch};
+use crate::{AppWindow, ClipGif, ClipList, ClipPicture, ClipSound, Fmt, Watch};
 
 const MEDIA_EXTENSIONS: &[&str] =
     &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "gif", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac"];
@@ -72,6 +72,11 @@ pub struct Clipper {
     autoplay: bool,
     /// Watching the link that was already open for clipping: Back leaves it open.
     keep_open: bool,
+    /// The open file's own rotation (phone footage), clockwise degrees, from ffprobe: mpv's
+    /// `video-params/rotate` reads 0 once its turning is switched off.
+    rotation: Arc<AtomicI64>,
+    /// Our filters do the turning (mpv's own is off): the frame size already includes it.
+    filters_turn: std::cell::Cell<bool>,
 }
 
 impl Clipper {
@@ -120,6 +125,8 @@ impl Clipper {
         self.source = Some(source.clone());
         self.title_known = title_known;
         self.duration_applied = false;
+        // Known once ffprobe has read the file (links: none).
+        self.rotation.store(0, Ordering::SeqCst);
         self.last_pos = 0.0;
         self.pending_load = true;
         *self.last_output.lock().unwrap() = None;
@@ -140,6 +147,10 @@ impl Clipper {
         ui.set_clip_has_audio(true);
         ui.set_clip_gif_file(matches!(&source, Source::File(p) if is_gif_file(p)));
         crate::sound_ui::fit_to_clip(ui);
+        // A crop or a clip list belongs to the video it was made on.
+        ui.global::<ClipPicture>().set_editing(false);
+        crate::picture_ui::reset(ui);
+        crate::clips_ui::clear(ui);
         self.apply_sound(ui);
         ui.set_clip_thumbs(ModelRc::from(Rc::new(VecModel::<slint::Image>::default())));
         ui.set_clip_keyframes(ModelRc::from(Rc::new(VecModel::<f32>::default())));
@@ -181,6 +192,31 @@ impl Clipper {
         let chain = if ui.global::<Watch>().get_on() { String::new() } else { crate::sound_ui::edit(ui).preview() };
         let af = if chain.is_empty() { String::new() } else { format!("lavfi=[{chain}]") };
         let _ = mpv.set_property("af", &af);
+        // The picture too: watching plays the link as it is. A phone video's own rotation
+        // moves into the filters (see `player_filter`), so the frame is the saved file's.
+        let rotation = self.rotation.load(Ordering::SeqCst);
+        let chain =
+            if ui.global::<Watch>().get_on() { String::new() } else { crate::picture_ui::player_filter(ui, rotation) };
+        let _ = mpv.set_property("video-rotate", if chain.is_empty() { "0" } else { "no" });
+        self.filters_turn.set(!chain.is_empty());
+        let vf = if chain.is_empty() { String::new() } else { format!("lavfi=[{chain}]") };
+        let _ = mpv.set_property("vf", &vf);
+        // Paused: show the new picture now, not at the next frame.
+        if mpv.get_flag("pause") == Some(true) {
+            let _ = mpv.command(&["seek", "0", "relative+exact"]);
+        }
+    }
+
+    /// The picture before turning (decoded size, after the file's own rotation), for the
+    /// shape chips.
+    fn source_size(&self) -> (f64, f64) {
+        let Some(mpv) = &self.mpv else { return (16.0, 9.0) };
+        let (w, h) = (mpv.get_i64("video-params/dw").unwrap_or(0), mpv.get_i64("video-params/dh").unwrap_or(0));
+        let rotate = self.rotation.load(Ordering::SeqCst);
+        if w <= 0 || h <= 0 {
+            return (16.0, 9.0);
+        }
+        if rotate % 180 == 90 { (h as f64, w as f64) } else { (w as f64, h as f64) }
     }
 
     /// Watch the Download page's previewed link: the player without In/Out.
@@ -295,6 +331,7 @@ impl Clipper {
         let generation = self.load_gen.fetch_add(1, Ordering::SeqCst) + 1;
         let load_gen = self.load_gen.clone();
         let weak = ui.as_weak();
+        let rotation = self.rotation.clone();
         std::thread::spawn(move || {
             let info = match media::file_info(&path) {
                 Ok(i) => i,
@@ -304,6 +341,9 @@ impl Clipper {
                     return;
                 }
             };
+            if load_gen.load(Ordering::SeqCst) == generation {
+                rotation.store(info.rotation as i64, Ordering::SeqCst);
+            }
             let has_video = info.has_video;
             let has_audio = info.has_audio;
             let chapters = info.chapters.clone();
@@ -480,6 +520,10 @@ impl Clipper {
         if dw <= 0 || dh <= 0 {
             return;
         }
+        // mpv turns phone footage while drawing, after `dwidth` / `dheight`: the target needs
+        // the turned shape (unless our filters do the turning, then it's already in there).
+        let turned = !self.filters_turn.get() && self.rotation.load(Ordering::SeqCst).rem_euclid(180) == 90;
+        let (dw, dh) = if turned { (dh, dw) } else { (dw, dh) };
         // Render at native size, capped to 1080p: the UI scales it to fit.
         let scale = (1920.0 / dw as f64).min(1080.0 / dh as f64).min(1.0);
         let (w, h) = (((dw as f64) * scale).round() as i32, ((dh as f64) * scale).round() as i32);
@@ -615,7 +659,47 @@ fn link_request(ui: &AppWindow, url: String) -> Option<DownloadRequest> {
         return None;
     }
     req.audio_edit = (!sound.is_none()).then_some(sound);
+    let picture = crate::picture_ui::picture(ui);
+    req.picture = (!picture.is_none() && quality != Quality::Audio).then_some(picture);
     Some(req)
+}
+
+/// Link mode with a clip list: one download per clip (one queue card), or one download of
+/// all the ranges joined (in time order: that's how the pieces come). `None` with a status.
+fn link_requests(ui: &AppWindow, url: String, clips: &[crate::clips_ui::Clip]) -> Option<Vec<DownloadRequest>> {
+    let base = link_request(ui, url)?;
+    if ui.global::<ClipList>().get_join() && clips.len() > 1 {
+        let mut ranges: Vec<(f64, f64)> = clips.iter().map(|c| (c.start, c.end)).collect();
+        ranges.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // Overlapping or touching ranges become one.
+        let mut merged: Vec<(f64, f64)> = Vec::new();
+        for (a, b) in ranges {
+            match merged.last_mut() {
+                Some(last) if a <= last.1 + 0.05 => last.1 = last.1.max(b),
+                _ => merged.push((a, b)),
+            }
+        }
+        let mut req = base;
+        if merged.len() == 1 {
+            req.section = Some(merged[0]);
+        } else {
+            req.section = None;
+            req.sections = merged;
+            req.name_tag = Some(format!(" ({} clips)", clips.len()));
+        }
+        return Some(vec![req]);
+    }
+    Some(
+        clips
+            .iter()
+            .map(|c| {
+                let mut req = base.clone();
+                req.section = Some((c.start, c.end));
+                req.name_tag = Some(format!(" - {}", neria_core::music::sanitize(&c.name)));
+                req
+            })
+            .collect(),
+    )
 }
 
 /// Run an export of the open file off the UI thread: progress on the Export button, Cancel,
@@ -648,7 +732,9 @@ fn start_export(
             match result {
                 Ok(path) => {
                     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    ui.set_clip_status(format!("Saved · {name}").into());
+                    // Several clips: say how many ("3 clips saved · video - Clip 3.mp4").
+                    let several = title.contains("clips");
+                    ui.set_clip_status(if several { format!("{title} · {name}") } else { format!("Saved · {name}") }.into());
                     ui.set_clip_has_output(true);
                     crate::background_ui::notify(
                         &ui,
@@ -665,7 +751,8 @@ fn start_export(
 pub fn install(
     ui: &AppWindow,
     file_for_job: impl Fn(u64) -> Option<PathBuf> + 'static,
-    enqueue: impl Fn(DownloadRequest) + 'static,
+    // One download, or several as one queue card titled by the string.
+    enqueue: impl Fn(Vec<DownloadRequest>, String) + 'static,
 ) -> Result<(Rc<RefCell<Clipper>>, slint::Timer)> {
     let clipper = Rc::new(RefCell::new(Clipper::default()));
 
@@ -774,7 +861,7 @@ pub fn install(
         move |d| clipper.borrow().frame_step(d)
     });
 
-    let enqueue: Rc<dyn Fn(DownloadRequest)> = Rc::new(enqueue);
+    let enqueue: Rc<dyn Fn(Vec<DownloadRequest>, String)> = Rc::new(enqueue);
 
     ui.on_clip_export({
         let (clipper, weak, enqueue) = (clipper.clone(), ui.as_weak(), enqueue.clone());
@@ -784,37 +871,104 @@ pub fn install(
             if let Some(mpv) = &c.mpv {
                 let _ = mpv.set_property("pause", "yes");
             }
+            let clips = crate::clips_ui::clips();
             let input = match c.source.clone() {
                 Some(Source::File(path)) => path,
                 Some(Source::Link(url)) => {
-                    let Some(req) = link_request(&ui, url) else { return };
-                    enqueue(req);
-                    ui.set_clip_status("Added to the download queue".into());
+                    let reqs = if clips.is_empty() {
+                        link_request(&ui, url).map(|r| vec![r])
+                    } else {
+                        link_requests(&ui, url, &clips)
+                    };
+                    let Some(reqs) = reqs else { return };
+                    let n = reqs.len();
+                    enqueue(reqs, format!("{} · {n} clips", ui.get_clip_name()));
+                    ui.set_clip_status(
+                        if n > 1 { format!("{n} clips added to the download queue") } else { "Added to the download queue".into() }
+                            .into(),
+                    );
                     return;
                 }
                 None => return,
             };
             let (start, end) = (ui.get_clip_in() as f64, ui.get_clip_out() as f64);
+            let picture = crate::picture_ui::picture(&ui);
             // A .gif comes out as a GIF again, as it was (size, speed, loop).
             if is_gif_file(&input) {
-                let spec = gif::GifSpec { kind: gif::Kind::Gif, width: 0, fps: 0.0, loop_forever: true };
+                let spec = gif::GifSpec { kind: gif::Kind::Gif, width: 0, fps: 0.0, loop_forever: true, picture };
+                let ranges: Vec<(f64, f64)> =
+                    if clips.is_empty() { vec![(start, end)] } else { clips.iter().map(|c| (c.start, c.end)).collect() };
                 start_export(&ui, &mut c, "GIF saved", move |cancel, progress| {
-                    gif::make(&input, start, end, &spec, cancel, progress)
+                    let mut last = Err(anyhow!("nothing to save"));
+                    let n = ranges.len() as f32;
+                    for (i, (a, b)) in ranges.iter().enumerate() {
+                        last = gif::make(&input, *a, *b, &spec, cancel, |p| progress((i as f32 + p) / n));
+                        last.as_ref().map_err(|e| anyhow!("{e}"))?;
+                    }
+                    last
                 });
                 return;
             }
-            let mut req = ClipRequest::new(
-                input,
-                start,
-                end,
-                if ui.get_clip_mode() == 0 { ClipMode::Fast } else { ClipMode::Exact },
-                ui.get_clip_has_video(),
-            );
-            req.audio = crate::sound_ui::edit(&ui);
-            req.audio_only = crate::sound_ui::audio_only(&ui);
-            start_export(&ui, &mut c, "Clip saved", move |cancel, progress| clip::export(&req, cancel, progress));
+            let make = |start: f64, end: f64, name: Option<String>| {
+                let mut req = ClipRequest::new(
+                    input.clone(),
+                    start,
+                    end,
+                    if ui.get_clip_mode() == 0 { ClipMode::Fast } else { ClipMode::Exact },
+                    ui.get_clip_has_video(),
+                );
+                req.audio = crate::sound_ui::edit(&ui);
+                req.audio_only = crate::sound_ui::audio_only(&ui);
+                req.picture = picture;
+                req.name = name;
+                req
+            };
+            if clips.is_empty() {
+                let req = make(start, end, None);
+                start_export(&ui, &mut c, "Clip saved", move |cancel, progress| clip::export(&req, cancel, progress));
+                return;
+            }
+            let reqs: Vec<ClipRequest> = clips.iter().map(|k| make(k.start, k.end, Some(k.name.clone()))).collect();
+            let join = ui.global::<ClipList>().get_join() && reqs.len() > 1;
+            let title = if join { "Clips joined".to_string() } else { format!("{} clips saved", reqs.len()) };
+            start_export(&ui, &mut c, &title, move |cancel, progress| {
+                let made = clip::export_many(&reqs, join, cancel, progress)?;
+                // The last one is the one "Show file" opens (they're side by side).
+                made.last().cloned().ok_or_else(|| anyhow!("nothing was saved"))
+            });
         }
     });
+
+    // Clip page → Picture: the player shows each change (turned while the frame is up, the
+    // finished picture after Done).
+    let picture = ui.global::<ClipPicture>();
+    picture.on_changed({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            crate::picture_ui::refresh(&ui);
+            crate::clips_ui::show(&ui);
+            clipper.borrow().apply_sound(&ui);
+        }
+    });
+    picture.on_aspect_picked({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            let (w, h) = clipper.borrow().source_size();
+            crate::picture_ui::aspect_picked(&ui, w, h);
+            clipper.borrow().apply_sound(&ui);
+        }
+    });
+    picture.on_reset({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            crate::picture_ui::reset(&ui);
+            clipper.borrow().apply_sound(&ui);
+        }
+    });
+    crate::clips_ui::install(ui);
 
     // Export ▾ → Make a GIF → Make: from the file, or the link's selection after downloading it.
     let clip_gif = ui.global::<ClipGif>();
@@ -842,8 +996,10 @@ pub fn install(
                     req.quality = Quality::Best;
                     req.preset = neria_core::settings::Preset::Best;
                     req.audio_edit = None;
+                    // The GIF gets the picture changes while it's made.
+                    req.picture = None;
                     req.gif_spec = Some(spec);
-                    enqueue(req);
+                    enqueue(vec![req], String::new());
                     ui.set_clip_status(format!("Added to the download queue, then made into a {}", gif::what(spec.kind)).into());
                 }
                 None => {}

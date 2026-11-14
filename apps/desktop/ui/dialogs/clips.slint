@@ -1,0 +1,187 @@
+import { ListView, LineEdit } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { ClipList } from "../globals.slint";
+import { PrimaryButton, GhostButton, IconButton, Hint, Tick, Dialog, Divider, ListRow, TextLink, DragHandle } from "../widgets.slint";
+
+// Clip page → Clips: several selections of one video, saved in one go (one file each, or
+// joined). Add the selection (or all chapters), rename, reorder, jump to one, remove.
+export component ClipsDialog inherits Dialog {
+    in property <bool> has-chapters;
+    // A .gif is saved one GIF per clip; links join in time order (how the pieces come).
+    in property <bool> can-join: true;
+    in property <bool> is-link;
+    // "0:12 – 0:20" (the page's In and Out), "" when there's no selection.
+    in property <string> selection;
+    property <int> count: ClipList.items.length;
+    // Dragging: the row held and where it would land (-1 = not dragging).
+    property <int> drag-from: -1;
+    property <int> drag-to: -1;
+    // The row just moved with the keyboard: the rebuilt list gives its handle the focus back.
+    property <int> focus-row: -1;
+    property <length> row-h: 52px;
+    Timer {
+        interval: 400ms;
+        running: root.focus-row >= 0;
+        triggered => { root.focus-row = -1; }
+    }
+    title: "Clips";
+    subtitle: root.count == 0 ? "Save several parts of this video in one go."
+        : root.count == 1 ? "1 clip" : root.count + " clips";
+    card-width: 580px;
+    card-height: 620px;
+    close => { ClipList.open = false; }
+
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        GhostButton {
+            horizontal-stretch: 0;
+            icon: "\u{E710}";
+            text: root.selection == "" ? "Add the selection" : "Add " + root.selection;
+            label: "Add the selection to the clips";
+            clicked => { ClipList.add(); }
+        }
+        if root.has-chapters: GhostButton {
+            horizontal-stretch: 0;
+            icon: "\u{E8FD}";
+            text: Screen.compact ? "Chapters" : "Add all chapters";
+            label: "Add all chapters";
+            clicked => { ClipList.add-chapters(); }
+        }
+    }
+
+    if root.count == 0: Hint {
+        vertical-stretch: 1;
+        text: "Set In and Out on the page, then add the selection here (or press A there). Each clip is saved as its own file, or all of them joined into one. The Sound and Picture changes apply to every clip.";
+    }
+    if root.count > 0: VerticalLayout {
+        vertical-stretch: 1;
+        Divider { inset-right: Theme.lane; }
+        ListView {
+            vertical-stretch: 1;
+            for item[i] in ClipList.items: ListRow {
+                height: root.row-h;
+                background: i == root.drag-from ? Theme.raised : transparent;
+                // Where a dragged row would land.
+                if root.drag-from >= 0 && i == root.drag-to && root.drag-to != root.drag-from: Rectangle {
+                    x: 0;
+                    y: root.drag-to < root.drag-from ? 0px : parent.height - 2px;
+                    width: parent.width - Theme.lane;
+                    height: 2px;
+                    background: Theme.ink;
+                }
+                HorizontalLayout {
+                    padding-right: Theme.lane;
+                    spacing: 8px;
+                    VerticalLayout {
+                        alignment: center;
+                        DragHandle {
+                            label: "Move " + item.name;
+                            want-focus: i == root.focus-row;
+                            step(d) => {
+                                if i + d >= 0 && i + d < root.count {
+                                    root.focus-row = i + d;
+                                    ClipList.move(i, i + d);
+                                }
+                            }
+                            jump(d) => {
+                                let to = d < 0 ? 0 : root.count - 1;
+                                if to != i {
+                                    root.focus-row = to;
+                                    ClipList.move(i, to);
+                                }
+                            }
+                            dragging(dy) => {
+                                root.drag-from = i;
+                                root.drag-to = max(0, min(root.count - 1, i + round(dy / root.row-h)));
+                            }
+                            dropped => {
+                                if root.drag-from >= 0 && root.drag-to != root.drag-from {
+                                    ClipList.move(root.drag-from, root.drag-to);
+                                }
+                                root.drag-from = -1;
+                                root.drag-to = -1;
+                            }
+                        }
+                    }
+                    Text {
+                        width: 18px;
+                        text: i + 1;
+                        color: Theme.muted;
+                        font-family: Theme.mono;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        spacing: 2px;
+                        LineEdit {
+                            text: item.name;
+                            accessible-label: "Name of clip " + (i + 1);
+                            edited(t) => { ClipList.rename(i, t); }
+                        }
+                    }
+                    if !Screen.compact: Text {
+                        horizontal-stretch: 0;
+                        text: item.range;
+                        color: Theme.muted;
+                        font-family: Theme.mono;
+                        font-size: 11.5px;
+                        vertical-alignment: center;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        IconButton {
+                            icon: "\u{E768}";
+                            label: "Go to " + item.name;
+                            clicked => {
+                                ClipList.pick(i);
+                                ClipList.open = false;
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        IconButton {
+                            icon: "\u{E711}";
+                            label: "Remove " + item.name;
+                            clicked => { ClipList.remove(i); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.count > 1 && root.can-join: HorizontalLayout {
+        alignment: start;
+        Tick {
+            text: root.is-link ? "Join them into one file (in time order)" : "Join them into one file, in this order";
+            checked <=> ClipList.join;
+            toggled => { ClipList.join-changed(); }
+        }
+    }
+    if root.count > 0: Hint {
+        text: ClipList.join && root.count > 1 && root.can-join
+            ? ClipList.note + ". Cut frame-exact and joined; fades only at the start and end of the whole."
+            : ClipList.note + ". One file each, named after the clip.";
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+        if root.count > 0: VerticalLayout {
+            alignment: center;
+            TextLink {
+                text: "Clear the list";
+                clicked => { ClipList.clear(); }
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        PrimaryButton {
+            text: "Done";
+            icon: "\u{E73E}";
+            clicked => { ClipList.open = false; }
+        }
+    }
+}

@@ -17,6 +17,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 mod background_ui;
 mod bulk_ui;
 mod clipper;
+mod clips_ui;
 mod compressor;
 mod drop_ui;
 mod extras_ui;
@@ -25,6 +26,7 @@ mod gif_ui;
 mod match_ui;
 mod names_ui;
 mod order_ui;
+mod picture_ui;
 mod recent_ui;
 mod setup_ui;
 mod signin;
@@ -890,6 +892,44 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             slint::Timer::single_shot(std::time::Duration::from_millis(2500), move || {
                 if let Some(ui) = weak.upgrade() {
                     ui.global::<ClipGif>().invoke_changed();
+                }
+            });
+        }
+        // Clip page with NERIA_OPEN, once the file has loaded: `picture` (crop frame up, 9:16),
+        // `picture-result` (turned and cropped 1:1, the result playing), `clips` (three clips
+        // on the timeline, the list open), `clips-page` (the same, list closed).
+        "picture" | "picture-result" | "clips" | "clips-page" => {
+            let weak = ui.as_weak();
+            let which = which.to_string();
+            slint::Timer::single_shot(std::time::Duration::from_millis(2500), move || {
+                let Some(ui) = weak.upgrade() else { return };
+                match which.as_str() {
+                    "picture" | "picture-result" => {
+                        let p = ui.global::<ClipPicture>();
+                        p.set_editing(true);
+                        if which == "picture-result" {
+                            p.set_turns(1);
+                            p.set_aspect(3);
+                        } else {
+                            p.set_aspect(2);
+                        }
+                        p.invoke_aspect_picked();
+                        if which == "picture-result" {
+                            p.set_editing(false);
+                            p.invoke_changed();
+                        }
+                    }
+                    _ => {
+                        let list = ui.global::<ClipList>();
+                        for (a, b) in [(1.0, 3.0), (6.0, 9.0), (12.0, 15.5)] {
+                            ui.set_clip_in(a);
+                            ui.set_clip_out(b);
+                            list.invoke_add();
+                        }
+                        list.invoke_rename(0, "Intro".into());
+                        clips_ui::show(&ui);
+                        list.set_open(which == "clips");
+                    }
                 }
             });
         }
@@ -1851,8 +1891,12 @@ fn main() -> anyhow::Result<()> {
         clipper::install(
             &ui,
             move |id| q1.file_of(id),
-            move |req| {
-                q2.add(req);
+            move |mut reqs: Vec<neria_core::download::DownloadRequest>, title: String| {
+                if reqs.len() == 1 {
+                    q2.add(reqs.remove(0));
+                } else {
+                    q2.add_group(&title, false, reqs);
+                }
             },
         )?
     };

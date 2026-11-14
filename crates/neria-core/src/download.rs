@@ -69,6 +69,8 @@ pub struct DownloadRequest {
     pub preset: Preset,
     /// A link clip's sound, changed after the download (Clip page → Sound).
     pub audio_edit: Option<crate::sound::AudioEdit>,
+    /// A link clip's picture, turned / mirrored / cropped after the download (same pass).
+    pub picture: Option<crate::picture::Picture>,
     /// A link clip made into a GIF / WebP / GIF-like MP4 after the download (Make a GIF).
     pub gif_spec: Option<crate::gif::GifSpec>,
 }
@@ -108,6 +110,7 @@ impl DownloadRequest {
             format: None,
             preset: Preset::Best,
             audio_edit: None,
+            picture: None,
             gif_spec: None,
         }
     }

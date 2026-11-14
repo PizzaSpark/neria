@@ -93,6 +93,17 @@ fn main() -> anyhow::Result<()> {
             println!("sound: {}", e.summary());
             req.audio_edit = Some(e);
         }
+        // `NERIA_ASPECT=9:16` (and `NERIA_TURN=1`): the Clip page's Picture, a centred crop of
+        // a 16:9 source, done after the download.
+        if env("NERIA_ASPECT").is_some() || env("NERIA_TURN").is_some() {
+            let turns: u8 = env("NERIA_TURN").and_then(|t| t.parse().ok()).unwrap_or(0);
+            let (w, h) = if turns % 2 == 1 { (9.0, 16.0) } else { (16.0, 9.0) };
+            let crop = env("NERIA_ASPECT").and_then(|r| {
+                let (a, b) = r.split_once(':')?;
+                Some(neria_core::picture::Crop::centred(a.parse::<f64>().ok()? / b.parse::<f64>().ok()?, w, h))
+            });
+            req.picture = Some(neria_core::picture::Picture { turns, crop, ..Default::default() });
+        }
         // `NERIA_GIF=gif|webp|mp4`: Make a GIF from a link clip (480 px, 15 fps, looping).
         if let Some(kind) = env("NERIA_GIF") {
             req.gif_spec = Some(neria_core::gif::GifSpec {

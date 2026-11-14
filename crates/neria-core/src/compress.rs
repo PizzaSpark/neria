@@ -567,6 +567,7 @@ mod tests {
             has_video: true,
             has_audio: true,
             chapters: Vec::new(),
+            rotation: 0,
         }
     }
 

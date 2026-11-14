@@ -11,6 +11,7 @@ use std::thread;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+use crate::picture::Picture;
 use crate::{paths, proc};
 
 /// How loud the clip is. One choice: these don't combine.
@@ -247,58 +248,104 @@ fn parse_loudness(log: &str) -> Option<Loudness> {
 
 /// Apply `edit` to a whole downloaded file, in place (a link clip after its download).
 /// The video is copied; only the sound is re-encoded (or dropped when muted).
-pub fn apply_in_place(file: &Path, edit: &AudioEdit, cancel: &AtomicBool, mut on_progress: impl FnMut(f32)) -> Result<()> {
-    if edit.is_none() {
-        return Ok(());
-    }
+pub fn apply_in_place(file: &Path, edit: &AudioEdit, cancel: &AtomicBool, on_progress: impl FnMut(f32)) -> Result<()> {
+    edit_in_place(file, edit, &Picture::default(), cancel, on_progress).map(|_| ())
+}
+
+fn ext_lower(file: &Path) -> String {
+    file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default()
+}
+
+/// Sound and picture changes on a whole downloaded file in one pass (a link clip after its
+/// download). The picture means re-encoding the video (H.264), so a .webm becomes an .mp4;
+/// the returned path is where the file is now.
+pub fn edit_in_place(
+    file: &Path,
+    edit: &AudioEdit,
+    picture: &Picture,
+    cancel: &AtomicBool,
+    mut on_progress: impl FnMut(f32),
+) -> Result<PathBuf> {
     let info = crate::media::file_info(file)?;
-    if !info.has_audio {
-        return Ok(());
+    let picture = if info.has_video { *picture } else { Picture::default() };
+    let sound = if info.has_audio { *edit } else { AudioEdit::default() };
+    if sound.is_none() && picture.is_none() {
+        return Ok(file.to_path_buf());
     }
-    if edit.mutes() && !info.has_video {
+    if sound.mutes() && !info.has_video {
         bail!("This is a sound-only file, so muting it would leave nothing");
     }
-    let measured = match edit.normalize_target() {
-        Some(t) => {
-            let m = measure(file, 0.0, info.duration, t, cancel, |p| on_progress(p * 0.4))?;
-            if m.is_none() {
-                // Nothing but silence: nothing to even out.
-                return Ok(());
-            }
-            m
-        }
-        None => None,
+    let mut measured = None;
+    if let Some(t) = sound.normalize_target() {
+        measured = measure(file, 0.0, info.duration, t, cancel, |p| on_progress(p * 0.3))?;
+    }
+    // Evening out found only silence: nothing to even out (fades still apply).
+    let sound = if sound.normalize_target().is_some() && measured.is_none() {
+        AudioEdit { level: Level::AsIs, ..sound }
+    } else {
+        sound
     };
-    let ext = file.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_else(|| "mp4".into());
-    let tmp: PathBuf = file.with_extension(format!("neria-sound.{ext}"));
+
+    let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_else(|| "mp4".into());
+    let out_ext = if !picture.is_none() && !["mp4", "mkv", "mov"].contains(&ext.as_str()) { "mp4".to_string() } else { ext };
+    let tmp: PathBuf = file.with_extension(format!("neria-edit.{out_ext}"));
     let mut a: Vec<String> =
         ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"].map(String::from).to_vec();
     a.push(file.to_string_lossy().into_owned());
-    a.extend(["-map", "0", "-c", "copy"].map(String::from));
-    if edit.mutes() {
-        a.push("-an".into());
+    if picture.is_none() {
+        // Only the sound changes: everything else as it was (cover art too).
+        a.extend(["-map", "0", "-c", "copy"].map(String::from));
     } else {
-        a.extend(encoder_for(&ext));
-        if let Some(chain) = edit.chain(info.duration, measured.as_ref()) {
+        // The picture is re-encoded: the real video, the sound and captions (a cover would
+        // get the same filters).
+        a.extend(["-map", "0:V:0?", "-map", "0:s?", "-c", "copy"].map(String::from));
+        if !sound.mutes() {
+            a.extend(["-map".into(), "0:a?".into()]);
+        }
+    }
+    if let Some(vf) = picture.filter() {
+        a.extend(["-vf".into(), vf]);
+        a.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"].map(String::from));
+    }
+    if sound.mutes() {
+        a.push("-an".into());
+    } else if sound.reencodes() || out_ext != ext_lower(file) {
+        // A new container (.webm → .mp4) also needs sound that fits it.
+        a.extend(encoder_for(&out_ext));
+        if let Some(chain) = sound.chain(info.duration, measured.as_ref()) {
             a.extend(["-af".into(), chain]);
         }
         if measured.is_some() {
             a.extend(["-ar".into(), "48000".into()]);
         }
     }
+    if out_ext == "mp4" {
+        a.extend(["-movflags".into(), "+faststart".into()]);
+    }
     a.push(tmp.to_string_lossy().into_owned());
-    let base = if measured.is_some() { 0.4 } else { 0.0 };
+    let base = if measured.is_some() { 0.3 } else { 0.0 };
     let result = run_ffmpeg(&a, info.duration, cancel, |p| on_progress(base + p * (1.0 - base)));
     if let Err(e) = result {
         let _ = std::fs::remove_file(&tmp);
-        bail!("Couldn't change the sound: {e}");
+        if e.to_string() == "Cancelled" {
+            bail!("Cancelled");
+        }
+        bail!("Couldn't change the {}: {e}", if picture.is_none() { "sound" } else { "picture" });
     }
-    std::fs::rename(&tmp, file).or_else(|_| {
-        std::fs::copy(&tmp, file)?;
+    let mut dest = file.with_extension(&out_ext);
+    if dest != file && dest.exists() {
+        let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        dest = crate::clip::unique_path(file.parent().unwrap_or(Path::new(".")), &stem, &out_ext);
+    }
+    if dest != file {
+        std::fs::remove_file(file)?;
+    }
+    std::fs::rename(&tmp, &dest).or_else(|_| {
+        std::fs::copy(&tmp, &dest)?;
         std::fs::remove_file(&tmp)
     })?;
     on_progress(1.0);
-    Ok(())
+    Ok(dest)
 }
 
 #[cfg(test)]

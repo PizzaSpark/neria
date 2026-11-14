@@ -1,6 +1,7 @@
 import { Theme, Screen } from "../theme.slint";
 import { ChapterMark } from "../types.slint";
 import { KeyPress } from "../widgets.slint";
+import { ClipItem } from "../globals.slint";
 
 // Filmstrip + waveform with draggable in/out handles and a playhead.
 export component Timeline inherits Rectangle {
@@ -17,6 +18,8 @@ export component Timeline inherits Rectangle {
     in property <float> effective-in;
     // Watching (no clip): no In/Out handles.
     in property <bool> handles: true;
+    // The clip list's clips, as numbered bands along the top.
+    in property <[ClipItem]> marks;
     callback seek(float);
 
     property <float> dur: max(0.001, root.duration);
@@ -75,6 +78,24 @@ export component Timeline inherits Rectangle {
         border-width: 2px;
         border-color: Theme.accent;
         border-radius: 8px;
+    }
+
+    // Saved clips: a band each along the top, numbered like the list.
+    for m[i] in root.marks: Rectangle {
+        x: root.width * (m.start / root.dur);
+        y: 0;
+        width: max(4px, root.width * ((m.end - m.start) / root.dur));
+        height: 16px;
+        border-radius: 4px;
+        background: Theme.accent-hi.with-alpha(0.85);
+        Text {
+            x: 4px;
+            text: i + 1;
+            color: Theme.on-pop;
+            font-size: 10px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
     }
 
     // Lossless cut starts earlier than the in point: show the extra footage.

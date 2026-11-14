@@ -72,17 +72,19 @@ pub struct GifSpec {
     pub fps: f32,
     /// Plays over and over (else once). MP4s loop as the player decides.
     pub loop_forever: bool,
+    /// Turned, mirrored, cropped first (Clip page → Picture).
+    pub picture: crate::picture::Picture,
 }
 
 impl Default for GifSpec {
     fn default() -> Self {
-        Self { kind: Kind::Gif, width: 480, fps: 15.0, loop_forever: true }
+        Self { kind: Kind::Gif, width: 480, fps: 15.0, loop_forever: true, picture: Default::default() }
     }
 }
 
-/// Frame rate and size, shared by every kind.
+/// The picture changes, frame rate and size, shared by every kind.
 fn base_filter(spec: &GifSpec) -> Vec<String> {
-    let mut f = Vec::new();
+    let mut f: Vec<String> = spec.picture.filter().into_iter().collect();
     if spec.fps > 0.0 {
         f.push(format!("fps={}", spec.fps));
     }
@@ -196,7 +198,10 @@ pub fn estimate(input: &Path, start: f64, end: f64, spec: &GifSpec, cancel: &Ato
     let from = start + (dur - sample) / 2.0;
     let dir = paths::cache_dir();
     std::fs::create_dir_all(&dir)?;
-    let tmp = dir.join(format!("estimate-{}.{}", std::process::id(), spec.kind.ext()));
+    // Its own name: a stopped estimate may still be cleaning up when the next one starts.
+    static RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let run = RUN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let tmp = dir.join(format!("estimate-{}-{run}.{}", std::process::id(), spec.kind.ext()));
     let result = sound::run_ffmpeg(&build_args(input, from, sample, spec, &tmp), sample, cancel, |_| {});
     let size = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
     let _ = std::fs::remove_file(&tmp);

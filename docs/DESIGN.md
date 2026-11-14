@@ -127,6 +127,12 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
   keyboard. Dialogs and the drawer close on Esc.
 - **Tick**: 20px box, 2px `line-strong` outline, 6px radius; ticked = `ink` fill with a `bg`
   check. The label is part of the target.
+- **Set, not as is** (`GhostButton { on: true }`): an `accent-hi` outline on a secondary
+  button whose thing has been changed (Sound, Picture, Clips · 3). It's what still tells
+  you so when narrow windows shrink the button to its icon.
+- **Crop frame** (`CropFrame`): over a picture, the kept part clear, the rest under
+  `video-veil`; a 2px `accent-hi` frame with thirds lines and two corner grips. Drag inside
+  to move, a corner to size; a shape (`ratio`) is kept. Arrows move it, Shift+arrows size it.
 - **Banner** (new version and the like): a calm strip with a tag, one line of text, ghost
   actions and a hairline under it, so the page keeps its one yellow action.
 

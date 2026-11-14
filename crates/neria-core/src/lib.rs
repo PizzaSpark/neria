@@ -19,6 +19,7 @@ pub mod media;
 pub mod music;
 pub mod names;
 pub mod paths;
+pub mod picture;
 pub mod post;
 pub mod probe;
 pub mod proc;
