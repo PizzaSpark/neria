@@ -78,7 +78,7 @@ Tested on Random Access Memories (13/13 matched at 1.00, whole album in 83 s) an
   educational-use license, so Neria reimplements the approach rather than copying code
 - Lyrics (`lyrics.rs`): LRCLIB → Spotify's own synced lyrics (Musixmatch, opt-in, the
   user's own Spotify sign-in, the idea of akashrchandran/spotify-lyrics-api, GPL so ideas
-  only) → Genius. Off by default, with a "use a spare account" warning: it's against
+  only). Off by default, with a "use a spare account" warning: it's against
   Spotify's terms and risks the account. Lyrics only, never audio. Details, and why
   Musixmatch without an account and AZLyrics aren't used: `docs/UPSTREAM.md` → Lyrics sources
 - "Lyrics only" (a Spotify preview) and "Add lyrics to songs I already have" (Settings →

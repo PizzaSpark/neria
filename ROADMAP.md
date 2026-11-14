@@ -362,20 +362,21 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
 Built 2026-11-14 (`lyrics.rs`, `music.rs`, Settings → Spotify → Lyrics). Ticked only where a
 real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
 1. **Synced lyrics from more sources.** Order: LRCLIB → Spotify's own synced lyrics
-   (Musixmatch, opt-in) → Genius (plain text). Findings per source: `docs/UPSTREAM.md` →
+   (Musixmatch, opt-in). Findings per source: `docs/UPSTREAM.md` →
    Lyrics sources
    - ✅ LRCLIB: synced for all of Random Access Memories ("Motherboard": instrumental), 49 of
      Today's Top Hits' 50 (the 50th: plain text only) and a "Spotify Singles" track. Its rate
      limit (429 after ~14 quick requests) is waited out, not read as "no lyrics"
-   - Spotify's own synced lyrics: **needs your Spotify sign-in, so it isn't confirmed yet**.
-     The anonymous route Musixmatch used to allow now returns decoy lyrics, so this follows
-     spotify-lyrics-api's idea instead (user's call, 2026-11-14): off by default, a "use a
-     spare account" warning before the sign-in, lyrics only, secret read from Spotify's own
-     script. ✅ Token step checked without an account (`--example lyrics -- --token-check`)
-   - Genius (plain text): written and unit-tested, but Genius answers Neria's requests with
-     403 (bot protection; curl gets through). Not worked around: off by default and its tick
-     hidden. Decide: drop it (recommended), or try a user's own Genius API token (untested:
-     the API gives no lyrics text, and the song page may still answer 403)
+   - ✅ Spotify's own synced lyrics ("Musixmatch via Spotify"), checked with a spare account
+     signed in through Neria's window: synced for 11 of Random Access Memories' 13 (none on
+     Spotify for "Get Lucky"; "Motherboard" is instrumental), ~0.2 s a song after one token;
+     and the whole chain gave Today's Top Hits 50 of 50 synced ("Raindance", plain-only on
+     LRCLIB, came from Spotify). The anonymous Musixmatch route now returns decoy lyrics, so
+     this follows spotify-lyrics-api's idea (user's call, 2026-11-14): off by default, a "use
+     a spare account" warning before the sign-in, lyrics only, secret read from Spotify's own
+     script
+   - Genius: dropped (user's call, 2026-11-14). It answers Neria's requests with 403 (bot
+     protection), and its API gives no lyrics text
    - AZLyrics: dropped, the site now blocks automated requests ("request for access")
    - ✅ Each row says the source and "synced" / "plain text only" / "no lyrics found" (or
      "instrumental", or "no synced lyrics found" with Synced only); Settings has a tick per

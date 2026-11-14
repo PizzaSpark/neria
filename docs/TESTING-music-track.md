@@ -25,8 +25,11 @@ With `--example lyrics` and `--example spotify` (new flags: `--lyrics-only`, `--
 - No preview anywhere: "Tappat - Spotify Singles" (A36) with Spotify's preview set aside:
   Deezer and Apple find nothing (also true for two other Spotify Singles tracks), the song
   downloads and the row says "no preview to check against · synced lyrics from LRCLIB".
-- Spotify's own lyrics, token step only: the secret is read from Spotify's web-player script
-  (version 61) and an anonymous token comes back, so the TOTP is right.
+- Spotify's own lyrics: the secret is read from Spotify's web-player script (version 61);
+  signed in with a spare account through Neria's window, `--only spotify` gave synced
+  lyrics for 11 of Random Access Memories' 13 ("Musixmatch via Spotify"; none for "Get
+  Lucky", "Motherboard" instrumental), and the full chain gave Today's Top Hits 50 of 50
+  synced ("Raindance" from Spotify, the rest from LRCLIB).
 
 Bugs found and fixed on the way:
 - The web-player script has other `{secret:` objects (its TOTP library) before the real
@@ -38,19 +41,17 @@ Bugs found and fixed on the way:
   to "http". Download now has its own full-width row under the box and Paste is the box's
   icon. The Settings tabs cut "About" off at 400 wide: they fit now.
 
-Not covered headless: the real Spotify lyrics call (needs your spare account), anything in
-the window.
+Genius was dropped (it answers Neria with 403).
 
 ## 1. Spotify's own synced lyrics (needs a spare Spotify account)
 - [ ] Settings → Spotify → Lyrics: tick "Spotify's own synced lyrics". The "Use a spare
       account" tag and the warning show before anything else; then **Sign in to Spotify…**.
-- [ ] The sign-in window opens on Spotify's login; after signing in the bar says "Signed in to
+- [x] The sign-in window opens on Spotify's login; after signing in the bar says "Signed in to
       Spotify", Done closes it, the toast says "Neria uses it for lyrics only", and Settings
       shows "Signed in to Spotify · Sign out".
 - [ ] `cookies/spotify.com.txt` holds only spotify.com cookies.
-- [ ] Headless: `--example lyrics -- --only spotify --show <a track LRCLIB has no synced
-      lyrics for>` shows "synced lyrics from Musixmatch via Spotify" and real LRC lines. (A
-      song only on Spotify, or a new release, is a good bet.)
+- [x] Headless: `--example lyrics -- --only spotify --show <link>` shows "synced lyrics from
+      Musixmatch via Spotify" and real LRC lines.
 - [ ] Download such a song: its row says "synced lyrics from Musixmatch via Spotify" and the
       `.lrc` plays in sync (e.g. in a player that shows LRC).
 - [ ] Sign out (Settings → Spotify, or → Network): the next song says "Spotify lyrics are on
@@ -65,8 +66,6 @@ the window.
 - [ ] Synced lyrics only: a song with only plain lyrics says "no synced lyrics found" and gets
       no lyrics tag.
 - [ ] Turning "Add lyrics" off hides the source ticks, and rows say nothing about lyrics.
-- [ ] Genius: blocked for Neria (403), so it's off and its tick hidden. Decide what to do
-      with it (ROADMAP Music 1).
 - [ ] Narrow window (400–719 wide): the link box has room, Download sits under it, its menu
       opens under the button; Paste (icon) still pastes.
 

@@ -576,8 +576,6 @@ export component SettingsDrawer inherits Rectangle {
                                         clicked => { Accounts.sign-out("spotify.com"); }
                                     }
                                 }
-                                // Genius (plain text) stays hidden while it blocks Neria (403):
-                                // see ROADMAP → Music 1.
                                 if root.lyrics: Tick {
                                     text: "Synced lyrics only (skip songs with plain text only)";
                                     checked <=> Music.synced-only;

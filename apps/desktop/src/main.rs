@@ -80,7 +80,6 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     let m = ui.global::<Music>();
     m.set_lrclib(s.lyrics_lrclib);
     m.set_spotify(s.lyrics_spotify);
-    m.set_genius(s.lyrics_genius);
     m.set_synced_only(s.lyrics_synced_only);
     m.set_number_songs(s.number_spotify);
     ui.set_verify_audio(s.verify_audio);
@@ -116,7 +115,6 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     let m = ui.global::<Music>();
     s.lyrics_lrclib = m.get_lrclib();
     s.lyrics_spotify = m.get_spotify();
-    s.lyrics_genius = m.get_genius();
     s.lyrics_synced_only = m.get_synced_only();
     s.number_spotify = m.get_number_songs();
     s.verify_audio = ui.get_verify_audio();

@@ -41,13 +41,13 @@ the author grants permission, record it here (date + link) and it can be ported 
 | Spotify API/page health check | `scripts/check_api_status.py` |
 
 ### Lyrics sources (`crates/neria-core/src/lyrics.rs`)
-Order: LRCLIB → Spotify's own synced lyrics (opt-in) → Genius. Checked on 2026-11-14:
+Order: LRCLIB → Spotify's own synced lyrics (opt-in). Checked on 2026-11-14:
 
 | Source | How Neria reaches it | State on 2026-11-14 |
 |---|---|---|
 | LRCLIB | `lrclib.net/api/get` (album + length) then `/api/search` (±3 s) | Works. Synced lyrics for all 13 songs of Random Access Memories ("Motherboard": instrumental), 49 of Today's Top Hits' 50 (the 50th has plain text only) and a "Spotify Singles" track. Rate limit: after ~14 quick requests it answers 429 with `Retry-After: 1`; Neria waits and asks again (before that fix, half a playlist read as "no lyrics found") |
-| Spotify (Musixmatch) | The web player's way, with the user's own sign-in (below) | Token step works (an anonymous token comes back); the lyrics call itself still needs a real sign-in to confirm |
-| Genius | The search its own website uses (`genius.com/api/search/multi`, no token, as syncedlyrics does), then the song page's `data-lyrics-container` blocks (as spotDL's `genius.py` reads them) | **Blocked for Neria**: the same request gets 200 from curl but 403 from Neria's HTTP client (bot protection). Not worked around. The code and its tests stay; spotDL itself uses Genius's API with a token |
+| Spotify (Musixmatch) | The web player's way, with the user's own sign-in (below) | Works with a spare account: synced for 11 of Random Access Memories' 13, and "Raindance" (plain-only on LRCLIB); `providerDisplayName` is "Musixmatch"; ~0.2 s a song after one token |
+| Genius | The search its own website uses (`genius.com/api/search/multi`, no token, as syncedlyrics does), then the song page's `data-lyrics-container` blocks (as spotDL's `genius.py` reads them) | **Blocked for Neria**: the same request gets 200 from curl but 403 from Neria's HTTP client (bot protection). Not worked around. Dropped (user's call); spotDL itself uses Genius's API with a token |
 | Musixmatch without an account | syncedlyrics' way: `apic-desktop.musixmatch.com/ws/1.1/` with `app_id=web-desktop-app-v1.0` and the token from `token.get` | **Not usable**: `token.get` gives an all-zero token. With it, `track.search` still finds the right song (Get Lucky, id 147905071), but `macro.subtitles.get` (by name or by Spotify id) returned an unrelated song ("NOKIA", Drake) with made-up lines: decoys for anonymous clients. Fetching subtitles by the real track id wasn't tried (our tooling stopped further probing of an endpoint meant for Musixmatch's own app). Not used |
 | Musixmatch website | spotDL's `musixmatch.py` reads the lyrics page | Plain text only (never synced), and scraping their pages is what their terms forbid most clearly. Not used |
 | AZLyrics | spotDL's `azlyrics.py` (`geo.js` → `x` code → search) | **Blocked**: every request, `geo.js` included, is redirected to `b.azlyrics.com` "request for access". Not used |

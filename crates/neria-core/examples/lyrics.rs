@@ -1,5 +1,5 @@
 //! What each lyrics source finds for Spotify songs:
-//! `NERIA_HOME=target/debug cargo run -p neria-core --example lyrics -- <spotify link>... [--only lrclib|spotify|genius] [--synced-only] [--show]`
+//! `NERIA_HOME=target/debug cargo run -p neria-core --example lyrics -- <spotify link>... [--only lrclib|spotify] [--synced-only] [--show]`
 //! `... --example lyrics -- --token-check`: reads Spotify's web-player secret and asks for an
 //! anonymous token (proves the TOTP step without an account; no lyrics come back that way).
 //!
@@ -29,14 +29,14 @@ fn main() -> anyhow::Result<()> {
     let only = args.iter().position(|a| a == "--only").and_then(|i| args.get(i + 1)).cloned();
     let mut prefs = Prefs { spotify: true, ..Prefs::default() };
     if let Some(o) = &only {
-        prefs = Prefs { lrclib: o == "lrclib", spotify: o == "spotify", genius: o == "genius", synced_only: false };
+        prefs = Prefs { lrclib: o == "lrclib", spotify: o == "spotify", synced_only: false };
     }
     prefs.synced_only = args.iter().any(|a| a == "--synced-only");
     let show = args.iter().any(|a| a == "--show");
     if prefs.spotify && !spotify_lyrics::signed_in() {
         println!("(not signed in to Spotify: that source will say so)");
     }
-    for link in args.iter().filter(|a| a.contains("spotify")) {
+    for link in args.iter().filter(|a| a.starts_with("http") || a.starts_with("spotify:")) {
         let link = spotify::parse_link(link).ok_or_else(|| anyhow::anyhow!("not a Spotify link: {link}"))?;
         let col = spotify::fetch(&link, None)?;
         println!("{} · {} ({} songs)", col.kind.label(), col.name, col.tracks.len());

@@ -10,7 +10,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
 - `crates/neria-core`: everything non-UI (tool fetch, yt-dlp probe/download queue, clip export,
   compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
   `music.rs` tags/M3U/sync/Lyrics only/numbering, `lyrics.rs` lyrics sources (LRCLIB,
-  Spotify's own with a sign-in, Genius), `post.rs` items of posts/playlists for the picker,
+  Spotify's own with a sign-in), `post.rs` items of posts/playlists for the picker,
   `folders.rs` Audio/Video/Photos folders). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI in `ui/`:
@@ -61,7 +61,7 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
   (`--lyrics-only`, `--number`, `--add-lyrics`, `--no-lyrics`, `--no-verify`,
   `--no-spotify-preview`, `--spotify-lyrics`: see the example's header)
-- `NERIA_HOME=target/debug cargo run -p neria-core --example lyrics -- <spotify link>... [--only lrclib|spotify|genius] [--synced-only] [--show]`
+- `NERIA_HOME=target/debug cargo run -p neria-core --example lyrics -- <spotify link>... [--only lrclib|spotify] [--synced-only] [--show]`
   (what each lyrics source finds; `--token-check`: Spotify's web-player secret + an anonymous
   token, no account needed)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example verify -- <spotify track id> [--no-spotify] <file|youtube url>...`

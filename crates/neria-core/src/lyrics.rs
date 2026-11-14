@@ -2,13 +2,10 @@
 //! 1. LRCLIB: synced, free and open, no account.
 //! 2. Spotify's own synced lyrics (Musixmatch's): opt-in, needs a Spotify sign-in, see
 //!    [`spotify_lyrics`]. Off by default: it's against Spotify's terms.
-//! 3. Genius: plain text only.
 //!
 //! Everything is in this file: no keys, tokens or code fetched from third parties at
-//! runtime. Genius is reached through the same search its website uses (no API token), as
-//! the `syncedlyrics` project does (MIT, © 2022 Momo); the page reading follows spotDL's
-//! `providers/lyrics/genius.py` (MIT). Musixmatch without an account and AZLyrics were
-//! looked at and left out: see `docs/UPSTREAM.md` ("Lyrics sources").
+//! runtime. Genius, Musixmatch without an account and AZLyrics were looked at and left out:
+//! see `docs/UPSTREAM.md` ("Lyrics sources").
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -18,13 +15,12 @@ use serde_json::Value;
 
 use crate::spotify::Track;
 use crate::web;
-use crate::ytmusic::{normalize, normalize_title, title_similarity};
+use crate::ytmusic::normalize_title;
 
 /// One lyrics lookup never holds a song up for long: each request gets this long.
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 pub const LRCLIB: &str = "LRCLIB";
-pub const GENIUS: &str = "Genius";
 pub const SPOTIFY: &str = "Spotify";
 
 /// Which sources to ask, and whether plain text is good enough (Settings → Spotify).
@@ -34,25 +30,19 @@ pub struct Prefs {
     pub lrclib: bool,
     /// Spotify's own synced lyrics, with the user's Spotify sign-in (opt-in).
     pub spotify: bool,
-    pub genius: bool,
     /// Only synced lyrics count: plain text is never saved.
     pub synced_only: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { lrclib: true, spotify: false, genius: false, synced_only: false }
+        Self { lrclib: true, spotify: false, synced_only: false }
     }
 }
 
 impl Prefs {
     pub fn from_settings(s: &crate::settings::Settings) -> Self {
-        Self {
-            lrclib: s.lyrics_lrclib,
-            spotify: s.lyrics_spotify,
-            genius: s.lyrics_genius,
-            synced_only: s.lyrics_synced_only,
-        }
+        Self { lrclib: s.lyrics_lrclib, spotify: s.lyrics_spotify, synced_only: s.lyrics_synced_only }
     }
 }
 
@@ -61,7 +51,7 @@ pub struct Lyrics {
     /// LRC text (`[mm:ss.xx]line`).
     pub synced: Option<String>,
     pub plain: Option<String>,
-    /// Where they came from (`LRCLIB`, `Genius`, `Musixmatch`…).
+    /// Where they came from (`LRCLIB`, `Musixmatch via Spotify`…).
     pub source: String,
     /// The source says the song has no words.
     pub instrumental: bool,
@@ -101,8 +91,8 @@ impl Found {
     }
 }
 
-/// Ask each source in turn; synced lyrics end the search. Plain text found on the way is
-/// kept rather than asking Genius for the same thing.
+/// Ask each source in turn; synced lyrics end the search, plain text found on the way is
+/// kept in case nothing has them synced.
 pub fn fetch(track: &Track, album: Option<&str>, prefs: Prefs) -> Found {
     let mut found = Found::default();
     let mut plain: Option<Lyrics> = None;
@@ -130,9 +120,6 @@ pub fn fetch(track: &Track, album: Option<&str>, prefs: Prefs) -> Found {
     if prefs.synced_only {
         found.plain_skipped = plain.is_some();
         return found;
-    }
-    if plain.is_none() && prefs.genius {
-        plain = genius(track);
     }
     found.lyrics = plain;
     found
@@ -191,13 +178,6 @@ fn get_paced(url: &str, paced: bool) -> Got {
         };
     }
     Got::Failed("too busy")
-}
-
-fn get(url: &str) -> Option<String> {
-    match get_paced(url, false) {
-        Got::Body(b) => Some(b),
-        _ => None,
-    }
 }
 
 // ───────────── LRCLIB ─────────────
@@ -261,170 +241,6 @@ pub fn lrclib(track: &Track, album: Option<&str>) -> Result<Option<Lyrics>, Stri
     Ok(found.into_iter().max_by_key(rank))
 }
 
-// ───────────── Genius (plain text) ─────────────
-
-/// Is this Genius hit the song we want? Genius also lists translations ("Genius English
-/// Translations"), remixes and covers, so both the artist and the title have to agree.
-fn genius_hit_matches(track: &Track, artist_names: &str, title: &str) -> bool {
-    let (want, got) = (normalize(track.main_artist()), normalize(artist_names));
-    let artist_ok = !want.is_empty() && (got.contains(&want) || (!got.is_empty() && want.contains(&got)));
-    artist_ok && title_similarity(&normalize_title(&track.title), &normalize_title(title)) >= 0.7
-}
-
-/// genius.com, through the search its own website uses (no token), then the song page.
-pub fn genius(track: &Track) -> Option<Lyrics> {
-    let q = format!("{} {}", normalize_title(&track.title), track.main_artist());
-    let url = format!("https://genius.com/api/search/multi?per_page=5&q={}", web::encode(&q));
-    let v: Value = serde_json::from_str(&get(&url)?).ok()?;
-    let page = v["response"]["sections"]
-        .as_array()?
-        .iter()
-        .flat_map(|s| s["hits"].as_array().into_iter().flatten())
-        .filter(|h| h["type"] == "song")
-        .map(|h| &h["result"])
-        .find(|r| {
-            r["lyrics_state"].as_str() != Some("unreleased")
-                && genius_hit_matches(
-                    track,
-                    r["artist_names"].as_str().or(r["primary_artist"]["name"].as_str()).unwrap_or(""),
-                    r["title"].as_str().unwrap_or(""),
-                )
-        })?["url"]
-        .as_str()?
-        .to_string();
-    if !page.starts_with("https://genius.com/") {
-        return None;
-    }
-    let text = genius_page_lyrics(&get(&page)?)?;
-    Some(Lyrics { plain: Some(text), source: GENIUS.into(), ..Default::default() })
-}
-
-/// The lyrics on a Genius song page: every `data-lyrics-container` block, without the
-/// header Genius puts inside the first one (contributors, translations).
-pub fn genius_page_lyrics(html: &str) -> Option<String> {
-    let mut parts = Vec::new();
-    let mut rest = html;
-    while let Some(i) = rest.find("data-lyrics-container=\"true\"") {
-        let after = &rest[i..];
-        let Some(open_end) = after.find('>') else { break };
-        let inner = &after[open_end + 1..];
-        let (text, used) = html_text(inner);
-        parts.push(text);
-        rest = &inner[used..];
-    }
-    let joined = parts.join("\n");
-    // Blank line before each "[Verse]" header, none at the edges, at most one in a row.
-    let mut out: Vec<&str> = Vec::new();
-    for line in joined.lines().map(str::trim) {
-        if line.starts_with('[') && out.last().is_some_and(|l| !l.is_empty()) {
-            out.push("");
-        }
-        if line.is_empty() && out.last().is_none_or(|l| l.is_empty()) {
-            continue;
-        }
-        out.push(line);
-    }
-    while out.last().is_some_and(|l| l.is_empty()) {
-        out.pop();
-    }
-    let text = out.join("\n");
-    (!text.trim().is_empty()).then_some(text)
-}
-
-/// Text of the element whose content starts at `html`, up to its closing tag: `<br>` becomes
-/// a line break, tags go, entities are decoded and elements marked
-/// `data-exclude-from-selection` are skipped. Returns the text and the bytes read.
-fn html_text(html: &str) -> (String, usize) {
-    const VOID: &[&str] = &["br", "img", "hr", "input", "meta", "link", "wbr", "source"];
-    let mut out = String::new();
-    let mut depth = 0i32;
-    let mut skip_from: Option<i32> = None;
-    let mut i = 0;
-    let bytes = html.as_bytes();
-    while i < html.len() {
-        if bytes[i] == b'<' {
-            let Some(len) = html[i..].find('>') else { break };
-            let tag = &html[i + 1..i + len];
-            i += len + 1;
-            let name: String = tag
-                .trim_start_matches('/')
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric())
-                .collect::<String>()
-                .to_ascii_lowercase();
-            if tag.starts_with('!') {
-                continue;
-            }
-            if tag.starts_with('/') {
-                if depth == 0 {
-                    return (decode_entities(&out), i);
-                }
-                depth -= 1;
-                if skip_from.is_some_and(|d| depth < d) {
-                    skip_from = None;
-                }
-                continue;
-            }
-            if name == "br" && skip_from.is_none() {
-                out.push('\n');
-            }
-            if VOID.contains(&name.as_str()) || tag.ends_with('/') {
-                continue;
-            }
-            depth += 1;
-            if skip_from.is_none() && tag.contains("data-exclude-from-selection=\"true\"") {
-                skip_from = Some(depth);
-            }
-        } else {
-            let next = html[i..].find('<').map(|n| i + n).unwrap_or(html.len());
-            if skip_from.is_none() {
-                out.push_str(&html[i..next]);
-            }
-            i = next;
-        }
-    }
-    (decode_entities(&out), html.len())
-}
-
-fn decode_entities(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut rest = s;
-    while let Some(i) = rest.find('&') {
-        out.push_str(&rest[..i]);
-        let after = &rest[i..];
-        let end = after.find(';').filter(|&e| e <= 10);
-        let decoded = end.and_then(|e| {
-            let ent = &after[1..e];
-            let c = match ent {
-                "amp" => Some('&'),
-                "lt" => Some('<'),
-                "gt" => Some('>'),
-                "quot" => Some('"'),
-                "apos" => Some('\''),
-                "nbsp" => Some(' '),
-                _ if ent.starts_with("#x") || ent.starts_with("#X") => {
-                    u32::from_str_radix(&ent[2..], 16).ok().and_then(char::from_u32)
-                }
-                _ if ent.starts_with('#') => ent[1..].parse().ok().and_then(char::from_u32),
-                _ => None,
-            };
-            c.map(|c| (c, e + 1))
-        });
-        match decoded {
-            Some((c, used)) => {
-                out.push(c);
-                rest = &after[used..];
-            }
-            None => {
-                out.push('&');
-                rest = &after[1..];
-            }
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
 /// LRC lines without their `[mm:ss.xx]` times (and without `[ar:…]`-style tags).
 pub fn plain_from_synced(lrc: &str) -> String {
     lrc.lines()
@@ -439,7 +255,10 @@ pub fn plain_from_synced(lrc: &str) -> String {
             l
         })
         .collect::<Vec<_>>()
-        .join("\n")
+        .join(
+            "
+",
+        )
         .trim()
         .to_string()
 }
@@ -762,31 +581,6 @@ mod tests {
     }
 
     #[test]
-    fn reads_genius_page() {
-        let html = r#"<div id="x"><div data-lyrics-container="true" class="Lyrics__Container">
-<div data-exclude-from-selection="true" class="LyricsHeader"><span>249 Contributors</span><div>Translations</div></div>
-[Verse 1: Pharrell]<br/>Like the legend of the <i>phoenix</i><br>All ends with beginnings</div>
-<div class="ad">Advert</div><div data-lyrics-container="true" class="Lyrics__Container">[Chorus]<br/>We&#x27;re up all night &amp; more<br/></div></div>"#;
-        assert_eq!(
-            genius_page_lyrics(html).unwrap(),
-            "[Verse 1: Pharrell]\nLike the legend of the phoenix\nAll ends with beginnings\n\n[Chorus]\nWe're up all night & more"
-        );
-        assert!(genius_page_lyrics("<div>no lyrics here</div>").is_none());
-    }
-
-    #[test]
-    fn genius_hits_must_be_the_song() {
-        let t = Track {
-            title: "Get Lucky (feat. Pharrell Williams)".into(),
-            artists: vec!["Daft Punk".into()],
-            ..Default::default()
-        };
-        assert!(genius_hit_matches(&t, "Daft Punk (Ft. Nile Rodgers & Pharrell Williams)", "Get Lucky"));
-        assert!(!genius_hit_matches(&t, "Genius English Translations", "Daft Punk - Get Lucky (English Translation)"));
-        assert!(!genius_hit_matches(&t, "Daft Punk", "Around the World"));
-    }
-
-    #[test]
     fn strips_lrc_times() {
         assert_eq!(plain_from_synced("[ar:X]\n[00:12.00]Hello\n[00:14.50][01:10.00]Again\n"), "Hello\nAgain");
     }
@@ -795,8 +589,8 @@ mod tests {
     fn status_lines() {
         assert_eq!(Found::default().status(), "no lyrics found");
         assert_eq!(Found { plain_skipped: true, ..Default::default() }.status(), "no synced lyrics found");
-        let l = Lyrics { plain: Some("x".into()), source: GENIUS.into(), ..Default::default() };
-        assert_eq!(Found { lyrics: Some(l), ..Default::default() }.status(), "lyrics from Genius, plain text only");
+        let l = Lyrics { plain: Some("x".into()), source: LRCLIB.into(), ..Default::default() };
+        assert_eq!(Found { lyrics: Some(l), ..Default::default() }.status(), "lyrics from LRCLIB, plain text only");
         let l = Lyrics { synced: Some("[00:01.00]x".into()), source: LRCLIB.into(), ..Default::default() };
         let f = Found { lyrics: Some(l), problem: Some("sign in again".into()), ..Default::default() };
         assert_eq!(f.status(), "synced lyrics from LRCLIB");

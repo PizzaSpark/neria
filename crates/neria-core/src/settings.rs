@@ -102,10 +102,9 @@ pub struct Settings {
     /// Spotify songs: fetch lyrics (embedded + .lrc next to the file).
     pub lyrics: bool,
     /// Lyrics sources (Settings → Spotify): LRCLIB (synced, open), Spotify's own synced
-    /// lyrics (Musixmatch; opt-in, needs a Spotify sign-in), Genius (plain text).
+    /// lyrics (Musixmatch; opt-in, needs a Spotify sign-in).
     pub lyrics_lrclib: bool,
     pub lyrics_spotify: bool,
-    pub lyrics_genius: bool,
     /// Only save synced lyrics; plain text never counts.
     pub lyrics_synced_only: bool,
     /// Spotify playlists: `01 Artist - Title`, so the folder sorts in playlist order.
@@ -174,7 +173,6 @@ impl Default for Settings {
             lyrics: true,
             lyrics_lrclib: true,
             lyrics_spotify: false,
-            lyrics_genius: false,
             lyrics_synced_only: false,
             number_spotify: false,
             verify_audio: true,
