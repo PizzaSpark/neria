@@ -455,13 +455,27 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
    `NERIA_DIALOG=sound|sound-gain|sound-only`; `--example clip` takes `--gain/--even/--mute/
    --fade-in/--fade-out/--audio-only/--in-place`; `--example smoke` takes `NERIA_SOUND`
 2. **GIFs**:
-   - **Open and trim a `.gif`** in the clipper (today only video and audio files open), save
+   - ✅ **Open and trim a `.gif`** in the clipper (today only video and audio files open), save
      as GIF again or as MP4/WebP, which are much smaller
-   - **Make a GIF** from any selection: size, fps and loop, with a file-size estimate
+   - ✅ **Make a GIF** from any selection: size, fps and loop, with a file-size estimate
      (palettegen); also WebP/short MP4 "GIF-like" for Discord
-   - **Perfect loop** (port of our own loopgif, see `docs/UPSTREAM.md`): finds where the
-     motion inside In/Out starts over and snaps to one clean cycle; plays it on repeat before
-     export; "Try another loop"; plain "No loop found here". Native Rust, ffmpeg only
+   - Perfect loop (port of loopgif): dropped (user's call, 2026-11-14)
+   Built (core `gif.rs`, `ClipGif` global, `dialogs/gif.slint`, `gif_ui.rs`): the Export
+   button got a ▾ (Export clip / Make a GIF…). The dialog: Save as GIF · WebP · MP4 (each
+   says what it's for), Size (320 / 480 / 720 / as it is, never made bigger), Smoothness
+   (10 / 15 / 24 fps / as it is), Loop (forever / once; not for MP4), and "About 1.2 MB",
+   worked out by really making 3 s from the middle of the selection and scaling (a newer
+   choice stops the older estimate); over 10 MB (GIF) or 8 MB it says what would be smaller.
+   GIFs get a palette made for the clip (palettegen diff + paletteuse bayer). A `.gif` opens
+   in the clipper (Open file, drag and drop) with no Fast / Exact: Export clip saves it as a
+   GIF again as it was, Make a GIF turns it into WebP or MP4. Link clips download the
+   selection in best quality, then it's made into the GIF ("Turning it into a GIF…"; an MP4
+   takes the downloaded file's name). Checked: GIF / WebP / MP4 from a generated video
+   (estimate 1.1 MB, real 1.2 MB; WebP 509 KB vs 512 KB), trimming a GIF to GIF and to WebP
+   (less than half the size), a YouTube link clip to GIF (3.8 MB) and MP4 (103 KB), the menu
+   placement at 900 and 400 wide. Not yet: looked at by a person in an image viewer or
+   Discord. `NERIA_DIALOG=gif`; `--example clip -- … --gif gif|webp|mp4 [--width] [--fps]
+   [--once]`; `--example smoke` takes `NERIA_GIF`
 3. **Clip render queue**: several In/Out ranges on one video, listed as clips (rename,
    reorder, remove, jump to each), exported in one go (files through a local export queue,
    links as several `--download-sections` jobs); option to join them into one file. Chapters

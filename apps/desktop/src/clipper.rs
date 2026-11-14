@@ -14,14 +14,14 @@ use glow::HasContext;
 use neria_core::clip::{self, ClipMode, ClipRequest};
 use neria_core::download::DownloadRequest;
 use neria_core::settings::Quality;
-use neria_core::{media, paths, probe};
+use neria_core::{gif, media, paths, probe};
 use neria_player::{GlRenderer, Mpv};
 use slint::{ComponentHandle, GraphicsAPI, Model, ModelRc, RenderingState, VecModel};
 
-use crate::{AppWindow, ClipSound, Fmt, Watch};
+use crate::{AppWindow, ClipGif, ClipSound, Fmt, Watch};
 
 const MEDIA_EXTENSIONS: &[&str] =
-    &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac"];
+    &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "gif", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac"];
 
 struct Target {
     tex: glow::Texture,
@@ -138,6 +138,7 @@ impl Clipper {
         ui.set_clip_playing(false);
         ui.set_clip_has_video(true);
         ui.set_clip_has_audio(true);
+        ui.set_clip_gif_file(matches!(&source, Source::File(p) if is_gif_file(p)));
         crate::sound_ui::fit_to_clip(ui);
         self.apply_sound(ui);
         ui.set_clip_thumbs(ModelRc::from(Rc::new(VecModel::<slint::Image>::default())));
@@ -595,6 +596,72 @@ fn format_time(t: f32) -> String {
 ///
 /// `file_for_job` finds a finished download's file; `enqueue` sends a
 /// section download (link mode) to the download queue.
+fn is_gif_file(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gif"))
+}
+
+/// Link mode: download only the selected part, in the chosen quality. Same rules as the
+/// Download page: GIFs come as they are; container, H.264 and audio format come from
+/// Settings when the job starts. `None` (with a status) when it can't be done.
+fn link_request(ui: &AppWindow, url: String) -> Option<DownloadRequest> {
+    let quality = if ui.get_clip_is_gif() { Quality::Best } else { crate::chosen_quality(ui).0 };
+    let mut req = DownloadRequest::new(url, quality, ui.get_clip_name().to_string());
+    req.preset = crate::chosen_quality(ui).1;
+    req.section = Some((ui.get_clip_in() as f64, ui.get_clip_out() as f64));
+    req.exact_cuts = ui.get_clip_mode() == 1;
+    let sound = crate::sound_ui::edit(ui);
+    if sound.mutes() && quality == Quality::Audio {
+        ui.set_clip_status("Muted with Audio only would leave nothing to save. Change the Sound.".into());
+        return None;
+    }
+    req.audio_edit = (!sound.is_none()).then_some(sound);
+    Some(req)
+}
+
+/// Run an export of the open file off the UI thread: progress on the Export button, Cancel,
+/// "Saved · name" with Show file, and a notification titled `title`.
+fn start_export(
+    ui: &AppWindow,
+    c: &mut Clipper,
+    title: &str,
+    job: impl FnOnce(&AtomicBool, &mut dyn FnMut(f32)) -> Result<PathBuf> + Send + 'static,
+) {
+    let cancel = Arc::new(AtomicBool::new(false));
+    c.export_cancel = Some(cancel.clone());
+    let last_output = c.last_output.clone();
+    ui.set_clip_exporting(true);
+    ui.set_clip_export_progress(0.0);
+    ui.set_clip_status("Exporting…".into());
+    let (weak, title) = (ui.as_weak(), title.to_string());
+    std::thread::spawn(move || {
+        let mut last = Instant::now() - Duration::from_secs(1);
+        let w = weak.clone();
+        let mut progress = |p: f32| {
+            if last.elapsed() >= Duration::from_millis(80) {
+                last = Instant::now();
+                let _ = w.upgrade_in_event_loop(move |ui| ui.set_clip_export_progress(p));
+            }
+        };
+        let result = job(&cancel, &mut progress);
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            ui.set_clip_exporting(false);
+            match result {
+                Ok(path) => {
+                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    ui.set_clip_status(format!("Saved · {name}").into());
+                    ui.set_clip_has_output(true);
+                    crate::background_ui::notify(
+                        &ui,
+                        crate::background_ui::Note { title, body: name, image: None, file: Some(path.clone()), failed: false },
+                    );
+                    *last_output.lock().unwrap() = Some(path);
+                }
+                Err(e) => ui.set_clip_status(e.to_string().into()),
+            }
+        });
+    });
+}
+
 pub fn install(
     ui: &AppWindow,
     file_for_job: impl Fn(u64) -> Option<PathBuf> + 'static,
@@ -707,8 +774,10 @@ pub fn install(
         move |d| clipper.borrow().frame_step(d)
     });
 
+    let enqueue: Rc<dyn Fn(DownloadRequest)> = Rc::new(enqueue);
+
     ui.on_clip_export({
-        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        let (clipper, weak, enqueue) = (clipper.clone(), ui.as_weak(), enqueue.clone());
         move || {
             let ui = weak.unwrap();
             let mut c = clipper.borrow_mut();
@@ -718,76 +787,78 @@ pub fn install(
             let input = match c.source.clone() {
                 Some(Source::File(path)) => path,
                 Some(Source::Link(url)) => {
-                    // Link mode: download only the selected part, in the chosen quality.
-                    // Same rules as the Download page: GIFs come as they are; container,
-                    // H.264 and audio format come from Settings when the job starts.
-                    let quality = if ui.get_clip_is_gif() { Quality::Best } else { crate::chosen_quality(&ui).0 };
-                    let mut req = DownloadRequest::new(url, quality, ui.get_clip_name().to_string());
-                    req.preset = crate::chosen_quality(&ui).1;
-                    req.section = Some((ui.get_clip_in() as f64, ui.get_clip_out() as f64));
-                    req.exact_cuts = ui.get_clip_mode() == 1;
-                    let sound = crate::sound_ui::edit(&ui);
-                    if sound.mutes() && quality == Quality::Audio {
-                        ui.set_clip_status("Muted with Audio only would leave nothing to save. Change the Sound.".into());
-                        return;
-                    }
-                    req.audio_edit = (!sound.is_none()).then_some(sound);
+                    let Some(req) = link_request(&ui, url) else { return };
                     enqueue(req);
                     ui.set_clip_status("Added to the download queue".into());
                     return;
                 }
                 None => return,
             };
+            let (start, end) = (ui.get_clip_in() as f64, ui.get_clip_out() as f64);
+            // A .gif comes out as a GIF again, as it was (size, speed, loop).
+            if is_gif_file(&input) {
+                let spec = gif::GifSpec { kind: gif::Kind::Gif, width: 0, fps: 0.0, loop_forever: true };
+                start_export(&ui, &mut c, "GIF saved", move |cancel, progress| {
+                    gif::make(&input, start, end, &spec, cancel, progress)
+                });
+                return;
+            }
             let mut req = ClipRequest::new(
                 input,
-                ui.get_clip_in() as f64,
-                ui.get_clip_out() as f64,
+                start,
+                end,
                 if ui.get_clip_mode() == 0 { ClipMode::Fast } else { ClipMode::Exact },
                 ui.get_clip_has_video(),
             );
             req.audio = crate::sound_ui::edit(&ui);
             req.audio_only = crate::sound_ui::audio_only(&ui);
-            let cancel = Arc::new(AtomicBool::new(false));
-            c.export_cancel = Some(cancel.clone());
-            let last_output = c.last_output.clone();
+            start_export(&ui, &mut c, "Clip saved", move |cancel, progress| clip::export(&req, cancel, progress));
+        }
+    });
 
-            ui.set_clip_exporting(true);
-            ui.set_clip_export_progress(0.0);
-            ui.set_clip_status("Exporting…".into());
-
-            let weak = ui.as_weak();
-            std::thread::spawn(move || {
-                let mut last = Instant::now() - Duration::from_secs(1);
-                let w = weak.clone();
-                let result = clip::export(&req, &cancel, |p| {
-                    if last.elapsed() >= Duration::from_millis(80) {
-                        last = Instant::now();
-                        let _ = w.upgrade_in_event_loop(move |ui| ui.set_clip_export_progress(p));
-                    }
-                });
-                let _ = weak.upgrade_in_event_loop(move |ui| {
-                    ui.set_clip_exporting(false);
-                    match result {
-                        Ok(path) => {
-                            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                            ui.set_clip_status(format!("Saved · {name}").into());
-                            ui.set_clip_has_output(true);
-                            crate::background_ui::notify(
-                                &ui,
-                                crate::background_ui::Note {
-                                    title: "Clip saved".into(),
-                                    body: name.clone(),
-                                    image: None,
-                                    file: Some(path.clone()),
-                                    failed: false,
-                                },
-                            );
-                            *last_output.lock().unwrap() = Some(path);
-                        }
-                        Err(e) => ui.set_clip_status(e.to_string().into()),
-                    }
-                });
-            });
+    // Export ▾ → Make a GIF → Make: from the file, or the link's selection after downloading it.
+    let clip_gif = ui.global::<ClipGif>();
+    clip_gif.on_make({
+        let (clipper, weak, enqueue) = (clipper.clone(), ui.as_weak(), enqueue.clone());
+        move || {
+            let ui = weak.unwrap();
+            let spec = crate::gif_ui::spec(&ui);
+            ui.global::<ClipGif>().set_open(false);
+            let mut c = clipper.borrow_mut();
+            if let Some(mpv) = &c.mpv {
+                let _ = mpv.set_property("pause", "yes");
+            }
+            match c.source.clone() {
+                Some(Source::File(input)) => {
+                    let (start, end) = (ui.get_clip_in() as f64, ui.get_clip_out() as f64);
+                    let title = format!("{} saved", gif::what(spec.kind));
+                    start_export(&ui, &mut c, &title, move |cancel, progress| {
+                        gif::make(&input, start, end, &spec, cancel, progress)
+                    });
+                }
+                Some(Source::Link(url)) => {
+                    let Some(mut req) = link_request(&ui, url) else { return };
+                    // The picture is what counts: best video, no sound changes.
+                    req.quality = Quality::Best;
+                    req.preset = neria_core::settings::Preset::Best;
+                    req.audio_edit = None;
+                    req.gif_spec = Some(spec);
+                    enqueue(req);
+                    ui.set_clip_status(format!("Added to the download queue, then made into a {}", gif::what(spec.kind)).into());
+                }
+                None => {}
+            }
+        }
+    });
+    clip_gif.on_changed({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            let file = match &clipper.borrow().source {
+                Some(Source::File(p)) => Some(p.clone()),
+                _ => None,
+            };
+            crate::gif_ui::refresh(&ui, file);
         }
     });
 

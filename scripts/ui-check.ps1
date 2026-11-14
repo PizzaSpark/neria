@@ -66,6 +66,9 @@ if (-not (Test-Path $chaptered)) {
   $lines | Set-Content -Encoding ascii $meta
   & $ff -loglevel error -y -i $video -i $meta -map 0 -map_chapters 1 -c copy $chaptered
 }
+# A .gif, for opening one in the clipper.
+$gifFile = Join-Path $media "loop.gif"
+if (-not (Test-Path $gifFile)) { & $ff -loglevel error -y -i $video -t 4 -vf "fps=12,scale=360:-2" $gifFile }
 # A signed-in site, for Settings → Network.
 New-Item -ItemType Directory -Force (Join-Path $home_ "cookies") | Out-Null
 "# Netscape HTTP Cookie File`n.youtube.com`tTRUE`t/`tTRUE`t0`tPREF`tx" | Set-Content -Encoding ascii (Join-Path $home_ "cookies\youtube.com.txt")
@@ -107,6 +110,8 @@ $states = [ordered]@{
   "clip-ch"    = @{ NERIA_OPEN = $chaptered; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "10" }
   "sound"      = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound" }
   "sound-gain" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-gain" }
+  "gif"        = @{ NERIA_OPEN = $video; NERIA_DIALOG = "gif"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
+  "clip-gif"   = @{ NERIA_OPEN = $gifFile }
   "sound-only" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-only"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
   # A link in the clipper: the quality row too (looked up for real, like "bulk").
   "clip-link"  = @{ NERIA_OPEN = "https://www.youtube.com/watch?v=jNQXAC9IVRw" }

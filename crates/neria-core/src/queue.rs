@@ -1314,6 +1314,25 @@ impl Queue {
             }
         }
 
+        // A link clip for "Make a GIF": the downloaded selection becomes the GIF.
+        if let (Some(spec), Ok(true), false) = (req.gif_spec, &result, cancelled) {
+            let file = {
+                let entries = self.inner.entries.lock().unwrap();
+                entries.iter().find(|e| e.snap.id == id).and_then(|e| e.snap.file.clone())
+            };
+            if let Some(file) = file.filter(|f| f.is_file()) {
+                self.update(id, true, |s| {
+                    s.state = JobState::Processing;
+                    s.postprocessor = Some("MakingGif".into());
+                });
+                match gif::convert_in_place(&file, &spec, &cancel, |_| {}) {
+                    Ok(out) => self.update(id, true, |s| s.file = Some(out)),
+                    Err(_) if cancel.load(Ordering::SeqCst) => cancelled = true,
+                    Err(e) => result = Err(e),
+                }
+            }
+        }
+
         // Spotify track downloaded: add Spotify tags, cover art and lyrics.
         let mut tag_error = None;
         let mut lyrics_status = None;

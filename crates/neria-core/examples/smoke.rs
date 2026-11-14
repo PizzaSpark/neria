@@ -10,6 +10,7 @@
 //! - `NERIA_CHAPTERS=2,3,5` (1-based): only those parts, joined into one file
 //! - `NERIA_SOUND=even:-14,fade-in:1,fade-out:2` (or `gain:6`, `mute`): the Clip page's
 //!   Sound, changed after the download as a link clip gets it
+//! - `NERIA_GIF=gif|webp|mp4`: Make a GIF from the link clip after the download
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -91,6 +92,17 @@ fn main() -> anyhow::Result<()> {
             }
             println!("sound: {}", e.summary());
             req.audio_edit = Some(e);
+        }
+        // `NERIA_GIF=gif|webp|mp4`: Make a GIF from a link clip (480 px, 15 fps, looping).
+        if let Some(kind) = env("NERIA_GIF") {
+            req.gif_spec = Some(neria_core::gif::GifSpec {
+                kind: match kind.as_str() {
+                    "webp" => neria_core::gif::Kind::Webp,
+                    "mp4" => neria_core::gif::Kind::Mp4,
+                    _ => neria_core::gif::Kind::Gif,
+                },
+                ..Default::default()
+            });
         }
         let (langs, auto_langs) = (list("NERIA_CAPTIONS"), list("NERIA_CAPTIONS_AUTO"));
         if !langs.is_empty() || !auto_langs.is_empty() {

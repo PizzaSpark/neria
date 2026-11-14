@@ -34,7 +34,8 @@ fn file_kind(path: &Path) -> i32 {
     let e = ext(path);
     if VIDEO.contains(&e.as_str()) {
         1
-    } else if AUDIO.contains(&e.as_str()) {
+    } else if AUDIO.contains(&e.as_str()) || e == "gif" {
+        // Clip only, like audio: a .gif opens in the clipper (Compress takes videos).
         2
     } else {
         0

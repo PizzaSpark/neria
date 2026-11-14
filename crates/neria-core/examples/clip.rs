@@ -4,11 +4,13 @@
 //! Sound (the Clip page's Sound dialog): `--mute`, `--gain <dB>`, `--even <LUFS>` (e.g. -14),
 //! `--fade-in <s>`, `--fade-out <s>`, `--audio-only <mp3|m4a|opus|flac|wav>`.
 //! `--in-place <file>`: apply the sound to a whole file instead (what a link clip gets).
+//! Make a GIF: `--gif <gif|webp|mp4> [--width <px, 0 = as is>] [--fps <n, 0 = as is>] [--once]`
+//! (prints the size estimate first, then makes it).
 
 use std::sync::atomic::AtomicBool;
 
 use neria_core::clip::{self, ClipMode, ClipRequest};
-use neria_core::media;
+use neria_core::{gif, media};
 use neria_core::sound::{self, AudioEdit, Level};
 
 fn main() -> anyhow::Result<()> {
@@ -48,6 +50,36 @@ fn main() -> anyhow::Result<()> {
     let input = std::path::PathBuf::from(&args[0]);
     let info = media::file_info(&input)?;
     println!("info: {info:?}");
+
+    if let Some(kind) = flag("--gif") {
+        let spec = gif::GifSpec {
+            kind: match kind.as_str() {
+                "webp" => gif::Kind::Webp,
+                "mp4" => gif::Kind::Mp4,
+                _ => gif::Kind::Gif,
+            },
+            width: flag("--width").map(|s| s.parse()).transpose()?.unwrap_or(480),
+            fps: flag("--fps").map(|s| s.parse()).transpose()?.unwrap_or(15.0),
+            loop_forever: !args.iter().any(|a| a == "--once"),
+        };
+        let (start, end): (f64, f64) = (args[1].parse()?, args[2].parse()?);
+        let t = std::time::Instant::now();
+        let guess = gif::estimate(&input, start, end, &spec, &AtomicBool::new(false))?;
+        println!("estimate: {} ({} ms)", neria_core::fmt::bytes(guess as f64), t.elapsed().as_millis());
+        let out = gif::make(&input, start, end, &spec, &AtomicBool::new(false), progress)?;
+        let size = std::fs::metadata(&out)?.len();
+        let check = media::file_info(&out)?;
+        println!(
+            "out: {} ({}, {:.2}s, {}x{}, {:.1} fps)",
+            out.display(),
+            neria_core::fmt::bytes(size as f64),
+            check.duration,
+            check.width,
+            check.height,
+            check.fps
+        );
+        return Ok(());
+    }
     let mode = if args.get(3).map(String::as_str) == Some("exact") { ClipMode::Exact } else { ClipMode::Fast };
     let mut req = ClipRequest::new(input, args[1].parse()?, args[2].parse()?, mode, info.has_video);
     req.audio = edit;

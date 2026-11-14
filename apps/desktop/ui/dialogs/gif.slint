@@ -1,0 +1,103 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { ClipGif } from "../globals.slint";
+import { PrimaryButton, GhostButton, SectionTitle, Hint, Dialog, ChoiceChips } from "../widgets.slint";
+
+// A small heading with its chips under it.
+component Part inherits VerticalLayout {
+    in property <string> title;
+    spacing: 8px;
+    SectionTitle { text: root.title; }
+    @children
+}
+
+// Clip page → Export ▾ → Make a GIF: the selection as a GIF, WebP or GIF-like MP4, with
+// how big it'll be before you make it.
+export component GifDialog inherits Dialog {
+    in property <bool> is-link;
+    property <string> what: ClipGif.kind == 0 ? "GIF" : ClipGif.kind == 1 ? "WebP" : "MP4";
+    title: "Make a GIF";
+    subtitle: ClipGif.length-text;
+    card-width: 520px;
+    card-height: 640px;
+    close => { ClipGif.open = false; }
+
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            spacing: 18px;
+            padding-right: Theme.lane;
+            Part {
+                title: "Save as";
+                ChoiceChips {
+                    options: ["GIF", "WebP", "MP4"];
+                    current <=> ClipGif.kind;
+                    changed => { ClipGif.changed(); }
+                }
+                Hint {
+                    text: ClipGif.kind == 0
+                        ? "Plays everywhere, but the biggest by far."
+                        : ClipGif.kind == 1
+                        ? "Looks the same as a GIF at a fraction of the size. Browsers, Discord, WhatsApp and Telegram play it."
+                        : "The smallest. What X, Reddit and Discord turn GIFs into anyway: a short video with no sound.";
+                }
+            }
+            Part {
+                title: "Size";
+                ChoiceChips {
+                    options: ["Small · 320", "Medium · 480", "Large · 720", "As it is"];
+                    current <=> ClipGif.size;
+                    changed => { ClipGif.changed(); }
+                }
+            }
+            Part {
+                title: "Smoothness";
+                ChoiceChips {
+                    options: ["10 fps", "15 fps", "24 fps", "As it is"];
+                    current <=> ClipGif.fps;
+                    changed => { ClipGif.changed(); }
+                }
+            }
+            if ClipGif.kind != 2: Part {
+                title: "Loop";
+                ChoiceChips {
+                    options: ["Forever", "Play once"];
+                    current <=> ClipGif.loop;
+                    changed => { ClipGif.changed(); }
+                }
+            }
+        }
+    }
+
+    // How big it'll be (or why it isn't known yet).
+    VerticalLayout {
+        spacing: 4px;
+        Text {
+            text: root.is-link ? "Downloads the selection, then makes the " + root.what + "."
+                : ClipGif.estimate;
+            color: ClipGif.big ? Theme.warn : Theme.ink;
+            font-family: Theme.body;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+        if ClipGif.big && !root.is-link: Hint {
+            text: ClipGif.kind == 0
+                ? "Big for a GIF: WebP or MP4 would be much smaller, or pick a smaller size or fewer fps."
+                : "Big for a clip like this: a smaller size, fewer fps or a shorter selection helps.";
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: end;
+        GhostButton {
+            text: "Cancel";
+            clicked => { ClipGif.open = false; }
+        }
+        PrimaryButton {
+            text: "Make " + root.what;
+            icon: "\u{E8B9}";
+            clicked => { ClipGif.make(); }
+        }
+    }
+}

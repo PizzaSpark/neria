@@ -21,6 +21,7 @@ mod compressor;
 mod drop_ui;
 mod extras_ui;
 mod follow_ui;
+mod gif_ui;
 mod match_ui;
 mod names_ui;
 mod order_ui;
@@ -878,6 +879,19 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             let b = ui.global::<Background>();
             b.set_later_open(true);
             b.invoke_later_changed();
+        }
+        // Clip page → Export ▾ → Make a GIF (with NERIA_OPEN: a real estimate).
+        "gif" => {
+            let g = ui.global::<ClipGif>();
+            g.set_open(true);
+            g.invoke_changed();
+            // Again once NERIA_OPEN's file has loaded (its length is known by then).
+            let weak = ui.as_weak();
+            slint::Timer::single_shot(std::time::Duration::from_millis(2500), move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.global::<ClipGif>().invoke_changed();
+                }
+            });
         }
         // Clip page → Sound (with NERIA_OPEN for a real clip): evened out with a fade out;
         // `sound-gain` +4 dB with the slider; `sound-only` saving the sound as mp3.

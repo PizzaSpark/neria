@@ -147,6 +147,28 @@ export global ClipSound {
     callback reset();
 }
 
+// Clip page → Export ▾ → Make a GIF (Clip track 2): the selection as a GIF, an animated
+// WebP or a short silent MP4.
+export global ClipGif {
+    in-out property <bool> open;
+    // 0 GIF, 1 WebP, 2 MP4
+    in-out property <int> kind;
+    // 0 small (320 px wide), 1 medium (480), 2 large (720), 3 as it is
+    in-out property <int> size: 1;
+    // 0 10 fps, 1 15, 2 24, 3 as it is
+    in-out property <int> fps: 1;
+    // 0 forever, 1 once (GIF and WebP)
+    in-out property <int> loop;
+    // "From the selection, 0:06" (Rust).
+    in property <string> length-text;
+    // "About 1.2 MB", "Working out the size…", or "" (links: known after the download).
+    in property <string> estimate;
+    // The estimate is big for what it's for: say what would be smaller.
+    in property <bool> big;
+    callback changed();
+    callback make();
+}
+
 // One followed channel or playlist in Settings → Following.
 export struct FollowItem {
     url: string,

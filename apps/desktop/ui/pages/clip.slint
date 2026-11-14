@@ -5,9 +5,53 @@ import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets, Watch, ClipSound } from "../globals.slint";
+import { Presets, Watch, ClipSound, ClipGif } from "../globals.slint";
+import { Menu, MenuItem } from "../widgets.slint";
 import { Slider } from "std-widgets.slint";
 
+// The Export button with its ▾: the same export, or Make a GIF. The menu opens upwards,
+// right-aligned with the button (it sits at the bottom of the page).
+component ExportButton inherits HorizontalLayout {
+    in property <string> text;
+    in property <string> icon;
+    in property <bool> enabled: true;
+    in property <bool> has-menu;
+    in property <string> menu-text;
+    in property <string> menu-icon;
+    callback clicked();
+    PrimaryButton {
+        text: root.text;
+        icon: root.icon;
+        enabled: root.enabled;
+        has-menu: root.has-menu;
+        menu-clicked => { menu.show(); }
+        clicked => { root.clicked(); }
+    }
+    menu := PopupWindow {
+        x: root.width - 250px;
+        y: -98px;
+        width: 250px;
+        height: 92px;
+        Menu {
+            x: 0;
+            y: 0;
+            width: 250px;
+            MenuItem {
+                icon: root.menu-icon;
+                text: root.menu-text;
+                clicked => { root.clicked(); }
+            }
+            MenuItem {
+                icon: "\u{E8B9}";
+                text: "Make a GIF…";
+                clicked => {
+                    ClipGif.open = true;
+                    ClipGif.changed();
+                }
+            }
+        }
+    }
+}
 // Trim a file, or preview a link and download only the selection. Takes the keyboard
 // (Space, I/O, J/L, arrows, `,` `.`, R, Home/End) while it's open.
 export component ClipPage inherits FocusScope {
@@ -40,6 +84,8 @@ export component ClipPage inherits FocusScope {
     in property <bool> is-link;
     // The link is an X GIF saved as a real .gif: no quality to pick.
     in property <bool> gif;
+    // A .gif file is open: it's saved as a GIF again (no Fast / Exact).
+    in property <bool> gif-file;
     in property <bool> buffering;
 
     // Link mode's quality row (shared with the Download page).
@@ -67,9 +113,10 @@ export component ClipPage inherits FocusScope {
     property <float> effective-in: Fmt.keyframe-before(root.in-time, root.keyframes);
     // Sound only (files) cuts exactly at In, whatever the mode.
     property <bool> sound-only: !root.is-link && root.has-video && ClipSound.save == 1;
-    property <bool> early-start: !root.is-link && !root.sound-only && root.mode == 0 && root.effective-in < root.in-time - 0.05;
+    property <bool> early-start: !root.is-link && !root.sound-only && !root.gif-file && root.mode == 0 && root.effective-in < root.in-time - 0.05;
     // What the export will do (or how it went), next to the Export button.
     property <string> status-text: root.status != "" ? root.status
+        : root.gif-file ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  saved as a GIF again"
         : root.is-link ? "Downloads only " + Fmt.time(root.out-time - root.in-time)
             + (root.mode == 0 ? "  ·  fast, may start a few seconds early" : "  ·  frame-exact (slower)")
         : root.sound-only ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  sound only"
@@ -77,6 +124,9 @@ export component ClipPage inherits FocusScope {
         : root.early-start ? "Lossless cut starts earlier, at " + Fmt.time(root.effective-in) + " (keyframe)"
         : "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  lossless, starts on a keyframe";
     property <bool> status-warn: root.status == "" && root.early-start;
+    property <string> export-text: root.is-link ? "Download clip" : root.sound-only ? "Export sound" : "Export clip";
+    // The Export button's ▾ (Make a GIF): not while exporting, nor for an X GIF link.
+    property <bool> gif-menu: !root.exporting && !root.gif && root.has-video;
 
     function set-in() {
         root.in-time = min(root.position, root.duration);
@@ -92,8 +142,8 @@ export component ClipPage inherits FocusScope {
     }
 
     init => { self.focus(); }
-    // The Sound dialog took the keyboard; give it back when it closes (Space, I/O…).
-    property <bool> sound-open: ClipSound.open;
+    // The Sound or GIF dialog took the keyboard; give it back when it closes (Space, I/O…).
+    property <bool> sound-open: ClipSound.open || ClipGif.open;
     changed sound-open => {
         if !self.sound-open {
             self.focus();
@@ -500,7 +550,7 @@ export component ClipPage inherits FocusScope {
             spacing: 8px;
             HorizontalLayout {
                 spacing: 8px;
-                ChoiceChips {
+                if !root.gif-file: ChoiceChips {
                     options: ["Fast · lossless", "Exact · re-encode"];
                     current <=> root.mode;
                 }
@@ -550,11 +600,13 @@ export component ClipPage inherits FocusScope {
                     clicked => { root.view-queue(); }
                 }
             }
-            PrimaryButton {
-                text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%"
-                    : root.is-link ? "Download clip" : root.sound-only ? "Export sound" : "Export clip";
+            ExportButton {
+                text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%" : root.export-text;
                 icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
                 enabled: root.out-time > root.in-time && root.tools-ready;
+                has-menu: root.gif-menu;
+                menu-text: root.export-text;
+                menu-icon: root.is-link ? "\u{E896}" : "\u{E8C6}";
                 clicked => {
                     if root.exporting {
                         root.cancel-export();
@@ -606,7 +658,7 @@ export component ClipPage inherits FocusScope {
             }
             HorizontalLayout {
                 spacing: 8px;
-                ChoiceChips {
+                if !root.gif-file: ChoiceChips {
                     horizontal-stretch: 0;
                     options: ["Fast · lossless", "Exact · re-encode"];
                     current <=> root.mode;
@@ -646,12 +698,14 @@ export component ClipPage inherits FocusScope {
                     text: "View queue";
                     clicked => { root.view-queue(); }
                 }
-                PrimaryButton {
+                ExportButton {
                     horizontal-stretch: 0;
-                    text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%"
-                        : root.is-link ? "Download clip" : root.sound-only ? "Export sound" : "Export clip";
+                    text: root.exporting ? "Cancel  " + Math.round(root.export-progress * 100) + "%" : root.export-text;
                     icon: root.exporting ? "" : root.is-link ? "\u{E896}" : "\u{E8C6}";
                     enabled: root.out-time > root.in-time && root.tools-ready;
+                    has-menu: root.gif-menu;
+                    menu-text: root.export-text;
+                    menu-icon: root.is-link ? "\u{E896}" : "\u{E8C6}";
                     clicked => {
                         if root.exporting {
                             root.cancel-export();

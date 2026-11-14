@@ -89,7 +89,8 @@ Files to watch: spotify-lyrics-api `src/Spotify.php`; syncedlyrics `providers/mu
 `providers/genius.py`.
 
 ### loopgif (our own, for "Perfect loop GIF")
-Python tool by the same author; the source of the planned Perfect loop GIF in the clipper.
+Python tool by the same author; was the source of a planned Perfect loop GIF in the clipper,
+dropped on 2026-11-14 (user's call). Kept here in case it comes back.
 Local checkout: `D:\Files\Documents\Code Projects\Active\Tools\gif-maker` (GitHub:
 PizzaSpark/loopgif). Read `README.md` for the method and `loopgif.py` (~200 lines, ffmpeg +
 numpy) for the details: frame fingerprints (64×36 grayscale, decoded through ffmpeg), seam
