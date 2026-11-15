@@ -32,6 +32,46 @@ pub struct MediaInfo {
     pub chapters: Vec<crate::tracks::Chapter>,
     /// A channel or playlist (something new can show up in): "Follow" is offered.
     pub followable: bool,
+    /// A live stream (on now, or not yet): it's recorded, not downloaded.
+    pub live: Option<LiveInfo>,
+}
+
+/// What the preview knows about a live stream.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LiveInfo {
+    /// Not on yet (a scheduled stream or a premiere).
+    pub upcoming: bool,
+    /// When it went live (Unix seconds), if the site says.
+    pub started_at: Option<f64>,
+    /// When it's due to start, for one that isn't on yet.
+    pub starts_at: Option<f64>,
+    /// The site keeps it from the start (YouTube with rewinding on, Twitch).
+    pub can_rewind: bool,
+}
+
+/// The live part of yt-dlp's answer, if it's a live stream.
+fn live_info(v: &Value, url: &str) -> Option<LiveInfo> {
+    let status = v.get("live_status").and_then(Value::as_str)?;
+    let upcoming = status == "is_upcoming";
+    if status != "is_live" && !upcoming {
+        return None;
+    }
+    let t = |k: &str| v.get(k).and_then(Value::as_f64).filter(|t| *t > 0.0);
+    // YouTube says when it started in `release_timestamp`; Twitch in `timestamp`.
+    let when = t("release_timestamp").or_else(|| t("timestamp"));
+    let youtube = v.get("extractor_key").and_then(Value::as_str).is_some_and(|e| e.starts_with("Youtube"));
+    // YouTube: rewinding on shows in the stream's address ("playlist_type/DVR"); not known
+    // before it starts, when the stream itself decides.
+    let dvr = v.get("formats").and_then(Value::as_array).is_some_and(|fs| {
+        fs.iter().any(|f| f.get("url").and_then(Value::as_str).is_some_and(|u| u.contains("/playlist_type/DVR")))
+    });
+    let can_rewind = crate::record::can_record_from_start(url) && (!youtube || dvr || upcoming);
+    Some(LiveInfo {
+        upcoming,
+        started_at: if upcoming { None } else { when },
+        starts_at: if upcoming { when } else { None },
+        can_rewind,
+    })
 }
 
 impl MediaInfo {
@@ -49,8 +89,17 @@ impl MediaInfo {
         if let Some(u) = &self.uploader {
             parts.push(u.clone());
         }
-        if let Some(d) = self.duration {
-            parts.push(fmt::duration(d));
+        match &self.live {
+            Some(l) if l.upcoming => parts.push("not live yet".into()),
+            Some(l) => parts.push(match l.started_at {
+                Some(s) => format!("live for {}", crate::record::age_words(crate::live::now() - s)),
+                None => "live now".into(),
+            }),
+            None => {
+                if let Some(d) = self.duration {
+                    parts.push(fmt::duration(d));
+                }
+            }
         }
         if let Some(h) = self.max_height {
             parts.push(format!("up to {h}p"));
@@ -148,6 +197,21 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
     let formats = v.get("formats").and_then(Value::as_array);
     let max_height = formats.and_then(|fs| fs.iter().filter_map(|f| f.get("height")?.as_u64()).max()).map(|h| h as u32);
 
+    let live = (!is_playlist).then(|| live_info(&v, url)).flatten();
+    // Not on yet: no formats yet, and that's fine.
+    if live.as_ref().is_some_and(|l| l.upcoming) {
+        return Ok(MediaInfo {
+            title,
+            uploader,
+            thumbnail_url: pick_thumbnail(&v),
+            key: crate::download::media_key(
+                v.get("extractor_key").and_then(Value::as_str).unwrap_or(""),
+                v.get("id").and_then(Value::as_str).unwrap_or(""),
+            ),
+            live,
+            ..MediaInfo::default()
+        });
+    }
     // A single "video" without any formats: yt-dlp looked at a post and found no video.
     let no_video = !is_playlist && formats.is_none_or(|f| f.is_empty()) && v.get("url").is_none();
     if no_video {
@@ -200,6 +264,7 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
         followable: is_playlist && crate::post::is_playlist(&items),
         items,
         note: None,
+        live,
     })
 }
 

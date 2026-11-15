@@ -23,6 +23,7 @@ mod drop_ui;
 mod extras_ui;
 mod follow_ui;
 mod gif_ui;
+mod live_ui;
 mod match_ui;
 mod names_ui;
 mod order_ui;
@@ -133,6 +134,7 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
 
 fn job_item(s: &JobSnapshot) -> JobItem {
     let (status, stats) = fmt::job_lines(s);
+    let live = live_ui::row(s);
     let state = match s.state {
         JobState::Queued => 0,
         JobState::Downloading => 1,
@@ -150,7 +152,8 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         progress: s.progress,
         status: status.into(),
         stats: stats.into(),
-        warn: s.note.is_some(),
+        // A recording's note ("the stream ended") is news, not a doubt.
+        warn: s.note.is_some() && !s.recording,
         flag: if s.note.is_none() {
             0
         } else if s.note_strong {
@@ -168,13 +171,15 @@ fn job_item(s: &JobSnapshot) -> JobItem {
             }),
         thumb: s.thumbnail.as_deref().and_then(cached_thumb).unwrap_or_default(),
         thumb_url: s.thumbnail.clone().unwrap_or_default().into(),
-        // Spotify songs are matched and checked in steps: no pausing half-way.
-        can_pause: state == 1 && !s.music,
+        // Spotify songs are matched and checked in steps: no pausing half-way. A recording
+        // stops instead (and saves).
+        can_pause: state == 1 && !s.music && !s.recording,
         can_resume: state == 6,
         can_cancel: state <= 2 || state == 6,
-        can_retry: state == 4 || state == 5,
+        can_retry: (state == 4 || state == 5) && !s.no_retry,
         can_remove: (3..=5).contains(&state),
         scheduled: state == 0 && !s.starts.is_empty(),
+        live: live.unwrap_or_default(),
         ..Default::default()
     }
 }
@@ -446,6 +451,7 @@ fn queue_update(weak: &slint::Weak<AppWindow>, pending: &Arc<Mutex<PendingJobs>>
 fn upsert_job(ui: &AppWindow, snap: &JobSnapshot, insertable: bool) -> bool {
     let vec = rows();
     let mut item = job_item(snap);
+    live_ui::sync_watch(ui, snap);
     if let Some(url) = &snap.thumbnail {
         ensure_thumb(ui, url);
     }
@@ -581,6 +587,67 @@ fn apply_theme(ui: &AppWindow) {
 /// Dev hook (`NERIA_DEMO`): sample queue rows in every state, for design checks.
 fn demo_rows(ui: &AppWindow) {
     let vec = rows();
+    // Recordings of live streams: catching up, recording (it missed a bit), waiting for a
+    // stream that isn't on yet, and one saved.
+    {
+        use neria_core::record::{Hole, LiveStats, Phase};
+        let now = neria_core::live::now();
+        let rec = |id: u64, title: &str, state: JobState, st: LiveStats| {
+            let mut s = JobSnapshot::sample(id, title, state);
+            s.recording = true;
+            s.downloaded = Some(st.bytes as f64);
+            s.live = Some(st);
+            s
+        };
+        let catching = LiveStats {
+            phase: Phase::CatchingUp,
+            started_at: Some(now - 8040.0),
+            recorded: 3070.0,
+            position: 3070.0,
+            joined: Some(0.0),
+            bytes: 412_000_000,
+            speed: 6_200_000.0,
+            height: Some(1080),
+            ..LiveStats::default()
+        };
+        let joined = 10_800.0 - 3792.0;
+        let recording = LiveStats {
+            phase: Phase::Recording,
+            started_at: Some(now - 10_800.0),
+            recorded: 3750.0,
+            position: 10_792.0,
+            joined: Some(joined),
+            holes: vec![Hole { at: joined + 1865.0, len: 42.0, about: false }],
+            bytes: 640_000_000,
+            speed: 1_400_000.0,
+            height: Some(720),
+            can_clip: true,
+            ..LiveStats::default()
+        };
+        let waiting = LiveStats { phase: Phase::Waiting, starts_at: Some(now + 2530.0), ..LiveStats::default() };
+        let mut saved = rec(
+            9104,
+            "Mission control: Starship flight 12",
+            JobState::Done,
+            LiveStats {
+                recorded: 10_961.0,
+                joined: Some(0.0),
+                holes: vec![Hole { at: 4385.0, len: 42.0, about: false }],
+                ..LiveStats::default()
+            },
+        );
+        saved.downloaded = Some(1_400_000_000.0);
+        saved.note = Some("the stream ended".into());
+        saved.file = Some(PathBuf::from("Mission control Starship flight 12.mp4"));
+        for s in [
+            rec(9101, "Mission control: Starship flight 12", JobState::Downloading, catching),
+            rec(9102, "Watch Sky News live", JobState::Downloading, recording),
+            rec(9103, "Launch broadcast: Artemis III", JobState::Downloading, waiting),
+            saved,
+        ] {
+            vec.push(job_item(&s));
+        }
+    }
     let row =
         |id: i32, title: &str, state: i32, progress: f32, status: &str, stats: &str, warn: bool, music: bool| JobItem {
             id,
@@ -877,6 +944,42 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             let b = ui.global::<Background>();
             b.set_going(3);
             b.set_ask_open(true);
+        }
+        // Closing while a live stream is being recorded.
+        "close-rec" => {
+            let b = ui.global::<Background>();
+            b.set_going(2);
+            b.set_recording(1);
+            b.set_ask_open(true);
+        }
+        // A live stream on the preview (`live-upcoming`: one that isn't on yet;
+        // `live-long`: on for days, so it records from now).
+        "live" | "live-upcoming" | "live-long" => {
+            let now = neria_core::live::now();
+            let live = match which {
+                "live-upcoming" => probe::LiveInfo {
+                    upcoming: true,
+                    starts_at: Some(now + 2530.0),
+                    can_rewind: true,
+                    ..Default::default()
+                },
+                "live-long" => {
+                    probe::LiveInfo { started_at: Some(now - 11.0 * 86400.0), can_rewind: true, ..Default::default() }
+                }
+                _ => probe::LiveInfo { started_at: Some(now - 8040.0), can_rewind: true, ..Default::default() },
+            };
+            let info = probe::MediaInfo {
+                title: "Mission control: Starship flight 12".into(),
+                uploader: Some("SpaceX".into()),
+                max_height: Some(1080),
+                live: Some(live),
+                ..Default::default()
+            };
+            ui.set_url("https://www.youtube.com/watch?v=live".into());
+            ui.set_probe_state(2);
+            ui.set_probe_title(info.title.as_str().into());
+            ui.set_probe_meta(info.meta_line().into());
+            live_ui::set_info(ui, info.live.as_ref(), None);
         }
         "later" => {
             let b = ui.global::<Background>();
@@ -1362,6 +1465,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     ui.set_probe_title(info.title.as_str().into());
                     ui.set_probe_meta(info.meta_line().into());
                     ui.set_probe_is_gif(info.gif || is_single_gif(&info));
+                    live_ui::set_info(&ui, info.live.as_ref(), info.thumbnail_url.clone());
                     extras_ui::set_info(&ui, &info, &settings);
                     follow_ui::set_preview(&ui, &url, &info);
                     if info.items.len() > 1
@@ -1699,13 +1803,19 @@ fn main() -> anyhow::Result<()> {
                 req.key = probe_state.key.borrow().clone();
                 // "Download again": replace a file of the same name.
                 req.force = ui.get_dup_text() != "";
-                // Captions, audio tracks and chapters picked on the preview.
-                let reqs = extras_ui::requests(&ui, req, &settings.lock().unwrap().clone());
-                extras_ui::remember(&ui, &settings);
-                if reqs.len() == 1 {
-                    queue.add(reqs.into_iter().next().unwrap());
+                if live_ui::make_recording(&mut req) {
+                    // A live stream is recorded as it is (captions and chapters don't apply).
+                    req.force = false;
+                    queue.add(req);
                 } else {
-                    queue.add_group(&ui.get_probe_title(), false, reqs);
+                    // Captions, audio tracks and chapters picked on the preview.
+                    let reqs = extras_ui::requests(&ui, req, &settings.lock().unwrap().clone());
+                    extras_ui::remember(&ui, &settings);
+                    if reqs.len() == 1 {
+                        queue.add(reqs.into_iter().next().unwrap());
+                    } else {
+                        queue.add_group(&ui.get_probe_title(), false, reqs);
+                    }
                 }
             }
 
@@ -1719,6 +1829,7 @@ fn main() -> anyhow::Result<()> {
             clear_picker(&ui, &probe_state);
             clear_link_notes(&ui, &probe_state);
             extras_ui::clear(&ui);
+            live_ui::clear(&ui);
         }
     });
 
@@ -1891,6 +2002,7 @@ fn main() -> anyhow::Result<()> {
     background_ui::install(&ui, queue.clone(), settings.clone());
     names_ui::install(&ui, settings.clone());
     extras_ui::install(&ui);
+    live_ui::install(&ui, &queue);
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());
         move || start_setup(&weak.unwrap(), settings.clone(), queue.clone())
@@ -1926,6 +2038,8 @@ fn main() -> anyhow::Result<()> {
 
     // Save the queue for next time, then stop every yt-dlp/ffmpeg so none survives the window.
     _clipper.borrow_mut().stop_buffer();
+    // Recordings are stopped and saved first (what isn't done by then is saved next start).
+    live_ui::save_before_quit(&queue);
     queue.shutdown();
     neria_core::cookies::clear_run_copies();
     Ok(())

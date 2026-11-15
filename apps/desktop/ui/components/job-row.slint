@@ -1,6 +1,6 @@
 import { Theme } from "../theme.slint";
 import { JobItem } from "../types.slint";
-import { Icon, GhostButton, IconButton, Bar, Tag, Menu, MenuItem, DragHandle } from "../widgets.slint";
+import { Icon, GhostButton, IconButton, Bar, Tag, Menu, MenuItem, DragHandle, LiveTape } from "../widgets.slint";
 import { QueueActions } from "../globals.slint";
 
 // One queue row: calm (hairline, no card), with labelled actions on the right.
@@ -30,15 +30,20 @@ export component JobRow inherits Rectangle {
     property <bool> done: root.job.state == 3;
     property <bool> failed: root.job.state == 4;
     property <bool> paused: root.job.state == 6;
+    // A live stream being recorded: the tape instead of a bar, Stop instead of Pause.
+    property <bool> live: root.job.live.on && !root.job.header;
+    property <bool> taped: root.live && root.job.live.tape;
     property <string> glyph: root.job.header ? "\u{E8F1}" : root.job.state == 0 ? "\u{E823}" : root.job.state == 1 ? "\u{E896}" : root.job.state == 2 ? "\u{E9F5}" : root.job.state == 3 ? (root.job.music ? "\u{E8D6}" : "\u{E8B2}") : root.job.state == 4 ? "\u{E783}" : root.paused ? "\u{E769}" : "\u{E711}";
     // A saved song that may be the wrong version: "Unsure", or "Sounds different" when the
     // audio check says it's another recording.
     property <bool> flagged: root.done && root.job.warn && root.job.music && !root.job.header;
-    property <string> tag: root.job.state == 0 && root.job.scheduled ? "Later"
+    property <string> tag: root.live && root.job.live.tag != "" ? root.job.live.tag
+        : root.job.state == 0 && root.job.scheduled ? "Later"
         : root.job.state == 0 ? "Waiting"
         : root.flagged ? (root.job.flag == 2 ? "Sounds different" : "Unsure")
         : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : root.paused ? "Paused" : "";
-    property <int> tag-kind: root.flagged && root.job.flag == 2 ? 3 : root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
+    property <int> tag-kind: root.live && root.job.live.tag != "" ? root.job.live.tag-kind
+        : root.flagged && root.job.flag == 2 ? 3 : root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
 
     // What the row offers (the same on every width; compact folds most into the menu).
     property <bool> can-show: root.done || (root.job.header && root.job.state != 0);
@@ -49,9 +54,9 @@ export component JobRow inherits Rectangle {
     property <bool> can-report: root.failed && !root.job.header;
     // Compact: the one button that stays on the row. 1 pause, 2 resume, 3 retry,
     // 4 pick match, 5 show, 6 cancel (waiting), 0 none.
-    property <int> main: root.job.can-pause ? 1 : root.job.can-resume ? 2 : root.job.can-retry ? 3
+    property <int> main: root.job.live.clipping ? 8 : root.job.live.can-stop ? 7 : root.job.can-pause ? 1 : root.job.can-resume ? 2 : root.job.can-retry ? 3
         : root.can-match && root.job.warn ? 4 : root.can-show ? 5 : root.job.can-cancel ? 6 : 0;
-    property <bool> has-menu: root.job.scheduled || (root.job.can-cancel && root.main != 6) || (root.can-show && root.main != 5)
+    property <bool> has-menu: root.job.live.can-stop || root.job.scheduled || (root.job.can-cancel && root.main != 6) || (root.can-show && root.main != 5)
         || root.can-clip || (root.can-match && root.main != 4) || (root.job.can-retry && root.main != 3)
         || root.can-report || root.job.can-remove || root.job.can-move;
 
@@ -61,8 +66,8 @@ export component JobRow inherits Rectangle {
     background: root.held ? Theme.raised : transparent;
 
     // A paused download keeps its bar, greyed, so you see how far it got.
-    property <bool> moving: root.job.state == 1 || root.job.state == 2 || (root.paused && root.job.progress > 0);
-    height: root.moving ? 72px : 62px;
+    property <bool> moving: !root.live && (root.job.state == 1 || root.job.state == 2 || (root.paused && root.job.progress > 0));
+    height: root.taped ? (root.compact ? 78px : 94px) : root.moving ? 72px : 62px;
 
     // A group card opens and closes anywhere outside its buttons.
     // keyboard: the chevron button does the same.
@@ -154,15 +159,19 @@ export component JobRow inherits Rectangle {
                 }
                 // Compact: a moving row shows only its numbers (size, speed, time left).
                 if !root.compact || !root.moving || root.job.stats == "": Text {
-                    text: root.job.status;
-                    color: root.failed || (root.done && root.job.warn) ? Theme.ink : Theme.muted;
+                    text: root.live ? (root.compact ? root.job.live.short-status : root.job.live.status) : root.job.status;
+                    // A recording's status ("51:10 recorded", "Starts in 42:10") is what you
+                    // look for: whole, the numbers after it shorten instead.
+                    min-width: root.live ? self.preferred-width : 0px;
+                    color: root.failed || (root.done && root.job.warn) || root.live ? Theme.ink : Theme.muted;
                     font-size: 12px;
                     overflow: elide;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
                 }
-                Text {
-                    text: root.job.stats;
+                // Compact recording: its numbers go under the tape, the status keeps the room.
+                if !(root.taped && root.compact): Text {
+                    text: root.live ? (root.compact ? root.job.live.short-stats : root.job.live.stats) : root.job.stats;
                     color: Theme.muted;
                     // Spotify rows say "✓ sounds like Spotify · 11.6 MB": words, so not monospace.
                     font-family: root.job.music && root.done ? Theme.body : Theme.mono;
@@ -170,6 +179,68 @@ export component JobRow inherits Rectangle {
                     vertical-alignment: center;
                     horizontal-stretch: root.compact && root.moving ? 1 : 0;
                     overflow: elide;
+                }
+                // A saved recording: what it missed, in the warning colour.
+                if root.live && !root.taped && root.job.live.middle != "": Text {
+                    text: root.job.live.middle;
+                    color: Theme.bad;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 0;
+                    overflow: elide;
+                }
+            }
+            if root.taped: LiveTape {
+                joined: root.job.live.joined;
+                done: root.job.live.done;
+                holes: root.job.live.holes;
+                catching-up: root.job.live.catching-up;
+                slim: root.compact;
+            }
+            if root.taped && root.compact: HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.job.live.short-stats;
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 10px;
+                    horizontal-stretch: 0;
+                }
+                Text {
+                    text: root.job.live.short-middle;
+                    color: root.job.live.middle-bad ? Theme.bad : Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 10px;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+            }
+            // Under the tape: where it begins · what's going on · now.
+            if root.taped && !root.compact: HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: root.job.live.left;
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 10px;
+                    horizontal-stretch: 0;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.job.live.middle;
+                    color: root.job.live.middle-bad ? Theme.bad : Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.job.live.right;
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 10px;
+                    horizontal-stretch: 0;
                 }
             }
             if root.moving: Bar {
@@ -185,10 +256,15 @@ export component JobRow inherits Rectangle {
             spacing: 6px;
             if root.main != 0: GhostButton {
                 compact: true;
-                text: root.main == 1 ? "Pause" : root.main == 2 ? "Resume" : root.main == 3 ? "Retry"
+                icon: root.main == 7 ? "\u{E71A}" : root.main == 8 ? "\u{E8C6}" : "";
+                on: root.main == 8;
+                text: root.main == 8 ? "End clip" : root.main == 7 ? "Stop" : root.main == 1 ? "Pause" : root.main == 2 ? "Resume" : root.main == 3 ? "Retry"
                     : root.main == 4 ? "Pick match" : root.main == 5 ? "Show" : "Cancel";
+                label: root.main == 7 ? "Stop and save the recording" : root.main == 8 ? "End the clip and save it" : self.text;
                 clicked => {
-                    if root.main == 1 { root.pause(); }
+                    if root.main == 8 { QueueActions.clip-end(root.job.id); }
+                    else if root.main == 7 { QueueActions.stop(root.job.id); }
+                    else if root.main == 1 { root.pause(); }
                     else if root.main == 2 { root.resume(); }
                     else if root.main == 3 { root.retry(); }
                     else if root.main == 4 { root.pick-match(); }
@@ -217,6 +293,55 @@ export component JobRow inherits Rectangle {
           horizontal-stretch: 0;
           HorizontalLayout {
             spacing: 6px;
+            if root.job.live.can-stop && !root.narrow: GhostButton {
+                compact: true;
+                text: "Watch";
+                icon: "\u{E7B3}";
+                label: "Watch the stream";
+                clicked => { QueueActions.watch(root.job.id); }
+            }
+            if root.job.live.can-stop && root.narrow: GhostButton {
+                compact: true;
+                icon: "\u{E7B3}";
+                label: "Watch the stream";
+                clicked => { QueueActions.watch(root.job.id); }
+            }
+            if root.job.live.can-stop && !root.job.live.clipping && !root.narrow: GhostButton {
+                compact: true;
+                text: "Clip";
+                icon: "\u{E70D}";
+                label: "Clip: start a clip, or save the last few minutes";
+                clicked => { clip-menu.show(); }
+            }
+            if root.job.live.can-stop && !root.job.live.clipping && root.narrow: GhostButton {
+                compact: true;
+                icon: "\u{E8C6}";
+                label: "Clip: start a clip, or save the last few minutes";
+                clicked => { clip-menu.show(); }
+            }
+            // A clip is open: end it (saved as its own row; the recording goes on).
+            if root.job.live.can-stop && root.job.live.clipping: GhostButton {
+                compact: true;
+                text: "End clip";
+                icon: "\u{E8C6}";
+                on: true;
+                label: "End the clip and save it";
+                clicked => { QueueActions.clip-end(root.job.id); }
+            }
+            if root.job.live.can-stop: GhostButton {
+                compact: true;
+                text: "Stop";
+                icon: "\u{E71A}";
+                label: "Stop and save the recording";
+                clicked => { QueueActions.stop(root.job.id); }
+            }
+            if root.job.live.can-stop: GhostButton {
+                compact: true;
+                width: 30px;
+                icon: "\u{E712}";
+                label: "More actions";
+                clicked => { live-menu.show(); }
+            }
             if root.job.can-pause && !root.narrow: GhostButton {
                 compact: true;
                 text: root.job.header ? "Pause all" : "Pause";
@@ -238,7 +363,7 @@ export component JobRow inherits Rectangle {
                 text: "Start now";
                 clicked => { QueueActions.start-now(root.job.id); }
             }
-            if root.job.can-cancel: GhostButton {
+            if root.job.can-cancel && !root.job.live.can-stop: GhostButton {
                 compact: true;
                 text: "Cancel";
                 clicked => { root.cancel(); }
@@ -353,6 +478,51 @@ export component JobRow inherits Rectangle {
         x: root.width - Theme.lane - (root.job.header ? 38px : 0px) - 200px;
         y: root.height / 2 + 19px;
         Menu {
+            if root.job.live.can-stop: MenuItem {
+                icon: "\u{E7B3}";
+                text: "Watch the stream";
+                clicked => { QueueActions.watch(root.job.id); }
+            }
+            if root.job.live.can-stop && root.job.live.can-clip && !root.job.live.clipping: MenuItem {
+                icon: "\u{E8C6}";
+                text: "Start a clip (10 s back)";
+                clicked => { QueueActions.clip-start(root.job.id); }
+            }
+            if root.job.live.clipping: MenuItem {
+                icon: "\u{E711}";
+                text: "Cancel clip";
+                clicked => { QueueActions.clip-drop(root.job.id); }
+            }
+            if root.job.live.can-stop && root.main == 8: MenuItem {
+                icon: "\u{E71A}";
+                text: "Stop recording";
+                clicked => { QueueActions.stop(root.job.id); }
+            }
+            if root.job.live.can-stop && root.job.live.can-clip: MenuItem {
+                icon: "\u{E8C6}";
+                text: "Clip the last 30 s";
+                clicked => { QueueActions.clip-last(root.job.id, 30); }
+            }
+            if root.job.live.can-stop && root.job.live.can-clip: MenuItem {
+                icon: "\u{E8C6}";
+                text: "Clip the last minute";
+                clicked => { QueueActions.clip-last(root.job.id, 60); }
+            }
+            if root.job.live.can-stop && root.job.live.can-clip: MenuItem {
+                icon: "\u{E8C6}";
+                text: "Clip the last 5 min";
+                clicked => { QueueActions.clip-last(root.job.id, 300); }
+            }
+            if root.job.live.can-stop && root.job.live.can-clip: MenuItem {
+                icon: "\u{E8C6}";
+                text: "Clip the last 10 min";
+                clicked => { QueueActions.clip-last(root.job.id, 600); }
+            }
+            if root.job.live.can-stop: MenuItem {
+                icon: "\u{E74D}";
+                text: "Cancel recording…";
+                clicked => { throw-away.show(); }
+            }
             if root.job.can-move: MenuItem {
                 icon: "\u{E74A}";
                 text: "Move to top";
@@ -378,7 +548,7 @@ export component JobRow inherits Rectangle {
                 text: "Start now";
                 clicked => { QueueActions.start-now(root.job.id); }
             }
-            if root.job.can-cancel && root.main != 6: MenuItem {
+            if root.job.can-cancel && root.main != 6 && !root.job.live.can-stop: MenuItem {
                 icon: "\u{E711}";
                 text: root.job.header ? "Cancel all" : "Cancel";
                 clicked => { root.cancel(); }
@@ -417,6 +587,94 @@ export component JobRow inherits Rectangle {
                 icon: "\u{E74D}";
                 text: "Remove from list";
                 clicked => { root.remove(); }
+            }
+        }
+    }
+
+    // A recording: "Clip the last" (wide and medium), its four picks. Not while it's
+    // catching up: "the last minute" isn't now yet.
+    clip-menu := PopupWindow {
+        x: root.width - Theme.lane - 250px - 200px;
+        y: root.height / 2 + 19px;
+        Menu {
+            if !root.job.live.can-clip: Text {
+                text: "You can clip once it has caught up with the live stream.";
+                color: Theme.muted;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+            if root.job.live.can-clip: MenuItem {
+                icon: "\u{E7C8}";
+                text: "Start a clip here";
+                clicked => { QueueActions.clip-start(root.job.id); }
+            }
+            if root.job.live.can-clip: Text {
+                text: "From 10 s back; End clip saves it. Or save the last:";
+                color: Theme.muted;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+            if root.job.live.can-clip: MenuItem {
+                icon: "\u{E8C6}";
+                text: "30 seconds";
+                clicked => { QueueActions.clip-last(root.job.id, 30); }
+            }
+            if root.job.live.can-clip: MenuItem {
+                icon: "\u{E8C6}";
+                text: "1 minute";
+                clicked => { QueueActions.clip-last(root.job.id, 60); }
+            }
+            if root.job.live.can-clip: MenuItem {
+                icon: "\u{E8C6}";
+                text: "5 minutes";
+                clicked => { QueueActions.clip-last(root.job.id, 300); }
+            }
+            if root.job.live.can-clip: MenuItem {
+                icon: "\u{E8C6}";
+                text: "10 minutes";
+                clicked => { QueueActions.clip-last(root.job.id, 600); }
+            }
+        }
+    }
+
+    // A recording's ⋯ (wide and medium): throwing it away, behind a question.
+    live-menu := PopupWindow {
+        x: root.width - Theme.lane - 200px;
+        y: root.height / 2 + 19px;
+        Menu {
+            if root.job.live.clipping: MenuItem {
+                icon: "\u{E711}";
+                text: "Cancel clip";
+                clicked => { QueueActions.clip-drop(root.job.id); }
+            }
+            MenuItem {
+                icon: "\u{E74D}";
+                text: "Cancel recording…";
+                clicked => { throw-away.show(); }
+            }
+        }
+    }
+
+    // Cancel throws the recording away: asked first (Stop is the one that keeps it).
+    throw-away := PopupWindow {
+        x: root.width - Theme.lane - 200px;
+        y: root.height / 2 + 19px;
+        Menu {
+            Text {
+                text: "Throw away what's recorded? Stop keeps it instead.";
+                color: Theme.ink;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+            MenuItem {
+                icon: "\u{E71A}";
+                text: "Stop and keep it";
+                clicked => { QueueActions.stop(root.job.id); }
+            }
+            MenuItem {
+                icon: "\u{E74D}";
+                text: "Throw it away";
+                clicked => { root.cancel(); }
             }
         }
     }

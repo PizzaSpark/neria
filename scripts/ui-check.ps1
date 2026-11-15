@@ -139,6 +139,12 @@ $states = [ordered]@{
   "set-sound"  = @{ NERIA_SETTINGS = "general"; NERIA_OWN_SOUND = "demo" }
   "set-sound-gone" = @{ NERIA_SETTINGS = "general"; NERIA_OWN_SOUND = "missing" }
   "close-ask"  = @{ NERIA_DIALOG = "close"; NERIA_DEMO = "1" }
+  "close-rec"  = @{ NERIA_DIALOG = "close-rec"; NERIA_DEMO = "1" }
+  # Live streams: the preview (from the start / not on yet / on for days) over the demo
+  # queue, whose first rows are recordings.
+  "live"       = @{ NERIA_DIALOG = "live"; NERIA_DEMO = "1" }
+  "live-soon"  = @{ NERIA_DIALOG = "live-upcoming"; NERIA_DEMO = "1" }
+  "live-long"  = @{ NERIA_DIALOG = "live-long"; NERIA_DEMO = "1" }
   "later"      = @{ NERIA_DIALOG = "later" }
   "names"      = @{ NERIA_DIALOG = "names" }
   "clip-ch"    = @{ NERIA_OPEN = $chaptered; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "10" }

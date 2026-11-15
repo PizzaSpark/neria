@@ -66,6 +66,10 @@ export global Theme {
     out property <color> warn-bg: dark ? #3a2a12 : #fbe7c4;
     out property <color> bad: dark ? #ff7b72 : #ba352c;
     out property <color> bad-bg: dark ? #3a1a1a : #fde0dc;
+    // Recording a live stream right now (the REC tag, the tape's live edge). Its own red,
+    // so "recording" never reads as "failed".
+    out property <color> live: dark ? #ff6b6f : #b8242e;
+    out property <color> live-bg: dark ? #3d1719 : #fde0e1;
 
     // Older names, kept so every screen picks up the new palette.
     out property <color> sidebar: bg;

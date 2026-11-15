@@ -46,6 +46,7 @@ playful part.
 | `ok` / `ok-bg` | `#7fd6a4` / `#173326` | `#1c7649` / `#d5f2e0` | Saved, done |
 | `warn` / `warn-bg` | `#f5b14a` / `#3a2a12` | `#975900` / `#fbe7c4` | Unsure match, retryable problems |
 | `bad` / `bad-bg` | `#ff7b72` / `#3a1a1a` | `#ba352c` / `#fde0dc` | Failed, sounds different, can't download |
+| `live` / `live-bg` | `#ff6b6f` / `#3d1719` | `#b8242e` / `#fde0e1` | Recording a live stream now: the REC tag, the tape's live edge |
 
 Yellow is for the one main action per screen and for "things are moving" (progress, counts).
 Never for decoration.

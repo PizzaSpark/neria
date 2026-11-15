@@ -71,6 +71,7 @@ export global Background {
     // Closing while downloads are going: "Keep going in the tray" / "Stop and quit".
     in-out property <bool> ask-open;
     in property <int> going; // downloads running or waiting (scheduled ones included)
+    in property <int> recording; // of those, live streams being recorded
     in-out property <bool> remember;
     callback keep-going();
     callback quit();
@@ -123,6 +124,14 @@ export global Watch {
     in-out property <float> volume: 100;
     in-out property <bool> muted;
     callback start(); // the play mark on the Download page's preview
+    // Watching a recording from its queue row (its job id; 0: a preview): the bar offers
+    // Stop instead of Download (it's being recorded already).
+    in-out property <int> recording-id;
+    // That recording: a clip can start (not while catching up), one is open, and what it says
+    // ("Clipping from 1:02:20 · 0:40 so far").
+    in property <bool> rec-can-clip;
+    in property <bool> rec-clipping;
+    in property <string> rec-text;
     callback back(); // to the Download page (a file open before comes back)
     callback download(); // the whole link, with the chips as they are
     callback clip-this(); // stay, with In/Out
@@ -306,8 +315,34 @@ export global Following {
 }
 
 // Queue actions that rows call directly.
+// A live stream on the Download page's preview: it's recorded, from the start or from now
+// (`live_ui.rs`, words from `record::start_choice`).
+export global Live {
+    // The previewed link is a live stream (on now, or not yet).
+    in property <bool> on;
+    in property <bool> upcoming;
+    // "Records from the start" / "Starts in 42 min", what that means, and the link that
+    // flips it ("Record from now instead"; empty: no choice). Short forms for 400 px.
+    in property <string> line;
+    in property <string> hint;
+    in property <string> hint-short;
+    in property <string> switch;
+    in property <string> switch-short;
+    callback flip();
+}
+
 export global QueueActions {
     callback start-now(int); // a "Download later" row (or a card: the group, negated)
+    // A recording: stop and save it / save its last seconds as a file of their own /
+    // watch it (the stream, live, in the player).
+    callback stop(int);
+    callback clip-last(int, float);
+    callback watch(int);
+    // A clip marked while it records: starts 10 s back, ends at "End clip" (the recording
+    // goes on); "Cancel clip" forgets the start.
+    callback clip-start(int);
+    callback clip-end(int);
+    callback clip-drop(int);
     // Move a waiting row (a card: the group, negated) by places; ±1000 = to the top / bottom.
     callback move(int, int);
     // The row just moved with the keyboard: its grip takes the focus back (0 = none).

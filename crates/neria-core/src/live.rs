@@ -299,6 +299,8 @@ fn record(
             .stderr(Stdio::null())
             .spawn()
             .context("failed to start ffmpeg")?;
+        // It never ends by itself: if Neria goes, it goes too.
+        proc::end_with_neria(&child);
         *guard = Some(child);
     }
     loop {

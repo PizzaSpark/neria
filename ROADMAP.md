@@ -733,25 +733,63 @@ Dev hooks: `NERIA_COMPRESS` (files or folders, `;` between), `NERIA_COMPRESS_GOA
 `cmp-sharp`, `cmp-many`.
 
 ## Livestreams (own milestone)
-- Two ways to record, picked automatically and said plainly on the preview:
-  - **From the start**: when the stream allows rewinding (YouTube with DVR on), download
-    everything since it went live (`--live-from-start`) and keep following it live
-  - **From now**: when rewinding is off (or unsupported), record from the moment you press
-    Download; the preview says "This stream can't be rewound, recording starts now"
-- Scheduled streams and premieres: "Waiting for the stream to start" with a countdown
-  (`--wait-for-video`)
-- Stop button that finishes the file cleanly; recording also ends when the stream ends
-- **Live timeline bar** on the queue row: stream start to "now", recorded parts solid, the
-  part before you joined hatched, missed segments as visible holes with their time ("missed
-  0:42 at 1:13:05"), a pulsing live edge
-- **Stats**: recorded length, size, speed, stream bitrate/resolution, how far behind live,
-  segments received / retried / missed, connection status
-- Clipping a live stream: pick a range from the rewindable window
-- **Clip the last…** (instant replay): one button on a live row with quick picks **30 s ·
-  1 min · 5 min · 10 min**; saves that much up to "now" as its own file right away, while the
-  recording keeps going. Works from the rewindable window too, so it doesn't need a recording
-  running when the stream can be rewound. Optional keyboard shortcut; the saved clip opens in
-  the clipper for fine trimming
+Built 2026-11-15 on branch `live-track` (mock: `design/live-track.html`, picked 1A · 2A · 3A;
+engine `record.rs`, row `fmt::live_row`, UI `live_ui.rs`; ideas from ytarchive and streamlink,
+see `docs/UPSTREAM.md`). Ticked only where a real stream covered it; the rest is in
+`docs/TESTING-live-track.md`.
+1. ✅ **Two ways to record, picked by Neria and said on the preview** ("LIVE · Records from the
+   start · about 22 min to catch up, then it follows live", with "Record from now instead";
+   the button says "Record"). From the start when the site keeps it (YouTube with rewinding on,
+   at most its last 120 h; Twitch's growing VOD playlist) and the stream began under 6 h ago;
+   else from now ("it's been live for 11 days, longer than the site keeps" / "this stream
+   can't be rewound"), with "Record from the start instead" while it's reachable. Measured:
+   YouTube catches up ~6× real time, Twitch ~12×; both then follow live by themselves. A
+   from-start the site refuses falls back to from now and says so. Every part is H.264 + AAC
+   so parts of both kinds join without re-encoding (checked across the seam). Checked: Sky
+   News and a lofi radio (YouTube, from now), YouTube from the start (headless, resumed after
+   a drop), Twitch both ways (headless)
+2. **Scheduled streams and premieres**: "SOON · Starts in 42 min", "Record when it starts";
+   the row waits with a countdown (`--wait-for-video 30-60`) and records from the first
+   second. Not yet checked on a real upcoming stream (none found on 2026-11-15)
+3. ✅ **Stop that keeps the file**: Stop kills yt-dlp and Neria makes one file from the parts
+   (a 75 s Sky News recording saved in under a second, 1080p, plays). The stream ending saves
+   it too ("the stream ended", checked on a local test stream). Cancel throws it away, behind
+   "Throw away what's recorded? Stop keeps it instead." A recording takes no download slot.
+   Closing Neria asks ("A live stream is being recorded": keep recording in the tray / stop,
+   save and quit; checked: saved, quit in ~1 s). A crash: its yt-dlp/ffmpeg end with Neria
+   (a job object; they used to keep recording), and the next start saves the parts ("saved
+   after Neria closed", checked by killing Neria mid-recording)
+4. ✅ **The tape on the row**: stream start → now, hatched before you joined (a long stream
+   shows a little before the join, not days of hatching), yellow recorded (striped while
+   catching up), red ticks where something was missed, a pulsing red live edge; under it
+   "you joined 1:03:12 ago · missed 0:42 at 31:05 · now". Holes come from ffmpeg's and
+   yt-dlp's own "skipped" warnings and, between reconnects, from YouTube's piece numbers (an
+   overlap is trimmed); where pieces aren't numbered, "missed a moment" (clock, no length).
+   Checked: a dropped connection (killed yt-dlp) reconnected with the overlap trimmed and no
+   false hole; a deleted piece on a local stream showed as missed. Not shown: "how far behind
+   live" and segment counts (not measurable reliably), and the "⋯ → Details" panel
+5. ✅ **Stats**: recorded length, size, resolution, speed on the row; "catching up: 51:10 of
+   2:14:00 · live in ~17 min" while catching up; the saved row keeps length, size, why it
+   ended and what was missed
+6. ✅ **Clip the last…** (30 s · 1 min · 5 min · 10 min): "Clip the last ▾" next to Stop (a
+   scissors icon at medium width, in ⋯ at 400 px), cut from what's recorded, no second
+   download; saved as its own row with Clip/Compress. While catching up its menu says "You can
+   clip once it has caught up" instead of the picks. Checked: 10 s from a Twitch recording
+   through the queue (0.2 s), 10 s from a YouTube from-the-start recording (video and sound
+   start together), and pressed in the app (`NERIA_REC_CLIP`) on a stream 73 min old that
+   Neria recorded from the start by itself. Clipping a stream you're not recording: the clipper's live mode (Clip track 8)
+7. ✅ **Watch it while it records, and clip as it happens** (asked for 2026-11-15): "Watch" on a
+   recording's row (⋯ at 400 px) opens the stream live in the player ("Watching it live.";
+   no Download there, it's being recorded). **Start clip** (the row's Clip ▾, or the player)
+   begins 10 s back so a late press keeps the first words; **End clip** saves from there to now
+   as its own row while the recording goes on ("clipping from 0:20 · 0:25 so far" under the
+   tape; Cancel clip in ⋯). Cut from what's recorded, no second download. Checked in the app:
+   Start at 30 s, End at 70 s gave a 50 s clip, from the row and from the player, at 1100 and
+   400 wide. Not yet: a keyboard shortcut for "Clip the last"
+Dev hooks: `NERIA_DIALOG=live` / `live-upcoming` / `live-long` / `close-rec`, recording rows in
+`NERIA_DEMO`, `NERIA_REC_STOP`, `NERIA_REC_DEBUG`; headless `--example record` (also
+`--queue`, `--kill-at`, `--crash-at` + `--save`); ui-check `live`, `live-soon`, `live-long`,
+`close-rec`.
 
 ## Later: bigger ideas (keep UX simple)
 - **Browser extension (Chrome, Edge, Firefox)**: a Neria button on video pages and posts, and

@@ -117,6 +117,32 @@ preferred, `--from/--to` search range, `--rank` for the next-best loop, paletteg
 paletteuse (sierra2_4a) render. `legacy/` holds older OpenCV/SSIM experiments, not needed.
 Port to Rust in `neria-core` (no Python in Neria).
 
+### ytarchive and streamlink (ideas only, for recording live streams: `record.rs`)
+
+Read 2026-11-15: ytarchive `2110ce2` (2025-06-25, 0.5.0; `Info.go`, `util.go`,
+`player_response.go`, `main.go`) and streamlink `5896d42` (2026-11-14, after 8.6.3;
+`stream/hls/hls.py`, `stream/segmented/segmented.py`, `plugins/twitch.py`). Neria records
+through yt-dlp, so these are references for behaviour, not code.
+
+- **Where it starts**: ytarchive goes from `sq=0`, or the last 5 days (`LiveMaximumSeekable`,
+  432000 s), as yt-dlp's `--live-from-start` does ("the last 120 hours"); streamlink starts 3
+  segments behind the live edge (`hls-live-edge`), as ffmpeg's HLS reader does. That's why a
+  reconnected from-now part overlaps the last one, and Neria trims it by piece number.
+- **Missed pieces**: streamlink logs "Sequence gap of N segments" when a reload's numbers jump
+  (pieces that left the playlist) and counts failed downloads apart ("Failed to fetch segment
+  N"). Neria counts the same two from ffmpeg ("skipping N segments ahead", "Failed to open
+  segment") and yt-dlp ("Skipping fragment"); never from ffmpeg's "Opening" lines, which skip
+  pieces fetched on a kept-open connection. ytarchive writes strictly in order and never skips.
+- **Dropped vs ended**: ytarchive retries a fragment 10 times, sleeping the target duration
+  between, and forever while YouTube still says live; streamlink stops after no new segment for
+  3× the target duration. Neria: a part that ends is followed by a `live_status` check, then a
+  new part after 2/5/10/20/30 s, giving up after 5 quick failures.
+- **Scheduled streams**: ytarchive sleeps to the scheduled time, then polls every 15 s and logs
+  "Stream rescheduled" / "N seconds late"; Neria uses yt-dlp's `--wait-for-video 30-60`.
+- **Worth doing later**: ytarchive's "a 404 within 2 pieces of the end is the end, not a hole";
+  streamlink's Twitch ad detection (`EXT-X-DATERANGE` `CLASS="twitch-stitched-ad"`), to label
+  ad breaks instead of counting them missed.
+
 ## How to check what changed since the baseline
 
 Quick look in the browser (replace the SHA with the baseline above):

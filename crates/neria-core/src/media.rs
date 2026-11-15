@@ -120,6 +120,28 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
 ///
 /// Reads packet headers only (no decoding), so it's fast even for long files.
 /// A lossless cut can only start on one of these.
+/// How long a file plays, from its container (no full read).
+pub fn duration(path: &Path) -> Option<f64> {
+    start_and_end(path).map(|(s, e)| e - s)
+}
+
+/// Where a file's timestamps start and end, in seconds (a recording's pieces keep the
+/// stream's own clock, so they don't start at 0).
+pub fn start_and_end(path: &Path) -> Option<(f64, f64)> {
+    let out = proc::command(paths::tool("ffprobe"))
+        .args(["-v", "error", "-show_entries", "format=start_time,duration", "-of", "csv=p=0"])
+        .arg(path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut f = text.trim().split(',').map(|v| v.trim().parse::<f64>().ok().filter(|x| x.is_finite()));
+    let start = f.next().flatten().unwrap_or(0.0);
+    let len = f.next().flatten()?;
+    (len > 0.0).then_some((start, start + len))
+}
+
 pub fn keyframes(path: &Path) -> Result<Vec<f64>> {
     let out = proc::command(paths::tool("ffprobe"))
         .args(["-v", "error", "-select_streams", "V:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0"])

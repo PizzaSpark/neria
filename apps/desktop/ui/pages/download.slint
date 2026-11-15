@@ -5,7 +5,7 @@ import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SectionTitle, 
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
-import { Accounts, Extras, Background, Presets, Bulk, Watch, Following, Music } from "../globals.slint";
+import { Accounts, Extras, Background, Presets, Bulk, Watch, Following, Music, Live } from "../globals.slint";
 import { ExtrasRow } from "../components/extras-row.slint";
 import { UpdateBanner } from "../components/update-banner.slint";
 
@@ -174,7 +174,8 @@ export component DownloadPage inherits Rectangle {
     property <bool> short: root.window-height < 820px;
     property <bool> no-quality: root.probe-is-spotify || root.gif-mode;
     // The Download button (in the link box, or under it on narrow windows).
-    property <string> dl-text: root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
+    property <string> dl-text: Live.on && root.probe-state == 2 ? (Live.upcoming ? "Record when it starts" : "Record")
+        : root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
         : root.picking && root.pick-checked > 1 ? "Download " + root.pick-checked + " items"
         : root.dup-text != "" && root.probe-state == 2 ? "Download again"
         : "Download";
@@ -297,7 +298,7 @@ export component DownloadPage inherits Rectangle {
                     has-menu: true;
                     menu-clicked => { dl-menu.show(); }
                     text: root.dl-text;
-                    icon: "\u{E896}";
+                    icon: Live.on && root.probe-state == 2 ? "\u{E7C8}" : "\u{E896}";
                     enabled: root.dl-enabled;
                     clicked => { root.start-download(); }
                 }
@@ -308,7 +309,7 @@ export component DownloadPage inherits Rectangle {
             has-menu: true;
             menu-clicked => { dl-menu.show(); }
             text: root.dl-text;
-            icon: "\u{E896}";
+            icon: Live.on && root.probe-state == 2 ? "\u{E7C8}" : "\u{E896}";
             enabled: root.dl-enabled;
             clicked => { root.start-download(); }
         }
@@ -404,6 +405,80 @@ export component DownloadPage inherits Rectangle {
                     font-size: 13px;
                     wrap: root.probe-state == 3 ? word-wrap : no-wrap;
                     overflow: elide;
+                }
+                // A live stream: where the recording starts, and the other start to pick.
+                if root.probe-state == 2 && Live.on && !Screen.compact: HorizontalLayout {
+                    padding-top: 2px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        Tag {
+                            text: Live.upcoming ? "NOT LIVE YET" : "LIVE";
+                            kind: Live.upcoming ? 0 : 5;
+                        }
+                    }
+                    Text {
+                        text: Live.line;
+                        color: Theme.ink;
+                        font-size: 13px;
+                        font-weight: 600;
+                        horizontal-stretch: 0;
+                        vertical-alignment: center;
+                    }
+                    if Live.hint != "": Text {
+                        // Medium width: the short form, so the catch-up time isn't cut off.
+                        text: "· " + (Screen.wide ? Live.hint : Live.hint-short);
+                        color: Theme.muted;
+                        font-size: 13px;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    if Live.hint == "": Rectangle { horizontal-stretch: 1; }
+                    if Live.switch != "": TextLink {
+                        horizontal-stretch: 0;
+                        text: Screen.wide ? Live.switch : Live.switch-short;
+                        clicked => { Live.flip(); }
+                    }
+                }
+                // Compact: the same on three short lines (the column next to the picture is
+                // narrow).
+                if root.probe-state == 2 && Live.on && Screen.compact: VerticalLayout {
+                    spacing: 3px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 0;
+                            Tag {
+                                text: Live.upcoming ? "SOON" : "LIVE";
+                                kind: Live.upcoming ? 0 : 5;
+                            }
+                        }
+                        Text {
+                            text: Live.line;
+                            color: Theme.ink;
+                            font-size: 13px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+                    }
+                    if Live.hint-short != "": Text {
+                        text: Live.hint-short;
+                        color: Theme.muted;
+                        font-size: 12px;
+                        overflow: elide;
+                    }
+                    if Live.switch != "": HorizontalLayout {
+                        alignment: start;
+                        TextLink {
+                            text: Live.switch-short;
+                            clicked => { Live.flip(); }
+                        }
+                    }
                 }
                 // Private, age-restricted, members-only…: sign in to the site, right here.
                 if root.probe-state == 3 && Accounts.problem-site != "": HorizontalLayout {

@@ -699,6 +699,7 @@ fn close_requested(ui: &AppWindow) -> CloseRequestResponse {
         _ => {
             let b = ui.global::<Background>();
             b.set_going(going);
+            b.set_recording(crate::rows().iter().filter(|j| j.live.can_stop).count() as i32);
             b.set_remember(false);
             b.set_ask_open(true);
             CloseRequestResponse::KeepWindowShown

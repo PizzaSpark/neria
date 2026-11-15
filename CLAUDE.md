@@ -12,7 +12,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
   compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
   `music.rs` tags/M3U/sync/Lyrics only/numbering, `lyrics.rs` lyrics sources (LRCLIB,
   Spotify's own with a sign-in), `post.rs` items of posts/playlists for the picker,
-  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate, `picture.rs` turn/mirror/crop filters, `live.rs` live streams: rewind marks pinned to the clock, the replay buffer, `timeline.rs` the clip timeline's zoom: view maths, ruler steps, filmstrip tile grid, sound levels (peaks) drawn for any part, `compress.rs` goals (`Goal`), the plan and its plain hint (`Look`), black bars, kept tracks, trimming, the before/after samples, how long a size holds). Shared with the future Android app, so no UI code here.
+  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate, `picture.rs` turn/mirror/crop filters, `live.rs` live streams: rewind marks pinned to the clock, the replay buffer, `record.rs` recording a live stream (from the start / from now, parts joined on Stop or at the next start, holes, Clip the last…; `fmt::live_row` words its queue row), `timeline.rs` the clip timeline's zoom: view maths, ruler steps, filmstrip tile grid, sound levels (peaks) drawn for any part, `compress.rs` goals (`Goal`), the plan and its plain hint (`Look`), black bars, kept tracks, trimming, the before/after samples, how long a size holds). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI in `ui/`:
   - `app.slint`: `AppWindow` only, the one API Rust sees (all properties/callbacks); wires them
@@ -42,7 +42,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
     audio tracks, chapters), `background_ui.rs` (tray, notifications, Download later),
     `names_ui.rs` (filename builder), `sound_ui.rs` (Clip page → Sound), `gif_ui.rs` (Make a GIF), `picture_ui.rs` (Picture mode), `clips_ui.rs` (clip list), `timeline_ui.rs` (the timeline's zoom: view, waveform from peaks, close-up frames), `order_ui.rs` (queue order: the list is the truth, the
     queue is told the order it shows), `bulk_ui.rs` (several links, Paste & download, clipboard
-    watcher), `follow_ui.rs` (Follow, Settings → Following, the checks). Watch mode lives in
+    watcher), `follow_ui.rs` (Follow, Settings → Following, the checks), `live_ui.rs` (a live link's preview line, recording rows' Stop / Clip the last, saving recordings on quit). Watch mode lives in
     `clipper.rs` (`Watch` global). Core: `cookies.rs` (per-site cookie files, only ever
     passed for links of their own site; each yt-dlp run gets its own copy), `tracks.rs`,
     `names.rs`, `follow.rs` (`following.json`).
@@ -65,6 +65,9 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   `--gif gif|webp|mp4 [--width] [--fps] [--once]` prints the size estimate, then makes it;
   picture: `--turn <1-3>`, `--flip-h`, `--flip-v`, `--aspect 9:16`, `--crop x,y,w,h`;
   `--clips a-b,c-d [--names A,B] [--join]` for the clip list)
+- `NERIA_HOME=target/debug cargo run -p neria-core --example record -- <live link> <now|start> <seconds> [out]`
+  (records then stops and saves; `--clip <s>@<t>`, `--kill-at <t>` a dropped connection,
+  `--crash-at <t>` then `--save <work dir>`, `--queue` through the download queue)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example live -- <live link> window|rewind <s ago> <len>|buffer <min> <run s> <clip s> [out]`
   (how far back the site keeps it; a rewound part through the queue, `NERIA_WAIT` / `NERIA_NOW`
   to download the same mark later; the replay buffer)
@@ -107,7 +110,7 @@ a `$H` height: variable names ignore case, so the handle becomes the height and 
 jumps to 32767px tall; Windows doesn't enforce the 400x600 minimum on scripted resizes), `NERIA_FAKE_FREE_MB` (pretend the
 drive has this much free, to test the free-space checks), `NERIA_DROP_HOVER` / `NERIA_DROP`
 (a file path or link: show the drag-and-drop overlay for it / act as if it was dropped),
-`NERIA_DROP_CLIPBOARD` (drop whatever is on the clipboard, through the real OLE drop code), `NERIA_DROP_LOG` (a file: log what each real drag offers and what Neria made of it), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_LIVE_DEBUG` (a file: mpv's timing properties when a live stream opens), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
+`NERIA_DROP_CLIPBOARD` (drop whatever is on the clipboard, through the real OLE drop code), `NERIA_REC_STOP` (seconds: press Stop on every live recording then), `NERIA_REC_CLIP` (`10@40`: "Clip the last 10 s" on the first recording at 40 s), `NERIA_REC_MARK` (`30,70`: Start clip / End clip on it then), `NERIA_REC_WATCH` (seconds: watch it in the player then), `NERIA_REC_DEBUG` (print a recording's raw output lines, addresses cut), `NERIA_DROP_LOG` (a file: log what each real drag offers and what Neria made of it), `NERIA_MPV_LOG` (verbose mpv log file), `NERIA_LIVE_DEBUG` (a file: mpv's timing properties when a live stream opens), `NERIA_DEBUG_ARGS` (print ffmpeg args for compression),
 `NERIA_HOME` (override app dir; for UI tests point it at a scratch folder with its own
 `settings.json` and a junction `bin` → `target/debug/bin`, so downloads don't land in the real
 Videos folder).

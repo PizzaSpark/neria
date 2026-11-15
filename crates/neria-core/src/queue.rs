@@ -88,6 +88,15 @@ pub struct JobSnapshot {
     pub restored: bool,
     /// "Download later": waiting for its time ("02:00"), empty otherwise.
     pub starts: String,
+    /// A live stream being recorded: what the row shows (also kept once it's saved).
+    pub live: Option<crate::record::LiveStats>,
+    /// A recording (live link): Stop saves it, there's no Pause.
+    pub recording: bool,
+    /// Nothing to try again ("Clip the last…" that failed: press it again on the recording).
+    pub no_retry: bool,
+    /// A recording: "Start clip" was pressed; the clip starts here (seconds into what's
+    /// recorded) and ends at "End clip".
+    pub clip_from: Option<f64>,
 }
 
 impl JobSnapshot {
@@ -121,7 +130,18 @@ impl JobSnapshot {
             key: None,
             restored: false,
             starts: String::new(),
+            live: None,
+            recording: false,
+            no_retry: false,
+            clip_from: None,
         }
+    }
+
+    /// A row with nothing in it yet, for design checks (`NERIA_DEMO`).
+    pub fn sample(id: u64, title: &str, state: JobState) -> Self {
+        let mut s = Self::new(id, 0, title.to_string());
+        s.state = state;
+        s
     }
 
     /// A fresh start for the same job (retry, resume, rematch), keeping what the row shows.
@@ -132,6 +152,7 @@ impl JobSnapshot {
         s.gif = self.gif;
         s.thumbnail = self.thumbnail.clone();
         s.key = self.key.clone();
+        s.recording = self.recording;
         s
     }
 
@@ -199,6 +220,8 @@ struct Entry {
     cancel: Arc<AtomicBool>,
     /// Set with `cancel` when the user pauses: the job ends as Paused, keeping its files.
     paused: Arc<AtomicBool>,
+    /// A recording: stop it and save what it has.
+    stop: Arc<AtomicBool>,
     child: Arc<Mutex<Option<Child>>>,
     /// Files yt-dlp said it would write, so Cancel can remove the half-done pieces.
     dests: Vec<PathBuf>,
@@ -216,6 +239,7 @@ impl Entry {
             req,
             cancel: Arc::new(AtomicBool::new(false)),
             paused: Arc::new(AtomicBool::new(false)),
+            stop: Arc::new(AtomicBool::new(false)),
             child: Arc::new(Mutex::new(None)),
             dests: Vec::new(),
             candidates: Vec::new(),
@@ -253,6 +277,11 @@ fn remove_leftovers(final_path: &std::path::Path) {
             let _ = std::fs::remove_file(entry.path());
         }
     }
+}
+
+/// A recording that has something in it (not one still waiting for its stream).
+fn has_recorded(s: &JobSnapshot) -> bool {
+    s.live.as_ref().is_some_and(|l| l.recorded > 0.0 || l.bytes > 0 || l.phase == crate::record::Phase::Saving)
 }
 
 /// Jobs added together: a playlist, the items picked from a post, a Spotify album.
@@ -526,6 +555,7 @@ impl Queue {
         snap.music = req.music.as_ref().is_some_and(|m| m.mode == music::Mode::Song);
         snap.gif = req.gif;
         snap.key = req.key.clone();
+        snap.recording = req.live.is_some();
         snap.starts = waiting_label(&req);
         snap.thumbnail = req.music.as_ref().and_then(|m| m.track.cover_url.clone()).or_else(|| req.thumbnail.clone());
         (self.inner.notify)(snap.clone());
@@ -583,6 +613,13 @@ impl Queue {
             std::fs::read(queue_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         let mut new_group: HashMap<u64, u64> = HashMap::new();
         for job in saved.jobs {
+            // A recording that was saved while Neria closed (its folder is gone): it's in
+            // the folder already, and recording it again would be wrong.
+            if job.state == SavedState::Waiting
+                && job.req.live.as_ref().and_then(|l| l.work.as_ref()).is_some_and(|w| !w.exists())
+            {
+                continue;
+            }
             let group = match job.group {
                 0 => 0,
                 old => *new_group.entry(old).or_insert_with(|| {
@@ -597,6 +634,7 @@ impl Queue {
             snap.group_title = self.group_title(group);
             snap.music = job.req.music.as_ref().is_some_and(|m| m.mode == music::Mode::Song);
             snap.gif = job.req.gif;
+            snap.recording = job.req.live.is_some();
             snap.thumbnail = job.thumbnail;
             snap.key = job.key;
             snap.file = job.file;
@@ -799,7 +837,18 @@ impl Queue {
                 self.save_locked(&entries);
             }
             JobState::Downloading | JobState::Processing => {
-                e.cancel.store(true, Ordering::SeqCst);
+                // Closing Neria never throws a recording away: it's saved (now, or at the
+                // next start if Neria is gone before it's done).
+                let closing = self.inner.closing.load(Ordering::SeqCst);
+                if e.req.live.is_some() && closing {
+                    // Something recorded: saved (now, or at the next start). Still waiting for
+                    // the stream: just ended, it waits again next time.
+                    if has_recorded(&e.snap) {
+                        e.stop.store(true, Ordering::SeqCst);
+                    }
+                } else {
+                    e.cancel.store(true, Ordering::SeqCst);
+                }
                 if let Some(child) = e.child.lock().unwrap().as_mut() {
                     proc::kill_tree(child);
                 }
@@ -808,11 +857,148 @@ impl Queue {
         }
     }
 
+    /// Stop a recording and save what it has (the stream keeps going without us).
+    pub fn stop(&self, id: u64) {
+        let entries = self.inner.entries.lock().unwrap();
+        let Some(e) = entries.iter().find(|e| e.snap.id == id && e.req.live.is_some()) else { return };
+        if matches!(e.snap.state, JobState::Downloading | JobState::Processing) {
+            e.stop.store(true, Ordering::SeqCst);
+            if let Some(child) = e.child.lock().unwrap().as_mut() {
+                proc::kill_tree(child);
+            }
+        }
+    }
+
+    /// The link a job downloads (or records).
+    pub fn url_of(&self, id: u64) -> Option<String> {
+        let entries = self.inner.entries.lock().unwrap();
+        entries.iter().find(|e| e.snap.id == id).map(|e| e.req.url.clone()).filter(|u| !u.is_empty())
+    }
+
+    /// The first recording that has something in it (dev hooks).
+    pub fn first_recording(&self) -> Option<u64> {
+        self.ids_where(None, |s| s.recording && s.state == JobState::Downloading && has_recorded(s)).first().copied()
+    }
+
+    /// Stop every recording (Neria is closing): returns how many were running.
+    pub fn stop_recordings(&self) -> usize {
+        let ids = self.ids_where(None, |s| {
+            s.recording && matches!(s.state, JobState::Downloading | JobState::Processing) && has_recorded(s)
+        });
+        for id in &ids {
+            self.stop(*id);
+        }
+        ids.len()
+    }
+
+    /// Recordings with something recorded, still running or saving (not those waiting for
+    /// their stream to start).
+    pub fn recording_count(&self) -> usize {
+        self.ids_where(None, |s| {
+            s.recording && matches!(s.state, JobState::Downloading | JobState::Processing) && has_recorded(s)
+        })
+        .len()
+    }
+
+    /// How far back "Start clip" begins, so the first words aren't lost to a late press.
+    pub const CLIP_LEAD: f64 = 10.0;
+
+    /// "Start clip" on a recording: the clip begins `CLIP_LEAD` seconds back. The recording
+    /// goes on; "End clip" saves the part between.
+    pub fn clip_start(&self, id: u64) {
+        let mut entries = self.inner.entries.lock().unwrap();
+        let Some(e) = entries.iter_mut().find(|e| e.snap.id == id && e.req.live.is_some()) else { return };
+        let Some(st) = e.snap.live.as_ref().filter(|l| l.can_clip) else { return };
+        e.snap.clip_from = Some((st.recorded - Self::CLIP_LEAD).max(0.0));
+        (self.inner.notify)(e.snap.clone());
+    }
+
+    /// "Cancel clip": forget the start mark.
+    pub fn clip_drop(&self, id: u64) {
+        let mut entries = self.inner.entries.lock().unwrap();
+        let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
+        if e.snap.clip_from.take().is_some() {
+            (self.inner.notify)(e.snap.clone());
+        }
+    }
+
+    /// "End clip": save from the start mark to now as its own row (the recording goes on).
+    pub fn clip_end(&self, id: u64) {
+        let (from, to) = {
+            let mut entries = self.inner.entries.lock().unwrap();
+            let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
+            let Some(from) = e.snap.clip_from.take() else { return };
+            let to = e.snap.live.as_ref().map_or(from, |l| l.recorded);
+            (self.inner.notify)(e.snap.clone());
+            (from, to)
+        };
+        self.save_clip(id, to - from, Some((from, to)));
+    }
+
+    /// "Clip the last…" on a recording: the newest `seconds` as their own file, in a
+    /// finished row of its own (in the background; the row shows when it's saved).
+    pub fn clip_last(&self, id: u64, seconds: f64) {
+        self.save_clip(id, seconds, None);
+    }
+
+    /// The last `seconds` of a recording (or the marked part `from`–`to`, which ends now)
+    /// as a row of its own.
+    fn save_clip(&self, id: u64, seconds: f64, marked: Option<(f64, f64)>) {
+        let (work, dir, title, thumb, group) = {
+            let settings = self.inner.settings.lock().unwrap().clone();
+            let entries = self.inner.entries.lock().unwrap();
+            let Some(e) = entries.iter().find(|e| e.snap.id == id) else { return };
+            let Some(work) = e.req.live.as_ref().and_then(|l| l.work.clone()) else { return };
+            (work, download::out_dir(&e.req, &settings), e.snap.title.clone(), e.snap.thumbnail.clone(), e.snap.group)
+        };
+        let queue = self.clone();
+        thread::spawn(move || {
+            let (label, result) = match marked {
+                Some((from, to)) => (
+                    format!("{title} (clip {}–{})", crate::fmt::duration(from), crate::fmt::duration(to)),
+                    crate::record::clip_marked(&work, from, to, &dir, &title),
+                ),
+                None => (
+                    format!("{title} (last {})", crate::fmt::duration(seconds)),
+                    crate::record::clip_last(&work, seconds, &dir, &title),
+                ),
+            };
+            let cid = queue.inner.next_id.fetch_add(1, Ordering::Relaxed);
+            let mut snap = JobSnapshot::new(cid, group, label);
+            snap.thumbnail = thumb;
+            match result {
+                Ok(file) => {
+                    snap.state = JobState::Done;
+                    snap.progress = 1.0;
+                    snap.file = Some(file);
+                }
+                Err(e) => {
+                    snap.state = JobState::Failed;
+                    snap.error = Some(format!("Couldn't save the clip: {e}"));
+                    snap.no_retry = true;
+                }
+            }
+            // Never run: it's finished from the start (Retry isn't offered for it either).
+            let req = DownloadRequest::new(String::new(), Quality::Best, snap.title.clone());
+            // Finished already: "restored" makes the list add it as it is.
+            snap.restored = true;
+            (queue.inner.notify)(snap.clone());
+            snap.restored = false;
+            let mut entries = queue.inner.entries.lock().unwrap();
+            entries.push(Entry::new(snap, req));
+            queue.save_locked(&entries);
+        });
+    }
+
     /// Stop a download but keep what it has so far. Waiting jobs just don't start.
     /// Spotify songs can't be paused mid-way (small, and matched/checked in steps).
     pub fn pause(&self, id: u64) {
         let mut entries = self.inner.entries.lock().unwrap();
         let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
+        // A recording can't pause (the stream goes on without it): Stop saves it instead.
+        if e.req.live.is_some() {
+            return;
+        }
         match e.snap.state {
             JobState::Queued => {
                 e.snap.state = JobState::Paused;
@@ -895,13 +1081,14 @@ impl Queue {
         {
             let mut entries = self.inner.entries.lock().unwrap();
             let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) else { return };
-            if !matches!(e.snap.state, JobState::Failed | JobState::Cancelled) {
+            if !matches!(e.snap.state, JobState::Failed | JobState::Cancelled) || e.snap.no_retry {
                 return;
             }
             e.snap = e.snap.restart();
             e.snap.gif = e.req.gif;
             e.cancel = Arc::new(AtomicBool::new(false));
             e.paused = Arc::new(AtomicBool::new(false));
+            e.stop = Arc::new(AtomicBool::new(false));
             (self.inner.notify)(e.snap.clone());
             self.save_locked(&entries);
         }
@@ -1047,14 +1234,17 @@ impl Queue {
         let settings = self.inner.settings.lock().unwrap().clone();
         let max = settings.max_concurrent.clamp(1, 8) as usize;
         let mut entries = self.inner.entries.lock().unwrap();
-        let mut running =
-            entries.iter().filter(|e| matches!(e.snap.state, JobState::Downloading | JobState::Processing)).count();
+        // A recording runs for hours: it doesn't hold a download's place.
+        let mut running = entries
+            .iter()
+            .filter(|e| e.req.live.is_none() && matches!(e.snap.state, JobState::Downloading | JobState::Processing))
+            .count();
 
         for e in entries.iter_mut() {
-            if running >= max {
-                break;
-            }
             if e.snap.state != JobState::Queued {
+                continue;
+            }
+            if running >= max && e.req.live.is_none() {
                 continue;
             }
             // "Download later": not yet.
@@ -1066,12 +1256,19 @@ impl Queue {
             }
             e.snap.state = JobState::Downloading;
             (self.inner.notify)(e.snap.clone());
-            running += 1;
+            if e.req.live.is_none() {
+                running += 1;
+            }
 
             let (queue, id, req, cancel, child) =
                 (self.clone(), e.snap.id, e.req.clone(), e.cancel.clone(), e.child.clone());
             let paused = e.paused.clone();
             let settings = settings.clone();
+            if req.live.is_some() {
+                let stop = e.stop.clone();
+                thread::spawn(move || queue.run_recording(id, req, settings, cancel, stop, child));
+                continue;
+            }
             thread::spawn(move || queue.run_job(id, req, settings, cancel, paused, child));
         }
     }
@@ -1408,6 +1605,121 @@ impl Queue {
             self.remember(id, &req);
             self.write_group_m3u(id);
         }
+        self.pump();
+    }
+
+    /// Record a live stream until Stop, Cancel or its end, then save it (see `record`).
+    /// A recording that already has parts (Neria closed or crashed, or saving failed) is
+    /// only saved: recording again would start a new file.
+    fn run_recording(
+        &self,
+        id: u64,
+        mut req: DownloadRequest,
+        settings: Settings,
+        cancel: Arc<AtomicBool>,
+        stop: Arc<AtomicBool>,
+        child: Arc<Mutex<Option<Child>>>,
+    ) {
+        use crate::record::{LiveStats, Phase, RecEvent};
+        if let Some(e) = self.inner.entries.lock().unwrap().iter_mut().find(|e| e.snap.id == id) {
+            e.log.clear();
+        }
+        let dir = download::out_dir(&req, &settings);
+        let mut live = req.live.clone().unwrap_or_default();
+        let title = if req.title_hint.is_empty() { "Live".to_string() } else { req.title_hint.clone() };
+        let leftover = live.work.as_ref().is_some_and(|w| crate::record::has_recording(w));
+        // Its folder from a run that never got any of the stream (it was waiting): start over.
+        if let Some(w) = live.work.as_ref().filter(|w| !leftover && w.exists()) {
+            crate::record::discard(w);
+        }
+        let result = if leftover {
+            let work = live.work.clone().unwrap_or_default();
+            self.update(id, true, |s| {
+                s.state = JobState::Processing;
+                s.postprocessor = Some("Saving".into());
+                s.live = Some(LiveStats { phase: Phase::Saving, ..Default::default() });
+            });
+            crate::record::save(&work, &dir).map(|mut saved| {
+                saved.note = "saved after Neria closed".into();
+                saved
+            })
+        } else if let Err(msg) = disk::check(&dir, 0) {
+            Err(anyhow::anyhow!("{msg} {SPACE_ADVICE}"))
+        } else {
+            // Its own folder, kept with the job so a restart saves it instead.
+            let work = crate::record::work_dir(&dir, &title);
+            live.work = Some(work.clone());
+            req.live = Some(live.clone());
+            {
+                let mut entries = self.inner.entries.lock().unwrap();
+                if let Some(e) = entries.iter_mut().find(|e| e.snap.id == id) {
+                    e.req.live = Some(live.clone());
+                }
+                self.save_locked(&entries);
+            }
+            let rec = crate::record::Recording {
+                url: &req.url,
+                settings: &settings,
+                audio: req.quality == Quality::Audio,
+                max_height: match req.preset {
+                    crate::settings::Preset::Smallest => Some(req.quality.max_height().unwrap_or(480).min(480)),
+                    _ => req.quality.max_height(),
+                },
+                live: live.clone(),
+                title: &title,
+                out_dir: &dir,
+                work,
+            };
+            crate::record::record(&rec, &child, &stop, &cancel, |ev| match ev {
+                RecEvent::Stats(st) => self.update(id, true, |s| {
+                    let saving = st.phase == Phase::Saving;
+                    s.state = if saving { JobState::Processing } else { JobState::Downloading };
+                    s.postprocessor = saving.then(|| "Saving".into());
+                    s.downloaded = Some(st.bytes as f64);
+                    s.speed = (st.speed > 0.0).then_some(st.speed);
+                    s.live = Some(st);
+                }),
+                RecEvent::Log(line) => self.push_log(id, line),
+            })
+        };
+        let cancelled = cancel.load(Ordering::SeqCst);
+        self.update(id, true, |s| {
+            s.speed = None;
+            s.eta = None;
+            s.postprocessor = None;
+            match &result {
+                _ if cancelled => {
+                    s.state = JobState::Cancelled;
+                    s.live = None;
+                }
+                Ok(saved) => {
+                    s.state = JobState::Done;
+                    s.progress = 1.0;
+                    s.file = saved.files.first().cloned();
+                    let mut st = s.live.clone().unwrap_or_default();
+                    st.recorded = saved.recorded;
+                    st.holes = saved.holes.clone();
+                    s.live = Some(st);
+                    let mut note = saved.note.clone();
+                    if saved.files.len() > 1 {
+                        let sep = if note.is_empty() { "" } else { " · " };
+                        note = format!("{note}{sep}saved in {} parts", saved.files.len());
+                    }
+                    s.note = (!note.is_empty()).then_some(note);
+                    s.note_strong = false;
+                    s.downloaded = saved
+                        .files
+                        .iter()
+                        .filter_map(|f| std::fs::metadata(f).ok())
+                        .map(|m| m.len() as f64)
+                        .reduce(|a, b| a + b);
+                }
+                Err(e) => {
+                    s.state = JobState::Failed;
+                    s.error = Some(e.to_string());
+                }
+            }
+        });
         self.pump();
     }
 
@@ -1912,6 +2224,27 @@ impl Queue {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pause_all_leaves_recordings_alone() {
+        let queue = Queue::new(Arc::new(Mutex::new(Settings::default())), |_| {});
+        queue.set_ready(false);
+        let mut req = DownloadRequest::new("https://www.youtube.com/watch?v=x", Quality::Best, "live");
+        req.live = Some(crate::record::LiveJob::default());
+        let id = queue.add(req);
+        // As if it were recording.
+        {
+            let mut entries = queue.inner.entries.lock().unwrap();
+            let e = entries.iter_mut().find(|e| e.snap.id == id).unwrap();
+            e.snap.state = JobState::Downloading;
+        }
+        queue.pause_all(None);
+        queue.pause(id);
+        let entries = queue.inner.entries.lock().unwrap();
+        let e = entries.iter().find(|e| e.snap.id == id).unwrap();
+        assert!(!e.cancel.load(Ordering::SeqCst) && !e.paused.load(Ordering::SeqCst));
+        assert_eq!(e.snap.state, JobState::Downloading);
+    }
 
     #[test]
     fn removes_only_this_downloads_leftovers() {

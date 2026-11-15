@@ -423,24 +423,104 @@ export component Hint inherits Text {
 }
 
 // Status sticker: 0 neutral, 1 ok, 2 warn, 3 bad, 4 pop (counts).
+// kind: 0 plain, 1 ok, 2 warn, 3 bad, 4 pop (a count), 5 live (recording: a pulsing dot).
 export component Tag inherits Rectangle {
     in property <string> text;
     in property <int> kind;
     border-radius: 6px;
-    background: root.kind == 1 ? Theme.ok-bg : root.kind == 2 ? Theme.warn-bg : root.kind == 3 ? Theme.bad-bg : root.kind == 4 ? Theme.pop : Theme.raised;
+    background: root.kind == 1 ? Theme.ok-bg : root.kind == 2 ? Theme.warn-bg : root.kind == 3 ? Theme.bad-bg : root.kind == 4 ? Theme.pop : root.kind == 5 ? Theme.live-bg : Theme.raised;
     HorizontalLayout {
         padding-left: 8px;
         padding-right: 8px;
         padding-top: 2px;
         padding-bottom: 2px;
+        spacing: 5px;
+        if root.kind == 5: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 7px;
+                height: 7px;
+                border-radius: 3.5px;
+                background: Theme.live;
+                opacity: 0.6 + 0.4 * Math.sin(animation-tick() / 260ms * 1rad);
+            }
+        }
         Text {
             text: root.text;
-            color: root.kind == 1 ? Theme.ok : root.kind == 2 ? Theme.warn : root.kind == 3 ? Theme.bad : root.kind == 4 ? Theme.on-pop : Theme.muted;
+            color: root.kind == 1 ? Theme.ok : root.kind == 2 ? Theme.warn : root.kind == 3 ? Theme.bad : root.kind == 4 ? Theme.on-pop : root.kind == 5 ? Theme.live : Theme.muted;
             font-family: root.kind == 4 ? Theme.mono : Theme.display;
             font-size: 11px;
             font-weight: root.kind == 4 ? 500 : 700;
             vertical-alignment: center;
         }
+    }
+}
+
+// A live stream from its start to now: hatched before you joined, yellow where it's
+// recorded (striped while catching up), a red tick where something was missed, and a
+// pulsing red edge at "now". Fractions 0..1 of its width.
+export component LiveTape inherits Rectangle {
+    in property <float> joined;
+    in property <float> done;
+    in property <[float]> holes;
+    in property <bool> catching-up;
+    // The compact row's thinner tape.
+    in property <bool> slim;
+    accessible-role: progress-indicator;
+    accessible-label: root.catching-up ? "Catching up with the live stream" : "Recording";
+    accessible-value: Math.round(root.done * 100) + "%";
+    height: root.slim ? 6px : 10px;
+    border-radius: 3px;
+    background: Theme.line;
+    // Before you joined: thin stripes.
+    Rectangle {
+        x: 0;
+        width: parent.width * max(0, min(1, root.joined));
+        height: parent.height;
+        clip: true;
+        border-radius: 3px;
+        for i in Math.ceil(self.width / 6px): Rectangle {
+            x: i * 6px;
+            width: 2px;
+            height: parent.height;
+            background: Theme.line-strong;
+        }
+    }
+    // Recorded.
+    Rectangle {
+        x: parent.width * max(0, min(1, root.joined));
+        width: parent.width * max(0, min(1, root.done) - max(0, min(1, root.joined)));
+        height: parent.height;
+        background: Theme.pop;
+        clip: true;
+        if root.catching-up: Rectangle {
+            width: parent.width;
+            height: parent.height;
+            for i in Math.ceil(parent.width / 8px): Rectangle {
+                x: i * 8px + 6px;
+                width: 2px;
+                height: parent.height;
+                background: Theme.on-pop.with-alpha(0.22);
+            }
+        }
+    }
+    for h in root.holes: Rectangle {
+        x: parent.width * max(0, min(1, h)) - 2px;
+        y: -3px;
+        width: 4px;
+        height: parent.height + 6px;
+        border-radius: 2px;
+        background: Theme.bad;
+    }
+    // "Now": the live edge, pulsing.
+    Rectangle {
+        x: parent.width - 3px;
+        y: -4px;
+        width: 3px;
+        height: parent.height + 8px;
+        border-radius: 2px;
+        background: Theme.live;
+        opacity: 0.55 + 0.45 * Math.sin(animation-tick() / 260ms * 1rad);
     }
 }
 

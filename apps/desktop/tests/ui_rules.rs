@@ -245,6 +245,7 @@ fn theme_colours_keep_their_contrast() {
         ("ok", &["ok-bg"], 4.5, "status tags"),
         ("warn", &["warn-bg"], 4.5, "status tags"),
         ("bad", &["bad-bg"], 4.5, "status tags"),
+        ("live", &["live-bg", "bg", "panel"], 4.5, "the REC tag and recording rows"),
         ("on-pop", &["pop"], 4.5, "text on the yellow main button"),
     ];
     let mut problems = Vec::new();

@@ -25,6 +25,7 @@ pub mod post;
 pub mod probe;
 pub mod proc;
 pub mod queue;
+pub mod record;
 pub mod report;
 pub mod settings;
 pub mod sound;

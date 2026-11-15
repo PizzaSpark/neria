@@ -29,6 +29,99 @@ pub fn command(program: impl AsRef<OsStr>) -> Command {
     cmd
 }
 
+/// Make `child` (and whatever it starts from now on: yt-dlp's ffmpeg) end when Neria does,
+/// even when Neria crashes or is killed. For what never ends by itself (recording a live
+/// stream, the replay buffer): an orphan would record, and fill the drive, forever.
+///
+/// Windows: every such process goes in one job object that ends its processes when its
+/// last handle closes, which is when Neria's process goes away. Elsewhere: nothing.
+pub fn end_with_neria(child: &Child) {
+    #[cfg(windows)]
+    imp::assign(child);
+    #[cfg(not(windows))]
+    let _ = child;
+}
+
+#[cfg(windows)]
+mod imp {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+    use std::process::Child;
+    use std::sync::OnceLock;
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct BasicLimits {
+        per_process_user_time: i64,
+        per_job_user_time: i64,
+        limit_flags: u32,
+        min_working_set: usize,
+        max_working_set: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct ExtendedLimits {
+        basic: BasicLimits,
+        io: [u64; 6],
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory: usize,
+        peak_job_memory: usize,
+    }
+
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
+
+    unsafe extern "system" {
+        fn CreateJobObjectW(attributes: *const c_void, name: *const u16) -> *mut c_void;
+        fn SetInformationJobObject(job: *mut c_void, class: i32, info: *const c_void, len: u32) -> i32;
+        fn AssignProcessToJobObject(job: *mut c_void, process: *mut c_void) -> i32;
+    }
+
+    /// The job, made once and never closed (its handle lives as long as Neria).
+    struct Job(*mut c_void);
+    // SAFETY: a job handle can be used from any thread.
+    unsafe impl Send for Job {}
+    unsafe impl Sync for Job {}
+
+    fn job() -> Option<&'static Job> {
+        static JOB: OnceLock<Option<Job>> = OnceLock::new();
+        JOB.get_or_init(|| {
+            // SAFETY: plain Win32 calls; `info` outlives the call that reads it.
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job.is_null() {
+                    return None;
+                }
+                let mut info = ExtendedLimits::default();
+                info.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                let ok = SetInformationJobObject(
+                    job,
+                    JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                    &info as *const ExtendedLimits as *const c_void,
+                    std::mem::size_of::<ExtendedLimits>() as u32,
+                );
+                (ok != 0).then_some(Job(job))
+            }
+        })
+        .as_ref()
+    }
+
+    pub fn assign(child: &Child) {
+        if let Some(job) = job() {
+            // SAFETY: the child's handle is valid while `child` is.
+            unsafe {
+                AssignProcessToJobObject(job.0, child.as_raw_handle());
+            }
+        }
+    }
+}
+
 /// Kill a process and all of its children.
 ///
 /// yt-dlp.exe is a PyInstaller bootloader that spawns the real interpreter,

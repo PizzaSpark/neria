@@ -74,6 +74,8 @@ pub struct DownloadRequest {
     /// A part of a live stream, pinned to the clock (Unix seconds): turned into `section`
     /// in the site's window when the download starts (it keeps sliding), see `live.rs`.
     pub live_window: Option<(f64, f64)>,
+    /// A live stream to record (until Stop or its end), not a video to download.
+    pub live: Option<crate::record::LiveJob>,
     /// A link clip made into a GIF / WebP / GIF-like MP4 after the download (Make a GIF).
     pub gif_spec: Option<crate::gif::GifSpec>,
 }
@@ -116,6 +118,7 @@ impl DownloadRequest {
             picture: None,
             gif_spec: None,
             live_window: None,
+            live: None,
         }
     }
 

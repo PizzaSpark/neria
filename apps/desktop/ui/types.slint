@@ -64,6 +64,40 @@ export struct RecentItem {
     video: bool,
 }
 
+// A recording's row (see `fmt::live_row`): the tape is the stream from its start to now.
+export struct LiveRow {
+    // A recording (running, waiting, saving or saved).
+    on: bool,
+    // Show the tape (recording, catching up, reconnecting).
+    tape: bool,
+    // Hatched up to `joined` (before you joined), recorded up to `done`, both 0..1.
+    joined: float,
+    done: float,
+    holes: [float],
+    catching-up: bool,
+    // The line under the tape.
+    left: string,
+    middle: string,
+    middle-bad: bool,
+    right: string,
+    // "Clip the last…" can cut from what's recorded (not while catching up).
+    can-clip: bool,
+    // Running: Stop saves it.
+    can-stop: bool,
+    // The row's tag ("REC", "Waiting"…) and its kind (see `Tag`).
+    tag: string,
+    tag-kind: int,
+    // The row's two lines, wide and for the compact row.
+    status: string,
+    stats: string,
+    short-status: string,
+    short-stats: string,
+    // The compact row's short "missed 0:42".
+    short-middle: string,
+    // "Start clip" was pressed: "End clip" saves from there to now.
+    clipping: bool,
+}
+
 export struct JobItem {
     // Negative for a group's card (the group id, negated).
     id: int,
@@ -101,6 +135,8 @@ export struct JobItem {
     scheduled: bool,
     // Waiting (or paused) next to other waiting rows: it can be moved up or down the queue.
     can-move: bool,
+    // A live stream being recorded (or saved from one).
+    live: LiveRow,
 }
 
 // Formatting helpers implemented in Rust.

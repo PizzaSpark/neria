@@ -1270,6 +1270,17 @@ pub fn install(
             let ui = weak.unwrap();
             let Some(url) = crate::link_of(&ui.get_url()) else { return };
             let title = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { String::new() };
+            ui.global::<Watch>().set_recording_id(0);
+            clipper.borrow_mut().watch(&ui, &url, &title);
+        }
+    });
+    // A recording's row: watch its stream (live) while it records.
+    ui.global::<crate::QueueActions>().on_watch({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move |id| {
+            let ui = weak.unwrap();
+            let Some((url, title)) = crate::live_ui::link_of(id as u64) else { return };
+            ui.global::<Watch>().set_recording_id(id);
             clipper.borrow_mut().watch(&ui, &url, &title);
         }
     });
@@ -1278,6 +1289,7 @@ pub fn install(
         move || {
             let ui = weak.unwrap();
             clipper.borrow_mut().unwatch(&ui);
+            ui.global::<Watch>().set_recording_id(0);
             ui.set_page(0);
         }
     });
@@ -1298,6 +1310,7 @@ pub fn install(
             // Clipping the link now: what was open before stays closed.
             clipper.borrow_mut().previous = None;
             ui.global::<Watch>().set_on(false);
+            ui.global::<Watch>().set_recording_id(0);
             clipper.borrow().apply_sound(&ui);
         }
     });

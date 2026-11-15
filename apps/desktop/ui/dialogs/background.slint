@@ -5,12 +5,15 @@ import { PrimaryButton, GhostButton, Hint, Tick, Dialog, ChoiceChips } from "../
 
 // Closing Neria while downloads are going: keep them going from the tray, or stop.
 export component CloseAskDialog inherits Dialog {
-    title: Background.going == 1 ? "A download is still going" : Background.going + " downloads are still going";
+    title: Background.recording > 0 ? (Background.recording == 1 ? "A live stream is being recorded" : Background.recording + " live streams are being recorded")
+        : Background.going == 1 ? "A download is still going" : Background.going + " downloads are still going";
     card-width: 460px;
     fit: true;
     close => { Background.ask-open = false; }
     Hint {
-        text: "Neria can keep them going from the tray (next to the clock) and tell you when they're done.";
+        text: Background.recording > 0
+            ? "Neria can keep recording from the tray (next to the clock). Quitting stops and saves what's recorded so far."
+            : "Neria can keep them going from the tray (next to the clock) and tell you when they're done.";
     }
     HorizontalLayout {
         alignment: start;
@@ -24,11 +27,11 @@ export component CloseAskDialog inherits Dialog {
         spacing: 12px;
         alignment: end;
         GhostButton {
-            text: "Stop and quit";
+            text: Background.recording > 0 ? "Stop, save and quit" : "Stop and quit";
             clicked => { Background.quit(); }
         }
         PrimaryButton {
-            text: "Keep going in the tray";
+            text: Background.recording > 0 ? "Keep recording in the tray" : "Keep going in the tray";
             icon: "\u{E896}";
             clicked => { Background.keep-going(); }
         }
@@ -36,12 +39,12 @@ export component CloseAskDialog inherits Dialog {
     if Screen.compact: VerticalLayout {
         spacing: 10px;
         PrimaryButton {
-            text: "Keep going in the tray";
+            text: Background.recording > 0 ? "Keep recording in the tray" : "Keep going in the tray";
             icon: "\u{E896}";
             clicked => { Background.keep-going(); }
         }
         GhostButton {
-            text: "Stop and quit";
+            text: Background.recording > 0 ? "Stop, save and quit" : "Stop and quit";
             clicked => { Background.quit(); }
         }
     }

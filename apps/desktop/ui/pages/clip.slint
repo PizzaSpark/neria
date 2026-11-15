@@ -5,7 +5,7 @@ import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView } from "../globals.slint";
+import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions } from "../globals.slint";
 import { Menu, MenuItem } from "../widgets.slint";
 
 // The timeline's zoom: out, in, fit the clip, the whole video, and how much is on screen.
@@ -468,7 +468,7 @@ export component ClipPage inherits FocusScope {
             PageTitle {
                 horizontal-stretch: 1;
                 spacing: 4px;
-                title: Watch.on ? "Watch it first." : "Cut the good part.";
+                title: Watch.on ? (Watch.recording-id != 0 ? "Watching it live." : "Watch it first.") : "Cut the good part.";
                 subtitle: root.loaded ? root.name : Screen.compact ? "" : "Trim a file, or preview a link and download only the part you want.";
             }
             // Watching: back to the preview it came from.
@@ -870,7 +870,7 @@ export component ClipPage inherits FocusScope {
 
         // Link mode: the same quality and file type as the Download page
         // (shared settings, so both pages always agree). Files keep their own.
-        if root.loaded && root.is-link && !ClipPicture.editing: QualityRow {
+        if root.loaded && root.is-link && !ClipPicture.editing && Watch.recording-id == 0: QualityRow {
             quality <=> root.quality;
             container-index <=> root.container-index;
             audio-format-index <=> root.audio-format-index;
@@ -882,8 +882,41 @@ export component ClipPage inherits FocusScope {
             show-clip: false;
         }
 
+        // Watching a recording: it's being recorded already; stop it, or clip a part.
+        if root.loaded && Watch.on && Watch.recording-id != 0: HorizontalLayout {
+            spacing: 8px;
+            if !Screen.compact: Text {
+                horizontal-stretch: 1;
+                text: Watch.rec-text;
+                color: Watch.rec-clipping ? Theme.ink : Theme.muted;
+                font-size: 12px;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            // Start a clip (10 s back), End clip saves it; the recording goes on.
+            if !Watch.rec-clipping: PrimaryButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: "Start clip";
+                icon: "\u{E7C8}";
+                enabled: Watch.rec-can-clip;
+                clicked => { QueueActions.clip-start(Watch.recording-id); }
+            }
+            if Watch.rec-clipping: PrimaryButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: "End clip";
+                icon: "\u{E8C6}";
+                clicked => { QueueActions.clip-end(Watch.recording-id); }
+            }
+            GhostButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: Screen.compact ? "Stop" : "Stop recording";
+                label: "Stop recording";
+                icon: "\u{E71A}";
+                clicked => { QueueActions.stop(Watch.recording-id); }
+            }
+        }
         // Watching: download the whole thing, or start clipping it.
-        if root.loaded && Watch.on: HorizontalLayout {
+        if root.loaded && Watch.on && Watch.recording-id == 0: HorizontalLayout {
             spacing: 8px;
             if !Screen.compact: Text {
                 horizontal-stretch: 1;
