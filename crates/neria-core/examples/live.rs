@@ -69,7 +69,12 @@ fn main() -> anyhow::Result<()> {
                 std::thread::sleep(Duration::from_secs(1));
                 if i % 10 == 9 {
                     let (secs, bytes) = buffer.kept();
-                    println!("kept {} ({}), running {}", fmt::duration(secs), fmt::bytes(bytes as f64), buffer.running());
+                    println!(
+                        "kept {} ({}), running {}",
+                        fmt::duration(secs),
+                        fmt::bytes(bytes as f64),
+                        buffer.running()
+                    );
                 }
             }
             let problem = buffer.problem.lock().unwrap().clone();

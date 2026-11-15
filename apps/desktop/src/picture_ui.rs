@@ -85,7 +85,7 @@ pub fn refresh(ui: &AppWindow) {
         shape.to_string()
     } else if p.crop.is_some_and(|c| !c.is_full()) {
         "Cropped".into()
-    } else if p.turns % 4 != 0 {
+    } else if !p.turns.is_multiple_of(4) {
         "Turned".into()
     } else {
         "Mirrored".into()

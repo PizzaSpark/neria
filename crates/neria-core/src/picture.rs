@@ -52,7 +52,7 @@ pub struct Picture {
 
 impl Picture {
     pub fn is_none(&self) -> bool {
-        self.turns % 4 == 0 && !self.flip_h && !self.flip_v && self.crop.is_none_or(|c| c.is_full())
+        self.turns.is_multiple_of(4) && !self.flip_h && !self.flip_v && self.crop.is_none_or(|c| c.is_full())
     }
 
     /// The ffmpeg (and mpv lavfi) video filters; `None` when the picture isn't touched.
@@ -133,7 +133,12 @@ mod tests {
 
     #[test]
     fn turn_then_flip_then_crop() {
-        let p = Picture { turns: 1, flip_h: true, crop: Some(Crop { x: 0.25, y: 0.0, w: 0.5, h: 1.0 }), ..Default::default() };
+        let p = Picture {
+            turns: 1,
+            flip_h: true,
+            crop: Some(Crop { x: 0.25, y: 0.0, w: 0.5, h: 1.0 }),
+            ..Default::default()
+        };
         let f = p.filter().unwrap();
         assert!(f.starts_with("transpose=1,hflip,crop="), "{f}");
         assert!(f.contains("floor(iw*0.500000/2)*2") && f.contains("floor(iw*0.250000)"), "{f}");

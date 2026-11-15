@@ -1309,7 +1309,8 @@ impl Queue {
         // gets its picture changes while it's made, below).
         let edit = req.audio_edit.unwrap_or_default();
         let picture = req.picture.unwrap_or_default();
-        if (!edit.is_none() || !picture.is_none()) && req.gif_spec.is_none() && matches!(result, Ok(true)) && !cancelled {
+        if (!edit.is_none() || !picture.is_none()) && req.gif_spec.is_none() && matches!(result, Ok(true)) && !cancelled
+        {
             let file = {
                 let entries = self.inner.entries.lock().unwrap();
                 entries.iter().find(|e| e.snap.id == id).and_then(|e| e.snap.file.clone())

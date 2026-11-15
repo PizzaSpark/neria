@@ -266,8 +266,12 @@ fn record(
     cmd.args(["--no-warnings", "--no-playlist", "-g", "-f", "bv*[height<=1080]+ba/b[height<=1080]/b"]);
     cmd.args(crate::cookies::args_for(url, settings));
     let out = cmd.arg("--").arg(url).stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
-    let urls: Vec<String> =
-        String::from_utf8_lossy(&out.stdout).lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect();
+    let urls: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect();
     if urls.is_empty() {
         let err = String::from_utf8_lossy(&out.stderr);
         bail!("Couldn't reach the live stream: {}", err.lines().last().unwrap_or("no stream"));
@@ -289,8 +293,12 @@ fn record(
         if stopped.load(Ordering::SeqCst) {
             return Ok(());
         }
-        let child =
-            cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().context("failed to start ffmpeg")?;
+        let child = cmd
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .context("failed to start ffmpeg")?;
         *guard = Some(child);
     }
     loop {
@@ -311,7 +319,9 @@ mod tests {
     #[test]
     fn reads_the_window() {
         assert_eq!(
-            playlist_duration("https://x/api/manifest/hls_playlist/expire/1/playlist_duration/3600/manifest_duration/3600/sig"),
+            playlist_duration(
+                "https://x/api/manifest/hls_playlist/expire/1/playlist_duration/3600/manifest_duration/3600/sig"
+            ),
             Some(3600.0)
         );
         assert_eq!(playlist_duration("https://x/index.m3u8"), None);
@@ -325,7 +335,9 @@ mod tests {
         // Ten minutes later the same mark is 600 s nearer the start.
         assert_eq!(to_window(3600.0, 10_600.0, 9_000.0, 9_030.0).unwrap(), (2000.0, 2030.0));
         // Scrolled out.
-        assert!(to_window(3600.0, 12_000.0, 8_000.0, 9_030.0).unwrap_err().to_string().contains("only the last 1:00:00"));
+        assert!(
+            to_window(3600.0, 12_000.0, 8_000.0, 9_030.0).unwrap_err().to_string().contains("only the last 1:00:00")
+        );
         // In the future (a clock that's off).
         assert!(to_window(3600.0, 10_000.0, 12_000.0, 12_030.0).unwrap_err().to_string().contains("clock"));
     }

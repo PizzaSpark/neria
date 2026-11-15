@@ -240,9 +240,8 @@ fn request_tiles(ui: &AppWindow) {
     let step_ms = (step * 1000.0).round() as u64;
     let generation = TILE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     STATE.with_borrow_mut(|s| s.shown = Some((step_ms, first, count)));
-    let missing: Vec<u64> = STATE.with_borrow(|s| {
-        (first..first + count as u64).filter(|i| !s.tiles.contains_key(&(step_ms, *i))).collect()
-    });
+    let missing: Vec<u64> = STATE
+        .with_borrow(|s| (first..first + count as u64).filter(|i| !s.tiles.contains_key(&(step_ms, *i))).collect());
     g.set_tiles_start((first as f64 * step) as f32);
     g.set_tiles_step(step as f32);
     show_tiles(ui);
@@ -269,8 +268,7 @@ fn request_tiles(ui: &AppWindow) {
                 TileSource::Link(url) => media::storyboard_tiles(url, &times, TILE_H),
                 TileSource::None => return,
             };
-            let made: Vec<(u64, PathBuf)> =
-                chunk.iter().zip(files).filter_map(|(i, f)| Some((*i, f?))).collect();
+            let made: Vec<(u64, PathBuf)> = chunk.iter().zip(files).filter_map(|(i, f)| Some((*i, f?))).collect();
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 // A newer source drops these; a newer zoom keeps them (scrolling back finds them).
                 STATE.with_borrow_mut(|s| {

@@ -89,7 +89,8 @@ fn main() -> anyhow::Result<()> {
     };
 
     if flag("--in-place").is_some() {
-        let out = sound::edit_in_place(std::path::Path::new(&target), &edit, &picture, &AtomicBool::new(false), progress)?;
+        let out =
+            sound::edit_in_place(std::path::Path::new(&target), &edit, &picture, &AtomicBool::new(false), progress)?;
         return report(&out);
     }
 

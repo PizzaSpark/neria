@@ -95,9 +95,8 @@ impl View {
 }
 
 /// Steps the ruler's marks and the filmstrip's tiles snap to, in seconds.
-const STEPS: &[f64] = &[
-    0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 1800.0, 3600.0, 7200.0,
-];
+const STEPS: &[f64] =
+    &[0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 1800.0, 3600.0, 7200.0];
 
 /// The ruler's step: the smallest that leaves `min_px` between labels.
 pub fn ruler_step(span: f64, width_px: f64, min_px: f64) -> f64 {
@@ -124,7 +123,11 @@ fn clock(s: u64) -> String {
 
 /// "12 s on screen", "4:30 on screen".
 pub fn span_text(span: f64) -> String {
-    if span < 90.0 { format!("{} s on screen", span.round().max(1.0)) } else { format!("{} on screen", clock(span.round() as u64)) }
+    if span < 90.0 {
+        format!("{} s on screen", span.round().max(1.0))
+    } else {
+        format!("{} on screen", clock(span.round() as u64))
+    }
 }
 
 /// The filmstrip's tile step for a zoom: the largest grid step no longer than one tile's

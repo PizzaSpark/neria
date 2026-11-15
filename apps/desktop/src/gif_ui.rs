@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use neria_core::gif::{self, GifSpec, Kind};
 use neria_core::fmt;
+use neria_core::gif::{self, GifSpec, Kind};
 use slint::ComponentHandle;
 
 use crate::{AppWindow, ClipGif};

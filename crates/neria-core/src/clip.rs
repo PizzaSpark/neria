@@ -225,10 +225,22 @@ pub fn export_many(
         let lines: Vec<String> =
             made.iter().map(|p| format!("file '{}'", p.to_string_lossy().replace('\'', "'\\''"))).collect();
         std::fs::write(&list, lines.join("\n"))?;
-        let mut a: Vec<String> =
-            ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-f", "concat", "-safe", "0", "-i"]
-                .map(String::from)
-                .to_vec();
+        let mut a: Vec<String> = [
+            "-hide_banner",
+            "-v",
+            "error",
+            "-nostats",
+            "-progress",
+            "pipe:1",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+        ]
+        .map(String::from)
+        .to_vec();
         a.push(list.to_string_lossy().into_owned());
         a.extend(["-map", "0", "-c", "copy"].map(String::from));
         if ext.eq_ignore_ascii_case("mp4") || ext.eq_ignore_ascii_case("m4a") {
@@ -260,7 +272,12 @@ pub fn export_many(
 static PIECE_RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// [`export`] to `out` (default: next to the video, named after the clip).
-fn export_to(req: &ClipRequest, out: Option<PathBuf>, cancel: &AtomicBool, mut on_progress: impl FnMut(f32)) -> Result<PathBuf> {
+fn export_to(
+    req: &ClipRequest,
+    out: Option<PathBuf>,
+    cancel: &AtomicBool,
+    mut on_progress: impl FnMut(f32),
+) -> Result<PathBuf> {
     if req.end <= req.start {
         bail!("The clip is empty: set the out point after the in point.");
     }
@@ -290,8 +307,11 @@ fn export_to(req: &ClipRequest, out: Option<PathBuf>, cancel: &AtomicBool, mut o
     // Evening out takes two passes: measure, then apply.
     let (measured, base) = match req.audio.normalize_target() {
         Some(t) => {
-            let share =
-                if req.effective_mode() == ClipMode::Exact && req.has_video && req.audio_only.is_none() { 0.2 } else { 0.4 };
+            let share = if req.effective_mode() == ClipMode::Exact && req.has_video && req.audio_only.is_none() {
+                0.2
+            } else {
+                0.4
+            };
             let m = sound::measure(&req.input, start, dur, t, cancel, |p| on_progress(p * share))?;
             if m.is_none() {
                 // Silence: nothing to even out (fades still apply).

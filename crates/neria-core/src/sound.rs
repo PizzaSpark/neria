@@ -215,8 +215,7 @@ pub fn measure(
     cancel: &AtomicBool,
     on_progress: impl FnMut(f32),
 ) -> Result<Option<Loudness>> {
-    let mut a: Vec<String> =
-        ["-hide_banner", "-nostats", "-progress", "pipe:1", "-y"].map(String::from).to_vec();
+    let mut a: Vec<String> = ["-hide_banner", "-nostats", "-progress", "pipe:1", "-y"].map(String::from).to_vec();
     if start > 0.0 {
         a.extend(["-ss".into(), format!("{start:.3}")]);
     }
@@ -228,7 +227,8 @@ pub fn measure(
     a.extend(["-af".into(), format!("loudnorm=I={target}:TP=-1.5:LRA=11:print_format=json")]);
     a.extend(["-f", "null", "-"].map(String::from));
     let total = if dur > 0.0 { dur } else { crate::media::file_info(input).map(|i| i.duration).unwrap_or(0.0) };
-    let log = run_ffmpeg(&a, total, cancel, on_progress).map_err(|e| anyhow::anyhow!("Couldn't measure the loudness: {e}"))?;
+    let log = run_ffmpeg(&a, total, cancel, on_progress)
+        .map_err(|e| anyhow::anyhow!("Couldn't measure the loudness: {e}"))?;
     Ok(parse_loudness(&log))
 }
 
@@ -287,7 +287,8 @@ pub fn edit_in_place(
     };
 
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_else(|| "mp4".into());
-    let out_ext = if !picture.is_none() && !["mp4", "mkv", "mov"].contains(&ext.as_str()) { "mp4".to_string() } else { ext };
+    let out_ext =
+        if !picture.is_none() && !["mp4", "mkv", "mov"].contains(&ext.as_str()) { "mp4".to_string() } else { ext };
     let tmp: PathBuf = file.with_extension(format!("neria-edit.{out_ext}"));
     let mut a: Vec<String> =
         ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"].map(String::from).to_vec();

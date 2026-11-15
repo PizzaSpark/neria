@@ -20,8 +20,10 @@ use slint::{ComponentHandle, GraphicsAPI, Model, ModelRc, RenderingState, VecMod
 
 use crate::{AppWindow, ClipGif, ClipList, ClipLive, ClipPicture, ClipSound, Fmt, Watch};
 
-const MEDIA_EXTENSIONS: &[&str] =
-    &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "gif", "mp3", "m4a", "opus", "ogg", "flac", "wav", "aac"];
+const MEDIA_EXTENSIONS: &[&str] = &[
+    "mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "gif", "mp3", "m4a", "opus", "ogg", "flac", "wav",
+    "aac",
+];
 
 struct Target {
     tex: glow::Texture,
@@ -506,7 +508,9 @@ impl Clipper {
                 if live && let Some(f) = std::env::var_os("NERIA_LIVE_DEBUG") {
                     let names = mpv.get_string("property-list").unwrap_or_default();
                     let mut out = format!("now={} duration={d}\n", neria_core::live::now());
-                    for n in names.split(',').filter(|n| n.contains("start") || n.contains("time") || n.contains("cache") || *n == "duration") {
+                    for n in names.split(',').filter(|n| {
+                        n.contains("start") || n.contains("time") || n.contains("cache") || *n == "duration"
+                    }) {
                         out.push_str(&format!("{n}={}\n", mpv.get_string(n).unwrap_or_default()));
                     }
                     let _ = std::fs::write(f, out);
@@ -515,7 +519,8 @@ impl Clipper {
                     LIVE_ANCHOR.with(|a| a.set(Some(neria_core::live::now() - live_edge)));
                     // No filmstrip look-up for a live stream, so no title from there: mpv's.
                     if !self.title_known
-                        && let Some(t) = mpv.get_string("media-title").filter(|t| !t.trim().is_empty() && !t.contains("://"))
+                        && let Some(t) =
+                            mpv.get_string("media-title").filter(|t| !t.trim().is_empty() && !t.contains("://"))
                     {
                         ui.set_clip_name(t.into());
                         self.title_known = true;
@@ -861,11 +866,19 @@ fn start_export(
                     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                     // Several clips: say how many ("3 clips saved · video - Clip 3.mp4").
                     let several = title.contains("clips");
-                    ui.set_clip_status(if several { format!("{title} · {name}") } else { format!("Saved · {name}") }.into());
+                    ui.set_clip_status(
+                        if several { format!("{title} · {name}") } else { format!("Saved · {name}") }.into(),
+                    );
                     ui.set_clip_has_output(true);
                     crate::background_ui::notify(
                         &ui,
-                        crate::background_ui::Note { title, body: name, image: None, file: Some(path.clone()), failed: false },
+                        crate::background_ui::Note {
+                            title,
+                            body: name,
+                            image: None,
+                            file: Some(path.clone()),
+                            failed: false,
+                        },
                     );
                     *last_output.lock().unwrap() = Some(path);
                 }
@@ -1016,8 +1029,12 @@ pub fn install(
                     let n = reqs.len();
                     enqueue(reqs, format!("{} · {n} clips", ui.get_clip_name()));
                     ui.set_clip_status(
-                        if n > 1 { format!("{n} clips added to the download queue") } else { "Added to the download queue".into() }
-                            .into(),
+                        if n > 1 {
+                            format!("{n} clips added to the download queue")
+                        } else {
+                            "Added to the download queue".into()
+                        }
+                        .into(),
                     );
                     return;
                 }
@@ -1028,8 +1045,11 @@ pub fn install(
             // A .gif comes out as a GIF again, as it was (size, speed, loop).
             if is_gif_file(&input) {
                 let spec = gif::GifSpec { kind: gif::Kind::Gif, width: 0, fps: 0.0, loop_forever: true, picture };
-                let ranges: Vec<(f64, f64)> =
-                    if clips.is_empty() { vec![(start, end)] } else { clips.iter().map(|c| (c.start, c.end)).collect() };
+                let ranges: Vec<(f64, f64)> = if clips.is_empty() {
+                    vec![(start, end)]
+                } else {
+                    clips.iter().map(|c| (c.start, c.end)).collect()
+                };
                 start_export(&ui, &mut c, "GIF saved", move |cancel, progress| {
                     let mut last = Err(anyhow!("nothing to save"));
                     let n = ranges.len() as f32;
@@ -1158,7 +1178,8 @@ pub fn install(
                     c.buffer = Some(b);
                     c.buffer_ticks = 0;
                     ui.global::<ClipLive>().set_buffering(true);
-                    ui.global::<ClipLive>().set_buffer_text(format!("Keeping the last {minutes} min  ·  starting…").into());
+                    ui.global::<ClipLive>()
+                        .set_buffer_text(format!("Keeping the last {minutes} min  ·  starting…").into());
                 }
                 Err(e) => ui.set_clip_status(format!("Couldn't keep it: {e}").into()),
             }
@@ -1204,7 +1225,9 @@ pub fn install(
                     req.picture = None;
                     req.gif_spec = Some(spec);
                     enqueue(vec![req], String::new());
-                    ui.set_clip_status(format!("Added to the download queue, then made into a {}", gif::what(spec.kind)).into());
+                    ui.set_clip_status(
+                        format!("Added to the download queue, then made into a {}", gif::what(spec.kind)).into(),
+                    );
                 }
                 None => {}
             }

@@ -132,14 +132,18 @@ pub fn build_args(input: &Path, start: f64, dur: f64, spec: &GifSpec, out: &Path
             if !base.is_empty() {
                 a.extend(["-vf".into(), base.join(",")]);
             }
-            a.extend(["-c:v", "libwebp_anim", "-lossless", "0", "-q:v", "70", "-compression_level", "4"].map(String::from));
+            a.extend(
+                ["-c:v", "libwebp_anim", "-lossless", "0", "-q:v", "70", "-compression_level", "4"].map(String::from),
+            );
             a.extend(["-loop".into(), if spec.loop_forever { "0" } else { "1" }.into()]);
         }
         Kind::Mp4 => {
             let mut vf = base;
             vf.push("format=yuv420p".into());
             a.extend(["-vf".into(), vf.join(",")]);
-            a.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-movflags", "+faststart"].map(String::from));
+            a.extend(
+                ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-movflags", "+faststart"].map(String::from),
+            );
         }
     }
     a.push(out.to_string_lossy().into_owned());
@@ -214,7 +218,12 @@ pub fn estimate(input: &Path, start: f64, end: f64, spec: &GifSpec, cancel: &Ato
 
 /// A link clip downloaded as video, turned into `spec` next to it. The video is removed;
 /// returns the new file.
-pub fn convert_in_place(video: &Path, spec: &GifSpec, cancel: &AtomicBool, on_progress: impl FnMut(f32)) -> Result<PathBuf> {
+pub fn convert_in_place(
+    video: &Path,
+    spec: &GifSpec,
+    cancel: &AtomicBool,
+    on_progress: impl FnMut(f32),
+) -> Result<PathBuf> {
     let dir = video.parent().unwrap_or(Path::new("."));
     let stem = video.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "gif".into());
     let same_ext = video.extension().is_some_and(|e| e.eq_ignore_ascii_case(spec.kind.ext()));
