@@ -36,12 +36,15 @@ pub fn fingerprint(input: &OsStr) -> Result<Vec<u32>> {
     Ok(out.stdout.as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
 }
 
-/// The fingerprint of `secs` of `input` from `from` seconds in.
+/// The fingerprint of `secs` of `input` from `from` seconds in. Where the file's timestamps
+/// jump (a recording's missed bit), silence fills in, so item `i` is at `from + i *
+/// ITEM_SECS` on the file's own clock, as ffmpeg cuts it.
 pub fn fingerprint_range(input: &OsStr, from: f64, secs: f64) -> Result<Vec<u32>> {
     let out = proc::command(paths::tool("ffmpeg"))
         .args(["-hide_banner", "-v", "error", "-ss", &format!("{from:.3}"), "-i"])
         .arg(input)
-        .args(["-t", &format!("{secs:.3}"), "-vn", "-f", "chromaprint", "-fp_format", "raw", "-"])
+        .args(["-t", &format!("{secs:.3}"), "-vn", "-af", "aresample=async=1:first_pts=0"])
+        .args(["-f", "chromaprint", "-fp_format", "raw", "-"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

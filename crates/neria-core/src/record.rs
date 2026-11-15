@@ -850,8 +850,17 @@ pub fn record(
     }
     stats.phase = Phase::Saving;
     on(RecEvent::Stats(stats.clone()));
+    // Missed bits not fetched yet: now (the stream is still there to fetch them from).
+    if !cancel.load(Ordering::SeqCst) && read_manifest(&rec.work).is_some_and(|m| !m.holes.is_empty()) {
+        let never = AtomicBool::new(false);
+        match repair_holes(rec, &never) {
+            Ok(n) if n > 0 => on(RecEvent::Log(format!("Fetched {n} missed bit(s) again"))),
+            Err(e) => on(RecEvent::Log(format!("Couldn't fetch the missed bits again: {e}"))),
+            _ => {}
+        }
+    }
     let mut saved = save(&rec.work, rec.out_dir)?;
-    saved.note = note;
+    saved.note = [note, saved.note].into_iter().filter(|n| !n.is_empty()).collect::<Vec<_>>().join(" · ");
     Ok(saved)
 }
 
@@ -1200,6 +1209,228 @@ fn match_seam(work: &Path, first: &Part, early: &Path) -> Option<(f64, f64, bool
     None
 }
 
+// ── Missed bits, got back ──
+//
+// Where the connection dropped or slowed, the site still has that stretch (YouTube keeps the
+// last hour seekable while it's live and the whole video after; Twitch's broadcast copy, when
+// it's public). `repair_holes` fetches each missed bit with a margin either side, once it's a
+// minute old and the recording is going steadily; saving splices it in where the sound says
+// the recording broke off and where it picks up again (a hole's place is only known to a few
+// seconds).
+
+/// A missed bit fetched again: the hole (`at`, `len`, stream seconds), the file, and where
+/// in the stream the file begins.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Fill {
+    pub at: f64,
+    pub len: f64,
+    pub file: String,
+    pub from: f64,
+}
+
+fn fills_path(work: &Path) -> PathBuf {
+    work.join("fills.json")
+}
+
+/// The missed bits fetched again so far.
+pub fn fills_of(work: &Path) -> Vec<Fill> {
+    std::fs::read_to_string(fills_path(work)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// Seconds fetched before a missed bit (its place is a few seconds off) and after it: more
+/// after, as a reconnect to Twitch without the relay starts with its ~30 s ad, which matches
+/// nothing.
+const FILL_MARGIN: f64 = 20.0;
+const FILL_AFTER: f64 = 60.0;
+
+/// Fetch the stretch `from`–`to` (stream seconds) of the stream as `<stem>.mp4` in `work`.
+fn fetch_stretch(rec: &Recording, started_at: f64, from: f64, to: f64, stem: &str) -> Result<PathBuf> {
+    let host = rec.url.split("//").nth(1).unwrap_or(rec.url).split('/').next().unwrap_or("").to_ascii_lowercase();
+    let youtube = host.ends_with("youtube.com") || host == "youtu.be";
+    let twitch = host.ends_with("twitch.tv");
+    let mut a: Vec<String> = Vec::new();
+    let (s, e) = if youtube && still_live(rec.url, rec.settings) != Some(false) {
+        // Live: the last hour, counted from the start of what YouTube keeps right now.
+        crate::live::section_now(rec.url, rec.settings, started_at + from, started_at + to)?
+    } else if youtube {
+        (from, to)
+    } else if twitch {
+        // The broadcast copy while it's live (from the start, cut).
+        a.push("--live-from-start".into());
+        (from, to)
+    } else {
+        bail!("This site keeps nothing to fetch it again from");
+    };
+    a.extend(["--no-warnings", "--no-playlist", "--no-mtime", "--no-part"].map(String::from));
+    a.extend(["--ffmpeg-location".into(), paths::bin_dir().to_string_lossy().into_owned()]);
+    if rec.audio {
+        a.extend(["-f", "ba/b", "-S", "acodec:aac"].map(String::from));
+    } else {
+        let h = rec.max_height.map(|h| format!("[height<={h}]")).unwrap_or_default();
+        a.extend(["-f".into(), format!("bv*{h}+ba/b{h}/bv*+ba/b"), "-S".into(), "vcodec:h264,acodec:aac".into()]);
+        a.extend(["--merge-output-format", "mp4"].map(String::from));
+    }
+    a.extend(["--download-sections".into(), format!("*{s:.1}-{e:.1}")]);
+    a.extend(["-P".into(), s_(&rec.work), "-o".into(), format!("{stem}.%(ext)s")]);
+    a.extend(crate::cookies::args_for(rec.url, rec.settings));
+    a.push("--".into());
+    a.push(rec.url.to_string());
+    let out = proc::command(paths::tool("yt-dlp")).args(&a).stdout(Stdio::null()).stderr(Stdio::piped()).output()?;
+    let file = files_of(&rec.work, stem).into_iter().find(|f| {
+        let n = f.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        !n.ends_with(".part") && !n.ends_with(".ytdl") && std::fs::metadata(f).is_ok_and(|m| m.len() > 0)
+    });
+    match file {
+        Some(f) if out.status.success() => Ok(f),
+        _ => bail!(
+            "{}",
+            String::from_utf8_lossy(&out.stderr).lines().rfind(|l| l.contains("ERROR")).unwrap_or("couldn't fetch it")
+        ),
+    }
+}
+
+fn s_(p: &Path) -> String {
+    p.to_string_lossy().into_owned()
+}
+
+/// Fetch the recording's missed bits again (those a minute old or more, not fetched yet).
+/// Returns how many were got back now. `stop`: give up between bits.
+pub fn repair_holes(rec: &Recording, stop: &AtomicBool) -> Result<usize> {
+    let m = read_manifest(&rec.work).context("Nothing recorded yet")?;
+    let started = m.started_at.context("Neria doesn't know when the stream began")?;
+    let mut fills = fills_of(&rec.work);
+    let age_now = now() - started;
+    let mut got = 0;
+    for (i, h) in m.holes.iter().enumerate() {
+        if stop.load(Ordering::SeqCst) {
+            break;
+        }
+        let done = fills.iter().any(|f| (f.at - h.at).abs() < 1.0);
+        // A minute old: the site has it by then.
+        if done || h.at + h.len + FILL_AFTER > age_now - 30.0 || h.len < 0.5 {
+            continue;
+        }
+        let from = (h.at - FILL_MARGIN).max(0.0);
+        let to = h.at + h.len + FILL_AFTER;
+        let stem = format!("fill{i}");
+        let file = fetch_stretch(rec, started, from, to, &stem)?;
+        fills.push(Fill { at: h.at, len: h.len, file: file.file_name().unwrap_or_default().to_string_lossy().into(), from });
+        if let Ok(text) = serde_json::to_string_pretty(&fills) {
+            std::fs::write(fills_path(&rec.work), text)?;
+        }
+        got += 1;
+    }
+    Ok(got)
+}
+
+/// Where a fill takes over in a recording, by sound: (seconds into the recording where it
+/// broke off, the fill's own seconds to keep `a`–`b`, seconds into the recording where it
+/// picks up again). `expect`: about where in the recording the hole is.
+pub fn splice_points(recording: &Path, fill: &Path, expect: f64, hole: f64) -> Option<(f64, f64, f64, f64)> {
+    use crate::fingerprint::{ITEM_SECS, align, fingerprint_range};
+    let fill_len = crate::media::duration(fill)?;
+    let around = 90.0 + hole;
+    let from = (expect - around).max(0.0);
+    let rec_fp = fingerprint_range(recording.as_os_str(), from, 2.0 * around + fill_len).ok()?;
+    let fill_fp = fingerprint_range(fill.as_os_str(), 0.0, fill_len).ok()?;
+    // Each 6 s of the fill: where it is in the recording (if anywhere). `align` wants 40
+    // items (5 s) at least.
+    const WIN: f64 = 6.0;
+    let win = (WIN / ITEM_SECS) as usize;
+    let step = (1.0 / ITEM_SECS) as usize;
+    let mut hits: Vec<(f64, Option<f64>)> = Vec::new();
+    let mut k = 0;
+    while k + win <= fill_fp.len() {
+        let t = k as f64 * ITEM_SECS;
+        let at = align(&fill_fp[k..k + win], &rec_fp)
+            .filter(|a| a.similarity >= 0.8)
+            .map(|a| from + a.offset_secs - t);
+        hits.push((t, at));
+        k += step;
+    }
+    if std::env::var_os("NERIA_REC_DEBUG").is_some() {
+        eprintln!("SPLICE expect {expect:.1} hole {hole:.1} fill {fill_len:.1} search from {from:.1} ({} / {} items)", rec_fp.len(), fill_fp.len());
+        let keep = std::env::temp_dir().join("neria-splice");
+        let _ = std::fs::create_dir_all(&keep);
+        let _ = std::fs::copy(recording, keep.join("recording.mp4"));
+        let _ = std::fs::copy(fill, keep.join("fill.mp4"));
+        for (t, d) in &hits {
+            eprintln!("  fill {t:6.1} -> {}", d.map_or("-".to_string(), |d| format!("{:.2}", d + t)));
+        }
+    }
+    // The first run of matches (before the hole) and the last (after it): each keeps the same
+    // difference between the fill's clock and the recording's.
+    let same = |a: f64, b: f64| (a - b).abs() < 0.6;
+    let first = hits.iter().position(|(_, d)| d.is_some())?;
+    let d1 = hits[first].1?;
+    let mut end1 = first;
+    while end1 + 1 < hits.len() && hits[end1 + 1].1.is_some_and(|d| same(d, d1)) {
+        end1 += 1;
+    }
+    let last = hits.iter().rposition(|(_, d)| d.is_some())?;
+    let d2 = hits[last].1?;
+    let mut start2 = last;
+    while start2 > end1 + 1 && hits[start2 - 1].1.is_some_and(|d| same(d, d2)) {
+        start2 -= 1;
+    }
+    if start2 <= end1 || same(d1, d2) {
+        // No jump between them: nothing is missing here (or it can't be told).
+        return None;
+    }
+    let a = hits[end1].0 + WIN - 1.0; // the end of the last matching stretch, a little in
+    let b = hits[start2].0 + 1.0; // into the first one after
+    let cut = a + d1;
+    let resume = b + d2;
+    (b > a && resume > cut - 1.0).then_some((cut, a, b, resume))
+}
+
+/// Splice the fetched bits into the saved `file` (in place). How many went in.
+fn splice_fills(work: &Path, file: &Path, starts_at: f64) -> usize {
+    let mut fills = fills_of(work);
+    fills.sort_by(|a, b| b.at.total_cmp(&a.at)); // last first: earlier places don't move
+    let mut done = 0;
+    for f in fills {
+        let fill = work.join(&f.file);
+        let Some((cut, a, b, resume)) = splice_points(file, &fill, f.at - starts_at, f.len) else { continue };
+        let pieces = [
+            (file.to_path_buf(), 0.0, Some(cut)),
+            (fill.clone(), a, Some(b - a)),
+            (file.to_path_buf(), resume, None),
+        ];
+        let mut parts = Vec::new();
+        for (i, (src, ss, t)) in pieces.iter().enumerate() {
+            let out = work.join(format!("splice{i}.mp4"));
+            let mut args = vec!["-ss".to_string(), format!("{ss:.3}"), "-i".into(), s(src)];
+            if let Some(t) = t {
+                args.extend(["-t".into(), format!("{t:.3}")]);
+            }
+            args.extend(["-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero"].map(String::from));
+            if ffmpeg(&args, &out).is_err() {
+                break;
+            }
+            parts.push(out);
+        }
+        if parts.len() != 3 {
+            continue;
+        }
+        let list = work.join("splice.txt");
+        let lines: Vec<String> = parts.iter().map(|p| format!("file '{}'", s(p).replace('\'', "'\\''"))).collect();
+        if std::fs::write(&list, lines.join("\n")).is_err() {
+            continue;
+        }
+        let joined = work.join("spliced.mp4");
+        let args: Vec<String> = ["-f", "concat", "-safe", "0", "-i", &s(&list), "-map", "0", "-c", "copy", "-movflags", "+faststart"]
+            .iter()
+            .map(|x| x.to_string())
+            .collect();
+        if ffmpeg(&args, &joined).is_ok() && std::fs::rename(&joined, file).is_ok() {
+            done += 1;
+        }
+    }
+    done
+}
+
 /// Throw a recording away (Cancel).
 pub fn discard(work: &Path) {
     for _ in 0..20 {
@@ -1379,6 +1610,26 @@ pub fn save(work: &Path, out_dir: &Path) -> Result<Saved> {
                 .collect();
         ffmpeg(&args, &joined).ok().map(|_| joined.clone())
     };
+    // Missed bits fetched again go in where the sound says (the file begins at `starts`).
+    let mut got_back = 0.0;
+    let mut holes = m.holes.clone();
+    if let Some(file) = one.as_ref() {
+        let starts = if early.as_ref().is_some_and(|e| e.until >= 1.0) {
+            0.0
+        } else {
+            m.parts.first().map_or(0.0, |p| p.offset + p.skip)
+        };
+        let before = fills_of(work);
+        if !before.is_empty() && splice_fills(work, file, starts) > 0 {
+            // The holes that went in (spliced ones are those whose bit the file now holds).
+            for f in before {
+                if let Some(i) = holes.iter().position(|h| (h.at - f.at).abs() < 1.0) {
+                    got_back += holes[i].len;
+                    holes.remove(i);
+                }
+            }
+        }
+    }
     match one {
         Some(file) => files.push(finish_one(&file, out_dir, &name, &ext, m.audio, work)?),
         None => {
@@ -1392,7 +1643,8 @@ pub fn save(work: &Path, out_dir: &Path) -> Result<Saved> {
     let recorded = files.iter().filter_map(|f| crate::media::duration(f)).sum::<f64>();
     let recorded = if recorded > 0.0 { recorded } else { m.parts.iter().map(|p| p.recorded).sum() };
     discard(work);
-    Ok(Saved { files, note: String::new(), recorded, holes: m.holes })
+    let note = if got_back > 0.0 { format!("got back {} missed", crate::fmt::duration(got_back)) } else { String::new() };
+    Ok(Saved { files, note, recorded, holes })
 }
 
 /// Move (or, for another type, convert) a finished file into place under a free name.

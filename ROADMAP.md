@@ -828,7 +828,20 @@ see `docs/UPSTREAM.md`). Ticked only where a real stream covered it; the rest is
    twitch.tv as before. Checked: recording and watching with `site` asked first
    (`NERIA_TTV_ORDER=site,embed,popout`) open on the stream, not "Commercial break in
    progress"; the 10-minute buffer reads the relay too. Not seen yet: a mid-roll (Twitch
-   decides when), and Twitch giving the ad to every player at once. Not yet:
+   decides when), and Twitch giving the ad to every player at once.
+10. **Missed bits, got back** (asked for 2026-11-16): where the connection dropped or slowed,
+   the site still has that stretch, so `record::repair_holes` fetches each missed bit (20 s
+   before it, 60 s after) once it's past and the recording runs steadily (the queue looks every
+   30 s; a last pass before saving). YouTube while live: the last hour, placed by the clock
+   (`live::section_now`); after it ends, the video; Twitch: the broadcast copy (from the start,
+   cut). Saving splices it in where the sound says the recording broke off and picks up again
+   (6 s windows of the fetched bit slid along the recording; fingerprints padded with silence
+   where timestamps jump, so they're on the file's clock), and the hole leaves the tape: "got
+   back 0:12 missed". Checked with a killed connection (`--kill-at`): YouTube, a 12 s hole by
+   piece numbers, got back, 166.6 s picture and sound; Twitch without the relay, a 5 s hole
+   by the clock, got back, and the ~28 s ad the reconnect brought went with it. Not got back:
+   Twitch broadcasts for subscribers only, YouTube holes older than its hour while live, sites
+   that keep nothing. Not yet checked: the background pass in the app (only the last pass). Not yet:
    the queue row's own "get the part before", and a crash while it's fetched (the earlier part
    is dropped, the recording is kept).
 Dev hooks: `NERIA_TTV_ORDER` (the relay's players, in order), `NERIA_TTV_OFF` (no relay), `NERIA_DIALOG=live` / `live-upcoming` / `live-long` / `close-rec`, recording rows in

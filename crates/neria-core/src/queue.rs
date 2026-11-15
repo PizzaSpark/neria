@@ -1731,6 +1731,43 @@ impl Queue {
                 out_dir: &dir,
                 work,
             };
+            // Missed bits: fetched again in the background, every half minute while it records
+            // steadily (not while reconnecting: the line is busy enough then).
+            {
+                let (queue, stop, cancel) = (self.clone(), stop.clone(), cancel.clone());
+                let (req, settings, title, dir, live) =
+                    (req.clone(), settings.clone(), title.clone(), dir.clone(), live.clone());
+                std::thread::spawn(move || {
+                    let rec = crate::record::Recording {
+                        url: &req.url,
+                        settings: &settings,
+                        audio: req.quality == Quality::Audio,
+                        max_height: match req.preset {
+                            crate::settings::Preset::Smallest => Some(req.quality.max_height().unwrap_or(480).min(480)),
+                            _ => req.quality.max_height(),
+                        },
+                        work: live.work.clone().unwrap_or_default(),
+                        live,
+                        title: &title,
+                        out_dir: &dir,
+                    };
+                    let mut ticks = 0;
+                    while !stop.load(Ordering::SeqCst) && !cancel.load(Ordering::SeqCst) {
+                        std::thread::sleep(Duration::from_secs(1));
+                        ticks += 1;
+                        if ticks % 30 != 0 {
+                            continue;
+                        }
+                        let steady = queue.inner.entries.lock().unwrap().iter().any(|e| {
+                            e.snap.id == id
+                                && e.snap.live.as_ref().is_some_and(|l| l.phase == Phase::Recording && !l.holes.is_empty())
+                        });
+                        if steady && let Ok(n) = crate::record::repair_holes(&rec, &stop) && n > 0 {
+                            queue.push_log(id, format!("Fetched {n} missed bit(s) again"));
+                        }
+                    }
+                });
+            }
             crate::record::record(&rec, &child, &stop, &cancel, |ev| match ev {
                 RecEvent::Stats(st) => self.update(id, true, |s| {
                     let saving = st.phase == Phase::Saving;
