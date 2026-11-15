@@ -161,6 +161,15 @@ them; related ideas are merged into one item so they get built together.
   the processor), sideways phone videos squashed when scaled
 - Notes: `docs/releases/v0.6.0.md`
 
+### v0.8.0: One live screen (2026-11-16)
+- **Watch, record and clip in the player**, items 8–10 under "Livestreams": Watch / Record on the
+  preview, the player's bar by state, Twitch keeps the last 10 min while watching; "Also get the
+  … before" joined by sound; Twitch without its ads (`ttv.rs`, TTV-AB's idea); missed bits
+  fetched again and spliced in
+- Fixes on the way: Twitch recordings' wrong length after its ad; the Download page's format
+  button opens Advanced, "Highest (2160p)", the greyed Download lines up; Compress "working…"
+- Notes: `docs/releases/v0.8.0.md`
+
 ### v0.7.0: Livestreams (2026-11-15)
 - **Recording live streams**, items 1–7 under "Livestreams": from the start or from now, said
   on the preview; "Record when it starts"; the tape on the row (recorded, before you joined,
