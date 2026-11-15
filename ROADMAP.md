@@ -281,7 +281,7 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    Tonight at 02:00; rows wait as "Later · Starts at 02:00" with Start now, kept across
    restarts. `NERIA_DIALOG=close|later`, `NERIA_SETTINGS=general`
    Built: "Your own sound…" in both sound menus. It asks for a `.wav` (RIFF/WAVE, up to
-   10 MB), plays it once to try it (a synchronous `PlaySound` on a thread, since the async one
+   15 seconds by its header, 10 MB), plays it once ("Trying doorbell.wav…") to try it (a synchronous `PlaySound` on a thread, since the async one
    says yes even to files it can't play) and only then keeps it as `sounds/done.wav` /
    `failed.wav` next to the exe (the original name in settings, for display). Under the menu:
    the file name, ▷ Play and Change… (the old sound stays until the new one has played).

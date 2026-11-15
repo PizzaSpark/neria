@@ -87,7 +87,7 @@ data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, 
 `signin` (a problem that sign-in fixes), `extras` / `captions` / `audio` / `chapters` (a video with all three, the
 picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
-`NERIA_WINDOW` (window size in logical px, e.g. `780x580`; `NERIA_WINDOW_AT` (`x,y` in screen pixels: open the window there, e.g. on another monitor; `ui-check.ps1 -At x,y` passes it on); resizing from outside with
+`NERIA_WINDOW` (window size in logical px, e.g. `780x580`; `NERIA_WINDOW_AT` (`x,y` in screen pixels: open the window there, e.g. on another monitor; `ui-check.ps1 -At x,y` passes it on; a monitor with another scale makes the shots come out smaller); resizing from outside with
 MoveWindow/SetWindowPos also works, but in PowerShell don't name the window handle `$h` next to
 a `$H` height: variable names ignore case, so the handle becomes the height and the window
 jumps to 32767px tall; Windows doesn't enforce the 400x600 minimum on scripted resizes), `NERIA_FAKE_FREE_MB` (pretend the

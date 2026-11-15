@@ -142,9 +142,30 @@ fn own_file(failed: bool) -> PathBuf {
 /// Bigger than this isn't a notification sound (10 MB of CD-quality WAV is about a minute).
 const OWN_MAX: u64 = 10 * 1024 * 1024;
 
+/// Longer than this isn't a notification sound (and the menu waits while it's tried out).
+const OWN_MAX_SECS: f64 = 15.0;
+
 /// A RIFF/WAVE file, the only kind `PlaySound` plays.
 fn is_wav(head: &[u8]) -> bool {
     head.len() >= 12 && &head[..4] == b"RIFF" && &head[8..12] == b"WAVE"
+}
+
+/// How long a WAV plays, from its `fmt ` byte rate and `data` size (None: can't tell).
+fn wav_seconds(wav: &[u8]) -> Option<f64> {
+    let (mut pos, mut rate, mut data) = (12usize, None, None);
+    while pos + 8 <= wav.len() {
+        let size = u32::from_le_bytes(wav[pos + 4..pos + 8].try_into().ok()?) as usize;
+        match &wav[pos..pos + 4] {
+            b"fmt " if pos + 20 <= wav.len() => {
+                rate = Some(u32::from_le_bytes(wav[pos + 16..pos + 20].try_into().ok()?));
+            }
+            b"data" => data = Some(size.min(wav.len() - pos - 8)),
+            _ => {}
+        }
+        pos += 8 + size + (size & 1);
+    }
+    let rate = rate.filter(|r| *r > 0)?;
+    Some(data? as f64 / rate as f64)
 }
 
 /// Check a picked file and copy it next to `dest` (as `.wav.part`) to be tried out before it
@@ -163,6 +184,11 @@ fn stage_sound(src: &std::path::Path, dest: &std::path::Path) -> Result<PathBuf,
     }
     if len > OWN_MAX {
         return Err(format!("{name} is over 10 MB. Pick a short sound, a few seconds long."));
+    }
+    if let Some(secs) = std::fs::read(src).ok().and_then(|w| wav_seconds(&w))
+        && secs > OWN_MAX_SECS
+    {
+        return Err(format!("{name} plays for {secs:.0} seconds. Pick a short sound, up to 15 seconds."));
     }
     let same = std::fs::canonicalize(src).ok().is_some_and(|a| std::fs::canonicalize(dest).ok() == Some(a));
     if same {
@@ -272,7 +298,9 @@ fn play_sound(ui: &AppWindow, failed: bool) {
             let name = if name.is_empty() { "Your sound".to_string() } else { name.to_string() };
             crate::show_toast(
                 ui,
-                &format!("{name} is gone from Neria's folder, so the chime played. Pick it again in Settings → General."),
+                &format!(
+                    "{name} is gone from Neria's folder, so the chime played. Pick it again in Settings → General."
+                ),
             );
         }
         _ => {}
@@ -312,6 +340,7 @@ fn pick_sound(ui: &AppWindow, settings: &Arc<Mutex<Settings>>, failed: bool, cha
     let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     // The menu shows what's in use until the new sound has played.
     to_ui(ui, &settings.lock().unwrap());
+    crate::show_toast(ui, &format!("Trying {name}…"));
     let (weak, settings) = (ui.as_weak(), settings.clone());
     std::thread::spawn(move || {
         let played = play_file(&staged, true);
@@ -850,6 +879,10 @@ mod tests {
         let wav = chime(false);
         assert_eq!(&wav[..4], b"RIFF");
         assert!(is_wav(wav));
+        // 22 050 samples a second, 16-bit mono: 0.16 s + 0.32 s.
+        let secs = wav_seconds(wav).unwrap();
+        assert!((secs - 0.48).abs() < 0.01, "{secs}");
+        assert_eq!(wav_seconds(b"RIFF\0\0\0\0WAVE"), None);
     }
 
     #[test]
@@ -863,6 +896,15 @@ mod tests {
         std::fs::write(&mp3, b"ID3\x04\0\0\0\0\0\0 not a wav").unwrap();
         assert!(stage_sound(&mp3, &dest).unwrap_err().contains("isn't a WAV"));
         assert!(!dest.exists() && !dest.with_extension("wav.part").exists());
+        // Too long: refused. (The chime's header with 16 s of silence after it.)
+        let long = dir.join("long.wav");
+        let mut wav = chime(false).to_vec();
+        let data = 22_050 * 2 * 16;
+        wav[40..44].copy_from_slice(&(data as u32).to_le_bytes());
+        wav.truncate(44);
+        wav.resize(44 + data, 0);
+        std::fs::write(&long, &wav).unwrap();
+        assert!(stage_sound(&long, &dest).unwrap_err().contains("16 seconds"));
         // A WAV: staged next to it, kept once it played.
         let a = dir.join("a.wav");
         std::fs::write(&a, chime(false)).unwrap();
