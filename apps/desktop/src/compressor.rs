@@ -1,6 +1,10 @@
-//! Compress page: pick a file, choose a size or quality, encode (GPU when possible).
+//! Compress page (Compress track): goals in plain words (`compress::Goal`), what each will
+//! look like for this file, before / after from a sample encode, several files at once,
+//! trimming, and Advanced (format, graphics card, picture, sound, tracks, black bars).
+//! The state the UI shows lives in the `Compress` global; this side owns the files.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -8,361 +12,1331 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
-use neria_core::compress::{self, Codec, Encoders, Options, Resolution, Target};
+use neria_core::compress::{self, Bars, Codec, Encoder, Encoders, Goal, Look, Options, Resolution, Target};
 use neria_core::fmt;
 use neria_core::media::{self, FileInfo};
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
 
-use crate::AppWindow;
+use crate::{AppWindow, CmpFile, CmpGoal, Compress};
 
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv"];
-const SIZES_MB: [f64; 4] = [20.0, 25.0, 50.0, 100.0];
+const VIDEO_EXTENSIONS: &[&str] =
+    &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "mts", "m2ts", "3gp"];
+const GOALS: [Goal; 5] = [Goal::Discord, Goal::Email, Goal::WhatsApp, Goal::Sharp, Goal::Tiny];
+
+// File states, as the UI reads them (CmpFile.state).
+const WAITING: i32 = 0;
+const RUNNING: i32 = 1;
+const SAVED: i32 = 2;
+const SKIPPED: i32 = 3;
+const CANT: i32 = 4;
+const FAILED: i32 = 5;
+const CANCELLED: i32 = 6;
+
+#[derive(Default)]
+struct Item {
+    path: PathBuf,
+    info: Option<FileInfo>,
+    error: Option<String>,
+    thumb: Option<Image>,
+    bars: Option<Bars>,
+    state: i32,
+    tag: String,
+    detail: String,
+    progress: f32,
+    output: Option<PathBuf>,
+}
 
 #[derive(Default)]
 pub struct Compressor {
-    file: Option<PathBuf>,
-    info: Arc<Mutex<Option<FileInfo>>>,
+    items: Vec<Item>,
     /// Detected once, in the background, the first time a file is opened.
     encoders: Arc<Mutex<Option<Encoders>>>,
     detecting: bool,
-    generation: Arc<AtomicU64>,
-    cancel: Option<Arc<AtomicBool>>,
-    last_output: Arc<Mutex<Option<PathBuf>>>,
+    /// Bumped when the list is cleared, so late reads of old files are dropped.
+    list_gen: u64,
+    /// The preview being made (key, generation); a newer one cancels it.
+    preview_key: String,
+    preview_gen: Arc<AtomicU64>,
+    preview_cancel: Option<Arc<AtomicBool>>,
+    /// Estimated sizes of the "keeping" goals, by preview key.
+    estimates: HashMap<String, u64>,
+    /// Trim strip frames made for this file.
+    strip_for: Option<PathBuf>,
+    running: Option<Arc<AtomicBool>>,
+    last_output: Option<PathBuf>,
     autostarted: bool,
+    /// Files waiting to be read (`read_later`).
+    reader: Option<std::sync::mpsc::Sender<(PathBuf, u64)>>,
 }
 
-fn options_from_ui(ui: &AppWindow) -> Result<Options> {
-    let target = if ui.get_cmp_mode() == 0 {
-        let mb = match ui.get_cmp_size_index() {
-            i @ 0..=3 => SIZES_MB[i as usize],
-            _ => ui
-                .get_cmp_custom_mb()
+thread_local! {
+    static CMP: RefCell<Option<Rc<RefCell<Compressor>>>> = const { RefCell::new(None) };
+}
+
+/// Run `f` on the page's state from the UI thread (background work reports back this way).
+fn with(f: impl FnOnce(&mut Compressor)) {
+    if let Some(c) = CMP.with(|c| c.borrow().clone()) {
+        f(&mut c.borrow_mut());
+    }
+}
+
+fn goal_of(c: &Compress, index: i32) -> Result<Goal> {
+    Ok(match index {
+        i @ 0..=4 => GOALS[i as usize],
+        _ => Goal::Size(
+            c.get_custom_mb()
                 .trim()
                 .replace(',', ".")
                 .parse::<f64>()
                 .ok()
                 .filter(|v| *v >= 0.5)
                 .ok_or_else(|| anyhow!("Type a size in MB (at least 0.5)."))?,
-        };
-        Target::SizeMb(mb)
-    } else {
-        Target::Quality(ui.get_cmp_quality())
-    };
-    Ok(Options {
-        target,
-        codec: match ui.get_cmp_codec() {
+        ),
+    })
+}
+
+fn is_video(p: &Path) -> bool {
+    p.extension().and_then(|e| e.to_str()).is_some_and(|e| VIDEO_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// Where a size goal is going, for sentences: "too long for WhatsApp".
+fn place(goal: Goal) -> String {
+    match goal {
+        Goal::Discord => "Discord".into(),
+        Goal::Email => "email".into(),
+        Goal::WhatsApp => "WhatsApp".into(),
+        Goal::Size(mb) => format!("{} MB", compress::fmt_mb(mb)),
+        g => g.label(),
+    }
+}
+
+/// What a part of the file would weigh as it is: to tell "already fits".
+fn part_bytes(info: &FileInfo, opts: &Options) -> u64 {
+    (info.size_bytes as f64 * (opts.length(info) / info.duration.max(0.1)).min(1.0)) as u64
+}
+
+/// The file can be sent as it is: the whole of it (a trimmed part isn't a file yet), already
+/// under `limit`, in a kind of file the apps play (an .mkv or .avi isn't, so it's still made).
+fn fits_as_is(path: &Path, info: &FileInfo, opts: &Options, limit: u64) -> bool {
+    let playable = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| ["mp4", "mov", "m4v", "webm"].contains(&e.to_ascii_lowercase().as_str()));
+    opts.range.is_none() && playable && info.size_bytes <= limit
+}
+
+fn image(path: &Path) -> Option<Image> {
+    Image::load_from_path(path).ok()
+}
+
+impl Compressor {
+    fn encoders(&self) -> Encoders {
+        self.encoders.lock().unwrap().clone().unwrap_or_default()
+    }
+
+    /// The options for `item` with `goal`, from the page.
+    fn options(&self, c: &Compress, goal: Goal, item: &Item) -> Options {
+        let mut o = Options::for_goal(goal);
+        o.codec = match c.get_format() {
             1 => Codec::Hevc,
             2 => Codec::Av1,
             _ => Codec::H264,
-        },
-        use_gpu: ui.get_cmp_use_gpu(),
-        resolution: match ui.get_cmp_res_index() {
+        };
+        o.use_gpu = c.get_use_gpu();
+        o.resolution = match c.get_picture() {
             1 => Resolution::Original,
             2 => Resolution::Max(1080),
             3 => Resolution::Max(720),
             4 => Resolution::Max(480),
             _ => Resolution::Auto,
-        },
-        max_fps: match ui.get_cmp_fps_index() {
-            1 => Some(60.0),
-            2 => Some(30.0),
-            _ => None,
-        },
-        audio_kbps: match ui.get_cmp_audio_index() {
-            1 => Some(96),
+        };
+        o.audio_kbps = match c.get_sound() {
+            0 => Some(128),
             2 => Some(64),
             3 => None,
-            _ => Some(128),
-        },
-    })
-}
+            _ => Some(96),
+        };
+        o.keep_tracks = c.get_keep_tracks();
+        o.crop = if c.get_cut_bars() { item.bars } else { None };
+        if self.items.len() == 1 && c.get_trim_open() {
+            let (a, b) = (c.get_trim_in() as f64, c.get_trim_out() as f64);
+            if let Some(info) = &item.info
+                && (a > 0.05 || b < info.duration - 0.05)
+            {
+                o.range = Some((a, b));
+            }
+        }
+        o
+    }
 
-impl Compressor {
-    fn open(&mut self, ui: &AppWindow, path: &Path) {
-        self.file = Some(path.to_path_buf());
-        *self.info.lock().unwrap() = None;
-        *self.last_output.lock().unwrap() = None;
-        ui.set_cmp_loaded(true);
-        ui.set_cmp_name(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().into());
-        ui.set_cmp_info("Reading file…".into());
-        ui.set_cmp_thumb(slint::Image::default());
-        ui.set_cmp_status("".into());
-        ui.set_cmp_has_output(false);
-        ui.set_page(2);
-        self.refresh(ui);
+    fn preview_key(&self, item: &Item, opts: &Options, goal: Goal) -> String {
+        format!("{}|{goal:?}|{opts:?}", item.path.display())
+    }
 
-        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let (gen_ref, info_slot, weak, path) =
-            (self.generation.clone(), self.info.clone(), ui.as_weak(), path.to_path_buf());
-        std::thread::spawn(move || {
-            let result = media::file_info(&path);
-            let thumb = result
-                .as_ref()
-                .ok()
-                .filter(|i| i.has_video)
-                .and_then(|i| media::thumbnails(&path, i.duration * 0.6, 1, 180).into_iter().next());
-            let _ = weak.upgrade_in_event_loop(move |ui| {
-                if gen_ref.load(Ordering::SeqCst) != generation {
-                    return;
+    // ── Files ──
+
+    fn add(&mut self, ui: &AppWindow, paths: Vec<PathBuf>) {
+        if self.running.is_some() {
+            crate::show_toast(ui, "Wait for the videos being compressed to finish, then add more.");
+            return;
+        }
+        let mut found = Vec::new();
+        for p in paths {
+            if p.is_dir() {
+                let mut inside: Vec<PathBuf> = std::fs::read_dir(&p)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|e| e.path())
+                    .filter(|f| f.is_file() && is_video(f))
+                    .collect();
+                inside.sort();
+                if inside.is_empty() {
+                    crate::show_toast(ui, "There are no videos in that folder.");
                 }
-                match result {
-                    Ok(info) => {
-                        let mut parts = Vec::new();
-                        if info.has_video {
-                            parts.push(format!("{}×{}", info.width, info.height));
-                            if info.fps > 0.0 {
-                                parts.push(format!("{:.0} fps", info.fps));
-                            }
+                found.extend(inside);
+            } else {
+                found.push(p);
+            }
+        }
+        // Finished files go when new ones come: the list is what's about to be done.
+        if self.items.iter().all(|i| i.state != WAITING) && !self.items.is_empty() && !found.is_empty() {
+            self.items.retain(|i| i.state == WAITING);
+        }
+        let c = ui.global::<Compress>();
+        for path in found {
+            if self.items.iter().any(|i| i.path == path) {
+                continue;
+            }
+            self.items.push(Item { path: path.clone(), ..Default::default() });
+            self.read_later(ui, path);
+        }
+        if self.items.len() != 1 {
+            c.set_trim_open(false);
+        }
+        c.set_status("".into());
+        c.set_has_output(false);
+        ui.set_page(2);
+        self.detect_encoders(ui);
+        self.refresh(ui);
+    }
+
+    /// Read a file (length, size, a thumbnail, black bars) in the background, three at a time:
+    /// each read runs several ffmpeg processes, and a folder can hold hundreds of videos.
+    fn read_later(&mut self, ui: &AppWindow, path: PathBuf) {
+        let reader = self.reader.get_or_insert_with(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<(PathBuf, u64)>();
+            let rx = Arc::new(Mutex::new(rx));
+            for _ in 0..3 {
+                let (rx, weak) = (rx.clone(), ui.as_weak());
+                std::thread::spawn(move || {
+                    loop {
+                        let job = rx.lock().unwrap().recv();
+                        let Ok((path, list_gen)) = job else { break };
+                        let result = media::file_info(&path);
+                        let (thumb, bars) = match &result {
+                            Ok(i) if i.has_video => (
+                                media::thumbnails(&path, i.duration * 0.6, 1, 180).into_iter().next(),
+                                compress::detect_bars(&path, i),
+                            ),
+                            _ => (None, None),
+                        };
+                        let _ = weak.upgrade_in_event_loop(move |ui| {
+                            with(|cmp| {
+                                if cmp.list_gen != list_gen {
+                                    return;
+                                }
+                                if let Some(it) = cmp.items.iter_mut().find(|i| i.path == path) {
+                                    match result {
+                                        Ok(info) if !info.has_video => {
+                                            it.error = Some("This file has no video to compress.".into())
+                                        }
+                                        Ok(info) => it.info = Some(info),
+                                        Err(e) => it.error = Some(e.to_string()),
+                                    }
+                                    it.thumb = thumb.as_deref().and_then(image);
+                                    it.bars = bars;
+                                }
+                                cmp.refresh(&ui);
+                            });
+                        });
+                    }
+                });
+            }
+            tx
+        });
+        let _ = reader.send((path, self.list_gen));
+    }
+
+    fn detect_encoders(&mut self, ui: &AppWindow) {
+        if self.detecting || self.encoders.lock().unwrap().is_some() {
+            return;
+        }
+        self.detecting = true;
+        let (slot, weak) = (self.encoders.clone(), ui.as_weak());
+        std::thread::spawn(move || {
+            let found = Encoders::detect();
+            *slot.lock().unwrap() = Some(found);
+            let _ = weak.upgrade_in_event_loop(|ui| with(|c| c.refresh(&ui)));
+        });
+    }
+
+    fn clear(&mut self, ui: &AppWindow) {
+        self.items.clear();
+        self.list_gen += 1;
+        self.strip_for = None;
+        self.preview_key.clear();
+        let c = ui.global::<Compress>();
+        c.set_trim_open(false);
+        c.set_status("".into());
+        c.set_has_output(false);
+        self.refresh(ui);
+    }
+
+    // ── What the page shows ──
+
+    fn refresh(&mut self, ui: &AppWindow) {
+        let c = ui.global::<Compress>();
+        let encoders = self.encoders.lock().unwrap().clone();
+        let enc = encoders.clone().unwrap_or_default();
+        let running = self.running.is_some();
+        c.set_count(self.items.len() as i32);
+        c.set_running(running);
+        c.set_reading(self.items.iter().any(|i| i.info.is_none() && i.error.is_none()));
+
+        // The graphics card tick: what this machine can do for the picked format.
+        let codec = match c.get_format() {
+            1 => Codec::Hevc,
+            2 => Codec::Av1,
+            _ => Codec::H264,
+        };
+        let gpu_ok = encoders.as_ref().is_some_and(|e| e.has_gpu_for(codec));
+        c.set_gpu_available(gpu_ok);
+        c.set_gpu_text(
+            match (&encoders, enc.pick(codec, true)) {
+                (None, _) => "Use my graphics card (checking it…)".to_string(),
+                (Some(_), Encoder::Gpu(_, g)) => format!("Use my graphics card (faster) · {}", g.label()),
+                _ => "Use my graphics card: it can't make this format, the processor will".to_string(),
+            }
+            .into(),
+        );
+
+        let goal = goal_of(&c, c.get_goal());
+        let format_names = ["Plays everywhere", "Smaller", "Smallest"];
+        let picture_names = ["picture as needed", "picture kept", "1080p at most", "720p at most", "480p at most"];
+        let sound_names = ["sound 128 kbps", "sound 96 kbps", "sound 64 kbps", "no sound"];
+        let mut line = vec![
+            format_names[c.get_format().clamp(0, 2) as usize].to_string(),
+            if c.get_use_gpu() && gpu_ok { "graphics card".into() } else { "processor".into() },
+            picture_names[c.get_picture().clamp(0, 4) as usize].into(),
+            sound_names[c.get_sound().clamp(0, 3) as usize].into(),
+        ];
+        if !c.get_keep_tracks() {
+            line.push("first sound track only".into());
+        }
+        c.set_advanced_line(line.join(" · ").into());
+        c.set_format_warning(
+            match goal.as_ref().ok().and_then(|g| g.must_play_in()) {
+                Some(place) if c.get_format() != 0 => format!(
+                    "{} may not play in {place} on every phone or computer. Plays everywhere is the safe pick for sending.",
+                    format_names[c.get_format() as usize]
+                ),
+                _ => String::new(),
+            }
+            .into(),
+        );
+
+        // Files list (several) and the one file's card.
+        let files: Vec<CmpFile> = self
+            .items
+            .iter()
+            .map(|it| {
+                let meta = it.info.as_ref().map_or_else(
+                    || if it.error.is_some() { String::new() } else { "Reading…".into() },
+                    |i| format!("{} · {}", fmt::duration(i.duration), fmt::mb(i.size_bytes as f64)),
+                );
+                let (tag, detail) = if it.state != WAITING {
+                    (it.tag.clone(), it.detail.clone())
+                } else if let Some(e) = &it.error {
+                    ("Can't".into(), e.clone())
+                } else {
+                    match (&it.info, &goal) {
+                        (Some(info), Ok(g)) => self
+                            .verdict_for(&c, *g, it, info, &enc)
+                            .map_or_else(|(tag, why)| (tag, why), |hint| (String::new(), hint)),
+                        _ => (String::new(), String::new()),
+                    }
+                };
+                CmpFile {
+                    name: it.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().into(),
+                    meta: meta.into(),
+                    thumb: it.thumb.clone().unwrap_or_default(),
+                    state: if it.state == WAITING && it.error.is_some() { CANT } else { it.state },
+                    tag: tag.into(),
+                    detail: detail.into(),
+                    progress: it.progress,
+                }
+            })
+            .collect();
+        c.set_files(ModelRc::from(Rc::new(VecModel::from(files))));
+
+        let one = (self.items.len() == 1).then(|| &self.items[0]);
+        let mut goals = Vec::new();
+        let (mut verdict, mut sizes, mut problem, mut fix, mut summary) =
+            (String::new(), String::new(), String::new(), String::new(), String::new());
+        let mut can_start = !running && encoders.is_some() && !self.items.is_empty();
+        let mut start_text = match self.items.len() {
+            0 | 1 => "Compress".to_string(),
+            n => format!("Compress {n} videos"),
+        };
+
+        match one {
+            Some(it) => {
+                c.set_name(it.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().into());
+                c.set_thumb(it.thumb.clone().unwrap_or_default());
+                match (&it.info, &it.error) {
+                    (_, Some(e)) => {
+                        c.set_info(e.as_str().into());
+                        can_start = false;
+                    }
+                    (None, _) => {
+                        c.set_info("Reading the file…".into());
+                        can_start = false;
+                    }
+                    (Some(info), _) => {
+                        let mut parts = vec![format!("{}×{}", info.width, info.height)];
+                        if info.fps > 0.0 {
+                            parts.push(format!("{:.0} fps", info.fps));
                         }
                         parts.push(fmt::duration(info.duration));
-                        parts.push(fmt::bytes(info.size_bytes as f64));
+                        parts.push(fmt::mb(info.size_bytes as f64));
                         if !info.video_codec.is_empty() {
                             parts.push(info.video_codec.clone());
                         }
-                        ui.set_cmp_info(parts.join("  ·  ").into());
-                        *info_slot.lock().unwrap() = Some(info);
+                        c.set_info(parts.join(" · ").into());
+                        c.set_duration(info.duration as f32);
+
+                        // Every goal, worked out for this file.
+                        for g in GOALS.iter() {
+                            let opts = self.options(&c, *g, it);
+                            let row = match self.verdict_for(&c, *g, it, info, &enc) {
+                                Ok(hint) => {
+                                    let size = match g.target() {
+                                        Target::SizeMb(mb) => format!("{} MB", compress::fmt_mb(mb)),
+                                        Target::Quality(_) => self
+                                            .estimates
+                                            .get(&self.preview_key(it, &opts, *g))
+                                            .map_or("about …".into(), |b| format!("about {}", fmt::mb(*b as f64))),
+                                    };
+                                    CmpGoal {
+                                        name: g.label().into(),
+                                        hint: hint.into(),
+                                        size: size.into(),
+                                        warn: false,
+                                    }
+                                }
+                                Err((_, why)) => CmpGoal {
+                                    name: g.label().into(),
+                                    hint: why.into(),
+                                    size: match g.target() {
+                                        Target::SizeMb(mb) => format!("{} MB", compress::fmt_mb(mb)).into(),
+                                        _ => self
+                                            .estimates
+                                            .get(&self.preview_key(it, &opts, *g))
+                                            .map_or(String::new(), |b| format!("about {}", fmt::mb(*b as f64)))
+                                            .into(),
+                                    },
+                                    warn: true,
+                                },
+                            };
+                            goals.push(row);
+                        }
+                        let custom = goal_of(&c, 5);
+                        goals.push(match &custom {
+                            Ok(g) => {
+                                let mb = format!("{} MB", c.get_custom_mb().trim());
+                                match self.verdict_for(&c, *g, it, info, &enc) {
+                                    Ok(hint) => CmpGoal {
+                                        name: "Custom size".into(),
+                                        hint: hint.into(),
+                                        size: mb.into(),
+                                        warn: false,
+                                    },
+                                    Err((_, why)) => CmpGoal {
+                                        name: "Custom size".into(),
+                                        hint: why.into(),
+                                        size: mb.into(),
+                                        warn: true,
+                                    },
+                                }
+                            }
+                            Err(_) => CmpGoal {
+                                name: "Custom size".into(),
+                                hint: "type a size".into(),
+                                size: "".into(),
+                                warn: false,
+                            },
+                        });
+
+                        // The picked goal: verdict, sizes, problem, the technical line.
+                        match &goal {
+                            Err(e) => {
+                                problem = e.to_string();
+                                can_start = false;
+                            }
+                            Ok(g) => {
+                                let opts = self.options(&c, *g, it);
+                                let length = opts.length(info);
+                                if opts.range.is_some() {
+                                    start_text = format!("Compress {}", fmt::duration(length));
+                                }
+                                match compress::plan(info, &opts, &enc) {
+                                    Err(e) => {
+                                        problem = e.to_string();
+                                        can_start = false;
+                                    }
+                                    Ok(plan) => {
+                                        verdict = plan.hint();
+                                        summary = plan.summary();
+                                        if plan.captions_dropped > 0 {
+                                            summary.push_str(&format!(
+                                                "  ·  {} picture caption track{} left out (an .mp4 can't hold them)",
+                                                plan.captions_dropped,
+                                                if plan.captions_dropped == 1 { "" } else { "s" }
+                                            ));
+                                        }
+                                        let now = part_bytes(info, &opts);
+                                        let after = match plan.target_bytes {
+                                            Some(t) => Some((t, "up to ")),
+                                            None => self
+                                                .estimates
+                                                .get(&self.preview_key(it, &opts, *g))
+                                                .map(|b| (*b, "about ")),
+                                        };
+                                        sizes = match after {
+                                            Some((b, how)) => {
+                                                let pct = 100.0 - b as f64 / now.max(1) as f64 * 100.0;
+                                                let tail = if pct >= 1.0 {
+                                                    format!(" · {pct:.0}% smaller")
+                                                } else {
+                                                    String::new()
+                                                };
+                                                // A size goal is the limit's own number ("up to 20 MB").
+                                                let to = match plan.target_bytes {
+                                                    Some(t) => format!("{} MB", compress::fmt_mb(t as f64 / 1e6)),
+                                                    None => fmt::mb(b as f64),
+                                                };
+                                                format!("{} → {how}{to}{tail}", fmt::mb(now as f64))
+                                            }
+                                            None => format!("{} → working out the size…", fmt::mb(now as f64)),
+                                        };
+                                        let est = self.estimates.get(&self.preview_key(it, &opts, *g)).copied();
+                                        if let Some(t) = plan.target_bytes
+                                            && fits_as_is(&it.path, info, &opts, t)
+                                        {
+                                            sizes = format!(
+                                                "{} now: under {} MB already",
+                                                fmt::mb(now as f64),
+                                                compress::fmt_mb(t as f64 / 1e6)
+                                            );
+                                            problem = format!(
+                                                "It's already small enough for {}: send it as it is. Compressing would only lose quality.",
+                                                place(*g)
+                                            );
+                                            can_start = false;
+                                            start_text = "Already fits".into();
+                                        } else if let Some(s) = compress::longest_fit(info, &opts, &enc) {
+                                            problem = format!(
+                                                "Too long for {}: in {} MB it would be {}.",
+                                                place(*g),
+                                                compress::fmt_mb(plan.target_bytes.unwrap_or(0) as f64 / 1e6),
+                                                plan.look.label()
+                                            );
+                                            fix = format!("Keep the first {}", fmt::duration(s));
+                                        } else if let Some(b) = est
+                                            && plan.target_bytes.is_none()
+                                            && b as f64 >= now as f64 * 0.95
+                                        {
+                                            problem = format!(
+                                                "This one won't get smaller with \"{}\": it's already packed tight. Pick a size, or As small as possible.",
+                                                g.label()
+                                            );
+                                            can_start = false;
+                                            start_text = "Won't get smaller".into();
+                                        }
+                                        c.set_after_label(format!("After · {}p", plan.lines).into());
+                                    }
+                                }
+                                if problem.is_empty()
+                                    && let Some(s) = compress::longest_fit(info, &opts, &enc)
+                                {
+                                    problem = format!("{} is too long for {}.", fmt::duration(length), place(*g));
+                                    fix = format!("Keep the first {}", fmt::duration(s));
+                                }
+                            }
+                        }
                     }
-                    Err(e) => ui.set_cmp_info(e.to_string().into()),
                 }
-                if let Some(img) = thumb.and_then(|p| slint::Image::load_from_path(&p).ok()) {
-                    ui.set_cmp_thumb(img);
-                }
-                ui.invoke_cmp_options_changed();
-            });
-        });
-
-        if !self.detecting && self.encoders.lock().unwrap().is_none() {
-            self.detecting = true;
-            let (slot, weak) = (self.encoders.clone(), ui.as_weak());
-            std::thread::spawn(move || {
-                let found = Encoders::detect();
-                *slot.lock().unwrap() = Some(found);
-                let _ = weak.upgrade_in_event_loop(|ui| ui.invoke_cmp_options_changed());
-            });
-        }
-    }
-
-    /// Recompute the GPU label and the size/resolution estimate.
-    fn refresh(&self, ui: &AppWindow) {
-        let encoders = self.encoders.lock().unwrap().clone();
-        let opts = options_from_ui(ui);
-
-        // GPU checkbox reflects what this machine can do for the chosen codec.
-        let codec = opts.as_ref().map(|o| o.codec).unwrap_or(Codec::H264);
-        match &encoders {
-            None => {
-                ui.set_cmp_gpu_available(false);
-                ui.set_cmp_gpu_label("Checking GPU…".into());
-            }
-            Some(e) => {
-                let gpu = e.pick(codec, true);
-                let available = e.has_gpu_for(codec);
-                ui.set_cmp_gpu_available(available);
-                ui.set_cmp_gpu_label(match gpu {
-                    compress::Encoder::Gpu(_, g) => format!("Use GPU ({})", g.label()).into(),
-                    _ => format!("No GPU encoder for {}", codec.label()).into(),
+                // What gets kept, for the Advanced tick.
+                let tracks = it.info.as_ref().map(|i| {
+                    let mut t = Vec::new();
+                    if i.audio_tracks > 1 {
+                        t.push(format!("all {} sound tracks", i.audio_tracks));
+                    }
+                    let text = i.subtitles.iter().filter(|s| **s).count();
+                    if text > 0 {
+                        t.push(if text == 1 { "the captions".into() } else { format!("{text} caption tracks") });
+                    }
+                    if !i.chapters.is_empty() {
+                        t.push("the chapters".into());
+                    }
+                    match t.len() {
+                        0 => String::new(),
+                        1 => t.remove(0),
+                        _ => {
+                            let last = t.pop().unwrap();
+                            format!("{} and {last}", t.join(", "))
+                        }
+                    }
                 });
+                c.set_tracks_text(tracks.unwrap_or_default().into());
+                c.set_bars_text(it.bars.map(|b| format!("{}×{} kept", b.w, b.h)).unwrap_or_default().into());
+                // Chapters for the trim.
+                let chapters: Vec<SharedString> = it
+                    .info
+                    .as_ref()
+                    .map(|i| i.chapters.iter().map(|ch| SharedString::from(ch.title.as_str())).collect())
+                    .unwrap_or_default();
+                c.set_chapters(ModelRc::from(Rc::new(VecModel::from(chapters))));
             }
-        }
-
-        let info = self.info.lock().unwrap().clone();
-        let running = self.cancel.is_some();
-        let (text, warning, can_start) = match (info, opts) {
-            (None, _) => ("Reading file…".to_string(), false, false),
-            (_, Err(e)) => (e.to_string(), true, false),
-            (Some(info), Ok(opts)) => {
-                match compress::plan(&info, &opts, encoders.as_ref().unwrap_or(&Encoders::default())) {
-                    Err(e) => (e.to_string(), true, false),
-                    Ok(plan) => {
-                        let mut text = plan.summary();
-                        let mut warning = false;
-                        match plan.target_bytes {
-                            Some(t) if t >= info.size_bytes => {
-                                text = format!(
-                                    "Already smaller than {}: compressing would only lose quality.  {text}",
-                                    fmt::bytes(t as f64)
-                                );
-                                warning = true;
-                            }
-                            Some(t) => {
-                                let pct = 100.0 - t as f64 / info.size_bytes.max(1) as f64 * 100.0;
-                                text = format!(
-                                    "Will fit in {} MB (at least {pct:.0}% smaller)  ·  {text}",
-                                    t as f64 / 1e6
-                                );
-                            }
-                            None => text = format!("Size depends on the video  ·  {text}"),
-                        }
-                        if encoders.is_none() {
-                            text.push_str("  ·  checking GPU…");
-                        }
-                        (text, warning, true)
+            None => {
+                // Several (or none): one goal for all, each file says what it'll get.
+                for g in GOALS {
+                    let size = match g.target() {
+                        Target::SizeMb(mb) => format!("{} MB each", compress::fmt_mb(mb)),
+                        Target::Quality(_) => "the size follows".into(),
+                    };
+                    goals.push(CmpGoal { name: g.label().into(), hint: "".into(), size: size.into(), warn: false });
+                }
+                goals.push(CmpGoal {
+                    name: "Custom size".into(),
+                    hint: "".into(),
+                    size: format!("{} MB each", c.get_custom_mb().trim()).into(),
+                    warn: false,
+                });
+                c.set_tracks_text("all sound tracks, captions and chapters".into());
+                c.set_bars_text("".into());
+                if goal.is_err() {
+                    problem = "Type a size in MB (at least 0.5).".into();
+                    can_start = false;
+                }
+                // Count what will really be made: not the ones that fit already or can't.
+                let todo = match &goal {
+                    Ok(g) => self
+                        .items
+                        .iter()
+                        .filter(|i| matches!(i.state, WAITING | CANCELLED | FAILED))
+                        .filter(|i| {
+                            i.info.as_ref().is_some_and(|info| match self.verdict_for(&c, *g, i, info, &enc) {
+                                Ok(_) => true,
+                                Err((tag, _)) => tag != "Already fits" && tag != "Can't fit",
+                            })
+                        })
+                        .count(),
+                    Err(_) => 0,
+                };
+                if !self.items.is_empty() && !running {
+                    start_text = match todo {
+                        0 => "Nothing to compress".into(),
+                        1 => "Compress 1 video".into(),
+                        n => format!("Compress {n} videos"),
+                    };
+                    if todo == 0 {
+                        can_start = false;
                     }
                 }
+                if self.items.iter().any(|i| i.info.is_none() && i.error.is_none()) {
+                    can_start = false;
+                }
             }
-        };
-        ui.set_cmp_estimate(text.into());
-        ui.set_cmp_warning(warning);
-        // Wait for GPU detection, or an early click would silently encode on the CPU.
-        ui.set_cmp_can_start(can_start && !running && encoders.is_some());
-    }
+        }
+        c.set_goals(ModelRc::from(Rc::new(VecModel::from(goals))));
+        c.set_verdict(verdict.into());
+        c.set_sizes(sizes.into());
+        c.set_problem(problem.into());
+        c.set_fix_text(fix.into());
+        c.set_summary(summary.into());
+        c.set_can_start(can_start);
+        c.set_start_text(start_text.into());
 
-    fn start(&mut self, ui: &AppWindow) {
-        if self.encoders.lock().unwrap().is_none() {
+        // Dev hook for scripted checks: start once everything is read and ready.
+        if !self.autostarted && can_start && !c.get_reading() && std::env::var_os("NERIA_COMPRESS_START").is_some() {
+            self.autostarted = true;
+            self.start(ui);
             return;
         }
-        let (Some(input), Some(info)) = (self.file.clone(), self.info.lock().unwrap().clone()) else { return };
-        let opts = match options_from_ui(ui) {
-            Ok(o) => o,
-            Err(e) => {
-                ui.set_cmp_status(e.to_string().into());
+        self.schedule_preview(ui);
+    }
+
+    /// The hint for `goal` on this file, or (tag, why not).
+    fn verdict_for(
+        &self,
+        c: &Compress,
+        goal: Goal,
+        it: &Item,
+        info: &FileInfo,
+        enc: &Encoders,
+    ) -> std::result::Result<String, (String, String)> {
+        let opts = self.options(c, goal, it);
+        match compress::plan(info, &opts, enc) {
+            Err(_) => Err(("Can't fit".into(), format!("too long for {}", place(goal)))),
+            Ok(plan) => {
+                let now = part_bytes(info, &opts);
+                if let Some(t) = plan.target_bytes
+                    && fits_as_is(&it.path, info, &opts, t)
+                {
+                    return Err((
+                        "Already fits".into(),
+                        format!("already under {} MB", compress::fmt_mb(t as f64 / 1e6)),
+                    ));
+                }
+                if plan.look == Look::Blurry {
+                    return Err(("Blurry".into(), format!("{}: too long to look OK", plan.hint())));
+                }
+                // A look goal on a file that's already packed tight comes out no smaller.
+                if plan.target_bytes.is_none()
+                    && let Some(b) = self.estimates.get(&self.preview_key(it, &opts, goal))
+                    && *b as f64 >= now as f64 * 0.95
+                {
+                    return Err(("No smaller".into(), format!("{}: won't get smaller", plan.hint())));
+                }
+                Ok(plan.hint())
+            }
+        }
+    }
+
+    // ── Before / after ──
+
+    /// A moment after the options settle, encode samples of the open file with them: the
+    /// before / after frames (and the size, for the "keeping" goals). Never blocks Compress.
+    fn schedule_preview(&mut self, ui: &AppWindow) {
+        let c = ui.global::<Compress>();
+        let Some(it) = (self.items.len() == 1).then(|| &self.items[0]) else { return };
+        let (Some(info), Ok(goal)) = (it.info.clone(), goal_of(&c, c.get_goal())) else { return };
+        if self.encoders.lock().unwrap().is_none() || self.running.is_some() {
+            return;
+        }
+        let opts = self.options(&c, goal, it);
+        let key = self.preview_key(it, &opts, goal);
+        if key == self.preview_key {
+            return;
+        }
+        self.preview_key = key.clone();
+        if let Some(old) = self.preview_cancel.take() {
+            old.store(true, Ordering::SeqCst);
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.preview_cancel = Some(cancel.clone());
+        let generation = self.preview_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        // The other "keeping" goals' sizes, while at it (they're in the goal list too).
+        let others: Vec<(Goal, Options, String)> = GOALS
+            .iter()
+            .filter(|g| matches!(g.target(), Target::Quality(_)) && **g != goal)
+            .map(|g| {
+                let o = self.options(&c, *g, it);
+                let k = self.preview_key(it, &o, *g);
+                (*g, o, k)
+            })
+            .filter(|(_, _, k)| !self.estimates.contains_key(k))
+            .collect();
+        c.set_preview_busy(true);
+        let (path, enc, gen_ref, weak) = (it.path.clone(), self.encoders(), self.preview_gen.clone(), ui.as_weak());
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(350));
+            if gen_ref.load(Ordering::SeqCst) != generation {
                 return;
             }
-        };
-        let encoders = self.encoders.lock().unwrap().clone().unwrap_or_default();
+            let name = format!("p{generation}");
+            // Older previews' samples and pictures (their images are already shown or gone).
+            let dir = neria_core::paths::cache_dir().join("compress-preview");
+            for f in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                if !f.file_name().to_string_lossy().starts_with(&format!("{name}-")) {
+                    let _ = std::fs::remove_file(f.path());
+                }
+            }
+            let result = compress::preview(&path, &info, &opts, &enc, &name, 540, &cancel);
+            let (w2, g2) = (weak.clone(), gen_ref.clone());
+            let _ = weak.upgrade_in_event_loop(move |ui| {
+                with(|cmp| {
+                    let current = gen_ref.load(Ordering::SeqCst) == generation;
+                    let c = ui.global::<Compress>();
+                    match result {
+                        Ok(p) => {
+                            if p.estimated {
+                                cmp.estimates.insert(key, p.bytes);
+                            }
+                            if current {
+                                c.set_before(image(&p.before).unwrap_or_default());
+                                c.set_after(image(&p.after).unwrap_or_default());
+                            }
+                        }
+                        Err(_) if current => {
+                            c.set_before(Image::default());
+                            c.set_after(Image::default());
+                        }
+                        Err(_) => {}
+                    }
+                    if current {
+                        c.set_preview_busy(false);
+                        // The size may have arrived: show it (same key: no new preview).
+                        cmp.refresh(&ui);
+                    }
+                });
+            });
+            // Then the other "keeping" goals' sizes, for the goal list.
+            for (i, (_, o, k)) in others.into_iter().enumerate() {
+                if cancel.load(Ordering::SeqCst) || g2.load(Ordering::SeqCst) != generation {
+                    break;
+                }
+                if let Ok(p) = compress::preview(&path, &info, &o, &enc, &format!("{name}-e{i}"), 120, &cancel) {
+                    let _ = w2.upgrade_in_event_loop(move |ui| {
+                        with(|cmp| {
+                            cmp.estimates.insert(k, p.bytes);
+                            cmp.refresh(&ui);
+                        })
+                    });
+                }
+            }
+        });
+    }
+
+    fn play_sample(&mut self, ui: &AppWindow) {
+        let c = ui.global::<Compress>();
+        let Some(it) = (self.items.len() == 1).then(|| &self.items[0]) else { return };
+        let (Some(info), Ok(goal)) = (it.info.clone(), goal_of(&c, c.get_goal())) else { return };
+        let opts = self.options(&c, goal, it);
+        let enc = self.encoders();
+        let Ok(plan) = compress::plan(&info, &opts, &enc) else { return };
+        let (from, to) = opts.range.unwrap_or((0.0, info.duration));
+        // From the middle of the part, like the before / after frames.
+        let at = from + ((to - from) - 10.0).max(0.0) / 2.0;
+        c.set_sample_busy(true);
+        let (path, weak) = (it.path.clone(), ui.as_weak());
+        std::thread::spawn(move || {
+            // Earlier samples go (one still open in a player stays until the next time).
+            for f in std::fs::read_dir(neria_core::paths::cache_dir()).into_iter().flatten().flatten() {
+                if f.file_name().to_string_lossy().starts_with("Neria sample ") {
+                    let _ = std::fs::remove_file(f.path());
+                }
+            }
+            let out = neria_core::paths::cache_dir().join(format!(
+                "Neria sample {}.mp4",
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+            ));
+            let result = compress::sample(&path, &info, &plan, at, 10.0, &out, &AtomicBool::new(false));
+            let _ = weak.upgrade_in_event_loop(move |ui| {
+                ui.global::<Compress>().set_sample_busy(false);
+                match result {
+                    Ok(s) => {
+                        let _ = open::that(&s.path);
+                    }
+                    Err(e) => crate::show_toast(&ui, &format!("Couldn't make a sample: {e}")),
+                }
+            });
+        });
+    }
+
+    // ── Trim ──
+
+    fn trim_opened(&mut self, ui: &AppWindow) {
+        let c = ui.global::<Compress>();
+        let Some(it) = self.items.first() else { return };
+        let Some(info) = it.info.clone() else { return };
+        if c.get_trim_out() <= c.get_trim_in() || c.get_trim_out() as f64 > info.duration + 0.01 {
+            c.set_trim_in(0.0);
+            c.set_trim_out(info.duration as f32);
+        }
+        if self.strip_for.as_ref() != Some(&it.path) {
+            self.strip_for = Some(it.path.clone());
+            c.set_strip(ModelRc::default());
+            let (path, weak) = (it.path.clone(), ui.as_weak());
+            std::thread::spawn(move || {
+                let frames = media::thumbnails(&path, info.duration, 10, 72);
+                let _ = weak.upgrade_in_event_loop(move |ui| {
+                    let images: Vec<Image> = frames.iter().filter_map(|p| image(p)).collect();
+                    ui.global::<Compress>().set_strip(ModelRc::from(Rc::new(VecModel::from(images))));
+                });
+            });
+        }
+        self.trim_text(ui);
+    }
+
+    fn trim_text(&self, ui: &AppWindow) {
+        let c = ui.global::<Compress>();
+        let (a, b, d) = (c.get_trim_in() as f64, c.get_trim_out() as f64, c.get_duration() as f64);
+        c.set_trim_text(
+            format!("{} → {}  ·  {} of {}", fmt::duration(a), fmt::duration(b), fmt::duration(b - a), fmt::duration(d))
+                .into(),
+        );
+    }
+
+    // ── Compressing ──
+
+    fn start(&mut self, ui: &AppWindow) {
+        let c = ui.global::<Compress>();
+        if self.running.is_some() || !c.get_can_start() {
+            return;
+        }
+        let Ok(goal) = goal_of(&c, c.get_goal()) else { return };
+        let enc = self.encoders();
+        // Again: one file can be made again (another goal, say); in a list, the rows that
+        // were cancelled, failed or skipped get another go (saved ones stay saved).
+        let one = self.items.len() == 1;
+        for it in &mut self.items {
+            if one || matches!(it.state, CANCELLED | FAILED | SKIPPED | CANT) {
+                it.state = WAITING;
+                it.tag.clear();
+                it.detail.clear();
+                it.progress = 0.0;
+            }
+        }
+        // Work out each file's options now; files that can't or needn't go say why.
+        let mut plan = Vec::new();
+        for i in 0..self.items.len() {
+            let it = &self.items[i];
+            if it.state != WAITING {
+                continue;
+            }
+            let Some(info) = it.info.clone() else { continue };
+            let path = it.path.clone();
+            let opts = self.options(&c, goal, it);
+            let verdict = self.verdict_for(&c, goal, it, &info, &enc);
+            let it = &mut self.items[i];
+            match verdict {
+                // (One file that fits can't be started: the page says so instead.)
+                Err((tag, why)) if tag == "Already fits" => {
+                    it.state = SKIPPED;
+                    it.tag = "Skipped".into();
+                    it.detail = why;
+                }
+                Err((tag, why)) if tag == "Can't fit" => {
+                    it.state = CANT;
+                    it.tag = tag;
+                    it.detail = why;
+                }
+                _ => plan.push((i, path, info, opts)),
+            }
+        }
+        if plan.is_empty() {
+            self.refresh(ui);
+            return;
+        }
+        // The preview's samples are no use while the encode runs.
+        if let Some(p) = self.preview_cancel.take() {
+            p.store(true, Ordering::SeqCst);
+        }
         let cancel = Arc::new(AtomicBool::new(false));
-        self.cancel = Some(cancel.clone());
-        let last_output = self.last_output.clone();
-
-        ui.set_cmp_running(true);
-        ui.set_cmp_progress(0.0);
-        ui.set_cmp_status("Starting…".into());
-        ui.set_cmp_has_output(false);
-        ui.set_cmp_can_start(false);
-
+        self.running = Some(cancel.clone());
+        c.set_running(true);
+        c.set_progress(0.0);
+        c.set_has_output(false);
+        c.set_status("Starting…".into());
+        let total = plan.len();
         let weak = ui.as_weak();
         std::thread::spawn(move || {
             let started = Instant::now();
-            let mut last = Instant::now() - Duration::from_secs(1);
-            let w = weak.clone();
-            let result = compress::run(&input, &info, &opts, &encoders, &cancel, |p| {
-                if last.elapsed() >= Duration::from_millis(100) || p.fraction >= 1.0 {
-                    last = Instant::now();
-                    let _ = w.upgrade_in_event_loop(move |ui| {
-                        ui.set_cmp_progress(p.fraction);
-                        ui.set_cmp_status(p.stage.into());
-                    });
+            let (mut saved, mut failed) = (0usize, 0usize);
+            for (n, (i, path, info, opts)) in plan.into_iter().enumerate() {
+                if cancel.load(Ordering::SeqCst) {
+                    break;
                 }
-            });
+                let w = weak.clone();
+                let _ = w.upgrade_in_event_loop(move |_| {
+                    with(|cmp| {
+                        if let Some(it) = cmp.items.get_mut(i) {
+                            it.state = RUNNING;
+                            it.tag = "Compressing".into();
+                            it.progress = 0.0;
+                        }
+                    })
+                });
+                let mut last = Instant::now() - Duration::from_secs(1);
+                let result = compress::run(&path, &info, &opts, &enc, &cancel, |p| {
+                    if last.elapsed() >= Duration::from_millis(120) || p.fraction >= 1.0 {
+                        last = Instant::now();
+                        let stage = if total > 1 { format!("{} of {total}: {}", n + 1, p.stage) } else { p.stage };
+                        let _ = w.upgrade_in_event_loop(move |ui| {
+                            let c = ui.global::<Compress>();
+                            c.set_progress((n as f32 + p.fraction) / total as f32);
+                            c.set_status(stage.into());
+                            with(|cmp| {
+                                if let Some(it) = cmp.items.get_mut(i) {
+                                    it.progress = p.fraction;
+                                }
+                                if cmp.items.len() > 1 {
+                                    cmp.refresh_files_only(&ui);
+                                }
+                            });
+                        });
+                    }
+                });
+                let cancelled = cancel.load(Ordering::SeqCst);
+                match &result {
+                    Ok(_) => saved += 1,
+                    Err(_) if !cancelled => failed += 1,
+                    _ => {}
+                }
+                let _ = weak.upgrade_in_event_loop(move |_| {
+                    with(|cmp| {
+                        let Some(it) = cmp.items.get_mut(i) else { return };
+                        match result {
+                            Ok(out) => {
+                                let before = part_bytes(&info, &opts);
+                                let pct = 100.0 - out.bytes as f64 / before.max(1) as f64 * 100.0;
+                                it.state = SAVED;
+                                it.tag = format!("Saved · {}", fmt::mb(out.bytes as f64));
+                                it.detail = format!("{} · {pct:.0}% smaller", out.plan.hint());
+                                it.output = Some(out.path.clone());
+                                cmp.last_output = Some(out.path);
+                            }
+                            Err(_) if cancelled => {
+                                it.state = CANCELLED;
+                                it.tag = "Cancelled".into();
+                                it.detail.clear();
+                            }
+                            Err(e) => {
+                                it.state = FAILED;
+                                it.tag = "Failed".into();
+                                it.detail = e.to_string();
+                            }
+                        }
+                    })
+                });
+            }
             let secs = started.elapsed().as_secs_f32();
             let _ = weak.upgrade_in_event_loop(move |ui| {
-                ui.set_cmp_running(false);
-                match result {
-                    Ok(out) => {
-                        let saved = 100.0 - out.bytes as f64 / info.size_bytes.max(1) as f64 * 100.0;
-                        ui.set_cmp_status(
-                            format!(
-                                "Saved · {} ({}, {saved:.0}% smaller) in {secs:.0}s",
-                                out.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-                                fmt::bytes(out.bytes as f64)
-                            )
-                            .into(),
-                        );
-                        ui.set_cmp_has_output(true);
-                        crate::background_ui::notify(
-                            &ui,
-                            crate::background_ui::Note {
-                                title: "Compressed".into(),
-                                body: format!(
-                                    "{} · {}",
-                                    out.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-                                    fmt::bytes(out.bytes as f64)
-                                ),
-                                image: None,
-                                file: Some(out.path.clone()),
-                                failed: false,
-                            },
-                        );
-                        *last_output.lock().unwrap() = Some(out.path);
+                with(|cmp| {
+                    cmp.running = None;
+                    let c = ui.global::<Compress>();
+                    let one = cmp.items.len() == 1;
+                    let status = if one {
+                        match cmp.items.first() {
+                            Some(it) if it.state == SAVED => format!(
+                                "Saved · {} ({}) in {secs:.0}s",
+                                it.output
+                                    .as_ref()
+                                    .and_then(|p| p.file_name())
+                                    .map(|n| n.to_string_lossy().into_owned())
+                                    .unwrap_or_default(),
+                                it.tag.trim_start_matches("Saved · ")
+                            ),
+                            Some(it) if it.state == CANCELLED => "Cancelled.".into(),
+                            Some(it) => it.detail.clone(),
+                            None => String::new(),
+                        }
+                    } else {
+                        let mut s = format!("{saved} saved");
+                        let skipped = cmp.items.iter().filter(|i| i.state == SKIPPED).count();
+                        if skipped > 0 {
+                            s.push_str(&format!(" · {skipped} already fit"));
+                        }
+                        if failed > 0 {
+                            s.push_str(&format!(" · {failed} failed"));
+                        }
+                        if cmp.items.iter().any(|i| i.state == CANCELLED) {
+                            s.push_str(" · cancelled");
+                        }
+                        format!("{s} · {secs:.0}s")
+                    };
+                    c.set_status(status.into());
+                    c.set_has_output(one && cmp.items.first().is_some_and(|i| i.state == SAVED));
+                    let note = if failed > 0 && saved == 0 {
+                        crate::background_ui::Note {
+                            title: "Couldn't compress it".into(),
+                            body: cmp
+                                .items
+                                .iter()
+                                .find(|i| i.state == FAILED)
+                                .map(|i| i.detail.clone())
+                                .unwrap_or_default(),
+                            image: None,
+                            file: None,
+                            failed: true,
+                        }
+                    } else {
+                        crate::background_ui::Note {
+                            title: if saved > 1 { format!("Compressed {saved} videos") } else { "Compressed".into() },
+                            body: c.get_status().to_string(),
+                            image: None,
+                            file: cmp.last_output.clone(),
+                            failed: false,
+                        }
+                    };
+                    if saved > 0 || failed > 0 {
+                        crate::background_ui::notify(&ui, note);
                     }
-                    Err(e) => {
-                        crate::background_ui::notify(
-                            &ui,
-                            crate::background_ui::Note {
-                                title: "Couldn't compress it".into(),
-                                body: e.to_string(),
-                                image: None,
-                                file: None,
-                                failed: true,
-                            },
-                        );
-                        ui.set_cmp_status(e.to_string().into())
-                    }
-                }
-                ui.invoke_cmp_options_changed();
+                    // Fresh preview next time the options change.
+                    cmp.preview_key.clear();
+                    cmp.refresh(&ui);
+                })
             });
         });
+        self.refresh(ui);
+    }
+
+    /// While a list runs: just the rows (the meters), not every goal again.
+    fn refresh_files_only(&self, ui: &AppWindow) {
+        let c = ui.global::<Compress>();
+        let model = c.get_files();
+        for (i, it) in self.items.iter().enumerate() {
+            if let Some(mut row) = slint::Model::row_data(&model, i) {
+                row.state = it.state;
+                row.tag = it.tag.clone().into();
+                row.progress = it.progress;
+                slint::Model::set_row_data(&model, i, row);
+            }
+        }
     }
 }
 
 pub fn install(ui: &AppWindow, file_for_job: impl Fn(u64) -> Option<PathBuf> + 'static) -> Rc<RefCell<Compressor>> {
     let cmp = Rc::new(RefCell::new(Compressor::default()));
+    CMP.with(|c| *c.borrow_mut() = Some(cmp.clone()));
+    let c = ui.global::<Compress>();
 
-    ui.on_cmp_open({
-        let (cmp, weak) = (cmp.clone(), ui.as_weak());
+    c.on_open_file({
+        let weak = ui.as_weak();
         move || {
-            if let Some(path) =
-                rfd::FileDialog::new().add_filter("Video", VIDEO_EXTENSIONS).add_filter("All files", &["*"]).pick_file()
+            if let Some(paths) = rfd::FileDialog::new()
+                .add_filter("Videos", VIDEO_EXTENSIONS)
+                .add_filter("All files", &["*"])
+                .pick_files()
             {
-                cmp.borrow_mut().open(&weak.unwrap(), &path);
+                let ui = weak.unwrap();
+                with(|c| c.add(&ui, paths));
             }
         }
     });
-
+    c.on_open_folder({
+        let weak = ui.as_weak();
+        move || {
+            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                let ui = weak.unwrap();
+                with(|c| c.add(&ui, vec![dir]));
+            }
+        }
+    });
+    c.on_open_path({
+        let weak = ui.as_weak();
+        move |path| {
+            let ui = weak.unwrap();
+            with(|c| c.add(&ui, vec![PathBuf::from(path.as_str())]));
+        }
+    });
     ui.on_cmp_job({
-        let (cmp, weak) = (cmp.clone(), ui.as_weak());
+        let weak = ui.as_weak();
         move |id| {
             if let Some(path) = file_for_job(id as u64).filter(|p| p.is_file()) {
-                cmp.borrow_mut().open(&weak.unwrap(), &path);
+                let ui = weak.unwrap();
+                with(|c| c.add(&ui, vec![path]));
             }
         }
     });
-
-    ui.on_cmp_options_changed({
-        let (cmp, weak) = (cmp.clone(), ui.as_weak());
-        move || {
-            // `cancel` doubles as the "running" flag; clear it once the job ended.
+    c.on_remove({
+        let weak = ui.as_weak();
+        move |i| {
             let ui = weak.unwrap();
-            let mut c = cmp.borrow_mut();
-            if !ui.get_cmp_running() {
-                c.cancel = None;
-            }
-            c.refresh(&ui);
-            // Dev hook for scripted checks: start once everything is ready.
-            if !c.autostarted && ui.get_cmp_can_start() && std::env::var_os("NERIA_COMPRESS_START").is_some() {
-                c.autostarted = true;
-                c.start(&ui);
-            }
+            with(|c| {
+                if (i as usize) < c.items.len() {
+                    c.items.remove(i as usize);
+                    c.preview_key.clear();
+                }
+                c.refresh(&ui);
+            });
         }
     });
-
-    ui.on_cmp_start({
-        let (cmp, weak) = (cmp.clone(), ui.as_weak());
-        move || cmp.borrow_mut().start(&weak.unwrap())
-    });
-
-    ui.on_cmp_cancel({
-        let cmp = cmp.clone();
+    c.on_clear({
+        let weak = ui.as_weak();
         move || {
-            if let Some(c) = &cmp.borrow().cancel {
-                c.store(true, Ordering::SeqCst);
-            }
+            let ui = weak.unwrap();
+            with(|c| c.clear(&ui));
         }
     });
-
-    ui.on_cmp_show_output({
-        let cmp = cmp.clone();
+    c.on_changed({
+        let weak = ui.as_weak();
         move || {
-            if let Some(path) = cmp.borrow().last_output.lock().unwrap().clone() {
-                crate::reveal(&path);
-            }
+            let ui = weak.unwrap();
+            with(|c| {
+                // Another goal: rows skipped or refused for the old one say what they'd get now.
+                if c.running.is_none() {
+                    for it in &mut c.items {
+                        if matches!(it.state, SKIPPED | CANT) {
+                            it.state = WAITING;
+                            it.tag.clear();
+                            it.detail.clear();
+                        }
+                    }
+                }
+                c.refresh(&ui)
+            });
         }
     });
-
-    ui.on_cmp_open_path({
-        let (cmp, weak) = (cmp.clone(), ui.as_weak());
-        move |path| cmp.borrow_mut().open(&weak.unwrap(), Path::new(path.as_str()))
+    c.on_fix({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            with(|c| {
+                let g = ui.global::<Compress>();
+                let Some(it) = c.items.first() else { return };
+                let (Some(info), Ok(goal)) = (it.info.clone(), goal_of(&g, g.get_goal())) else { return };
+                let mut opts = c.options(&g, goal, it);
+                opts.range = None;
+                if let Some(secs) = compress::longest_fit(&info, &opts, &c.encoders()) {
+                    g.set_trim_open(true);
+                    c.trim_opened(&ui);
+                    g.set_trim_in(0.0);
+                    g.set_trim_out(secs as f32);
+                    g.set_chapter(-1);
+                    c.trim_text(&ui);
+                }
+                c.refresh(&ui);
+            });
+        }
+    });
+    c.on_play_sample({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            with(|c| c.play_sample(&ui));
+        }
+    });
+    c.on_trim_changed({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            with(|c| {
+                let g = ui.global::<Compress>();
+                if g.get_trim_open() {
+                    c.trim_opened(&ui);
+                }
+                g.set_chapter(-1);
+                c.trim_text(&ui);
+                c.refresh(&ui);
+            });
+        }
+    });
+    c.on_trim_whole({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            with(|c| {
+                let g = ui.global::<Compress>();
+                g.set_trim_in(0.0);
+                g.set_trim_out(g.get_duration());
+                g.set_chapter(-1);
+                c.trim_text(&ui);
+                c.refresh(&ui);
+            });
+        }
+    });
+    c.on_trim_chapter({
+        let weak = ui.as_weak();
+        move |i| {
+            let ui = weak.unwrap();
+            with(|c| {
+                let g = ui.global::<Compress>();
+                if let Some(ch) =
+                    c.items.first().and_then(|it| it.info.as_ref()).and_then(|info| info.chapters.get(i as usize))
+                {
+                    g.set_trim_in(ch.start as f32);
+                    g.set_trim_out(ch.end as f32);
+                }
+                c.trim_text(&ui);
+                c.refresh(&ui);
+            });
+        }
+    });
+    c.on_start({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            with(|c| c.start(&ui));
+        }
+    });
+    c.on_cancel(|| {
+        with(|c| {
+            if let Some(x) = &c.running {
+                x.store(true, Ordering::SeqCst);
+            }
+        })
+    });
+    c.on_show(|i| {
+        with(|c| {
+            let path =
+                if i < 0 { c.last_output.clone() } else { c.items.get(i as usize).and_then(|it| it.output.clone()) };
+            if let Some(p) = path {
+                crate::reveal(&p);
+            }
+        })
     });
 
     cmp
+}
+
+/// Dev hooks for scripted checks (see CLAUDE.md): `NERIA_COMPRESS` (files or folders,
+/// separated by `;`), `NERIA_COMPRESS_GOAL` (`discord`, `email`, `whatsapp`, `sharp`, `tiny`
+/// or a size in MB), `NERIA_COMPRESS_TRIM` (`in,out` seconds), `NERIA_COMPRESS_ADVANCED`
+/// (open the fold).
+pub fn dev_hooks(ui: &AppWindow) {
+    let c = ui.global::<Compress>();
+    if let Ok(goal) = std::env::var("NERIA_COMPRESS_GOAL") {
+        let names = ["discord", "email", "whatsapp", "sharp", "tiny"];
+        match names.iter().position(|n| goal.eq_ignore_ascii_case(n)) {
+            Some(i) => c.set_goal(i as i32),
+            None => {
+                c.set_goal(5);
+                c.set_custom_mb(goal.into());
+            }
+        }
+    }
+    if std::env::var_os("NERIA_COMPRESS_ADVANCED").is_some() {
+        c.set_advanced_open(true);
+    }
+    if let Some(v) = std::env::var_os("NERIA_COMPRESS") {
+        let paths: Vec<PathBuf> =
+            v.to_string_lossy().split(';').filter(|s| !s.trim().is_empty()).map(PathBuf::from).collect();
+        with(|cmp| cmp.add(ui, paths));
+    }
+    if let Ok(t) = std::env::var("NERIA_COMPRESS_TRIM")
+        && let Some((a, b)) = t.split_once(',')
+        && let (Ok(a), Ok(b)) = (a.trim().parse::<f32>(), b.trim().parse::<f32>())
+    {
+        // Once the file is read (its length), so the strip and the hints use it.
+        let weak = ui.as_weak();
+        std::thread::spawn(move || {
+            for _ in 0..100 {
+                std::thread::sleep(Duration::from_millis(200));
+                let done = Arc::new(AtomicBool::new(false));
+                let d = done.clone();
+                let _ = weak.upgrade_in_event_loop(move |ui| {
+                    with(|cmp| {
+                        if cmp.items.first().is_some_and(|i| i.info.is_some()) {
+                            let c = ui.global::<Compress>();
+                            c.set_trim_open(true);
+                            cmp.trim_opened(&ui);
+                            c.set_trim_in(a);
+                            c.set_trim_out(b);
+                            cmp.trim_text(&ui);
+                            cmp.refresh(&ui);
+                            d.store(true, Ordering::SeqCst);
+                        }
+                    })
+                });
+                std::thread::sleep(Duration::from_millis(50));
+                if done.load(Ordering::SeqCst) {
+                    break;
+                }
+            }
+        });
+    }
 }

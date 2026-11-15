@@ -370,3 +370,108 @@ export global Music {
     // Settings: pick a folder of songs and add lyrics to them.
     callback add-lyrics();
 }
+
+// Compress page (Compress track): goals in plain words, what it'll look like, before /
+// after, several files, trimming. Rust owns the files and works out every text.
+export struct CmpGoal {
+    name: string, // "For Discord"
+    hint: string, // "720p 30 fps, a bit softer" (the open file; "" with several)
+    size: string, // "20 MB", "about 48 MB", "Working it out…"
+    // The goal doesn't work for this file (too long, already fits): the hint says why.
+    warn: bool,
+}
+
+export struct CmpFile {
+    name: string,
+    meta: string, // "2:14 · 312 MB"
+    thumb: image,
+    // 0 waiting, 1 compressing, 2 saved, 3 skipped (already fits), 4 can't, 5 failed, 6 cancelled
+    state: int,
+    tag: string, // "Saved · 19.4 MB", "Skipped", "Can't fit"
+    detail: string, // the plan's hint, or why not
+    progress: float,
+}
+
+export global Compress {
+    // ── The files ──
+    // Nothing open / one file / several.
+    in property <int> count;
+    in property <[CmpFile]> files;
+    // One file: its card.
+    in property <string> name;
+    in property <string> info; // "1920×1080 · 60 fps · 2:14 · 312 MB · h264"
+    in property <image> thumb;
+    in property <bool> reading; // still reading the file (or files)
+
+    // ── Goal ──
+    // 0 Discord, 1 email, 2 WhatsApp, 3 smaller still sharp, 4 as small as possible, 5 custom
+    in-out property <int> goal;
+    in-out property <string> custom-mb: "50";
+    in property <[CmpGoal]> goals;
+
+    // ── What you get (one file) ──
+    in property <string> verdict; // "720p 30 fps, a bit softer"
+    in property <string> sizes; // "312 MB → 20 MB · 94% smaller"
+    // A problem with the goal for this file, said plainly, and what would help.
+    in property <string> problem;
+    in property <string> fix-text; // "Keep the first 1:40" ("" = no quick fix)
+    // Before / after at the same moment.
+    in property <image> before;
+    in property <image> after;
+    in property <string> after-label; // "After · 720p"
+    in property <bool> preview-busy;
+    in property <bool> sample-busy;
+
+    // ── Advanced ──
+    in-out property <bool> advanced-open;
+    in property <string> advanced-line; // "Plays everywhere · graphics card · 720p · sound 96 kbps"
+    // 0 plays everywhere (H.264), 1 smaller (H.265), 2 smallest (AV1)
+    in-out property <int> format;
+    in property <string> format-warning; // "May not play in Discord on some phones."
+    in-out property <bool> use-gpu: true;
+    in property <bool> gpu-available;
+    in property <string> gpu-text: "Use my graphics card (faster)";
+    // 0 auto, 1 keep it, 2 1080p, 3 720p, 4 480p
+    in-out property <int> picture;
+    // 0 128 kbps, 1 96, 2 64, 3 no sound
+    in-out property <int> sound: 1;
+    in-out property <bool> keep-tracks: true;
+    in property <string> tracks-text; // "2 sound tracks, captions and chapters" ("" = nothing extra)
+    in-out property <bool> cut-bars: true;
+    in property <string> bars-text; // "Black bars found (1920×800)" ("" = none)
+    in property <string> summary; // the technical line
+
+    // ── Trim (one file) ──
+    in-out property <bool> trim-open;
+    in property <float> duration;
+    in-out property <float> trim-in;
+    in-out property <float> trim-out;
+    in property <[image]> strip;
+    // Chapter names (a chip each picks its part); `chapter` is the picked one (-1 none).
+    in property <[string]> chapters;
+    in-out property <int> chapter: -1;
+    in property <string> trim-text; // "1:12 of 2:14"
+
+    // ── Running ──
+    in property <bool> running;
+    in property <float> progress;
+    in property <string> status;
+    in property <bool> has-output;
+    in property <bool> can-start;
+    in property <string> start-text: "Compress";
+
+    callback open-file(); // Open file(s)…
+    callback open-folder();
+    callback open-path(string);
+    callback remove(int);
+    callback clear();
+    callback changed(); // any option
+    callback fix(); // the problem's quick fix
+    callback play-sample();
+    callback trim-changed(); // In / Out moved (Rust snaps and says the length)
+    callback trim-whole();
+    callback trim-chapter(int);
+    callback start();
+    callback cancel();
+    callback show(int); // a finished file in Explorer (-1: the one file)
+}

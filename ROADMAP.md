@@ -659,16 +659,69 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
    the edge over minutes
 
 ### Compress: understandable for everyone, advanced when needed
-1. Plain goals instead of numbers: **For Discord** (20 MB) · **For email** (25 MB) · **For
-   WhatsApp** · **Smaller, still sharp** · **As small as possible** · Custom size. Each says
-   what it'll look like: "1080p, looks the same" / "720p, a bit softer"
-2. **Plain-language options**: "Plays everywhere / Smaller / Smallest" instead of H.264 /
-   H.265 / AV1; "Use my graphics card (faster)". Everything technical stays under an
-   **Advanced** fold
-3. **Before/after**: original vs. estimated size up front, then actual size and "% smaller";
-   a side-by-side (or slider) frame comparison before committing
-4. **Batch**: drop several files or a folder, same settings for all, one progress list
-5. **Trim inside the compressor** (simple In/Out, without going to the Clip page)
+Built 2026-11-15 on branch `compress-track` (mock: `design/compress-track.html`, direction A
+"goal list" picked; ideas and numbers from HandBrake's presets, see `docs/UPSTREAM.md`).
+Ticked only where a real-file check covered it; the rest is in `docs/TESTING-compress-track.md`.
+1. ✅ **Plain goals instead of numbers** (`compress::Goal`, `compressor.rs`): a list where every
+   goal is a row with what it'll look like and its size for this file: **For Discord** (20 MB:
+   Discord's free limit went back to 20 MB on 2026-08-14), **For email** (18 MB, not 25: mail
+   grows attachments by a third, so 25 MB messages hold ~18 MB of file), **For WhatsApp**
+   (16 MB, the lowest figure sources give), **Smaller, still sharp** (H.264 22, HandBrake's
+   default), **As small as possible** (27 at 720p 30 fps, its "Social" ceiling), Custom size.
+   Hints come from the plan for this file ("720p 30 fps, a bit softer", "blurry"), measured
+   on the short side so phone videos say "720p" too. A goal that can't work says so in the row
+   (warn colour): "already under 20 MB" (Compress turns into "Already fits"), "too long to
+   look OK" with **"Keep the first 1:40"** (opens Trim at the longest part that fits), or, for
+   the look goals on a file that's already packed tight, "won't get smaller". Checked: a 10 min
+   file (Discord 360p, WhatsApp blurry with "Keep the first 8:13"), a 40 s film, a 20 s file
+   that already fits everything, at 400 / 720 / 900 / 1000 / 1280 wide
+2. ✅ **Plain-language options**, under an **Advanced** fold whose header line says what's set
+   ("Plays everywhere · graphics card · picture as needed · sound 96 kbps"): Format (Plays
+   everywhere / Smaller / Smallest; picking Smaller or Smallest with a sending goal warns it may
+   not play there), "Use my graphics card (faster) · Intel Quick Sync" (or why it can't), Picture
+   (Auto / Keep it / 1080p / 720p / 480p), Sound, and from HandBrake: **keep every sound track,
+   the text captions and the chapters** (picture captions can't go in an .mp4: the technical
+   line says how many were left out), **cut off the black bars** (found by looking at five
+   places, on by default when found), deinterlacing interlaced files (only the combed frames,
+   frame rate kept), a slower encoder setting when the size is tight. The technical line
+   stays at the bottom of the fold. Fixes on the way: phone videos stored sideways were
+   squashed when scaled (now turned first); an Intel graphics card overshot the size on every
+   redo and failed (now the redo goes to the processor's two passes, which hit it: 12.3 MB →
+   11.9 MB for a 12 MB goal); sizes now count MB the way the limits do (1,000,000 bytes), so
+   19.6 MB no longer reads "18.7 MB" or "19.3 MB is a bit over 20 MB". Checked: a letterboxed
+   film with 2 sound tracks, captions and chapters (1920×800 out, all kept), a sideways phone
+   video (720×1280 out), an interlaced 576i file (25 fps kept)
+3. ✅ **Before / after**: "312 MB → up to 20 MB · 94% smaller" under the verdict, and the same
+   moment before and after in a slider (drag or ← →), from a 2 s sample encoded with the real
+   settings a moment after the options settle; the look goals' sizes are measured from three
+   2 s samples ("about 75.6 MB": the real encode came out 73.9 MB). "Play a 10 s sample" encodes
+   10 s from the middle and opens it in your video player (HandBrake's live preview). After
+   the run: the real size and "% smaller". Never blocks Compress. Not yet checked: Play a
+   sample pressed in the window (the sample itself checked headless)
+4. ✅ **Several files**: "Open videos…" picks several, "Open a folder…" takes the videos in it,
+   dropping several files or a folder on the Compress page adds them; one goal for all, each row
+   says what it'll get ("360p, a bit softer", "Already fits", "Can't fit"); files that already
+   fit are skipped, one failing doesn't stop the rest, Cancel stops the list (finished files
+   stay; "Compress 2 videos" goes on with the rest). Files are read three at a time. The button
+   counts what will really be made ("Compress 3 videos", "Nothing to compress"). Checked: a
+   folder of 5 with WhatsApp: 3 compressed under 16 MB (15.4 / 16.0 / 15.9), 2 skipped; Cancel
+   pressed (a posted click) during the second: the first saved with Show, the second
+   "Cancelled" with no half file left, the button offered the 2 left; a folder dropped on the
+   page (`NERIA_DROP`) listed its 8 videos. Not yet checked: several files dragged from
+   Explorer at once (the OLE drop takes them all now)
+5. ✅ **Trim inside Compress**: "Trim…" on the file opens a filmstrip with two grips (drag, or
+   ← → with Shift for 10 s), the times, "Whole video", and a chip per chapter; the hints,
+   sizes and the start button ("Compress 0:18") follow the part; a trimmed part never counts
+   as "already fits" (it isn't a file yet), nor does an .mkv or .avi (apps don't play them).
+   Checked: 0:12–0:30 of the film (chapters moved with it: 0:00–0:08, 0:08–0:18); posted
+   clicks: Trim opened the strip on the whole video, dragging the end grip set 0:28 and
+   "Compress 0:28"; the before/after line follows a drag. Light theme checked (marks over
+   video stay light). Known: with captions and chapters in
+   the same .mp4, ffmpeg's QuickTime chapter track is broken (VLC/mpv read the chapters,
+   Apple's players won't)
+Dev hooks: `NERIA_COMPRESS` (files or folders, `;` between), `NERIA_COMPRESS_GOAL`,
+`NERIA_COMPRESS_TRIM`, `NERIA_COMPRESS_ADVANCED`; ui-check `cmp-film`, `cmp-long`, `cmp-trim`,
+`cmp-sharp`, `cmp-many`.
 
 ## Livestreams (own milestone)
 - Two ways to record, picked automatically and said plainly on the preview:

@@ -1035,9 +1035,7 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             if let Some(path) = std::env::var_os("NERIA_OPEN") {
                 ui.invoke_clip_open_path(path.to_string_lossy().as_ref().into());
             }
-            if let Some(path) = std::env::var_os("NERIA_COMPRESS") {
-                ui.invoke_cmp_open_path(path.to_string_lossy().as_ref().into());
-            }
+            compressor::dev_hooks(&ui);
             if let Ok(page) = std::env::var("NERIA_PAGE") {
                 let names = ["download", "clip", "compress"];
                 if let Some(i) = names.iter().position(|n| page.eq_ignore_ascii_case(n)) {

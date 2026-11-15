@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria Compress Track</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Page chrome (around the mocks) follows the viewer's theme; the app frames are the app's dark theme. */
+:root {
+  --bg: #f4f0e6; --panel: #fffdf8; --raised: #ebe5d7; --line: #e2dccd; --line-strong: #cfc7b4;
+  --ink: #151412; --muted: #6b665c; --pop: #ffd23f; --on-pop: #1a1405; --bad: #ba352c;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: "Inter Tight", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  /* app tokens (dark), from docs/DESIGN.md */
+  --a-bg: #141416; --a-panel: #1b1b1e; --a-line: #26262a; --a-strong: #34343a; --a-ink: #f1efe9;
+  --a-muted: #8e8c88; --a-dim: #6e6c68; --a-pop: #ffd23f; --a-shadow: #9a6f00; --a-hard: #000;
+  --a-ok: #7fd6a4; --a-ok-bg: #173326; --a-warn: #f5b14a; --a-warn-bg: #3a2a12; --a-bad: #ff7b72; --a-bad-bg: #3a1a1a;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e0e10; --panel: #18181b; --raised: #222226; --line: #26262a; --line-strong: #34343a;
+  --ink: #f1efe9; --muted: #8e8c88; --bad: #ff7b72; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e0e10; --panel: #18181b; --raised: #222226; --line: #26262a; --line-strong: #34343a;
+  --ink: #f1efe9; --muted: #8e8c88; --bad: #ff7b72; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body);
+  padding: 28px 16px 64px }
+main { max-width: 1290px; margin: 0 auto; display: grid; gap: 40px }
+h1, h2, h3 { font-family: var(--display); letter-spacing: -0.02em; margin: 0; text-wrap: balance }
+h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.1 }
+h2 { font-size: 22px }
+p { margin: 0; max-width: 72ch }
+.lede { color: var(--muted); margin-top: 10px }
+.note { color: var(--muted); font-size: 14px }
+.note b { color: var(--ink); font-weight: 600 }
+.tag { font: 700 11px var(--display); letter-spacing: .06em; text-transform: uppercase; border-radius: 6px;
+  padding: 2px 8px; background: var(--raised); color: var(--muted) }
+.tag.today { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad) }
+.tag.idea { background: var(--pop); color: var(--on-pop) }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px }
+section { display: grid; gap: 14px }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px; align-items: start }
+.pair > div:first-child { overflow-x: auto }
+.pair > div:first-child .app { width: 860px }
+@media (max-width: 1340px) { .pair { grid-template-columns: minmax(0, 1fr) } .pair .phone { max-width: 400px } }
+.cap { font: 500 12px var(--mono); color: var(--muted); margin-bottom: 6px }
+table.limits { border-collapse: collapse; font-size: 14px; width: 100%; max-width: 820px }
+table.limits td, table.limits th { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top }
+table.limits th { font: 700 12px var(--display); color: var(--muted); text-transform: uppercase; letter-spacing: .05em }
+.mono { font-family: var(--mono); font-size: 13px }
+
+/* ── App frame ── */
+.app { background: var(--a-bg); color: var(--a-ink); border-radius: 12px; border: 1px solid #000;
+  padding: 26px; display: grid; gap: 16px; font-size: 14px; min-width: 0; overflow: hidden }
+.phone .app { padding: 16px; gap: 12px }
+.app h3 { font-size: 26px; letter-spacing: -0.02em }
+.app .sub { color: var(--a-muted); font-size: 13px; margin-top: 2px }
+.file { display: flex; gap: 14px; align-items: center; min-width: 0 }
+.thumb { width: 160px; aspect-ratio: 16/9; border-radius: 10px; flex: none;
+  background: linear-gradient(135deg, #3a5a7a, #c98a4a 60%, #2a2a30) }
+.phone .thumb { width: 100px }
+.file .t { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.file .i { font: 11.5px var(--mono); color: var(--a-muted) }
+.file > div { min-width: 0 }
+.hr { height: 1px; background: var(--a-line) }
+.lbl { font-size: 13px; color: var(--a-muted) }
+.chips { display: flex; flex-wrap: wrap; gap: 8px }
+.chip { font: 500 13px var(--body); color: var(--a-ink); background: none; border: 2px solid var(--a-strong);
+  border-radius: 9px; padding: 5px 11px; cursor: pointer; text-align: left }
+.chip.on { background: var(--a-ink); color: var(--a-bg); border-color: var(--a-ink) }
+.chip small { display: block; font: 11.5px var(--mono); opacity: .75 }
+.mut { color: var(--a-muted) }
+.verdict { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline }
+.verdict .big { font: 700 18px var(--display) }
+.verdict .num { font: 500 12.5px var(--mono); color: var(--a-muted) }
+.warnline { color: var(--a-warn); font-size: 13px; display: flex; gap: 8px }
+.bar { display: flex; gap: 8px; align-items: center; justify-content: flex-end }
+.bar .status { flex: 1; color: var(--a-muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.primary { font: 700 14px var(--display); background: var(--a-pop); color: var(--on-pop); border: 2px solid var(--a-hard);
+  border-radius: 10px; padding: 9px 18px; box-shadow: 3px 3px 0 var(--a-shadow); cursor: pointer }
+.ghost { font: 500 13px var(--body); background: none; color: var(--a-muted); border: 2px solid var(--a-strong);
+  border-radius: 10px; padding: 8px 14px; cursor: pointer }
+.ghost.small { padding: 3px 10px; border-radius: 8px; font-size: 12.5px }
+.phone .primary { width: 100% }
+.tagx { font: 600 11px var(--display); border-radius: 6px; padding: 1px 7px; white-space: nowrap }
+.tagx.ok { background: var(--a-ok-bg); color: var(--a-ok) } .tagx.warn { background: var(--a-warn-bg); color: var(--a-warn) }
+.tagx.bad { background: var(--a-bad-bg); color: var(--a-bad) }
+
+/* Direction A: goal list */
+.goals { display: grid; gap: 0; border-top: 1px solid var(--a-line) }
+.goal { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center;
+  padding: 9px 4px; border-bottom: 1px solid var(--a-line); cursor: pointer; background: none; border-left: 0; border-right: 0;
+  border-top: 0; color: inherit; font: inherit; text-align: left }
+.goal .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--a-strong) }
+.goal.on .dot { border: 6px solid var(--a-ink) }
+.goal .n { font-weight: 600 }
+.goal .h { color: var(--a-muted); font-size: 13px }
+.goal .s { font: 12px var(--mono); color: var(--a-muted); text-align: right; white-space: nowrap }
+.goal.on .s { color: var(--a-ink) }
+.phone .goal { grid-template-columns: 22px minmax(0, 1fr) }
+.phone .goal .s { grid-column: 2; text-align: left }
+
+/* Direction C: two groups */
+.grp { display: grid; gap: 6px }
+
+/* shared: compare */
+.compare { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 16/9; background: #000; user-select: none; touch-action: none }
+.compare canvas { position: absolute; inset: 0; width: 100%; height: 100% }
+.compare .after { clip-path: inset(0 0 0 50%) }
+.compare .knob { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--a-ink); left: 50%; cursor: ew-resize }
+.compare .knob::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: var(--a-ink); color: var(--a-bg); border-radius: 8px; padding: 2px 6px; font-size: 13px }
+.compare .lab { position: absolute; top: 8px; font: 600 11px var(--display); background: #000a; padding: 2px 7px; border-radius: 6px }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start }
+.phone .split { grid-template-columns: 1fr }
+details.adv summary { cursor: pointer; color: var(--a-muted); font-size: 13px; list-style: none }
+details.adv summary::before { content: "▸ "; } details.adv[open] summary::before { content: "▾ " }
+details.adv .rows { display: grid; gap: 12px; margin-top: 12px }
+.tick { display: flex; gap: 8px; align-items: center; font-size: 13px }
+.tick i { width: 18px; height: 18px; border-radius: 6px; background: var(--a-ink); display: inline-block }
+
+/* batch + trim */
+.brow { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 9px 0;
+  border-bottom: 1px solid var(--a-line) }
+.brow .th { width: 64px; height: 36px; border-radius: 6px; background: linear-gradient(135deg, #4a3a6a, #7ab0a0) }
+.brow .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.brow .m { font: 11.5px var(--mono); color: var(--a-muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.meter { height: 6px; border-radius: 3px; background: var(--a-line); overflow: hidden; margin-top: 4px }
+.meter i { display: block; height: 100%; background: var(--a-pop) }
+.strip { position: relative; height: 48px; border-radius: 8px; overflow: hidden;
+  background: repeating-linear-gradient(90deg, #2c3a4a 0 60px, #3a4a3a 60px 120px, #4a3a30 120px 180px) }
+.strip .veil { position: absolute; top: 0; bottom: 0; background: #000b }
+.strip .h { position: absolute; top: 0; bottom: 0; width: 8px; background: var(--a-ink); border-radius: 3px; cursor: ew-resize }
+.times { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font: 12.5px var(--mono) }
+.times .box { border: 2px solid var(--a-strong); border-radius: 8px; padding: 3px 8px; background: var(--a-panel) }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>Compress track: goals you can understand</h1>
+  <p class="lede">Roadmap items 1–5 under "Compress". Three ways to pick the goal (A, B, C), each at 900 and 400 wide, then one shared
+    treatment for the rest: the before / after, Advanced, several files, and trimming. Click the goals: the hints and numbers are worked
+    out the way the app would, for a 2:14 1080p60 clip of 312 MB.</p>
+</header>
+
+<section>
+  <div class="head"><h2>Upload limits, checked 2026-11-15</h2></div>
+  <table class="limits">
+    <tr><th>Goal</th><th>Neria aims for</th><th>Why</th></tr>
+    <tr><td>For Discord</td><td class="mono">20 MB</td><td>Discord's free limit went back to 20 MB on 14 Aug 2026 (it was 10 MB). Nitro Basic: 50 MB.</td></tr>
+    <tr><td>For email</td><td class="mono">18 MB</td><td>Gmail and Outlook allow 25 MB per message, but attachments grow by about a third when sent, so ~18 MB of file is what fits. The roadmap said 25 MB: that would bounce.</td></tr>
+    <tr><td>For WhatsApp</td><td class="mono">16 MB</td><td>Sources disagree (16, 64 or 100 MB for a video sent as a video). 16 MB works everywhere; WhatsApp re-compresses anyway.</td></tr>
+  </table>
+  <p class="note">All three goals use H.264 ("Plays everywhere"), because a file for Discord or WhatsApp has to play in the app it's sent to. Picking Smaller or Smallest under Advanced while one of them is picked says so: "May not play in Discord on some phones."</p>
+</section>
+
+<section>
+  <div class="head"><span class="tag today">Today</span><h2>What's there now</h2></div>
+  <p class="note">"Fit a size / Pick a quality", sizes with no idea of what they'll look like, H.264 / H.265 / AV1, and one long technical line ("1280×720 · 30 fps · 1114 kbps video · 96 kbps audio · H.264 on NVIDIA NVENC").</p>
+</section>
+
+<section id="A">
+  <div class="head"><span class="tag idea">A</span><h2>Goal list</h2></div>
+  <p class="note">Every goal is a row with what it'll look like and its size, so you compare them at a glance before picking. Most to read, least to click.</p>
+  <div class="pair"><div><div class="cap">900 wide</div><div class="app" data-dir="A"></div></div>
+    <div class="phone"><div class="cap">400 wide</div><div class="app" data-dir="A"></div></div></div>
+</section>
+
+<section id="B">
+  <div class="head"><span class="tag idea">B</span><h2>Chips and a verdict</h2></div>
+  <p class="note">The goals as chips (like the quality chips on Download), and one big verdict line for the picked one. Compact, but you only see one hint at a time.</p>
+  <div class="pair"><div><div class="cap">900 wide</div><div class="app" data-dir="B"></div></div>
+    <div class="phone"><div class="cap">400 wide</div><div class="app" data-dir="B"></div></div></div>
+</section>
+
+<section id="C">
+  <div class="head"><span class="tag idea">C</span><h2>Sending it / keeping it</h2></div>
+  <p class="note">Two short rows of chips: where it's going (a fixed size) or keeping it (a look, the size follows). Each chip carries its hint on a second line.</p>
+  <div class="pair"><div><div class="cap">900 wide</div><div class="app" data-dir="C"></div></div>
+    <div class="phone"><div class="cap">400 wide</div><div class="app" data-dir="C"></div></div></div>
+</section>
+
+<section>
+  <div class="head"><span class="tag">All</span><h2>Several files at once</h2></div>
+  <p class="note">Drop several files or a folder (or pick several). One goal for all; each file gets its own plan and hint. A file that already fits is skipped and says so. One failing doesn't stop the rest. Cancel stops the whole list; finished files stay.</p>
+  <div class="pair"><div><div class="cap">900 wide</div><div class="app" id="batch"></div></div>
+    <div class="phone"><div class="cap">400 wide</div><div class="app" id="batch2"></div></div></div>
+</section>
+
+<section>
+  <div class="head"><span class="tag">All</span><h2>Trim before compressing</h2></div>
+  <p class="note">"Trim…" by the file opens a strip under the file card: drag the ends or type the times. A shorter part fits a sharper picture into the same 20 MB, so the hints update as you drag. Only for one file.</p>
+  <div class="pair"><div><div class="cap">900 wide</div><div class="app" id="trim"></div></div>
+    <div class="phone"><div class="cap">400 wide</div><div class="app" id="trim2"></div></div></div>
+</section>
+
+<section>
+  <h2>How the hints work</h2>
+  <p class="note">From the real plan for that file: the height it'll be (against the original) and how much room the bitrate has over what the format needs at that size.
+    Plenty of room at the original size → <b>looks the same</b>; some → <b>nearly the same</b>; just enough → <b>a bit softer</b>; downscaled under 480p → <b>soft</b>, under 360p → <b>blurry</b>.
+    "Keeping it" goals have no fixed size, so Neria encodes three 2-second samples with the real settings a moment after you pick (about a second with a graphics card) to say "about 48 MB". The same samples give the after frame. The estimate never blocks Compress.</p>
+</section>
+
+</main>
+<script>
+const SRC = { w: 1920, h: 1080, fps: 60, dur: 134, mb: 312, name: "Rocket League – best goals 2026.mp4" };
+const MIN_BPP = 0.035;
+const GOALS = [
+  { id: "discord", name: "For Discord", short: "Discord", mb: 20, group: "send" },
+  { id: "email", name: "For email", short: "Email", mb: 18, group: "send" },
+  { id: "wa", name: "For WhatsApp", short: "WhatsApp", mb: 16, group: "send" },
+  { id: "sharp", name: "Smaller, still sharp", short: "Smaller, still sharp", q: 0.7, group: "keep" },
+  { id: "tiny", name: "As small as possible", short: "As small as possible", q: 0.25, group: "keep" },
+  { id: "custom", name: "Custom size…", short: "Custom…", mb: 50, group: "send" },
+];
+function planFor(g, dur) {
+  dur = dur || SRC.dur;
+  if (g.q !== undefined) {
+    // quality goals: estimated from samples (mocked)
+    const h = g.id === "sharp" ? 1080 : 720;
+    const est = g.id === "sharp" ? 48 * dur / SRC.dur : 14 * dur / SRC.dur;
+    return { h, fps: g.id === "sharp" ? 60 : 30, mb: est, about: true, look: g.id === "sharp" ? "looks the same" : "softer, still clear" };
+  }
+  const kbps = g.mb * 8000 / dur * 0.96 - 96;
+  let fps = 60;
+  const bpp = (h, f) => kbps * 1000 / (h * 16 / 9 * h * f);
+  if (bpp(720, 60) < MIN_BPP) fps = 30;
+  const h = [1080, 720, 540, 480, 360, 240].find(h => bpp(h, fps) >= MIN_BPP) || 240;
+  const room = bpp(h, fps) / MIN_BPP;
+  let look = h === 1080 ? (room > 2.5 ? "looks the same" : room > 1.4 ? "looks nearly the same" : "a bit softer")
+    : h >= 480 ? "a bit softer" : h >= 360 ? "soft" : "blurry";
+  return { h, fps, mb: g.mb, about: false, look };
+}
+const hint = (p) => `${p.h}p${p.fps < SRC.fps ? " " + p.fps + " fps" : ""}, ${p.look}`;
+const size = (p) => `${p.about ? "about " : ""}${Math.round(p.mb)} MB`;
+const pct = (p) => `${Math.round(100 - p.mb / SRC.mb * 100)}% smaller`;
+
+function fileCard() {
+  return `<div class="file"><div class="thumb"></div><div><div class="t">${SRC.name}</div>
+    <div class="i">1920×1080 · 60 fps · 2:14 · 312 MB · h264</div></div></div>`;
+}
+function advanced(g) {
+  return `<details class="adv"><summary>Advanced: plays everywhere · graphics card · ${planFor(g).h}p · audio 96 kbps</summary><div class="rows">
+    <div class="grp"><span class="lbl">Format</span><div class="chips"><button class="chip on">Plays everywhere</button><button class="chip">Smaller</button><button class="chip">Smallest</button></div></div>
+    <label class="tick"><i></i> Use my graphics card (faster) <span class="mut">· NVIDIA</span></label>
+    <div class="grp"><span class="lbl">Picture</span><div class="chips"><button class="chip on">Auto</button><button class="chip">Keep 1080p</button><button class="chip">720p</button><button class="chip">480p</button></div></div>
+    <div class="grp"><span class="lbl">Sound</span><div class="chips"><button class="chip">128 kbps</button><button class="chip on">96 kbps</button><button class="chip">64 kbps</button><button class="chip">No sound</button></div></div>
+    <div class="mut" style="font:11.5px var(--mono)">1280×720 · 30 fps · 1114 kbps video · H.264 on NVIDIA NVENC · two passes</div>
+  </div></details>`;
+}
+function compare(g) {
+  const p = planFor(g);
+  return `<div class="compare" data-h="${p.h}"><canvas class="before"></canvas><canvas class="after"></canvas>
+    <span class="lab" style="left:8px">Now · 1080p</span><span class="lab" style="right:8px">After · ${p.h}p</span><div class="knob"></div></div>`;
+}
+function verdictBlock(g) {
+  const p = planFor(g);
+  return `<div class="grp"><div class="verdict"><span class="big">${hint(p)}</span></div>
+    <div class="verdict"><span class="num">312 MB → ${size(p)} · ${pct(p)}</span></div></div>`;
+}
+function bar(phone) {
+  return phone ? `<button class="primary">Compress</button>` :
+    `<div class="bar"><span class="status"></span><button class="primary">Compress</button></div>`;
+}
+function goalPicker(dir, g, phone) {
+  if (dir === "A") {
+    return `<div class="goals">${GOALS.map(x => { const p = planFor(x);
+      return `<button class="goal ${x === g ? "on" : ""}" data-goal="${x.id}"><span class="dot"></span>
+        <span><span class="n">${x.name}</span>${phone ? "" : ` <span class="h">· ${hint(p)}</span>`}</span>
+        <span class="s">${phone ? hint(p) + " · " : ""}${x.id === "custom" ? "50 MB ✎" : size(p)}</span></button>`; }).join("")}</div>`;
+  }
+  if (dir === "B") {
+    return `<div class="grp"><span class="lbl">Goal</span><div class="chips">${GOALS.map(x =>
+      `<button class="chip ${x === g ? "on" : ""}" data-goal="${x.id}">${x.short}${x.mb && x.id !== "custom" ? " · " + x.mb + " MB" : ""}</button>`).join("")}</div></div>`;
+  }
+  const row = (grp, label) => `<div class="grp"><span class="lbl">${label}</span><div class="chips">${GOALS.filter(x => x.group === grp).map(x => { const p = planFor(x);
+    return `<button class="chip ${x === g ? "on" : ""}" data-goal="${x.id}">${x.short}<small>${x.id === "custom" ? "pick a size" : (x.mb ? x.mb + " MB · " : "") + p.h + "p"}</small></button>`; }).join("")}</div></div>`;
+  return row("send", "Sending it") + row("keep", "Keeping it");
+}
+function render(el, dir, gid) {
+  const phone = !!el.closest(".phone");
+  const g = GOALS.find(x => x.id === gid);
+  const head = `<div><h3>Make it smaller.</h3>${phone ? "" : `<div class="sub">Pick where it's going, or how it should look.</div>`}</div>`;
+  const right = (dir === "A")
+    ? `<div class="grp">${compare(g)}<div class="verdict"><span class="num">312 MB → ${size(planFor(g))} · ${pct(planFor(g))}</span></div></div>`
+    : `<div class="grp">${verdictBlock(g)}${compare(g)}</div>`;
+  el.innerHTML = head + fileCard() + `<div class="hr"></div>` +
+    `<div class="split"><div class="grp" style="gap:14px">${goalPicker(dir, g, phone)}</div>${right}</div>` +
+    advanced(g) + bar(phone);
+  el.querySelectorAll("[data-goal]").forEach(b => b.onclick = () => {
+    document.querySelectorAll(`.app[data-dir="${dir}"]`).forEach(a => render(a, dir, b.dataset.goal)); });
+  el.querySelectorAll(".compare").forEach(drawCompare);
+}
+function scene(ctx, w, h) {
+  const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#3a5a7a"); g.addColorStop(.6, "#c98a4a"); g.addColorStop(1, "#2a2a30");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "#f1efe9"; ctx.font = `700 ${h * .16}px Space Grotesk, sans-serif`; ctx.fillText("GOAL!", w * .08, h * .3);
+  for (let i = 0; i < 40; i++) { ctx.fillStyle = i % 2 ? "#1b1b1e" : "#ffd23f"; ctx.fillRect(w * .1 + i * w * .02, h * .7, w * .008, h * .2); }
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; for (let i = 0; i < 12; i++) { ctx.beginPath(); ctx.arc(w * .75, h * .45, 6 + i * 4, 0, 6.28); ctx.stroke(); }
+}
+function drawCompare(box) {
+  const W = 480, H = 270, target = +box.dataset.h;
+  const [b, a] = box.querySelectorAll("canvas");
+  b.width = a.width = W; b.height = a.height = H;
+  scene(b.getContext("2d"), W, H);
+  const s = Math.max(1, Math.round(1080 / target * 1.6));
+  const off = document.createElement("canvas"); off.width = W / s; off.height = H / s;
+  scene(off.getContext("2d"), off.width, off.height);
+  const ac = a.getContext("2d"); ac.imageSmoothingEnabled = true; ac.drawImage(off, 0, 0, W, H);
+  const knob = box.querySelector(".knob");
+  const move = e => { const r = box.getBoundingClientRect(); const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    knob.style.left = x * 100 + "%"; a.style.clipPath = `inset(0 0 0 ${x * 100}%)`; };
+  box.onpointerdown = e => { box.setPointerCapture(e.pointerId); move(e); box.onpointermove = move; };
+  box.onpointerup = () => box.onpointermove = null;
+}
+document.querySelectorAll(".app[data-dir]").forEach(el => render(el, el.dataset.dir, "discord"));
+
+// batch
+function batch(el) {
+  const phone = !!el.closest(".phone");
+  const rows = [
+    ["Rocket League – best goals 2026.mp4", "2:14 · 312 MB", "720p 30 fps, a bit softer · 20 MB", "", 1],
+    ["Birthday speech.mov", "6:40 · 1.4 GB", "", "warn", 0.42],
+    ["Cat jumps.mp4", "0:12 · 8 MB", "Already under 20 MB", "ok", -1],
+    ["Concert full set.mkv", "1:52:10 · 9.8 GB", "Too long to fit in 20 MB", "bad", -2],
+  ];
+  el.innerHTML = `<div><h3>Make them smaller.</h3></div>
+    <div class="bar" style="justify-content:space-between"><span class="lbl">4 videos · For Discord (20 MB each)</span><button class="ghost small">Add files…</button></div>` +
+    `<div>${rows.map(([t, m, h, k, f]) => `<div class="brow"><div class="th"></div><div style="min-width:0"><div class="t">${t}</div>
+      <div class="m">${m}${f === 1 ? ` <span class="tagx ok">Saved · 19.4 MB</span>` : ""}${k === "ok" ? ` <span class="tagx ok">Skipped</span> ${h}` : ""}${k === "bad" ? ` <span class="tagx bad">Can't fit</span>${phone ? "" : " " + h}` : ""}${f === 0.42 ? ` <span>Compressing… 42%</span>` : ""}${f === 1 && !phone ? " · " + h : ""}</div>
+      ${f > 0 && f < 1 ? `<div class="meter"><i style="width:42%"></i></div>` : ""}</div>
+      <button class="ghost small">${f === 1 ? "Show" : "×"}</button></div>`).join("")}</div>` +
+    (phone ? `<button class="primary">Cancel · 1 of 3</button>` : `<div class="bar"><span class="status">1 of 3 done · 1 skipped, already fits · 1 can't fit</span><button class="primary">Cancel all</button></div>`);
+}
+batch(document.getElementById("batch")); batch(document.getElementById("batch2"));
+
+// trim
+function trim(el) {
+  const phone = !!el.closest(".phone");
+  el.innerHTML = `<div><h3>Make it smaller.</h3></div>` + fileCard() +
+    `<div class="grp"><div class="bar" style="justify-content:space-between"><span class="lbl">Only this part</span><button class="ghost small">Whole video</button></div>
+     <div class="strip"><div class="veil" style="left:0;width:18%"></div><div class="veil" style="right:0;width:28%"></div>
+      <div class="h" style="left:18%"></div><div class="h" style="left:calc(72% - 8px)"></div></div>
+     <div class="times"><span class="box">0:24.0</span> → <span class="box">1:36.5</span> <span class="mut">1:12.5 of 2:14</span></div></div>` +
+    `<div class="hr"></div><div class="mut" style="font-size:13px">For Discord · <b style="color:var(--a-ink)">1080p 30 fps, a bit softer</b> · 20 MB <span class="mut">(was 720p for the whole video)</span></div>` +
+    (phone ? `<button class="primary">Compress 1:12</button>` : `<div class="bar"><span class="status"></span><button class="primary">Compress 1:12</button></div>`);
+}
+trim(document.getElementById("trim")); trim(document.getElementById("trim2"));
+</script>
+</body>
+</html>

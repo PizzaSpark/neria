@@ -1307,3 +1307,231 @@ export component DragHandle inherits Rectangle {
         color: ta.has-hover || ta.pressed ? Theme.ink : Theme.dim;
     }
 }
+
+// One choice in a list of choices you compare before picking (Compress goals): a round
+// mark, the name, a muted hint and a value on the right (under the name on compact
+// windows). Calm like a list row, the mark and the hover say it's pressable; the picked row
+// gets an ink mark. Rows sit on hairlines.
+export component ChoiceRow inherits Rectangle {
+    in property <string> title;
+    in property <string> hint;
+    in property <string> value;
+    in property <bool> selected;
+    // The hint is a problem (too long, already fits): warn colour.
+    in property <bool> warn;
+    callback clicked();
+    min-height: col.preferred-height;
+    accessible-role: radio-button;
+    accessible-label: root.title;
+    accessible-description: root.hint + " " + root.value;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.clicked(); }
+    KeyPress {
+        radius: 8px;
+        activated => { root.clicked(); }
+    }
+    background: ta.has-hover ? Theme.raised : transparent;
+    border-radius: 8px;
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    Rectangle {
+        x: 0;
+        y: root.height - 1px;
+        width: root.width;
+        height: 1px;
+        background: Theme.line;
+    }
+    col := HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 8px;
+        padding-top: 9px;
+        padding-bottom: 9px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border-radius: 9px;
+                border-width: root.selected ? 6px : 2px;
+                border-color: root.selected ? Theme.ink : ta.has-hover ? Theme.muted : Theme.edge;
+                animate border-width, border-color { duration: 90ms; }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.title;
+                    color: Theme.ink;
+                    font-family: Theme.body;
+                    font-size: 14px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 0;
+                }
+                if !Screen.compact && root.hint != "": Text {
+                    text: root.hint;
+                    color: root.warn ? Theme.warn : Theme.muted;
+                    font-family: Theme.body;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+            }
+            if Screen.compact && (root.hint != "" || root.value != ""): Text {
+                // A warning says it all ("already under 20 MB"): no value after it.
+                text: root.hint == "" ? root.value : root.value == "" || root.warn ? root.hint : root.hint + " · " + root.value;
+                color: root.warn ? Theme.warn : Theme.muted;
+                font-family: Theme.mono;
+                font-size: 11.5px;
+                wrap: word-wrap;
+            }
+        }
+        if !Screen.compact && root.value != "": Text {
+            horizontal-stretch: 0;
+            text: root.value;
+            color: root.selected ? Theme.ink : Theme.muted;
+            font-family: Theme.mono;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// The same moment before and after: the after picture over the before one, cut at a line
+// you drag (or move with ← →). Calm (a picture you read); the grip on the line is the
+// pressable part. Both pictures fill the box the same way, so they line up.
+export component CompareSlider inherits Rectangle {
+    in property <image> before;
+    in property <image> after;
+    in property <string> before-label: "Now";
+    in property <string> after-label: "After";
+    // Covered while the pictures are being made ("Working it out…").
+    in property <string> busy-text;
+    in-out property <float> split: 0.5;
+    border-radius: 10px;
+    background: Theme.video;
+    clip: true;
+    accessible-role: slider;
+    accessible-label: "Before and after (left and right arrows)";
+    accessible-value: Math.round(root.split * 100) + "%";
+    Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.before;
+        image-fit: contain;
+    }
+    Rectangle {
+        x: root.width * root.split;
+        width: root.width * (1 - root.split);
+        height: root.height;
+        clip: true;
+        Image {
+            x: -parent.x;
+            width: root.width;
+            height: root.height;
+            source: root.after;
+            image-fit: contain;
+        }
+    }
+    if root.busy-text != "": Rectangle {
+        background: Theme.video-veil;
+        Text {
+            text: root.busy-text;
+            color: Theme.strip-mark;
+            font-family: Theme.body;
+            font-size: 13px;
+        }
+    }
+    Rectangle {
+        x: 8px;
+        y: 8px;
+        width: bl.preferred-width + 14px;
+        height: 20px;
+        border-radius: 6px;
+        background: Theme.video-veil;
+        bl := Text {
+            text: root.before-label;
+            color: Theme.strip-mark;
+            font-family: Theme.display;
+            font-size: 11px;
+            font-weight: 700;
+        }
+    }
+    Rectangle {
+        x: root.width - self.width - 8px;
+        y: 8px;
+        width: al.preferred-width + 14px;
+        height: 20px;
+        border-radius: 6px;
+        background: Theme.video-veil;
+        al := Text {
+            text: root.after-label;
+            color: Theme.strip-mark;
+            font-family: Theme.display;
+            font-size: 11px;
+            font-weight: 700;
+        }
+    }
+    // The line and its grip (not while the pictures are being made).
+    if root.busy-text == "": Rectangle {
+        x: root.width * root.split - 1px;
+        width: 2px;
+        height: root.height;
+        background: Theme.strip-mark;
+    }
+    if root.busy-text == "": Rectangle {
+        x: root.width * root.split - 14px;
+        y: root.height / 2 - 12px;
+        width: 28px;
+        height: 24px;
+        border-radius: 8px;
+        background: Theme.strip-mark;
+        Icon {
+            text: "\u{E8AB}";
+            font-size: 12px;
+            color: Theme.video;
+        }
+    }
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.LeftArrow {
+                root.split = max(0, root.split - 0.05);
+                return accept;
+            }
+            if event.text == Key.RightArrow {
+                root.split = min(1, root.split + 0.05);
+                return accept;
+            }
+            reject
+        }
+    }
+    // The focus ring sits on the pictures: a video mark, so it shows in both themes.
+    if fs.has-focus: Rectangle {
+        border-radius: 10px;
+        border-width: 2px;
+        border-color: Theme.strip-mark;
+    }
+    TouchArea {
+        mouse-cursor: ew-resize;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.split = max(0, min(1, self.mouse-x / root.width));
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.split = max(0, min(1, self.mouse-x / root.width));
+            }
+        }
+    }
+}

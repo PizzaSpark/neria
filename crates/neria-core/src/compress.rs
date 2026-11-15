@@ -164,12 +164,115 @@ pub enum Target {
     Quality(f32),
 }
 
+/// What the Compress page offers, in plain words. Sending goals are sizes the place takes
+/// (checked 2026-11-15: Discord free 20 MB since Aug 2026; Gmail/Outlook 25 MB per message,
+/// which base64 makes ~18 MB of file; WhatsApp 16 MB for a video sent as a video, the
+/// lowest figure sources give). Keeping goals are a look, and the size follows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Goal {
+    Discord,
+    Email,
+    WhatsApp,
+    /// Smaller, still sharp.
+    Sharp,
+    /// As small as possible.
+    Tiny,
+    /// Custom size in MB.
+    Size(f64),
+}
+
+impl Goal {
+    pub fn label(self) -> String {
+        match self {
+            Self::Discord => "For Discord".into(),
+            Self::Email => "For email".into(),
+            Self::WhatsApp => "For WhatsApp".into(),
+            Self::Sharp => "Smaller, still sharp".into(),
+            Self::Tiny => "As small as possible".into(),
+            Self::Size(mb) => format!("{} MB", fmt_mb(mb)),
+        }
+    }
+
+    pub fn target(self) -> Target {
+        match self {
+            Self::Discord => Target::SizeMb(20.0),
+            Self::Email => Target::SizeMb(18.0),
+            Self::WhatsApp => Target::SizeMb(16.0),
+            Self::Sharp => Target::Quality(0.7),
+            Self::Tiny => Target::Quality(0.25),
+            Self::Size(mb) => Target::SizeMb(mb),
+        }
+    }
+
+    /// The file is sent to an app that has to play it: only H.264 is safe everywhere.
+    pub fn must_play_in(self) -> Option<&'static str> {
+        match self {
+            Self::Discord => Some("Discord"),
+            Self::Email => Some("every mail app"),
+            Self::WhatsApp => Some("WhatsApp"),
+            _ => None,
+        }
+    }
+}
+
+/// "20", "2.5": MB without a pointless ".0".
+pub fn fmt_mb(mb: f64) -> String {
+    if (mb - mb.round()).abs() < 0.05 { format!("{:.0}", mb) } else { format!("{:.1}", mb) }
+}
+
+/// How the result will look next to the original, from the plan (a guess from the
+/// resolution and how much bitrate each pixel gets, not a promise).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Look {
+    Same,
+    NearlySame,
+    BitSofter,
+    Soft,
+    Blurry,
+}
+
+impl Look {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Same => "looks the same",
+            Self::NearlySame => "looks nearly the same",
+            Self::BitSofter => "a bit softer",
+            Self::Soft => "soft",
+            Self::Blurry => "blurry",
+        }
+    }
+
+    /// The best a picture at `height` can look, coming from `src_height`.
+    fn cap_for(height: u32, src_height: u32) -> Self {
+        if height + 8 >= src_height {
+            Self::Same
+        } else if height >= 480 {
+            Self::BitSofter
+        } else if height >= 360 {
+            Self::Soft
+        } else {
+            Self::Blurry
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Resolution {
-    /// Size mode: pick the sharpest resolution the bitrate can carry.
+    /// Size mode: pick the sharpest resolution the bitrate can carry. Quality mode: keep it,
+    /// except at the smallest levels (under 0.4), which go to 720p 30 fps at most.
     Auto,
     Original,
+    /// At most this many lines (the short side: "720p" for both landscape and portrait).
     Max(u32),
+}
+
+/// The picture without its black bars, in the shown orientation (after turning).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Bars {
+    pub w: u32,
+    pub h: u32,
+    pub x: u32,
+    pub y: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -180,26 +283,77 @@ pub struct Options {
     pub resolution: Resolution,
     /// Cap frames per second (None = keep).
     pub max_fps: Option<f64>,
-    /// Audio bitrate in kbps; None removes audio.
+    /// Audio bitrate in kbps (per track); None removes audio.
     pub audio_kbps: Option<u32>,
+    /// Only this part, in seconds (start, end). None = the whole video.
+    pub range: Option<(f64, f64)>,
+    /// Keep every sound track, the text captions and the chapter marks (else: the first
+    /// sound track only, no captions, no chapters).
+    pub keep_tracks: bool,
+    /// Cut these black bars off (from `detect_bars`).
+    pub crop: Option<Bars>,
+}
+
+impl Options {
+    /// How long the result will be: the trimmed part, or the whole video.
+    pub fn length(&self, info: &FileInfo) -> f64 {
+        match self.range {
+            Some((a, b)) => (b.min(info.duration) - a.max(0.0)).max(0.0),
+            None => info.duration,
+        }
+    }
+
+    pub fn for_goal(goal: Goal) -> Self {
+        Self {
+            target: goal.target(),
+            codec: Codec::H264,
+            use_gpu: true,
+            resolution: Resolution::Auto,
+            max_fps: None,
+            audio_kbps: Some(96),
+            range: None,
+            keep_tracks: true,
+            crop: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Plan {
     pub encoder: Encoder,
+    /// Output size, as shown (portrait stays portrait).
     pub width: u32,
     pub height: u32,
+    /// The short side ("720p").
+    pub lines: u32,
     pub fps: f64,
     /// Size mode: video bitrate. None in quality mode.
     pub video_kbps: Option<f64>,
+    /// Per sound track.
     pub audio_kbps: Option<u32>,
+    /// How many sound tracks go in.
+    pub audio_tracks: u32,
+    /// Which caption tracks go in (their number among the file's captions).
+    pub captions: Vec<usize>,
+    /// Picture captions left out (an .mp4 can't hold them).
+    pub captions_dropped: usize,
+    pub chapters: bool,
     /// Quality mode: the encoder's quality number (CRF/CQ/QP).
     pub quality: Option<u32>,
     pub target_bytes: Option<u64>,
+    /// How it'll look next to the original.
+    pub look: Look,
+    /// Frames per second were lowered from the original's.
+    pub fps_cut: bool,
+    /// ffmpeg video filters (crop, scale, fps).
+    pub filters: Vec<String>,
+    /// The size is tight: spend more time per frame (x264/x265 `slow`, as HandBrake's
+    /// small "Social" presets do).
+    pub tight: bool,
 }
 
 impl Plan {
-    /// One-line summary for the UI.
+    /// One-line technical summary (Advanced).
     pub fn summary(&self) -> String {
         let mut parts = vec![format!("{}×{}", self.width, self.height)];
         if self.fps > 0.0 {
@@ -209,16 +363,36 @@ impl Plan {
             parts.push(format!("{:.0} kbps video", v));
         }
         parts.push(match self.audio_kbps {
-            Some(a) => format!("{a} kbps audio"),
-            None => "no audio".into(),
+            Some(a) if self.audio_tracks > 1 => format!("{} sound tracks at {a} kbps", self.audio_tracks),
+            Some(a) => format!("{a} kbps sound"),
+            None => "no sound".into(),
         });
         parts.push(self.encoder.label());
+        if self.encoder.two_pass() && self.video_kbps.is_some() {
+            parts.push("two passes".into());
+        }
         parts.join("  ·  ")
+    }
+
+    /// What it'll look like, in plain words: "720p 30 fps, a bit softer".
+    pub fn hint(&self) -> String {
+        let fps = if self.fps_cut { format!(" {:.0} fps", self.fps) } else { String::new() };
+        format!("{}p{fps}, {}", self.lines, self.look.label())
     }
 }
 
 fn even(x: f64) -> u32 {
     ((x / 2.0).round() as u32).max(1) * 2
+}
+
+/// The picture as shown: phone footage is stored sideways and turned on playback (ffmpeg
+/// turns it before our filters), then the black bars come off.
+fn shown_size(info: &FileInfo, crop: Option<Bars>) -> (u32, u32) {
+    match crop {
+        Some(b) => (b.w, b.h),
+        None if info.rotation % 180 == 90 => (info.height, info.width),
+        None => (info.width, info.height),
+    }
 }
 
 /// Work out resolution, fps and bitrates for `info` with `opts`.
@@ -229,96 +403,240 @@ pub fn plan(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan
     if info.duration <= 0.0 {
         bail!("Can't tell how long this video is.");
     }
+    let length = opts.length(info);
+    if length < 0.1 {
+        bail!("The part to keep is empty: move Out after In.");
+    }
     let encoder = encoders.pick(opts.codec, opts.use_gpu);
     let src_fps = if info.fps > 0.0 { info.fps } else { 30.0 };
     let mut fps = opts.max_fps.map_or(src_fps, |m| src_fps.min(m));
     let audio_kbps = if info.has_audio { opts.audio_kbps } else { None };
-    let aspect = info.width as f64 / info.height.max(1) as f64;
-
-    let size_at = |h: u32| (even(h as f64 * aspect), even(h as f64));
-    let capped = |h: u32| match opts.resolution {
-        Resolution::Max(m) => h.min(m),
-        _ => h,
+    let audio_tracks = match audio_kbps {
+        None => 0,
+        Some(_) if opts.keep_tracks => info.audio_tracks.max(1),
+        Some(_) => 1,
+    };
+    let (captions, captions_dropped) = if opts.keep_tracks {
+        let text: Vec<usize> = info.subtitles.iter().enumerate().filter(|(_, t)| **t).map(|(i, _)| i).collect();
+        let dropped = info.subtitles.len() - text.len();
+        (text, dropped)
+    } else {
+        (Vec::new(), 0)
     };
 
-    match opts.target {
+    let (sw, sh) = shown_size(info, opts.crop);
+    let portrait = sh > sw;
+    let src_lines = sw.min(sh).max(1);
+    let long_per_line = sw.max(sh) as f64 / src_lines as f64;
+    let size_at = |lines: u32| {
+        let (long, short) = (even(lines as f64 * long_per_line), even(lines as f64));
+        if portrait { (short, long) } else { (long, short) }
+    };
+    let capped = |l: u32| match opts.resolution {
+        Resolution::Max(m) => l.min(m),
+        _ => l,
+    };
+
+    let (lines, video_kbps, quality, target_bytes, audio_kbps, by_quality) = match opts.target {
         Target::Quality(level) => {
-            let h = capped(info.height);
-            let (width, height) = size_at(h);
             let l = level.clamp(0.0, 1.0);
-            let quality = match encoder.codec() {
-                Codec::H264 => 30.0 - l * 12.0,
-                Codec::Hevc => 33.0 - l * 12.0,
-                Codec::Av1 => 45.0 - l * 20.0,
+            let tiny = opts.resolution == Resolution::Auto && l < 0.4;
+            let lines = if tiny { src_lines.min(720) } else { capped(src_lines) };
+            if tiny && opts.max_fps.is_none() {
+                fps = fps.min(30.0);
             }
-            .round() as u32;
-            Ok(Plan {
-                encoder,
-                width,
-                height,
-                fps,
-                video_kbps: None,
-                audio_kbps,
-                quality: Some(quality),
-                target_bytes: None,
-            })
+            let by_level = if l >= 0.65 {
+                Look::Same
+            } else if l >= 0.45 {
+                Look::NearlySame
+            } else {
+                Look::BitSofter
+            };
+            // Calibrated on HandBrake's presets (docs/UPSTREAM.md): 0.7 is its default
+            // (H.264 22 at 1080p), 0.25 its "Social" ceiling (27); smaller pictures get a
+            // slightly better number, as its 720p (21) and 480p (20) presets do.
+            let smaller = if lines <= 480 {
+                2.0
+            } else if lines <= 720 && l >= 0.4 {
+                1.0
+            } else {
+                0.0
+            };
+            let quality = (match encoder.codec() {
+                Codec::H264 => 30.0 - l * 12.0,
+                Codec::Hevc => 31.0 - l * 12.0,
+                Codec::Av1 => 45.0 - l * 20.0,
+            } - smaller)
+                .round() as u32;
+            (lines, None, Some(quality), None, audio_kbps, by_level)
         }
         Target::SizeMb(mb) => {
             let target_bytes = (mb * 1_000_000.0) as u64;
             // Keep ~4% headroom for container overhead and rate-control wobble.
-            let budget_kbps = target_bytes as f64 * 8.0 / 1000.0 / info.duration * 0.96;
+            let budget_kbps = target_bytes as f64 * 8.0 / 1000.0 / length * 0.96;
             let mut audio_kbps = audio_kbps;
             if let Some(a) = audio_kbps {
-                // Don't let audio eat a tiny budget.
-                let fair = (budget_kbps * 0.15).max(48.0) as u32;
-                audio_kbps = Some(a.min(fair.max(48)));
+                // Don't let sound eat a tiny budget: all tracks together get ~15%.
+                let fair = (budget_kbps * 0.15 / audio_tracks.max(1) as f64).max(32.0) as u32;
+                audio_kbps = Some(a.min(fair.max(32)));
             }
-            let video_kbps = budget_kbps - audio_kbps.unwrap_or(0) as f64;
+            let video_kbps = budget_kbps - (audio_kbps.unwrap_or(0) * audio_tracks) as f64;
             if video_kbps < 60.0 {
                 bail!(
-                    "{} is too long to fit in {} MB. Clip it shorter or pick a bigger size.",
-                    fmt::duration(info.duration),
-                    mb
+                    "{} is too long to fit in {} MB. Trim it shorter or pick a bigger size.",
+                    fmt::duration(length),
+                    fmt_mb(mb)
                 );
             }
 
             let bpp = |w: u32, h: u32, f: f64| video_kbps * 1000.0 / (w as f64 * h as f64 * f);
-            let height = match opts.resolution {
-                Resolution::Original => info.height,
-                Resolution::Max(m) => info.height.min(m),
+            let min_bpp = encoder.codec().min_bpp();
+            let lines = match opts.resolution {
+                Resolution::Original => src_lines,
+                Resolution::Max(m) => src_lines.min(m),
                 Resolution::Auto => {
                     // Starved bitrate: smooth 30 fps beats choppy 60.
                     if opts.max_fps.is_none() && fps > 31.0 {
-                        let (w, h) = size_at(info.height.min(720));
-                        if bpp(w, h, fps) < encoder.codec().min_bpp() {
+                        let (w, h) = size_at(src_lines.min(720));
+                        if bpp(w, h, fps) < min_bpp {
                             fps = fps.min(30.0);
                         }
                     }
-                    let candidates = [2160, 1440, 1080, 720, 540, 480, 360, 240];
-                    candidates
-                        .iter()
-                        .copied()
-                        .filter(|h| *h <= info.height)
-                        .find(|h| {
-                            let (w, hh) = size_at(*h);
-                            bpp(w, hh, fps) >= encoder.codec().min_bpp()
+                    [2160, 1440, 1080, 720, 540, 480, 360, 240]
+                        .into_iter()
+                        .map(|l: u32| l.min(src_lines))
+                        .find(|l| {
+                            let (w, h) = size_at(*l);
+                            bpp(w, h, fps) >= min_bpp
                         })
-                        .unwrap_or(info.height.min(240))
+                        .unwrap_or(src_lines.min(240))
                 }
             };
-            let (width, height) = size_at(height);
-            Ok(Plan {
-                encoder,
-                width,
-                height,
-                fps,
-                video_kbps: Some(video_kbps),
-                audio_kbps,
-                quality: None,
-                target_bytes: Some(target_bytes),
-            })
+            let (w, h) = size_at(lines);
+            let room = bpp(w, h, fps) / min_bpp;
+            let by_room = if room >= 2.5 {
+                Look::Same
+            } else if room >= 1.4 {
+                Look::NearlySame
+            } else if room >= 1.0 {
+                Look::BitSofter
+            } else if room >= 0.6 {
+                Look::Soft
+            } else {
+                Look::Blurry
+            };
+            (lines, Some(video_kbps), None, Some(target_bytes), audio_kbps, by_room)
         }
+    };
+
+    let (width, height) = size_at(lines);
+    let look = by_quality.max(Look::cap_for(lines, src_lines));
+    let mut filters = Vec::new();
+    if info.interlaced {
+        // Only the frames that are combed, like HandBrake's Decomb.
+        filters.push("bwdif=mode=send_frame:deint=interlaced".to_string());
     }
+    if let Some(b) = opts.crop {
+        filters.push(format!("crop={}:{}:{}:{}", b.w, b.h, b.x, b.y));
+    }
+    if (width, height) != (sw, sh) {
+        filters.push(format!("scale={width}:{height}:flags=lanczos"));
+    }
+    if info.fps > 0.0 && fps < info.fps - 0.01 {
+        filters.push(format!("fps={fps}"));
+    }
+    Ok(Plan {
+        encoder,
+        width,
+        height,
+        lines,
+        fps,
+        video_kbps,
+        audio_kbps,
+        audio_tracks,
+        captions,
+        captions_dropped,
+        chapters: opts.keep_tracks && !info.chapters.is_empty(),
+        quality,
+        target_bytes,
+        look,
+        fps_cut: fps < src_fps - 0.5,
+        filters,
+        tight: target_bytes.is_some() && by_quality >= Look::BitSofter,
+    })
+}
+
+/// A size goal the whole video can't look OK in (the plan fails, or comes out blurry):
+/// how long a part would fit at 360p 30 fps with just enough bitrate. None when it fits.
+pub fn longest_fit(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Option<f64> {
+    let Target::SizeMb(mb) = opts.target else { return None };
+    if let Ok(p) = plan(info, opts, encoders)
+        && p.look < Look::Blurry
+    {
+        return None;
+    }
+    let (sw, sh) = shown_size(info, opts.crop);
+    let lines = sw.min(sh).clamp(1, 360) as f64;
+    let long = lines * sw.max(sh) as f64 / sw.min(sh).max(1) as f64;
+    let fps = if info.fps > 0.0 { info.fps.min(30.0) } else { 30.0 };
+    let video = encoders.pick(opts.codec, opts.use_gpu).codec().min_bpp() * long * lines * fps / 1000.0;
+    let tracks = if !info.has_audio || opts.audio_kbps.is_none() {
+        0
+    } else if opts.keep_tracks {
+        info.audio_tracks.max(1)
+    } else {
+        1
+    };
+    // Sound takes ~15% of a small budget (at least 32 kbps a track), as in `plan`; 5% spare.
+    let total = (video / 0.85).max(video + 32.0 * tracks as f64) * 1.05;
+    let secs = (mb * 1e6 * 8.0 / 1000.0 * 0.96 / total).floor();
+    (secs >= 1.0 && secs < opts.length(info)).then_some(secs)
+}
+
+/// Black bars around the picture (films in a 16:9 frame, 4:3 in widescreen), found by
+/// looking at 2 s in five places; their union, so a dark scene doesn't cut real picture.
+/// None when there are none worth cutting (under 8 px a side).
+pub fn detect_bars(path: &Path, info: &FileInfo) -> Option<Bars> {
+    if !info.has_video || info.duration <= 0.0 {
+        return None;
+    }
+    let (sw, sh) = shown_size(info, None);
+    let jobs: Vec<_> = [0.15, 0.35, 0.5, 0.65, 0.85]
+        .into_iter()
+        .map(|f| {
+            let (path, at) = (path.to_path_buf(), (info.duration * f - 1.0).max(0.0));
+            thread::spawn(move || {
+                let out = proc::command(paths::tool("ffmpeg"))
+                    .args(["-hide_banner", "-nostats", "-v", "info", "-ss", &format!("{at:.2}"), "-t", "2", "-i"])
+                    .arg(&path)
+                    .args(["-an", "-sn", "-vf", "cropdetect=limit=24:round=2:reset=0", "-f", "null", "-"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped())
+                    .output()
+                    .ok()?;
+                let text = String::from_utf8_lossy(&out.stderr);
+                let last = text.lines().rev().find_map(|l| l.split("crop=").nth(1))?;
+                let n: Vec<u32> = last.trim().split(':').filter_map(|v| v.parse().ok()).collect();
+                (n.len() == 4).then(|| (n[2], n[3], n[2] + n[0], n[3] + n[1]))
+            })
+        })
+        .collect();
+    let boxes: Vec<_> = jobs.into_iter().filter_map(|j| j.join().ok().flatten()).collect();
+    if boxes.len() < 3 {
+        return None;
+    }
+    let (x0, y0) = (boxes.iter().map(|b| b.0).min()?, boxes.iter().map(|b| b.1).min()?);
+    let (x1, y1) = (boxes.iter().map(|b| b.2).max()?.min(sw), boxes.iter().map(|b| b.3).max()?.min(sh));
+    bars_worth_cutting(sw, sh, x0, y0, x1, y1)
+}
+
+fn bars_worth_cutting(sw: u32, sh: u32, x0: u32, y0: u32, x1: u32, y1: u32) -> Option<Bars> {
+    let (w, h) = (x1.saturating_sub(x0) / 2 * 2, y1.saturating_sub(y0) / 2 * 2);
+    let side = |a: u32, b: u32| a >= 8 || b >= 8;
+    let cut = side(x0, sw.saturating_sub(x1)) || side(y0, sh.saturating_sub(y1));
+    // Too much gone means a dark video, not bars.
+    let sane = w * 2 >= sw && h * 2 >= sh;
+    (cut && sane).then_some(Bars { w, h, x: x0, y: y0 })
 }
 
 pub fn output_path(input: &Path, opts: &Options) -> PathBuf {
@@ -332,22 +650,32 @@ pub fn output_path(input: &Path, opts: &Options) -> PathBuf {
 }
 
 /// Pass: None = single pass, Some(1) / Some(2) = two-pass stage.
-pub fn build_args(input: &Path, out: &Path, info: &FileInfo, plan: &Plan, pass: Option<u8>) -> Vec<String> {
+/// `range`: only that part (the same seek in both passes, so their stats line up).
+pub fn build_args(
+    input: &Path,
+    out: &Path,
+    _info: &FileInfo,
+    plan: &Plan,
+    range: Option<(f64, f64)>,
+    pass: Option<u8>,
+) -> Vec<String> {
     let enc = plan.encoder;
     let mut a: Vec<String> =
-        ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"].map(String::from).to_vec();
+        ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y"].map(String::from).to_vec();
+    if let Some((start, end)) = range {
+        // Before -i: a fast seek, still frame-exact since everything is re-encoded.
+        a.extend([
+            "-ss".into(),
+            format!("{:.3}", start.max(0.0)),
+            "-t".into(),
+            format!("{:.3}", (end - start).max(0.0)),
+        ]);
+    }
+    a.push("-i".into());
     a.push(input.to_string_lossy().into_owned());
     a.extend(["-map", "0:V:0"].map(String::from));
-
-    let mut filters = Vec::new();
-    if plan.height != info.height || plan.width != info.width {
-        filters.push(format!("scale={}:{}:flags=lanczos", plan.width, plan.height));
-    }
-    if info.fps > 0.0 && plan.fps < info.fps - 0.01 {
-        filters.push(format!("fps={}", plan.fps));
-    }
-    if !filters.is_empty() {
-        a.extend(["-vf".into(), filters.join(",")]);
+    if !plan.filters.is_empty() {
+        a.extend(["-vf".into(), plan.filters.join(",")]);
     }
 
     a.extend(["-c:v".into(), enc.ffmpeg_name()]);
@@ -357,13 +685,9 @@ pub fn build_args(input: &Path, out: &Path, info: &FileInfo, plan: &Plan, pass: 
     let k = |v: f64| format!("{}k", v.round() as u64);
     match (enc, plan.video_kbps, plan.quality) {
         // ── Target size ──
-        (Encoder::Cpu(Codec::H264), Some(v), _) => {
-            a.extend(["-preset", "medium", "-b:v"].map(String::from));
-            a.push(k(v));
-        }
-        (Encoder::Cpu(Codec::Hevc), Some(v), _) => {
-            a.extend(["-preset", "medium", "-b:v"].map(String::from));
-            a.push(k(v));
+        (Encoder::Cpu(Codec::H264 | Codec::Hevc), Some(v), _) => {
+            let preset = if plan.tight { "slow" } else { "medium" };
+            a.extend(["-preset".into(), preset.into(), "-b:v".into(), k(v)]);
         }
         (Encoder::Cpu(Codec::Av1), Some(v), _) => {
             a.extend(["-preset", "8", "-b:v"].map(String::from));
@@ -415,17 +739,28 @@ pub fn build_args(input: &Path, out: &Path, info: &FileInfo, plan: &Plan, pass: 
     }
 
     if pass == Some(1) {
-        a.extend(["-an", "-f", "null", if cfg!(windows) { "NUL" } else { "/dev/null" }].map(String::from));
+        a.extend(["-an", "-sn", "-f", "null", if cfg!(windows) { "NUL" } else { "/dev/null" }].map(String::from));
         return a;
     }
 
     match plan.audio_kbps {
         Some(kbps) => {
+            let map = if plan.audio_tracks > 1 { "0:a?" } else { "0:a:0?" };
             // Stereo: 5.1 at a small bitrate sounds worse and wastes the budget.
-            a.extend(["-map", "0:a:0?", "-c:a", "aac", "-ac", "2", "-b:a"].map(String::from));
+            a.extend(["-map".into(), map.into()]);
+            a.extend(["-c:a", "aac", "-ac", "2", "-b:a"].map(String::from));
             a.push(format!("{kbps}k"));
         }
         None => a.push("-an".into()),
+    }
+    for i in &plan.captions {
+        a.extend(["-map".into(), format!("0:s:{i}")]);
+    }
+    if !plan.captions.is_empty() {
+        a.extend(["-c:s", "mov_text"].map(String::from));
+    }
+    if !plan.chapters {
+        a.extend(["-map_chapters", "-1"].map(String::from));
     }
     a.extend(["-movflags", "+faststart"].map(String::from));
     a.push(out.to_string_lossy().into_owned());
@@ -458,10 +793,11 @@ pub fn run(
     let mut plan = plan(info, opts, encoders)?;
     let out = output_path(input, opts);
     let work = paths::cache_dir();
-    // Room for the result (quality mode: assume up to the original's size).
+    let length = opts.length(info);
+    // Room for the result (quality mode: assume up to the original's size for that length).
     let needed = match opts.target {
         Target::SizeMb(mb) => (mb * 1e6) as u64,
-        Target::Quality(_) => info.size_bytes,
+        Target::Quality(_) => (info.size_bytes as f64 * (length / info.duration).min(1.0)) as u64,
     };
     if let Some(dir) = out.parent() {
         crate::disk::check(dir, needed).map_err(|m| anyhow::anyhow!("{m} Free some up and try again."))?;
@@ -479,8 +815,8 @@ pub fn run(
                 _ => format!("Compressing{retry}…"),
             };
             let (lo, hi) = if n == 2 { if i == 0 { (0.0, 0.35) } else { (0.35, 1.0) } } else { (0.0, 1.0) };
-            let args = build_args(input, &out, info, &plan, pass);
-            encode(&args, &work, info.duration, cancel, |f| {
+            let args = build_args(input, &out, info, &plan, opts.range, pass);
+            encode(&args, &work, length, cancel, |f| {
                 on(Progress { fraction: lo + (hi - lo) * f, stage: stage.clone() })
             })
             .inspect_err(|_| {
@@ -491,17 +827,29 @@ pub fn run(
         let bytes = std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
         match plan.target_bytes {
             Some(target) if bytes > target && attempt < ATTEMPTS => {
-                // Scale the video bitrate by how far over we went, plus a margin.
-                let factor = target as f64 / bytes as f64 * 0.95;
-                plan.video_kbps = plan.video_kbps.map(|v| v * factor);
-                on(Progress {
-                    fraction: 0.0,
-                    stage: format!("{} is a bit over, redoing smaller…", fmt::bytes(bytes as f64)),
-                });
+                let over = fmt::mb(bytes as f64);
+                if let Encoder::Gpu(codec, _) = plan.encoder {
+                    // Graphics cards keep their own idea of the bitrate (Intel's came out
+                    // bigger on every redo); the processor's two passes hit it exactly.
+                    plan.encoder = Encoder::Cpu(codec);
+                    plan.video_kbps = plan.video_kbps.map(|v| v * 0.97);
+                    on(Progress {
+                        fraction: 0.0,
+                        stage: format!("{over} is a bit over, redoing it on the processor for an exact size…"),
+                    });
+                } else {
+                    // Scale the video bitrate by how far over we went, plus a margin.
+                    let factor = target as f64 / bytes as f64 * 0.95;
+                    plan.video_kbps = plan.video_kbps.map(|v| v * factor);
+                    on(Progress { fraction: 0.0, stage: format!("{over} is a bit over, redoing smaller…") });
+                }
             }
             Some(target) if bytes > target => {
                 let _ = std::fs::remove_file(&out);
-                bail!("Couldn't get under {} MB. Try a lower resolution or a shorter clip.", target as f64 / 1e6);
+                bail!(
+                    "Couldn't get under {} MB. Try a lower resolution or a shorter part.",
+                    fmt_mb(target as f64 / 1e6)
+                );
             }
             _ => {
                 on(Progress { fraction: 1.0, stage: "Done".into() });
@@ -510,6 +858,107 @@ pub fn run(
         }
     }
     unreachable!()
+}
+
+/// A short piece encoded with the real settings, to look at or measure.
+pub struct Sample {
+    pub path: PathBuf,
+    pub bytes: u64,
+    pub secs: f64,
+}
+
+/// Encode `secs` from `at` with the plan for the whole thing (so the bitrate is the real one),
+/// single pass, into `out`.
+pub fn sample(
+    input: &Path,
+    info: &FileInfo,
+    plan: &Plan,
+    at: f64,
+    secs: f64,
+    out: &Path,
+    cancel: &AtomicBool,
+) -> Result<Sample> {
+    let at = at.clamp(0.0, (info.duration - 0.5).max(0.0));
+    let secs = secs.min(info.duration - at).max(0.1);
+    let args = build_args(input, out, info, plan, Some((at, at + secs)), None);
+    encode(&args, &paths::cache_dir(), secs, cancel, |_| {})?;
+    let bytes = std::fs::metadata(out).map(|m| m.len()).unwrap_or(0);
+    Ok(Sample { path: out.to_path_buf(), bytes, secs })
+}
+
+/// What the Compress page shows before you start: the size (measured from three 2 s samples
+/// when the goal is a look, not a size) and the same moment before and after.
+pub struct Preview {
+    /// Estimated result size; for a size goal, the size itself.
+    pub bytes: u64,
+    pub estimated: bool,
+    pub before: PathBuf,
+    pub after: PathBuf,
+}
+
+/// `key` names the cache files (one set per file on the page). Picture height of the frames:
+/// `frame_h` (the after frame is scaled up to it, so softness shows as it would full screen).
+pub fn preview(
+    input: &Path,
+    info: &FileInfo,
+    opts: &Options,
+    encoders: &Encoders,
+    key: &str,
+    frame_h: u32,
+    cancel: &AtomicBool,
+) -> Result<Preview> {
+    let plan = plan(info, opts, encoders)?;
+    let dir = paths::cache_dir().join("compress-preview");
+    std::fs::create_dir_all(&dir)?;
+    let (from, to) = opts.range.unwrap_or((0.0, info.duration));
+    let length = (to - from).max(0.1);
+    let spots: &[f64] = if plan.target_bytes.is_some() { &[0.5] } else { &[0.2, 0.5, 0.8] };
+    let piece = 2.0_f64.min(length / spots.len() as f64);
+    let (mut bytes, mut secs, mut middle) = (0u64, 0.0, None);
+    for (i, f) in spots.iter().enumerate() {
+        let at = from + (length - piece) * f;
+        let s = sample(input, info, &plan, at, piece, &dir.join(format!("{key}-{i}.mp4")), cancel)?;
+        bytes += s.bytes;
+        secs += s.secs;
+        if (*f - 0.5).abs() < 0.01 {
+            middle = Some((at, s.path));
+        }
+    }
+    let (at, after_clip) = middle.context("no middle sample")?;
+    // A frame a second in: the first one after a seek is a keyframe, sharper than the rest.
+    let mid = (piece / 2.0).min(1.0);
+    let before = dir.join(format!("{key}-before.jpg"));
+    let after = dir.join(format!("{key}-after.jpg"));
+    frame(input, at + mid, frame_h, opts.crop, &before)?;
+    frame(&after_clip, mid, frame_h, None, &after)?;
+    let (estimated, total) = match plan.target_bytes {
+        // A size goal ends at most there; the encode aims a little under.
+        Some(t) => (false, t),
+        None => (true, (bytes as f64 / secs.max(0.1) * length) as u64),
+    };
+    Ok(Preview { bytes: total, estimated, before, after })
+}
+
+/// One picture of `path` at `at`, `height` px tall (as shown), cropped first if asked.
+fn frame(path: &Path, at: f64, height: u32, crop: Option<Bars>, out: &Path) -> Result<()> {
+    let mut vf = String::new();
+    if let Some(b) = crop {
+        vf.push_str(&format!("crop={}:{}:{}:{},", b.w, b.h, b.x, b.y));
+    }
+    vf.push_str(&format!("scale=-2:{height}:flags=bicubic"));
+    let status = proc::command(paths::tool("ffmpeg"))
+        .args(["-hide_banner", "-v", "error", "-y", "-ss", &format!("{at:.3}"), "-i"])
+        .arg(path)
+        .args(["-frames:v", "1", "-vf", &vf, "-q:v", "3"])
+        .arg(out)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .context("failed to start ffmpeg")?;
+    if !status.success() || !out.is_file() {
+        bail!("Couldn't take a picture from the video.");
+    }
+    Ok(())
 }
 
 fn encode(args: &[String], cwd: &Path, duration: f64, cancel: &AtomicBool, mut on: impl FnMut(f32)) -> Result<()> {
@@ -566,6 +1015,9 @@ mod tests {
             size_bytes: 300_000_000,
             has_video: true,
             has_audio: true,
+            audio_tracks: 1,
+            interlaced: false,
+            subtitles: Vec::new(),
             chapters: Vec::new(),
             rotation: 0,
         }
@@ -579,6 +1031,9 @@ mod tests {
             resolution: Resolution::Auto,
             max_fps: None,
             audio_kbps: Some(128),
+            range: None,
+            keep_tracks: false,
+            crop: None,
         }
     }
 
@@ -612,10 +1067,10 @@ mod tests {
         let i = info();
         let o = opts(Target::SizeMb(25.0));
         let p = plan(&i, &o, &Encoders::default()).unwrap();
-        let first = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &i, &p, Some(1));
+        let first = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &i, &p, None, Some(1));
         assert!(first.windows(2).any(|w| w[0] == "-pass:v" && w[1] == "1"));
         assert!(first.contains(&"-an".to_string()));
-        let second = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &i, &p, Some(2));
+        let second = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &i, &p, None, Some(2));
         assert_eq!(second.last().unwrap(), "out.mp4");
         assert!(second.contains(&"aac".to_string()));
     }
@@ -626,5 +1081,107 @@ mod tests {
         assert_eq!(e.pick(Codec::H264, true), Encoder::Gpu(Codec::H264, Gpu::Nvidia));
         assert_eq!(e.pick(Codec::Av1, true), Encoder::Cpu(Codec::Av1));
         assert_eq!(e.pick(Codec::H264, false), Encoder::Cpu(Codec::H264));
+    }
+
+    #[test]
+    fn hints_in_plain_words() {
+        let e = Encoders::default();
+        // 2 minutes of 1080p60 in 20 MB: downscaled and 30 fps.
+        let p = plan(&info(), &opts(Goal::Discord.target()), &e).unwrap();
+        assert!(p.fps_cut && p.height < 1080, "{p:?}");
+        assert!(p.look >= Look::BitSofter);
+        assert!(p.hint().starts_with(&format!("{}p 30 fps, ", p.height)), "{}", p.hint());
+        // Plenty of room: the same picture.
+        let p = plan(&info(), &opts(Target::SizeMb(500.0)), &e).unwrap();
+        assert_eq!(p.look, Look::Same);
+        assert_eq!(p.hint(), "1080p, looks the same");
+        // Keeping goals: sharp keeps 1080p60, tiny goes to 720p30.
+        let p = plan(&info(), &opts(Goal::Sharp.target()), &e).unwrap();
+        assert_eq!(p.hint(), "1080p, looks the same");
+        let p = plan(&info(), &opts(Goal::Tiny.target()), &e).unwrap();
+        assert_eq!(p.hint(), "720p 30 fps, a bit softer");
+    }
+
+    #[test]
+    fn a_shorter_part_gets_a_sharper_picture() {
+        let e = Encoders::default();
+        let whole = plan(&info(), &opts(Goal::Discord.target()), &e).unwrap();
+        let mut o = opts(Goal::Discord.target());
+        o.range = Some((10.0, 40.0));
+        let part = plan(&info(), &o, &e).unwrap();
+        assert!(part.video_kbps.unwrap() > whole.video_kbps.unwrap() * 3.0);
+        assert!(part.height >= whole.height);
+        let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &info(), &part, o.range, None);
+        let at = |k: &str| args.iter().position(|a| a == k).unwrap();
+        assert_eq!(args[at("-ss") + 1], "10.000");
+        assert_eq!(args[at("-t") + 1], "30.000");
+        assert!(at("-ss") < at("-i"));
+        o.range = Some((40.0, 40.0));
+        assert!(plan(&info(), &o, &e).is_err());
+    }
+
+    #[test]
+    fn mb_without_trailing_zero() {
+        assert_eq!(fmt_mb(20.0), "20");
+        assert_eq!(fmt_mb(2.5), "2.5");
+        assert_eq!(Goal::Size(7.5).label(), "7.5 MB");
+    }
+
+    #[test]
+    fn portrait_phone_video_stays_portrait() {
+        // Stored 1920×1080, shown turned: 1080×1920.
+        let mut i = info();
+        i.rotation = 90;
+        let p = plan(&i, &opts(Goal::Discord.target()), &Encoders::default()).unwrap();
+        assert!(p.height > p.width, "{p:?}");
+        assert!(p.hint().starts_with(&format!("{}p", p.width)));
+        assert_eq!(p.lines, p.width);
+    }
+
+    #[test]
+    fn black_bars_come_off_first() {
+        let mut o = opts(Target::SizeMb(500.0));
+        o.crop = Some(Bars { w: 1920, h: 800, x: 0, y: 140 });
+        let p = plan(&info(), &o, &Encoders::default()).unwrap();
+        assert_eq!((p.width, p.height), (1920, 800));
+        assert_eq!(p.filters, vec!["crop=1920:800:0:140".to_string()]);
+        // Bars: 140 px top and bottom count; 4 px don't; a mostly black frame isn't bars.
+        assert!(bars_worth_cutting(1920, 1080, 0, 140, 1920, 940).is_some());
+        assert!(bars_worth_cutting(1920, 1080, 0, 4, 1920, 1076).is_none());
+        assert!(bars_worth_cutting(1920, 1080, 800, 400, 1100, 600).is_none());
+    }
+
+    #[test]
+    fn keeps_every_track_it_can() {
+        let mut i = info();
+        i.audio_tracks = 2;
+        i.subtitles = vec![true, false, true];
+        let mut o = opts(Goal::Discord.target());
+        o.keep_tracks = true;
+        let p = plan(&i, &o, &Encoders::default()).unwrap();
+        assert_eq!((p.audio_tracks, p.captions.clone(), p.captions_dropped), (2, vec![0, 2], 1));
+        let args = build_args(Path::new("in.mkv"), Path::new("out.mp4"), &i, &p, None, None);
+        let joined = args.join(" ");
+        assert!(joined.contains("-map 0:a?") && joined.contains("-map 0:s:0") && joined.contains("-map 0:s:2"));
+        assert!(joined.contains("-c:s mov_text"));
+        // Two sound tracks share the sound budget.
+        let one = plan(&i, &opts(Goal::Discord.target()), &Encoders::default()).unwrap();
+        assert!(p.video_kbps.unwrap() <= one.video_kbps.unwrap());
+        let args = build_args(Path::new("in.mkv"), Path::new("out.mp4"), &i, &one, None, None);
+        assert!(args.join(" ").contains("-map 0:a:0? ") && args.join(" ").contains("-map_chapters -1"));
+    }
+
+    #[test]
+    fn says_how_long_would_fit() {
+        let mut i = info();
+        i.duration = 3.0 * 3600.0;
+        let secs = longest_fit(&i, &opts(Goal::Discord.target()), &Encoders::default()).unwrap();
+        assert!(secs > 60.0 && secs < 600.0, "{secs}");
+        let mut o = opts(Goal::Discord.target());
+        o.range = Some((0.0, secs));
+        let p = plan(&i, &o, &Encoders::default()).unwrap();
+        assert!(p.look < Look::Blurry, "{p:?}");
+        // Fits fine: nothing to say.
+        assert!(longest_fit(&info(), &opts(Target::SizeMb(500.0)), &Encoders::default()).is_none());
     }
 }

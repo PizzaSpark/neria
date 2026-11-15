@@ -82,6 +82,15 @@ if (-not (Test-Path $long)) {
   & $ff -loglevel error -y -f lavfi -i "testsrc2=size=640x360:rate=25" -f lavfi -i "aevalsrc=sin(440*2*PI*t)*abs(sin(0.7*t))*(0.3+0.7*abs(sin(0.05*t))):s=44100" -t 600 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 50 -c:a aac -shortest $long
 }
 $song = Join-Path $media "song.mp3"
+# A letterboxed film with two sound tracks, captions and chapters (Compress: black bars, tracks).
+$film = Join-Path $media "film.mkv"
+if (-not (Test-Path $film)) {
+  $srt = Join-Path $media "film.srt"
+  "1`n00:00:01,000 --> 00:00:04,000`nHello there`n" | Set-Content -Encoding ascii $srt
+  $fmeta = Join-Path $media "film.txt"
+  @(";FFMETADATA1", "[CHAPTER]", "TIMEBASE=1/1", "START=0", "END=12", "title=Opening", "[CHAPTER]", "TIMEBASE=1/1", "START=12", "END=30", "title=The chase", "[CHAPTER]", "TIMEBASE=1/1", "START=30", "END=40", "title=Credits") | Set-Content -Encoding ascii $fmeta
+  & $ff -loglevel error -y -f lavfi -i "testsrc2=s=1920x800:r=30:d=40,pad=1920:1080:0:140" -f lavfi -i "sine=f=440:d=40" -f lavfi -i "sine=f=660:d=40" -i $srt -i $fmeta -map 0 -map 1 -map 2 -map 3 -map_chapters 4 -c:v libx264 -preset ultrafast -b:v 6M -c:a aac -c:s srt $film
+}
 # A .gif, for opening one in the clipper.
 $gifFile = Join-Path $media "loop.gif"
 if (-not (Test-Path $gifFile)) { & $ff -loglevel error -y -i $video -t 4 -vf "fps=12,scale=360:-2" $gifFile }
@@ -105,6 +114,13 @@ $states = [ordered]@{
   "clip"       = @{ NERIA_OPEN = $video }
   "cmp-empty"  = @{ NERIA_PAGE = "compress" }
   "cmp"        = @{ NERIA_COMPRESS = $video }
+  # Compress track: a film (bars, tracks) with Advanced open; too long for Discord; trimmed
+  # (with chapters); a "keeping" goal; several files.
+  "cmp-film"   = @{ NERIA_COMPRESS = $film; NERIA_COMPRESS_ADVANCED = "1" }
+  "cmp-long"   = @{ NERIA_COMPRESS = $long; NERIA_COMPRESS_GOAL = "whatsapp" }
+  "cmp-trim"   = @{ NERIA_COMPRESS = $film; NERIA_COMPRESS_TRIM = "12,30" }
+  "cmp-sharp"  = @{ NERIA_COMPRESS = $long; NERIA_COMPRESS_GOAL = "sharp" }
+  "cmp-many"   = @{ NERIA_COMPRESS = "$video;$long;$film;$(Join-Path $media 'timelapse.mp4')" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-net"    = @{ NERIA_SETTINGS = "network" }

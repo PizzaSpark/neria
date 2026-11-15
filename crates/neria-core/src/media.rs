@@ -22,6 +22,13 @@ pub struct FileInfo {
     /// A real video stream (cover art doesn't count).
     pub has_video: bool,
     pub has_audio: bool,
+    /// How many sound tracks (films often carry several languages).
+    pub audio_tracks: u32,
+    /// Stored as interlaced fields (old camcorders, TV recordings): needs deinterlacing.
+    pub interlaced: bool,
+    /// One entry per caption track: true for text (goes into an .mp4), false for
+    /// picture captions (Blu-ray/DVD), which an .mp4 can't hold.
+    pub subtitles: Vec<bool>,
     /// Chapter marks stored in the file (yt-dlp embeds YouTube's).
     pub chapters: Vec<crate::tracks::Chapter>,
     /// The video is shown turned by this much (phone footage), in degrees, clockwise.
@@ -63,6 +70,7 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
                     info.width = s["width"].as_u64().unwrap_or(0) as u32;
                     info.height = s["height"].as_u64().unwrap_or(0) as u32;
                     info.video_codec = s["codec_name"].as_str().unwrap_or("").to_string();
+                    info.interlaced = matches!(s["field_order"].as_str(), Some("tt" | "bb" | "tb" | "bt"));
                     let avg = parse_rate(s["avg_frame_rate"].as_str().unwrap_or(""));
                     info.fps = if avg > 0.0 { avg } else { parse_rate(s["r_frame_rate"].as_str().unwrap_or("")) };
                     // The display matrix says counter-clockwise; 90 here = shown turned left.
@@ -76,7 +84,16 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
                 }
                 info.has_video = true;
             }
-            Some("audio") => info.has_audio = true,
+            Some("audio") => {
+                info.has_audio = true;
+                info.audio_tracks += 1;
+            }
+            Some("subtitle") => {
+                let codec = s["codec_name"].as_str().unwrap_or("");
+                // Only the text kinds an .mp4 (mov_text) can be made from; teletext,
+                // closed captions and picture captions count as not text.
+                info.subtitles.push(matches!(codec, "subrip" | "srt" | "ass" | "ssa" | "webvtt" | "mov_text" | "text"));
+            }
             _ => {}
         }
     }

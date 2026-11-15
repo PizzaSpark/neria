@@ -15,6 +15,7 @@ After porting anything (or re-reviewing upstream), move the baseline forward and
 | Sunnify | [sunnypatell/sunnify-spotify-downloader](https://github.com/sunnypatell/sunnify-spotify-downloader) | `main` | `0138cbf107395057bac7e33d820a28837cbe8522` | 2026-11-02 | v2.6.0 | Custom educational-use: **ideas only, never copy code** |
 | spotify-lyrics-api | [akashrchandran/spotify-lyrics-api](https://github.com/akashrchandran/spotify-lyrics-api) | `main` | `e158b96b854778d8ff51a3c9544ebb4f68b64907` | 2025-12-30 | n/a | GPL-3.0: **ideas only, never copy code** (Neria is MIT) |
 | syncedlyrics | [moehmeni/syncedlyrics](https://github.com/moehmeni/syncedlyrics) | `main` | `3c8a318d9a8df26855bdc3a5d23f7fd2b99ade2e` | 2024-07-28 | n/a | MIT: code may be ported, with credit in the source |
+| HandBrake | [HandBrake/HandBrake](https://github.com/HandBrake/HandBrake) | `master` | `2ab11403ca9d44a1ea02252174153e0918fd5a09` (`preset/preset_builtin.json`) | 2026-10-29 | n/a | GPL-2.0: **numbers and ideas only, never copy code** (Neria is MIT) |
 | loopgif (our own) | [PizzaSpark/loopgif](https://github.com/PizzaSpark/loopgif) | `main` | `cf5c980ee120026feeaef370d4affba5023425ef` | 2026-11-07 | n/a | Ours: port freely |
 
 Why Sunnify is ideas-only: its LICENSE allows using and redistributing the software only
@@ -32,6 +33,23 @@ the author grants permission, record it here (date + link) and it can be ported 
 | Tags (title, artists, album, track no., year, cover, lyrics, ISRC) | `spotdl/utils/metadata.py` |
 | Playlist sync (add new, remove deleted) | `spotdl/console/sync.py` |
 | M3U playlist files | `spotdl/utils/m3u.py` |
+
+### HandBrake (numbers and ideas only)
+Studied for the Compress track (2026-11-15). What Neria's Compress takes from its built-in presets
+(`preset/preset_builtin.json`), checked against `compress.rs`:
+| Idea in Neria | HandBrake |
+|---|---|
+| "Smaller, still sharp" = H.264 CRF 22 at 1080p (its default preset, "Fast 1080p30") | `VideoQualitySlider` 22 |
+| Smaller pictures get a slightly better quality number (−1 at 720p, −2 at 480p) | Fast 720p30 RF 21, 480p30 RF 20 |
+| "As small as possible" = CRF 27 at 720p 30 fps | its "Social" presets' RF 27 ceiling |
+| H.265 CRF ~2 under H.264's for the same look; AV1 (SVT) ~31–35 | x265 RF 22–24, SVT-AV1 30.5–34.5 |
+| The size floor (≈0.035 bits per pixel) | "Social 25 MB 5 Minutes 360p60" = 500 kbps ≈ 0.036 bpp |
+| "Too long: the first 1:40 would fit" (how long a size holds) | presets named by how long they fit ("1 Minute 720p60") |
+| A slower encoder setting when the size is tight | Social 10 MB presets use x264 `slow`, 25 MB `medium` |
+| Deinterlace only when the file is interlaced | every preset has Decomb on |
+| Keep chapters, all sound tracks, captions; cut black bars; a live sample to watch | ChapterMarkers, audio/subtitle lists, auto crop, Preview window |
+Not taken: the speed × resolution preset grid, RF numbers in the UI, anamorphic settings, burnt-in
+"foreign audio" captions.
 
 ### Sunnify (ideas only)
 | Idea in Neria | Upstream files to watch |

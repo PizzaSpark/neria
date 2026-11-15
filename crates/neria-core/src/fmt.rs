@@ -13,6 +13,21 @@ pub fn bytes(b: f64) -> String {
     if i == 0 { format!("{v:.0} {}", UNITS[i]) } else { format!("{v:.1} {}", UNITS[i]) }
 }
 
+/// A size the way upload limits count it (1 MB = 1,000,000 bytes), so "19.6 MB" sits under
+/// Discord's "20 MB". `bytes` counts in 1024s, which reads as over the limit.
+pub fn mb(b: f64) -> String {
+    let m = b.max(0.0) / 1e6;
+    if m >= 1000.0 {
+        format!("{:.1} GB", m / 1000.0)
+    } else if m >= 100.0 {
+        format!("{m:.0} MB")
+    } else if m >= 0.1 {
+        format!("{m:.1} MB")
+    } else {
+        format!("{:.0} KB", b / 1e3)
+    }
+}
+
 pub fn duration(secs: f64) -> String {
     let s = secs.max(0.0).round() as u64;
     let (h, m, s) = (s / 3600, (s % 3600) / 60, s % 60);

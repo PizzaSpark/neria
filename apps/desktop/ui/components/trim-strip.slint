@@ -1,0 +1,130 @@
+import { Theme } from "../theme.slint";
+
+// One end of the kept part: a grip you drag, or move with ← → (1 s; Shift: 10 s).
+component TrimEnd inherits Rectangle {
+    in property <string> label;
+    callback step(float);
+    width: 12px;
+    border-radius: 4px;
+    background: Theme.strip-mark;
+    accessible-role: slider;
+    accessible-label: root.label + " (left and right arrows, Shift for 10 seconds)";
+    Rectangle {
+        width: 2px;
+        height: 14px;
+        border-radius: 1px;
+        background: Theme.video;
+    }
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.LeftArrow {
+                root.step(event.modifiers.shift ? -10 : -1);
+                return accept;
+            }
+            if event.text == Key.RightArrow {
+                root.step(event.modifiers.shift ? 10 : 1);
+                return accept;
+            }
+            reject
+        }
+    }
+    if fs.has-focus: Rectangle {
+        x: -4px;
+        y: -4px;
+        width: root.width + 8px;
+        height: root.height + 8px;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: Theme.strip-mark;
+    }
+}
+
+// The Compress page's trim: the video as a filmstrip, the part left out under a veil, two
+// grips for In and Out. Dragging anywhere moves the nearer grip.
+export component TrimStrip inherits Rectangle {
+    in property <float> duration;
+    in property <[image]> frames;
+    in-out property <float> start;
+    in-out property <float> end;
+    callback changed();
+    property <float> d: max(0.1, root.duration);
+    property <length> span: root.width - 12px;
+    property <length> x-in: 6px + root.span * root.start / root.d;
+    property <length> x-out: 6px + root.span * root.end / root.d;
+    property <int> dragging: 0; // 1 In, 2 Out
+    height: 52px;
+    border-radius: 8px;
+    background: Theme.video;
+    clip: true;
+    function at(x: length) -> float {
+        return max(0, min(root.d, (x - 6px) / root.span * root.d));
+    }
+    function set-in(t: float) {
+        root.start = max(0, min(t, root.end - 0.5));
+        root.changed();
+    }
+    function set-out(t: float) {
+        root.end = min(root.d, max(t, root.start + 0.5));
+        root.changed();
+    }
+    HorizontalLayout {
+        for f in root.frames: Image {
+            source: f;
+            image-fit: cover;
+            horizontal-stretch: 1;
+        }
+    }
+    Rectangle {
+        x: 0;
+        width: max(0px, root.x-in);
+        background: Theme.video-veil;
+    }
+    Rectangle {
+        x: root.x-out;
+        width: max(0px, root.width - root.x-out);
+        background: Theme.video-veil;
+    }
+    Rectangle {
+        x: root.x-in;
+        width: max(0px, root.x-out - root.x-in);
+        border-width: 2px;
+        border-color: Theme.strip-mark;
+    }
+    TouchArea {
+        mouse-cursor: ew-resize;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.dragging = abs(self.mouse-x - root.x-in) <= abs(self.mouse-x - root.x-out) ? 1 : 2;
+                if root.dragging == 1 {
+                    root.set-in(root.at(self.mouse-x));
+                } else {
+                    root.set-out(root.at(self.mouse-x));
+                }
+            }
+            if e.kind == PointerEventKind.up {
+                root.dragging = 0;
+            }
+        }
+        moved => {
+            if self.pressed && root.dragging == 1 {
+                root.set-in(root.at(self.mouse-x));
+            }
+            if self.pressed && root.dragging == 2 {
+                root.set-out(root.at(self.mouse-x));
+            }
+        }
+    }
+    TrimEnd {
+        x: root.x-in - 6px;
+        height: root.height;
+        label: "Start";
+        step(s) => { root.set-in(root.start + s); }
+    }
+    TrimEnd {
+        x: root.x-out - 6px;
+        height: root.height;
+        label: "End";
+        step(s) => { root.set-out(root.end + s); }
+    }
+}

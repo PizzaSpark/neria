@@ -12,13 +12,13 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
   compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
   `music.rs` tags/M3U/sync/Lyrics only/numbering, `lyrics.rs` lyrics sources (LRCLIB,
   Spotify's own with a sign-in), `post.rs` items of posts/playlists for the picker,
-  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate, `picture.rs` turn/mirror/crop filters, `live.rs` live streams: rewind marks pinned to the clock, the replay buffer, `timeline.rs` the clip timeline's zoom: view maths, ruler steps, filmstrip tile grid, sound levels (peaks) drawn for any part). Shared with the future Android app, so no UI code here.
+  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate, `picture.rs` turn/mirror/crop filters, `live.rs` live streams: rewind marks pinned to the clock, the replay buffer, `timeline.rs` the clip timeline's zoom: view maths, ruler steps, filmstrip tile grid, sound levels (peaks) drawn for any part, `compress.rs` goals (`Goal`), the plan and its plain hint (`Look`), black bars, kept tracks, trimming, the before/after samples, how long a size holds). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI in `ui/`:
   - `app.slint`: `AppWindow` only, the one API Rust sees (all properties/callbacks); wires them
     into the pages and overlays. Re-exports the structs and `Fmt` from `types.slint`, and the
     feature globals from `globals.slint` (`Accounts`, `Extras`, `Background`, `QueueActions`,
-    `Presets`, `Names`, `Music` (lyrics sources, Lyrics only, numbering), `ClipSound` (Clip page → Sound), `ClipGif` (Make a GIF), `ClipPicture` (Picture mode), `ClipList` (the clip list), `ClipLive` (a live stream in the clipper), `ClipView` (the timeline's zoom and scroll; Rust owns the view)): newer features keep their state there and pages import them directly,
+    `Presets`, `Names`, `Music` (lyrics sources, Lyrics only, numbering), `ClipSound` (Clip page → Sound), `ClipGif` (Make a GIF), `ClipPicture` (Picture mode), `ClipList` (the clip list), `ClipLive` (a live stream in the clipper), `ClipView` (the timeline's zoom and scroll; Rust owns the view), `Compress` (the whole Compress page: files, goals, before/after, Advanced, trim)): newer features keep their state there and pages import them directly,
     instead of threading every property through `app.slint` (Rust: `ui.global::<Extras>()`).
   - `pages/`: `download`, `clip`, `compress`, `settings` (drawer), `setup` (first run).
   - `dialogs/`: `match` (pick another match), `sync` (removed songs), `spotify` (heads-up),
@@ -26,10 +26,12 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
     chapters picker), `background` (close-to-tray question, Download later), `names`
     (filename builder), `sound` (Clip page → Sound: volume, fades, sound only), `gif` (Make a GIF), `clips` (the clip list).
   - `components/`: `job-row`, `quality-row` (presets + Advanced), `pick-list`, `timeline` (+
-    `ChapterStrip`), `extras-row`, `sidebar` (rail + compact `TabBar`), `update-banner`.
+    `ChapterStrip`), `extras-row`, `sidebar` (rail + compact `TabBar`), `update-banner`,
+    `trim-strip` (Compress page's trim).
   - `widgets.slint`: the one shared control set (buttons, chips, `ChoiceChips`, `Tick`, `Tag`,
     `Notice`, `Divider`, `ListRow`, `Thumb`, `Sticker`/`LogoMark`, `EmptyState`, `Dialog`, `Menu`,
-    `Toast`, `CropFrame`…). `theme.slint`'s `Screen` global holds the width breakpoints (wide / medium /
+    `Toast`, `CropFrame`, `ChoiceRow` (a choice to compare: hint + value), `CompareSlider`
+    (before/after)…). `theme.slint`'s `Screen` global holds the width breakpoints (wide / medium /
     compact, see `docs/DESIGN.md`); pages read `Screen.compact` etc. instead of taking the width.
     Reuse these instead of restyling per page. `theme.slint`: tokens + bundled fonts in `ui/fonts/`.
   - Pages take plain properties (no `clip-`/`cmp-` prefixes) and are bound in `app.slint`.
@@ -66,7 +68,9 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 - `NERIA_HOME=target/debug cargo run -p neria-core --example live -- <live link> window|rewind <s ago> <len>|buffer <min> <run s> <clip s> [out]`
   (how far back the site keeps it; a rewound part through the queue, `NERIA_WAIT` / `NERIA_NOW`
   to download the same mark later; the replay buffer)
-- `NERIA_HOME=target/debug cargo run -p neria-core --example compress -- <file> <mb|q0.0-1.0> [h264|hevc|av1] [cpu|gpu]`
+- `NERIA_HOME=target/debug cargo run -p neria-core --example compress -- <file> <discord|email|whatsapp|sharp|tiny|mb|q0.0-1.0> [h264|hevc|av1] [cpu|gpu]`
+  (`--range <a> <b>`, `--first-only` (else every sound track, captions, chapters), `--bars`,
+  `--preview` (size estimate + before/after frames, no encode), `--sample <at> <secs>`)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
   (`--lyrics-only`, `--number`, `--add-lyrics`, `--no-lyrics`, `--no-verify`,
   `--no-spotify-preview`, `--spotify-lyrics`: see the example's header)
@@ -85,8 +89,9 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   (new Neria release / newer tool builds; `--update` re-downloads into NERIA_HOME/bin, use a scratch copy)
 
 Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_CLIP_IN` /
-`NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_VIEW` (`start,span` in seconds: open the timeline zoomed), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
-(auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
+`NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_VIEW` (`start,span` in seconds: open the timeline zoomed), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (files or folders onto the Compress page, `;` between), `NERIA_COMPRESS_START`
+(auto-start once read), `NERIA_COMPRESS_GOAL` (`discord`, `email`, `whatsapp`, `sharp`, `tiny` or MB),
+`NERIA_COMPRESS_TRIM` (`in,out` seconds: Trim open on that part), `NERIA_COMPRESS_ADVANCED` (the fold open), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
 failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_LYRICS_SPOTIFY` (tick Spotify's own lyrics, to see its warning and sign-in; `signed-in`: as if signed in), `NERIA_LYRICS_ONLY` (with a Spotify `NERIA_URL`: press "Lyrics only" once it's looked up), `NERIA_ADD_LYRICS` (a folder: "Add lyrics to songs I already have" on it, no picker), `NERIA_SETTINGS` (open the settings drawer; `download`, `following`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_COPIED` (a link: show the clipboard watcher's "Link copied" strip), `NERIA_WATCH` (a file or link: open it in watch mode), `NERIA_OWN_SOUND` (a `.wav`: pick it as "Your own sound…" for both sound menus, no file picker; `demo` / `missing`: show both menus on it with sample names, file there / gone, nothing saved), `NERIA_UPDATE_URL` (check this "latest
 release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),

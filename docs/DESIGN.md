@@ -133,6 +133,13 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
 - **Crop frame** (`CropFrame`): over a picture, the kept part clear, the rest under
   `video-veil`; a 2px `accent-hi` frame with thirds lines and two corner grips. Drag inside
   to move, a corner to size; a shape (`ratio`) is kept. Arrows move it, Shift+arrows size it.
+- **Choice row** (`ChoiceRow`, the Compress goals): for choices you compare before picking,
+  where chips would hide the difference. A calm row on a hairline: a round mark (ink when
+  picked), the name, a muted hint and a mono value on the right (under the name on compact).
+  A hint that's a problem ("already under 20 MB") turns `warn`. Hover tints the row.
+- **Before / after** (`CompareSlider`): the same moment from both, the after picture cut at a
+  line you drag or move with ← →; "Now" / "After · 720p" tags; covered with "Working it out…"
+  while the pictures are made (no grip then).
 - **Banner** (new version and the like): a calm strip with a tag, one line of text, ghost
   actions and a hairline under it, so the page keeps its one yellow action.
 

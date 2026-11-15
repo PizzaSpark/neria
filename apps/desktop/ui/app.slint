@@ -5,7 +5,7 @@ import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile } from "globals.slint";
 import { ClipsDialog } from "dialogs/clips.slint";
 import { GifDialog } from "dialogs/gif.slint";
 import { SoundDialog } from "dialogs/sound.slint";
@@ -23,7 +23,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -256,36 +256,8 @@ export component AppWindow inherits Window {
     callback clip-paste-link();
 
     // Compressor
-    in property <bool> cmp-loaded;
-    in property <string> cmp-name;
-    in property <string> cmp-info;
-    in property <image> cmp-thumb;
-    in-out property <int> cmp-mode;
-    in-out property <int> cmp-size-index;
-    in-out property <string> cmp-custom-mb: "8";
-    in-out property <float> cmp-quality: 0.6;
-    in-out property <int> cmp-codec;
-    in-out property <bool> cmp-use-gpu: true;
-    in property <bool> cmp-gpu-available;
-    in property <string> cmp-gpu-label: "Use GPU";
-    in-out property <int> cmp-res-index: 1; // Original size by default
-    in-out property <int> cmp-fps-index;
-    in-out property <int> cmp-audio-index;
-    in property <string> cmp-estimate;
-    in property <bool> cmp-warning;
-    in property <bool> cmp-can-start;
-    in property <bool> cmp-running;
-    in property <float> cmp-progress;
-    in property <string> cmp-status;
-    in property <bool> cmp-has-output;
-
-    callback cmp-open();
-    callback cmp-open-path(string);
+    // A finished download's file onto the Compress page (its state: `Compress`).
     callback cmp-job(int);
-    callback cmp-options-changed();
-    callback cmp-start();
-    callback cmp-cancel();
-    callback cmp-show-output();
 
 
     // "mp4 · H.264" and "mp3": what the quality rows say you'll get.
@@ -481,35 +453,7 @@ export component AppWindow inherits Window {
                 }
 
                 if root.page == 2: CompressPage {
-                    loaded: root.cmp-loaded;
-                    name: root.cmp-name;
-                    info: root.cmp-info;
-                    thumb: root.cmp-thumb;
-                    mode <=> root.cmp-mode;
-                    size-index <=> root.cmp-size-index;
-                    custom-mb <=> root.cmp-custom-mb;
-                    quality <=> root.cmp-quality;
-                    codec <=> root.cmp-codec;
-                    use-gpu <=> root.cmp-use-gpu;
-                    gpu-available: root.cmp-gpu-available;
-                    gpu-label: root.cmp-gpu-label;
-                    res-index <=> root.cmp-res-index;
-                    fps-index <=> root.cmp-fps-index;
-                    audio-index <=> root.cmp-audio-index;
-                    estimate: root.cmp-estimate;
-                    warning: root.cmp-warning;
-                    can-start: root.cmp-can-start;
-                    running: root.cmp-running;
-                    progress: root.cmp-progress;
-                    status: root.cmp-status;
-                    has-output: root.cmp-has-output;
-                    open-file => { root.cmp-open(); }
-                recent: root.recent-compress;
-                open-path(p) => { root.cmp-open-path(p); }
-                    options-changed => { root.cmp-options-changed(); }
-                    start-compress => { root.cmp-start(); }
-                    cancel => { root.cmp-cancel(); }
-                    show-output => { root.cmp-show-output(); }
+                    recent: root.recent-compress;
                 }
             }
 

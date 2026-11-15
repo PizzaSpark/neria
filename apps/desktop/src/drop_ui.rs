@@ -93,6 +93,12 @@ pub fn install(ui: &AppWindow) {
             WindowEvent::HoveredFileCancelled => ui.set_drop_hover(false),
             WindowEvent::DroppedFile(path) => {
                 ui.set_drop_hover(false);
+                // Compress takes several videos (and folders of them) at once.
+                if ui.get_page() == 2 && ui.get_tools_ready() && (path.is_dir() || VIDEO.contains(&ext(path).as_str()))
+                {
+                    ui.global::<crate::Compress>().invoke_open_path(path.to_string_lossy().as_ref().into());
+                    return EventResult::PreventDefault;
+                }
                 let now = Instant::now();
                 if last_drop.get().is_some_and(|t| now.duration_since(t) < Duration::from_millis(600)) {
                     crate::show_toast(&ui, "One file at a time: Neria opened the first one.");
@@ -114,15 +120,36 @@ pub fn install(ui: &AppWindow) {
             ui.set_drop_choice_open(false);
             match page {
                 1 => ui.invoke_clip_open_path(file.into()),
-                2 => ui.invoke_cmp_open_path(file.into()),
+                2 => ui.global::<crate::Compress>().invoke_open_path(file.into()),
                 _ => {}
             }
         }
     });
 }
 
+/// Several files (or folders) dropped at once: the Compress page takes every video and
+/// folder; anywhere else only the first one opens.
+fn dropped_files(ui: &AppWindow, first: PathBuf, all: Vec<PathBuf>) {
+    let takes = |p: &PathBuf| p.is_dir() || VIDEO.contains(&ext(p).as_str());
+    if ui.get_page() == 2 && ui.get_tools_ready() && all.iter().any(takes) {
+        for p in all.into_iter().filter(takes) {
+            ui.global::<crate::Compress>().invoke_open_path(p.to_string_lossy().as_ref().into());
+        }
+        return;
+    }
+    let more = all.len() > 1;
+    dropped(ui, first);
+    if more {
+        crate::show_toast(ui, "One file at a time: Neria opened the first one. Compress takes several.");
+    }
+}
+
 fn dropped(ui: &AppWindow, path: PathBuf) {
     if !ui.get_tools_ready() {
+        return;
+    }
+    if path.is_dir() && ui.get_page() == 2 {
+        ui.global::<crate::Compress>().invoke_open_path(path.to_string_lossy().as_ref().into());
         return;
     }
     if path.is_dir() {
@@ -159,7 +186,7 @@ fn dropped(ui: &AppWindow, path: PathBuf) {
     let file = path.to_string_lossy().into_owned();
     match ui.get_page() {
         1 => ui.invoke_clip_open_path(file.into()),
-        2 if video => ui.invoke_cmp_open_path(file.into()),
+        2 if video => ui.global::<crate::Compress>().invoke_open_path(file.into()),
         2 => crate::show_toast(ui, "Compress works on videos. Open audio files on the Clip page."),
         // Download page (or anywhere else): ask. Audio can only be clipped.
         _ if audio => ui.invoke_clip_open_path(file.into()),
@@ -263,7 +290,7 @@ mod ole {
     /// What's being dragged over the window.
     #[derive(Debug)]
     enum Dragged {
-        File { path: PathBuf, more: bool },
+        File { path: PathBuf, all: Vec<PathBuf> },
         Link(String),
         Other,
     }
@@ -326,7 +353,7 @@ mod ole {
             let Some(data) = data else { return Dragged::Other };
             let found = files(data);
             if let Some(first) = found.first() {
-                return Dragged::File { path: first.clone(), more: found.len() > 1 };
+                return Dragged::File { path: first.clone(), all: found.clone() };
             }
             [self.url_format, CF_UNICODETEXT.0]
                 .into_iter()
@@ -390,12 +417,7 @@ mod ole {
             let Some(ui) = self.weak.upgrade() else { return Ok(()) };
             ui.set_drop_hover(false);
             match what {
-                Dragged::File { path, more } => {
-                    dropped(&ui, path);
-                    if more {
-                        crate::show_toast(&ui, "One file at a time: Neria opened the first one.");
-                    }
-                }
+                Dragged::File { path, all } => super::dropped_files(&ui, path, all),
                 Dragged::Link(url) => link_dropped(&ui, url),
                 Dragged::Other => {}
             }
@@ -444,7 +466,7 @@ mod ole {
         };
         let data = unsafe { windows::Win32::System::Ole::OleGetClipboard() };
         match data.as_ref().map(|d| target.read(Some(d))) {
-            Ok(Dragged::File { path, .. }) => dropped(ui, path),
+            Ok(Dragged::File { path, all }) => super::dropped_files(ui, path, all),
             Ok(Dragged::Link(url)) => link_dropped(ui, url),
             Ok(Dragged::Other) => eprintln!("drop clipboard: nothing to drop"),
             Err(e) => eprintln!("drop clipboard: {e}"),
