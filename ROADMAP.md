@@ -161,6 +161,14 @@ them; related ideas are merged into one item so they get built together.
   the processor), sideways phone videos squashed when scaled
 - Notes: `docs/releases/v0.6.0.md`
 
+### v0.7.0: Livestreams (2026-11-15)
+- **Recording live streams**, items 1–7 under "Livestreams": from the start or from now, said
+  on the preview; "Record when it starts"; the tape on the row (recorded, before you joined,
+  missed bits, live edge); Stop saves, the stream ending saves, a crash saves at the next
+  start; Watch it live, Start clip / End clip and Clip the last while it records
+- Fixes on the way: recordings' yt-dlp/ffmpeg no longer outlive Neria
+- Notes: `docs/releases/v0.7.0.md`
+
 ## Now: after v0.3.0
 Loose ends left from v0.3 (released 2026-11-12 without them).
 1. **Check what's left on real links**: an Instagram carousel all the way through with
