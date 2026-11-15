@@ -144,6 +144,14 @@ them; related ideas are merged into one item so they get built together.
 - Narrow windows: Download gets its own row under the link box
 - Notes: `docs/releases/v0.4.0.md`
 
+### v0.5.0: Clip track (2026-11-15)
+- **Clip track**, items 1–9 under "Clip / edit": sound on export and Save sound only, Make
+  a GIF and `.gif` files, the clip list, crop and shape, turn and mirror, the result
+  preview, waveform for links, rewinding live streams and the replay buffer, and the
+  timeline redesign (zoom and scroll, live tape)
+- Download track follow-up: "Your own sound…" in both sound menus
+- Notes: `docs/releases/v0.5.0.md`
+
 ## Now: after v0.3.0
 Loose ends left from v0.3 (released 2026-11-12 without them).
 1. **Check what's left on real links**: an Instagram carousel all the way through with
