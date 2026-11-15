@@ -280,8 +280,14 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
    Download now / Download later… (In an hour, Tonight 02:00, Tomorrow 08:00, At a time) /
    Tonight at 02:00; rows wait as "Later · Starts at 02:00" with Start now, kept across
    restarts. `NERIA_DIALOG=close|later`, `NERIA_SETTINGS=general`
-   Next: "Your own sound…" in both sound menus (pick a `.wav`, copied into Neria's folder so
-   it stays portable; played with the same `PlaySound` as the chime)
+   Built: "Your own sound…" in both sound menus. It asks for a `.wav` (RIFF/WAVE, up to
+   15 seconds by its header, 10 MB), plays it once ("Trying doorbell.wav…") to try it (a synchronous `PlaySound` on a thread, since the async one
+   says yes even to files it can't play) and only then keeps it as `sounds/done.wav` /
+   `failed.wav` next to the exe (the original name in settings, for display). Under the menu:
+   the file name, ▷ Play and Change… (the old sound stays until the new one has played).
+   Choosing it again reuses the copy. If the file goes missing, the chime plays instead, a
+   toast says so once a session, and Settings shows a warning with Pick again…
+   `NERIA_OWN_SOUND=<wav>|demo|missing`
 6. ✅ **More control in the picker**: drag rows into your own order before downloading (numbers
    follow your order); "Reverse" for newest-first playlists; remember the order on
    re-download; a container/audio format per item (today Settings' format applies to all)

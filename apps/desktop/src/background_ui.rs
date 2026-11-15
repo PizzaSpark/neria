@@ -30,10 +30,14 @@ thread_local! {
     static GROUP_TOLD: RefCell<HashSet<i32>> = RefCell::default();
     /// "Download later" picked: the next Download waits until then.
     static LATER: RefCell<Option<(u64, String)>> = const { RefCell::new(None) };
+    /// "Your sound is missing" was said this session (done, failed).
+    static TOLD_MISSING: Cell<(bool, bool)> = const { Cell::new((false, false)) };
 }
 
 const APP_ID: &str = "Neria.Downloader";
-const SOUNDS: [&str; 3] = ["chime", "windows", "none"];
+/// The sound menus, in order: "Your own sound…" (a WAV the user picked) comes last.
+const SOUNDS: [&str; 4] = ["chime", "windows", "none", "own"];
+const OWN: i32 = 3;
 const CLOSE: [&str; 3] = ["ask", "tray", "quit"];
 
 fn idx(list: &[&str], v: &str) -> i32 {
@@ -49,6 +53,9 @@ fn to_ui(ui: &AppWindow, s: &Settings) {
     b.set_notify_unfocused(s.notify_unfocused);
     b.set_sound_done(idx(&SOUNDS, &s.sound_done));
     b.set_sound_failed(idx(&SOUNDS, &s.sound_failed));
+    b.set_own_done(s.sound_done_name.as_str().into());
+    b.set_own_failed(s.sound_failed_name.as_str().into());
+    check_sounds(ui);
 }
 
 fn from_ui(ui: &AppWindow, s: &mut Settings) {
@@ -56,8 +63,10 @@ fn from_ui(ui: &AppWindow, s: &mut Settings) {
     s.close_action = CLOSE[b.get_close_action().clamp(0, 2) as usize].into();
     s.notify = b.get_notify();
     s.notify_unfocused = b.get_notify_unfocused();
-    s.sound_done = SOUNDS[b.get_sound_done().clamp(0, 2) as usize].into();
-    s.sound_failed = SOUNDS[b.get_sound_failed().clamp(0, 2) as usize].into();
+    s.sound_done = SOUNDS[b.get_sound_done().clamp(0, OWN) as usize].into();
+    s.sound_failed = SOUNDS[b.get_sound_failed().clamp(0, OWN) as usize].into();
+    s.sound_done_name = b.get_own_done().into();
+    s.sound_failed_name = b.get_own_failed().into();
 }
 
 // ---------- Sounds ----------
@@ -123,6 +132,260 @@ fn play_chime(failed: bool) {
     let _ = failed;
 }
 
+// ---------- Your own sound ----------
+
+/// Where a picked sound is kept: next to the exe, so it moves with Neria.
+fn own_file(failed: bool) -> PathBuf {
+    neria_core::paths::app_dir().join("sounds").join(if failed { "failed.wav" } else { "done.wav" })
+}
+
+/// Bigger than this isn't a notification sound (10 MB of CD-quality WAV is about a minute).
+const OWN_MAX: u64 = 10 * 1024 * 1024;
+
+/// Longer than this isn't a notification sound (and the menu waits while it's tried out).
+const OWN_MAX_SECS: f64 = 15.0;
+
+/// A RIFF/WAVE file, the only kind `PlaySound` plays.
+fn is_wav(head: &[u8]) -> bool {
+    head.len() >= 12 && &head[..4] == b"RIFF" && &head[8..12] == b"WAVE"
+}
+
+/// How long a WAV plays, from its `fmt ` byte rate and `data` size (None: can't tell).
+fn wav_seconds(wav: &[u8]) -> Option<f64> {
+    let (mut pos, mut rate, mut data) = (12usize, None, None);
+    while pos + 8 <= wav.len() {
+        let size = u32::from_le_bytes(wav[pos + 4..pos + 8].try_into().ok()?) as usize;
+        match &wav[pos..pos + 4] {
+            b"fmt " if pos + 20 <= wav.len() => {
+                rate = Some(u32::from_le_bytes(wav[pos + 16..pos + 20].try_into().ok()?));
+            }
+            b"data" => data = Some(size.min(wav.len() - pos - 8)),
+            _ => {}
+        }
+        pos += 8 + size + (size & 1);
+    }
+    let rate = rate.filter(|r| *r > 0)?;
+    Some(data? as f64 / rate as f64)
+}
+
+/// Check a picked file and copy it next to `dest` (as `.wav.part`) to be tried out before it
+/// replaces what's there. Returns the copy (or `dest` itself when that's what was picked).
+/// The error is said to the user as it is.
+fn stage_sound(src: &std::path::Path, dest: &std::path::Path) -> Result<PathBuf, String> {
+    use std::io::Read;
+    let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut head = [0u8; 12];
+    let len = std::fs::File::open(src)
+        .and_then(|mut f| f.read_exact(&mut head).and_then(|_| f.metadata()))
+        .map(|m| m.len())
+        .map_err(|_| format!("Couldn't read {name}."))?;
+    if !is_wav(&head) {
+        return Err(format!("{name} isn't a WAV sound. Windows plays only .wav files here."));
+    }
+    if len > OWN_MAX {
+        return Err(format!("{name} is over 10 MB. Pick a short sound, a few seconds long."));
+    }
+    if let Some(secs) = std::fs::read(src).ok().and_then(|w| wav_seconds(&w))
+        && secs > OWN_MAX_SECS
+    {
+        return Err(format!("{name} plays for {secs:.0} seconds. Pick a short sound, up to 15 seconds."));
+    }
+    let same = std::fs::canonicalize(src).ok().is_some_and(|a| std::fs::canonicalize(dest).ok() == Some(a));
+    if same {
+        return Ok(dest.to_path_buf());
+    }
+    let tmp = dest.with_extension("wav.part");
+    let copied = dest.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|_| std::fs::copy(src, &tmp));
+    if copied.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return Err("Couldn't copy the sound into Neria's folder. Is it read-only?".into());
+    }
+    Ok(tmp)
+}
+
+/// The staged copy tried out fine: it becomes the sound (replacing the old one).
+fn commit_sound(staged: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+    if staged == dest {
+        return Ok(());
+    }
+    stop_sound(); // Windows may be reading the old one.
+    std::fs::rename(staged, dest).map_err(|_| {
+        let _ = std::fs::remove_file(staged);
+        "Couldn't copy the sound into Neria's folder. Is it read-only?".to_string()
+    })
+}
+
+fn stop_sound() {
+    #[cfg(windows)]
+    // SAFETY: a null sound only stops what's playing.
+    unsafe {
+        let _ = windows::Win32::Media::Audio::PlaySoundW(windows::core::PCWSTR::null(), None, Default::default());
+    }
+}
+
+/// Play a WAV file with the same `PlaySound` as the chime. Asynchronous, it says true even
+/// for a file Windows can't play; `wait` plays it to the end first and tells the truth (so
+/// a picked file is tried out that way, on a thread).
+fn play_file(file: &std::path::Path, wait: bool) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODEFAULT, SND_SYNC};
+        let wide: Vec<u16> = file.as_os_str().encode_wide().chain(Some(0)).collect();
+        let how = SND_FILENAME | SND_NODEFAULT | if wait { SND_SYNC } else { SND_ASYNC };
+        // SAFETY: a null-terminated path that lives through the call (PlaySound opens the
+        // file before it returns, also when asynchronous).
+        unsafe { PlaySoundW(windows::core::PCWSTR(wide.as_ptr()), None, how).as_bool() }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (file, wait);
+        false
+    }
+}
+
+/// Play the picked WAV. false: it's gone.
+fn play_own(failed: bool) -> bool {
+    let file = own_file(failed);
+    file.is_file() && play_file(&file, false)
+}
+
+/// Is a chosen sound file gone? Settings → General says so under its menu.
+fn check_sounds(ui: &AppWindow) {
+    if demo_sounds(ui) {
+        return;
+    }
+    let b = ui.global::<Background>();
+    b.set_own_done_missing(b.get_sound_done() == OWN && !own_file(false).is_file());
+    b.set_own_failed_missing(b.get_sound_failed() == OWN && !own_file(true).is_file());
+}
+
+/// `NERIA_OWN_SOUND=demo|missing`: both menus on "Your own sound…" with sample names, for
+/// screenshots (nothing is saved).
+fn demo_sounds(ui: &AppWindow) -> bool {
+    let Ok(v) = std::env::var("NERIA_OWN_SOUND") else { return false };
+    if v != "demo" && v != "missing" {
+        return false;
+    }
+    let b = ui.global::<Background>();
+    b.set_sound_done(OWN);
+    b.set_sound_failed(OWN);
+    b.set_own_done("Doorbell from the old flat (recorded on my phone).wav".into());
+    b.set_own_failed("oops.wav".into());
+    b.set_own_done_missing(v == "missing");
+    b.set_own_failed_missing(false);
+    true
+}
+
+/// The sound for done / failed, as Settings say. A picked sound that's gone plays the
+/// chime instead and says so (once a session; Settings keep saying it).
+fn play_sound(ui: &AppWindow, failed: bool) {
+    let b = ui.global::<Background>();
+    match if failed { b.get_sound_failed() } else { b.get_sound_done() } {
+        0 => play_chime(failed),
+        OWN => {
+            if play_own(failed) {
+                return;
+            }
+            play_chime(failed);
+            check_sounds(ui);
+            let (done, fail) = TOLD_MISSING.with(Cell::get);
+            if (failed && fail) || (!failed && done) {
+                return;
+            }
+            TOLD_MISSING.with(|t| t.set((done || !failed, fail || failed)));
+            let name = if failed { b.get_own_failed() } else { b.get_own_done() };
+            let name = if name.is_empty() { "Your sound".to_string() } else { name.to_string() };
+            crate::show_toast(
+                ui,
+                &format!(
+                    "{name} is gone from Neria's folder, so the chime played. Pick it again in Settings → General."
+                ),
+            );
+        }
+        _ => {}
+    }
+}
+
+/// "Your own sound…" chosen in a menu, or "Change…": reuse the sound already copied, or ask
+/// for a WAV, try it out (that's its preview) and keep a copy in Neria's folder. Cancelled
+/// or unplayable: the menu goes back to what it was, and the old sound stays.
+fn pick_sound(ui: &AppWindow, settings: &Arc<Mutex<Settings>>, failed: bool, change: bool) {
+    let dest = own_file(failed);
+    if !change && dest.is_file() {
+        use_own(ui, settings, failed);
+        play_own(failed);
+        return;
+    }
+    let picked = match std::env::var_os("NERIA_OWN_SOUND") {
+        Some(p) if std::path::Path::new(&p).is_file() => Some(PathBuf::from(p)),
+        _ => rfd::FileDialog::new()
+            .set_title(if failed { "Sound when it fails" } else { "Sound when done" })
+            .add_filter("WAV sound", &["wav"])
+            .pick_file(),
+    };
+    let Some(src) = picked else {
+        // Cancelled: back to what Settings say.
+        to_ui(ui, &settings.lock().unwrap());
+        return;
+    };
+    let staged = match stage_sound(&src, &dest) {
+        Ok(p) => p,
+        Err(msg) => {
+            crate::show_toast(ui, &msg);
+            to_ui(ui, &settings.lock().unwrap());
+            return;
+        }
+    };
+    let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    // The menu shows what's in use until the new sound has played.
+    to_ui(ui, &settings.lock().unwrap());
+    crate::show_toast(ui, &format!("Trying {name}…"));
+    let (weak, settings) = (ui.as_weak(), settings.clone());
+    std::thread::spawn(move || {
+        let played = play_file(&staged, true);
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            let kept = if played {
+                commit_sound(&staged, &dest)
+            } else {
+                if staged != dest {
+                    let _ = std::fs::remove_file(&staged);
+                }
+                Err(format!("Windows couldn't play {name}. Try another WAV, or save it again as a plain WAV."))
+            };
+            if let Err(msg) = kept {
+                crate::show_toast(&ui, &msg);
+                to_ui(&ui, &settings.lock().unwrap());
+                return;
+            }
+            let b = ui.global::<Background>();
+            if failed {
+                b.set_own_failed(name.into());
+            } else {
+                b.set_own_done(name.into());
+            }
+            TOLD_MISSING.with(|t| t.set((false, false)));
+            use_own(&ui, &settings, failed);
+        });
+    });
+}
+
+/// Set a menu to "Your own sound…" and save it.
+fn use_own(ui: &AppWindow, settings: &Arc<Mutex<Settings>>, failed: bool) {
+    let b = ui.global::<Background>();
+    if failed {
+        b.set_sound_failed(OWN);
+    } else {
+        b.set_sound_done(OWN);
+    }
+    {
+        let mut s = settings.lock().unwrap();
+        from_ui(ui, &mut s);
+        let _ = s.save();
+    }
+    check_sounds(ui);
+}
+
 // ---------- Notifications ----------
 
 /// Windows shows toasts only for an app id it knows: a per-user registry entry with
@@ -180,9 +443,7 @@ pub fn notify(ui: &AppWindow, note: Note) {
         return;
     }
     let sound = if note.failed { b.get_sound_failed() } else { b.get_sound_done() };
-    if sound == 0 {
-        play_chime(note.failed);
-    }
+    play_sound(ui, note.failed);
     let weak = ui.as_weak();
     std::thread::spawn(move || {
         use tauri_winrt_notification::{Sound, Toast};
@@ -520,14 +781,26 @@ pub fn install(ui: &AppWindow, queue: Queue, settings: Arc<Mutex<Settings>>) {
     });
     b.on_test_sound({
         let weak = ui.as_weak();
-        move |failed| {
-            let ui = weak.unwrap();
-            let b = ui.global::<Background>();
-            if (if failed { b.get_sound_failed() } else { b.get_sound_done() }) == 0 {
-                play_chime(failed);
-            }
-        }
+        move |failed| play_sound(&weak.unwrap(), failed)
     });
+    b.on_pick_sound({
+        let (weak, settings) = (ui.as_weak(), settings.clone());
+        move |failed, change| pick_sound(&weak.unwrap(), &settings, failed, change)
+    });
+    b.on_check_sounds({
+        let weak = ui.as_weak();
+        move || check_sounds(&weak.unwrap())
+    });
+    // NERIA_OWN_SOUND=<a .wav>: pick it for both menus, as if chosen in the file picker.
+    if std::env::var_os("NERIA_OWN_SOUND").is_some_and(|p| std::path::Path::new(&p).is_file()) {
+        let (weak, settings) = (ui.as_weak(), settings.clone());
+        slint::Timer::single_shot(Duration::from_millis(500), {
+            let (weak, settings) = (weak.clone(), settings.clone());
+            move || pick_sound(&weak.unwrap(), &settings, false, true)
+        });
+        // After the first one has played (both at once would cut each other off).
+        slint::Timer::single_shot(Duration::from_secs(4), move || pick_sound(&weak.unwrap(), &settings, true, true));
+    }
     b.on_keep_going({
         let weak = ui.as_weak();
         move || {
@@ -605,5 +878,53 @@ mod tests {
         assert_eq!(at, (now + chrono::Duration::hours(1)).timestamp() as u64);
         let wav = chime(false);
         assert_eq!(&wav[..4], b"RIFF");
+        assert!(is_wav(wav));
+        // 22 050 samples a second, 16-bit mono: 0.16 s + 0.32 s.
+        let secs = wav_seconds(wav).unwrap();
+        assert!((secs - 0.48).abs() < 0.01, "{secs}");
+        assert_eq!(wav_seconds(b"RIFF\0\0\0\0WAVE"), None);
+    }
+
+    #[test]
+    fn own_sound_copy() {
+        let dir = std::env::temp_dir().join(format!("neria-own-sound-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("sounds").join("done.wav");
+        // Not a WAV: refused, nothing copied.
+        let mp3 = dir.join("song.mp3");
+        std::fs::write(&mp3, b"ID3\x04\0\0\0\0\0\0 not a wav").unwrap();
+        assert!(stage_sound(&mp3, &dest).unwrap_err().contains("isn't a WAV"));
+        assert!(!dest.exists() && !dest.with_extension("wav.part").exists());
+        // Too long: refused. (The chime's header with 16 s of silence after it.)
+        let long = dir.join("long.wav");
+        let mut wav = chime(false).to_vec();
+        let data = 22_050 * 2 * 16;
+        wav[40..44].copy_from_slice(&(data as u32).to_le_bytes());
+        wav.truncate(44);
+        wav.resize(44 + data, 0);
+        std::fs::write(&long, &wav).unwrap();
+        assert!(stage_sound(&long, &dest).unwrap_err().contains("16 seconds"));
+        // A WAV: staged next to it, kept once it played.
+        let a = dir.join("a.wav");
+        std::fs::write(&a, chime(false)).unwrap();
+        let staged = stage_sound(&a, &dest).unwrap();
+        assert!(!dest.exists());
+        commit_sound(&staged, &dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), chime(false));
+        // Replaced by another; the old one stays until the new one is kept.
+        let b = dir.join("b.wav");
+        std::fs::write(&b, chime(true)).unwrap();
+        let staged = stage_sound(&b, &dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), chime(false));
+        commit_sound(&staged, &dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), chime(true));
+        // Picking the copy itself again leaves it alone.
+        let staged = stage_sound(&dest, &dest).unwrap();
+        assert_eq!(staged, dest);
+        commit_sound(&staged, &dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), chime(true));
+        assert!(!dest.with_extension("wav.part").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

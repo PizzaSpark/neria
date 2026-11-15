@@ -85,11 +85,20 @@ export global Background {
     in-out property <int> close-action;
     in-out property <bool> notify: true;
     in-out property <bool> notify-unfocused: true;
-    // 0 Neria chime, 1 Windows' sound, 2 none.
+    // 0 Neria chime, 1 Windows' sound, 2 none, 3 your own sound (a WAV copied into Neria's
+    // folder; own-done / own-failed are its original file names).
     in-out property <int> sound-done;
     in-out property <int> sound-failed;
+    in-out property <string> own-done;
+    in-out property <string> own-failed;
+    in property <bool> own-done-missing; // the copied file is gone: the chime plays instead
+    in property <bool> own-failed-missing;
     callback settings-changed();
     callback test-sound(bool); // failed?
+    // "Your own sound…" chosen (change: false; reuses the one already copied) or "Change…"
+    // (change: true): a file picker for a WAV. Arguments: failed?, change?
+    callback pick-sound(bool, bool);
+    callback check-sounds(); // Settings → General shown: is the file still there?
 }
 
 // Several links at once, "Paste & download" and the clipboard watcher.

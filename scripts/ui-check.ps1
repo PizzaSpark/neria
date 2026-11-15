@@ -120,6 +120,8 @@ $states = [ordered]@{
   "audio"      = @{ NERIA_DIALOG = "audio" }
   "chapters"   = @{ NERIA_DIALOG = "chapters" }
   "set-general" = @{ NERIA_SETTINGS = "general" }
+  "set-sound"  = @{ NERIA_SETTINGS = "general"; NERIA_OWN_SOUND = "demo" }
+  "set-sound-gone" = @{ NERIA_SETTINGS = "general"; NERIA_OWN_SOUND = "missing" }
   "close-ask"  = @{ NERIA_DIALOG = "close"; NERIA_DEMO = "1" }
   "later"      = @{ NERIA_DIALOG = "later" }
   "names"      = @{ NERIA_DIALOG = "names" }
