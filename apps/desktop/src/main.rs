@@ -1412,6 +1412,14 @@ fn main() -> anyhow::Result<()> {
     }) {
         ui.window().set_size(slint::LogicalSize::new(w, h));
     }
+    // Dev hook: where the window opens, in screen pixels ("2600,40": on another monitor, so
+    // test runs stay off the one in use).
+    if let Some((x, y)) = std::env::var("NERIA_WINDOW_AT").ok().and_then(|v| {
+        let (x, y) = v.split_once(',')?;
+        Some((x.trim().parse::<i32>().ok()?, y.trim().parse::<i32>().ok()?))
+    }) {
+        ui.window().set_position(slint::PhysicalPosition::new(x, y));
+    }
 
     let weak = ui.as_weak();
     let pending = Arc::new(Mutex::new(PendingJobs::default()));

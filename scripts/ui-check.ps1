@@ -17,7 +17,9 @@
 param(
   [string[]]$Sizes = @("1280x800", "900x640", "720x600", "400x600"),
   [string[]]$Only = @(),
-  [int]$Wait = 5
+  [int]$Wait = 5,
+  # Where the windows open (NERIA_WINDOW_AT, screen pixels), e.g. "2600,40" for another monitor.
+  [string]$At = ""
 )
 $ErrorActionPreference = "Stop"
 # "-Only a,b" through powershell -File arrives as one string.
@@ -99,6 +101,8 @@ $states = [ordered]@{
   "audio"      = @{ NERIA_DIALOG = "audio" }
   "chapters"   = @{ NERIA_DIALOG = "chapters" }
   "set-general" = @{ NERIA_SETTINGS = "general" }
+  "set-sound"  = @{ NERIA_SETTINGS = "general"; NERIA_OWN_SOUND = "demo" }
+  "set-sound-gone" = @{ NERIA_SETTINGS = "general"; NERIA_OWN_SOUND = "missing" }
   "close-ask"  = @{ NERIA_DIALOG = "close"; NERIA_DEMO = "1" }
   "later"      = @{ NERIA_DIALOG = "later" }
   "names"      = @{ NERIA_DIALOG = "names" }
@@ -150,6 +154,7 @@ function Shot([string]$name, [string]$size, [hashtable]$envs) {
   $psi.UseShellExecute = $false
   $psi.EnvironmentVariables["NERIA_HOME"] = $home_
   $psi.EnvironmentVariables["NERIA_WINDOW"] = $size
+  if ($At) { $psi.EnvironmentVariables["NERIA_WINDOW_AT"] = $At }
   foreach ($k in $envs.Keys) { $psi.EnvironmentVariables[$k] = $envs[$k] }
   $p = [System.Diagnostics.Process]::Start($psi)
   try {

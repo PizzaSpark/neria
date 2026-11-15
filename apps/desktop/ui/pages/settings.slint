@@ -2,7 +2,7 @@ import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
 import { Accounts, Background, Names, Bulk, Following, FollowItem, Music } from "../globals.slint";
-import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider } from "../widgets.slint";
+import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider, Notice } from "../widgets.slint";
 
 // One group of settings under a small heading.
 component Group inherits VerticalLayout {
@@ -87,6 +87,48 @@ component SettingRow inherits HorizontalLayout {
         wrap: word-wrap;
     }
     @children
+}
+
+// Under a sound menu set to "Your own sound…": the picked file, play it, pick another. Says
+// so when the file is gone (the chime plays instead).
+component OwnSound inherits VerticalLayout {
+    in property <string> name;
+    in property <bool> missing;
+    in property <bool> failed;
+    spacing: 6px;
+    HorizontalLayout {
+        spacing: 8px;
+        Icon {
+            horizontal-stretch: 0;
+            text: "\u{E8D6}";
+            font-size: 14px;
+            color: Theme.muted;
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.name == "" ? "Your sound" : root.name;
+            color: root.missing ? Theme.muted : Theme.ink;
+            font-family: Theme.body;
+            font-size: 13px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if !root.missing: IconButton {
+            icon: "\u{E768}";
+            label: "Play " + (root.name == "" ? "your sound" : root.name);
+            clicked => { Background.test-sound(root.failed); }
+        }
+        GhostButton {
+            horizontal-stretch: 0;
+            compact: true;
+            text: root.missing ? "Pick again…" : "Change…";
+            clicked => { Background.pick-sound(root.failed, true); }
+        }
+    }
+    if root.missing: Notice {
+        wrap: true;
+        text: "This file is gone from Neria's folder, so the " + (root.failed ? "low chime" : "Neria chime") + " plays instead.";
+    }
 }
 
 // A section in the list on the left of the drawer: icon and name, outlined when open.
@@ -754,6 +796,7 @@ export component SettingsDrawer inherits Rectangle {
 
                         // ---- General: closing, notifications, theme ----
                         if root.section == 4: VerticalLayout {
+                            init => { Background.check-sounds(); }
                             spacing: 22px;
                             padding-top: Screen.compact ? 14px : 0px;
                             padding-left: Screen.compact ? 16px : 20px;
@@ -791,25 +834,46 @@ export component SettingsDrawer inherits Rectangle {
                                     label: "Sound when done";
                                     ComboBox {
                                         width: 150px;
-                                        model: ["Neria chime", "Windows' sound", "None"];
+                                        model: ["Neria chime", "Windows' sound", "None", "Your own sound…"];
                                         current-index <=> Background.sound-done;
                                         selected => {
-                                            Background.settings-changed();
-                                            Background.test-sound(false);
+                                            if self.current-index == 3 {
+                                                Background.pick-sound(false, false);
+                                            } else {
+                                                Background.settings-changed();
+                                                Background.test-sound(false);
+                                            }
                                         }
                                     }
+                                }
+                                if Background.notify && Background.sound-done == 3: OwnSound {
+                                    name: Background.own-done;
+                                    missing: Background.own-done-missing;
+                                    failed: false;
                                 }
                                 if Background.notify: SettingRow {
                                     label: "Sound when it fails";
                                     ComboBox {
                                         width: 150px;
-                                        model: ["Low chime", "Windows' sound", "None"];
+                                        model: ["Low chime", "Windows' sound", "None", "Your own sound…"];
                                         current-index <=> Background.sound-failed;
                                         selected => {
-                                            Background.settings-changed();
-                                            Background.test-sound(true);
+                                            if self.current-index == 3 {
+                                                Background.pick-sound(true, false);
+                                            } else {
+                                                Background.settings-changed();
+                                                Background.test-sound(true);
+                                            }
                                         }
                                     }
+                                }
+                                if Background.notify && Background.sound-failed == 3: OwnSound {
+                                    name: Background.own-failed;
+                                    missing: Background.own-failed-missing;
+                                    failed: true;
+                                }
+                                if Background.notify && (Background.sound-done == 3 || Background.sound-failed == 3): Hint {
+                                    text: "Your own sound is copied into Neria's folder, so it moves with Neria. WAV files only.";
                                 }
                                 if Background.notify: Hint { text: "A group (a playlist, an album) sends one: \"12 songs saved\"."; }
                             }

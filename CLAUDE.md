@@ -79,7 +79,7 @@ Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_C
 `NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
 (auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
-failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_LYRICS_SPOTIFY` (tick Spotify's own lyrics, to see its warning and sign-in; `signed-in`: as if signed in), `NERIA_LYRICS_ONLY` (with a Spotify `NERIA_URL`: press "Lyrics only" once it's looked up), `NERIA_ADD_LYRICS` (a folder: "Add lyrics to songs I already have" on it, no picker), `NERIA_SETTINGS` (open the settings drawer; `download`, `following`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_COPIED` (a link: show the clipboard watcher's "Link copied" strip), `NERIA_WATCH` (a file or link: open it in watch mode), `NERIA_UPDATE_URL` (check this "latest
+failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_LYRICS_SPOTIFY` (tick Spotify's own lyrics, to see its warning and sign-in; `signed-in`: as if signed in), `NERIA_LYRICS_ONLY` (with a Spotify `NERIA_URL`: press "Lyrics only" once it's looked up), `NERIA_ADD_LYRICS` (a folder: "Add lyrics to songs I already have" on it, no picker), `NERIA_SETTINGS` (open the settings drawer; `download`, `following`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_COPIED` (a link: show the clipboard watcher's "Link copied" strip), `NERIA_WATCH` (a file or link: open it in watch mode), `NERIA_OWN_SOUND` (a `.wav`: pick it as "Your own sound…" for both sound menus, no file picker; `demo` / `missing`: show both menus on it with sample names, file there / gone, nothing saved), `NERIA_UPDATE_URL` (check this "latest
 release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),
 `NERIA_UPDATE_INSTALL` (install a found update; `restart` also restarts), `NERIA_DEMO` (sample queue
 rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog), `NERIA_DIALOG` (open a dialog with sample
@@ -87,7 +87,7 @@ data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, 
 `signin` (a problem that sign-in fixes), `extras` / `captions` / `audio` / `chapters` (a video with all three, the
 picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
-`NERIA_WINDOW` (window size in logical px, e.g. `780x580`; resizing from outside with
+`NERIA_WINDOW` (window size in logical px, e.g. `780x580`; `NERIA_WINDOW_AT` (`x,y` in screen pixels: open the window there, e.g. on another monitor; `ui-check.ps1 -At x,y` passes it on); resizing from outside with
 MoveWindow/SetWindowPos also works, but in PowerShell don't name the window handle `$h` next to
 a `$H` height: variable names ignore case, so the handle becomes the height and the window
 jumps to 32767px tall; Windows doesn't enforce the 400x600 minimum on scripted resizes), `NERIA_FAKE_FREE_MB` (pretend the

@@ -138,9 +138,13 @@ pub struct Settings {
     pub notify: bool,
     /// ...only while Neria isn't the window you're looking at.
     pub notify_unfocused: bool,
-    /// "chime" (Neria's own), "windows" or "none"; separately for failures.
+    /// "chime" (Neria's own), "windows", "none" or "own" (a WAV the user picked, copied to
+    /// `sounds/done.wav` / `sounds/failed.wav` next to the exe); separately for failures.
     pub sound_done: String,
     pub sound_failed: String,
+    /// The picked WAV's original file name, shown in Settings ("doorbell.wav").
+    pub sound_done_name: String,
+    pub sound_failed_name: String,
     /// Names saved in the filename builder: (shown name, yt-dlp template).
     pub saved_names: Vec<(String, String)>,
 }
@@ -192,6 +196,8 @@ impl Default for Settings {
             notify_unfocused: true,
             sound_done: "chime".into(),
             sound_failed: "chime".into(),
+            sound_done_name: String::new(),
+            sound_failed_name: String::new(),
             saved_names: Vec::new(),
         }
     }
