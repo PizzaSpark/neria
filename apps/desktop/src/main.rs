@@ -1468,7 +1468,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     ui.set_probe_state(2);
                     ui.set_probe_title(info.title.as_str().into());
                     ui.set_probe_meta(info.meta_line().into());
-            ui.global::<Presets>().set_top(info.max_height.map(|h| format!("{h}p")).unwrap_or_default().into());
+                    ui.global::<Presets>().set_top(info.max_height.map(|h| format!("{h}p")).unwrap_or_default().into());
                     ui.set_probe_is_gif(info.gif || is_single_gif(&info));
                     live_ui::set_info(&ui, info.live.as_ref(), info.thumbnail_url.clone());
                     extras_ui::set_info(&ui, &info, &settings);

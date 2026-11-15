@@ -216,12 +216,11 @@ pub fn install(ui: &AppWindow, queue: &Queue) {
             .map(|v| v.split(',').filter_map(|s| s.trim().parse().ok()).collect())
             .unwrap_or_default()
     };
-    for (secs, what) in
-        at("NERIA_REC_WATCH")
-            .into_iter()
-            .map(|s| (s, 0))
-            .chain(at("NERIA_REC_MARK").into_iter().zip([1, 2]))
-            .chain(at("NERIA_REC_EARLIER").into_iter().map(|s| (s, 3)))
+    for (secs, what) in at("NERIA_REC_WATCH")
+        .into_iter()
+        .map(|s| (s, 0))
+        .chain(at("NERIA_REC_MARK").into_iter().zip([1, 2]))
+        .chain(at("NERIA_REC_EARLIER").into_iter().map(|s| (s, 3)))
     {
         let (queue, weak) = (queue.clone(), ui.as_weak());
         std::thread::spawn(move || {

@@ -425,17 +425,20 @@ impl Compressor {
                                 Ok(hint) => {
                                     let size = match g.target() {
                                         Target::SizeMb(mb) => format!("{} MB", compress::fmt_mb(mb)),
-                                        Target::Quality(_) => self
-                                            .estimates
-                                            .get(&self.preview_key(it, &opts, *g))
-                                            .map_or_else(
+                                        Target::Quality(_) => {
+                                            self.estimates.get(&self.preview_key(it, &opts, *g)).map_or_else(
                                                 || {
                                                     // Still being worked out (a few seconds per goal).
                                                     let key = self.preview_key(it, &opts, *g);
-                                                    if self.no_estimate.contains(&key) { String::new() } else { "working…".into() }
+                                                    if self.no_estimate.contains(&key) {
+                                                        String::new()
+                                                    } else {
+                                                        "working…".into()
+                                                    }
                                                 },
                                                 |b| format!("about {}", fmt::mb(*b as f64)),
-                                            ),
+                                            )
+                                        }
                                     };
                                     CmpGoal {
                                         name: g.label().into(),

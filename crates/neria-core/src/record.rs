@@ -1315,7 +1315,12 @@ pub fn repair_holes(rec: &Recording, stop: &AtomicBool) -> Result<usize> {
         let to = h.at + h.len + FILL_AFTER;
         let stem = format!("fill{i}");
         let file = fetch_stretch(rec, started, from, to, &stem)?;
-        fills.push(Fill { at: h.at, len: h.len, file: file.file_name().unwrap_or_default().to_string_lossy().into(), from });
+        fills.push(Fill {
+            at: h.at,
+            len: h.len,
+            file: file.file_name().unwrap_or_default().to_string_lossy().into(),
+            from,
+        });
         if let Ok(text) = serde_json::to_string_pretty(&fills) {
             std::fs::write(fills_path(&rec.work), text)?;
         }
@@ -1343,14 +1348,16 @@ pub fn splice_points(recording: &Path, fill: &Path, expect: f64, hole: f64) -> O
     let mut k = 0;
     while k + win <= fill_fp.len() {
         let t = k as f64 * ITEM_SECS;
-        let at = align(&fill_fp[k..k + win], &rec_fp)
-            .filter(|a| a.similarity >= 0.8)
-            .map(|a| from + a.offset_secs - t);
+        let at = align(&fill_fp[k..k + win], &rec_fp).filter(|a| a.similarity >= 0.8).map(|a| from + a.offset_secs - t);
         hits.push((t, at));
         k += step;
     }
     if std::env::var_os("NERIA_REC_DEBUG").is_some() {
-        eprintln!("SPLICE expect {expect:.1} hole {hole:.1} fill {fill_len:.1} search from {from:.1} ({} / {} items)", rec_fp.len(), fill_fp.len());
+        eprintln!(
+            "SPLICE expect {expect:.1} hole {hole:.1} fill {fill_len:.1} search from {from:.1} ({} / {} items)",
+            rec_fp.len(),
+            fill_fp.len()
+        );
         let keep = std::env::temp_dir().join("neria-splice");
         let _ = std::fs::create_dir_all(&keep);
         let _ = std::fs::copy(recording, keep.join("recording.mp4"));
@@ -1393,11 +1400,8 @@ fn splice_fills(work: &Path, file: &Path, starts_at: f64) -> usize {
     for f in fills {
         let fill = work.join(&f.file);
         let Some((cut, a, b, resume)) = splice_points(file, &fill, f.at - starts_at, f.len) else { continue };
-        let pieces = [
-            (file.to_path_buf(), 0.0, Some(cut)),
-            (fill.clone(), a, Some(b - a)),
-            (file.to_path_buf(), resume, None),
-        ];
+        let pieces =
+            [(file.to_path_buf(), 0.0, Some(cut)), (fill.clone(), a, Some(b - a)), (file.to_path_buf(), resume, None)];
         let mut parts = Vec::new();
         for (i, (src, ss, t)) in pieces.iter().enumerate() {
             let out = work.join(format!("splice{i}.mp4"));
@@ -1420,10 +1424,11 @@ fn splice_fills(work: &Path, file: &Path, starts_at: f64) -> usize {
             continue;
         }
         let joined = work.join("spliced.mp4");
-        let args: Vec<String> = ["-f", "concat", "-safe", "0", "-i", &s(&list), "-map", "0", "-c", "copy", "-movflags", "+faststart"]
-            .iter()
-            .map(|x| x.to_string())
-            .collect();
+        let args: Vec<String> =
+            ["-f", "concat", "-safe", "0", "-i", &s(&list), "-map", "0", "-c", "copy", "-movflags", "+faststart"]
+                .iter()
+                .map(|x| x.to_string())
+                .collect();
         if ffmpeg(&args, &joined).is_ok() && std::fs::rename(&joined, file).is_ok() {
             done += 1;
         }
@@ -1502,7 +1507,10 @@ fn part_file(work: &Path, part: &Part) -> Result<Option<PathBuf>> {
         args.extend(["-c", "copy", "-shortest", "-avoid_negative_ts", "make_zero"].map(String::from));
     } else if let Some(p) = parts.first().or(files.iter().find(|f| is_format_piece(&name(f))).as_ref()) {
         args.extend(["-i".into(), s(p), "-map".into(), "0".into(), "-dn".into(), "-ignore_unknown".into()]);
-        args.extend(["-c", "copy", "-bsf:a", "aac_adtstoasc", "-bsf:v", TS_FIX, "-avoid_negative_ts", "make_zero"].map(String::from));
+        args.extend(
+            ["-c", "copy", "-bsf:a", "aac_adtstoasc", "-bsf:v", TS_FIX, "-avoid_negative_ts", "make_zero"]
+                .map(String::from),
+        );
     } else {
         return Ok(None);
     }
@@ -1643,7 +1651,8 @@ pub fn save(work: &Path, out_dir: &Path) -> Result<Saved> {
     let recorded = files.iter().filter_map(|f| crate::media::duration(f)).sum::<f64>();
     let recorded = if recorded > 0.0 { recorded } else { m.parts.iter().map(|p| p.recorded).sum() };
     discard(work);
-    let note = if got_back > 0.0 { format!("got back {} missed", crate::fmt::duration(got_back)) } else { String::new() };
+    let note =
+        if got_back > 0.0 { format!("got back {} missed", crate::fmt::duration(got_back)) } else { String::new() };
     Ok(Saved { files, note, recorded, holes })
 }
 

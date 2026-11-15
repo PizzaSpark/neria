@@ -1760,9 +1760,15 @@ impl Queue {
                         }
                         let steady = queue.inner.entries.lock().unwrap().iter().any(|e| {
                             e.snap.id == id
-                                && e.snap.live.as_ref().is_some_and(|l| l.phase == Phase::Recording && !l.holes.is_empty())
+                                && e.snap
+                                    .live
+                                    .as_ref()
+                                    .is_some_and(|l| l.phase == Phase::Recording && !l.holes.is_empty())
                         });
-                        if steady && let Ok(n) = crate::record::repair_holes(&rec, &stop) && n > 0 {
+                        if steady
+                            && let Ok(n) = crate::record::repair_holes(&rec, &stop)
+                            && n > 0
+                        {
                             queue.push_log(id, format!("Fetched {n} missed bit(s) again"));
                         }
                     }

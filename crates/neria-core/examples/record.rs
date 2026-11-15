@@ -130,7 +130,16 @@ fn main() -> anyhow::Result<()> {
         let (audio, max_height) = (rec.audio, rec.max_height);
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs_f64(at));
-            let rec = Recording { url: &url, settings: &settings, audio, max_height, live, title: &title, out_dir: &out_dir, work };
+            let rec = Recording {
+                url: &url,
+                settings: &settings,
+                audio,
+                max_height,
+                live,
+                title: &title,
+                out_dir: &out_dir,
+                work,
+            };
             let slot = Mutex::new(None);
             let started = Instant::now();
             let mut printed = Instant::now();

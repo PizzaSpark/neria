@@ -73,7 +73,11 @@ pub fn relay_for_player(url: &str, max_height: u32) -> Option<(String, String)> 
     for line in text.lines() {
         if line.starts_with("#EXT-X-STREAM-INF:") {
             height = attr(line, "RESOLUTION").and_then(|r| r.split('x').nth(1)?.parse().ok()).unwrap_or(0);
-        } else if line.starts_with("http") && height > 0 && height <= max_height && best.as_ref().is_none_or(|(h, _)| height > *h) {
+        } else if line.starts_with("http")
+            && height > 0
+            && height <= max_height
+            && best.as_ref().is_none_or(|(h, _)| height > *h)
+        {
             best = Some((height, line.to_string()));
         }
     }
@@ -258,12 +262,20 @@ impl Out {
 
     pub fn render(&self) -> String {
         let target = self.served.iter().map(|(p, _)| p.len.ceil() as u64).max().unwrap_or(2).max(2);
-        let mut s = format!("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{target}\n#EXT-X-MEDIA-SEQUENCE:{}\n", self.first);
+        let mut s = format!(
+            "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{target}\n#EXT-X-MEDIA-SEQUENCE:{}\n",
+            self.first
+        );
         for (p, brk) in &self.served {
             if *brk {
                 s.push_str("#EXT-X-DISCONTINUITY\n");
             }
-            s.push_str(&format!("#EXT-X-PROGRAM-DATE-TIME:{}\n#EXTINF:{:.3},live\n{}\n", time_text(p.at), p.len, p.uri));
+            s.push_str(&format!(
+                "#EXT-X-PROGRAM-DATE-TIME:{}\n#EXTINF:{:.3},live\n{}\n",
+                time_text(p.at),
+                p.len,
+                p.uri
+            ));
         }
         s
     }
@@ -451,7 +463,8 @@ fn channel_media(login: &str, quality: &str) -> Result<String> {
     let mut st = state().lock().unwrap();
     let c = st.entry(login.to_string()).or_default();
     c.used = Some(Instant::now());
-    let (at, out) = c.outs.entry(quality.to_string()).or_insert_with(|| (Instant::now(), Out { source: i, ..Out::default() }));
+    let (at, out) =
+        c.outs.entry(quality.to_string()).or_insert_with(|| (Instant::now(), Out { source: i, ..Out::default() }));
     let gaps = out.merge(&list, i);
     *at = Instant::now();
     let text = out.render();
@@ -589,7 +602,10 @@ mod tests {
         assert_eq!(out.served.back().unwrap().0.uri, "https://e/13.ts");
         out.merge(&pieces(&embed(2, 15)), 0);
         let uris: Vec<_> = out.served.iter().map(|(p, _)| p.uri.as_str()).collect();
-        assert_eq!(uris, ["https://e/11.ts", "https://e/12.ts", "https://e/13.ts", "https://e/14.ts", "https://e/15.ts"]);
+        assert_eq!(
+            uris,
+            ["https://e/11.ts", "https://e/12.ts", "https://e/13.ts", "https://e/14.ts", "https://e/15.ts"]
+        );
         assert!(out.served.iter().all(|(_, b)| !b));
     }
 
@@ -614,11 +630,20 @@ mod tests {
 
     #[test]
     fn knows_when_the_stream_began() {
-        let e = embed(0, 3).replace("#EXT-X-MEDIA-SEQUENCE:3990\n", "#EXT-X-MEDIA-SEQUENCE:3990\n#EXT-X-TWITCH-ELAPSED-SECS:7980.000\n");
+        let e = embed(0, 3).replace(
+            "#EXT-X-MEDIA-SEQUENCE:3990\n",
+            "#EXT-X-MEDIA-SEQUENCE:3990\n#EXT-X-TWITCH-ELAPSED-SECS:7980.000\n",
+        );
         let s = started_in(&e).unwrap();
         assert!((s - (parse_time("2026-11-15T15:08:02.312Z").unwrap() - 7980.0)).abs() < 0.001);
         // A playlist that opens on the ad says nothing about the stream.
-        assert_eq!(started_in(&SITE.replace("#EXT-X-MEDIA-SEQUENCE:0\n", "#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-TWITCH-ELAPSED-SECS:8006.000\n")), None);
+        assert_eq!(
+            started_in(&SITE.replace(
+                "#EXT-X-MEDIA-SEQUENCE:0\n",
+                "#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-TWITCH-ELAPSED-SECS:8006.000\n"
+            )),
+            None
+        );
     }
 
     #[test]
