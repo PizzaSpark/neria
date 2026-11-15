@@ -16,6 +16,7 @@ After porting anything (or re-reviewing upstream), move the baseline forward and
 | spotify-lyrics-api | [akashrchandran/spotify-lyrics-api](https://github.com/akashrchandran/spotify-lyrics-api) | `main` | `e158b96b854778d8ff51a3c9544ebb4f68b64907` | 2025-12-30 | n/a | GPL-3.0: **ideas only, never copy code** (Neria is MIT) |
 | syncedlyrics | [moehmeni/syncedlyrics](https://github.com/moehmeni/syncedlyrics) | `main` | `3c8a318d9a8df26855bdc3a5d23f7fd2b99ade2e` | 2024-07-28 | n/a | MIT: code may be ported, with credit in the source |
 | HandBrake | [HandBrake/HandBrake](https://github.com/HandBrake/HandBrake) | `master` | `2ab11403ca9d44a1ea02252174153e0918fd5a09` (`preset/preset_builtin.json`) | 2026-10-29 | n/a | GPL-2.0: **numbers and ideas only, never copy code** (Neria is MIT) |
+| TTV-AB | [GosuDRM/TTV-AB](https://github.com/GosuDRM/TTV-AB) | `main` | `1825fa5` | 2026-11-15 | 26.0.3 | MIT with repository attribution: code may be ported, crediting GosuDRM with a link to the repo |
 | loopgif (our own) | [PizzaSpark/loopgif](https://github.com/PizzaSpark/loopgif) | `main` | `cf5c980ee120026feeaef370d4affba5023425ef` | 2026-11-07 | n/a | Ours: port freely |
 
 Why Sunnify is ideas-only: its LICENSE allows using and redistributing the software only
@@ -143,6 +144,18 @@ through yt-dlp, so these are references for behaviour, not code.
   streamlink's Twitch ad detection (`EXT-X-DATERANGE` `CLASS="twitch-stitched-ad"`), to label
   ad breaks instead of counting them missed.
 
+### TTV-AB (MIT with attribution)
+| Feature in Neria | Upstream files to watch |
+|---|---|
+| Twitch without its ads (`ttv.rs`): the backup player types and their order, ad pieces known by "stitched" / not titled "live", Twitch's web client id and token query | `src/modules/constants.ts` (`PLAYER_TYPES`, `CLIENT_ID`, `AD_SIGNIFIER`), `src/modules/api.ts` (`_getToken`: the `PlaybackAccessToken` query, its hash, `platform` for `autoplay`), `src/modules/parser.ts` |
+
+When Twitch ads come back in recordings: check whether TTV-AB changed its player types, the
+query hash or how it spots ad pieces since the baseline, and ask for
+a fresh `site` token (it opens on a pre-roll) and the others to see which still come without
+(`--example record` with `NERIA_TTV_ORDER=site,embed` shows the switch). TTV-AB also rotates sources mid-break, holds a silent picture while it searches and
+goes back to `site` after a break; Neria doesn't need those (it records, and a relay that
+starts on a clean source stays on it).
+
 ## How to check what changed since the baseline
 
 Quick look in the browser (replace the SHA with the baseline above):
@@ -177,4 +190,5 @@ Also skim both repos' open issues for the symptom (e.g. "429", "embed", "no matc
 | 2026-11-08 | loopgif | n/a → `cf5c980` | Recorded as the source for Perfect loop GIF. Nothing ported yet. |
 | 2026-11-14 | spotDL | `58ced9a` (still latest) | Lyrics providers re-read for the Music track: `genius.py` needs an API token (Neria uses the website's search instead), `azlyrics.py` (site now blocks), `musixmatch.py` (page scraping, plain only), `synced.py` (wraps syncedlyrics). Genius page reading ported (credit in `lyrics.rs`). |
 | 2026-11-14 | syncedlyrics | n/a → `3c8a318` | Studied: Musixmatch desktop API (now serves decoys anonymously, not used), Genius tokenless search (ported idea, credit in `lyrics.rs`), NetEase (hard-coded cookies, not used). Latest commit is from 2024. |
+| 2026-11-15 | TTV-AB | n/a → `1825fa5` | Idea ported for Twitch recordings and watching without ads (`ttv.rs`, credit there): ask Twitch for the stream as other players (`embed`, `popout`, `mobile_web`, `frontpage`), which came without the pre-roll `site` got; merge their playlists by each piece's date-time. Our own Rust relay; no code copied. |
 | 2026-11-14 | spotify-lyrics-api | `e158b96` (still latest) | Now the idea behind the opt-in "Spotify's own synced lyrics" (user asked for it, with a spare-account warning). Our own Rust; secret read from Spotify's script, not from spot-secrets-go. No code copied. |

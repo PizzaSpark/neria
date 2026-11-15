@@ -816,10 +816,22 @@ see `docs/UPSTREAM.md`). Ticked only where a real stream covered it; the rest is
    any frame more than 5 s ahead of its decoding where it's decoded (`TS_FIX`, ffmpeg's
    `setts`): that part saves at 45.8 s, as long as its sound. A part the stream ended also
    gets its start left out now (`skip`), as the others did. The black picture while
-   watching wasn't seen again; the same spot in the player is the likeliest cause. Not yet:
+   watching wasn't seen again; the same spot in the player is the likeliest cause.
+9. **Twitch without its ads** (asked for 2026-11-15, the TTV-AB idea, see `docs/UPSTREAM.md`):
+   `ttv.rs`, a relay on 127.0.0.1 that serves a channel's playlists from the Twitch players
+   that come without the ad (a fresh `site` token opened on a pre-roll while `embed`,
+   `popout`, `mobile_web` and `frontpage` had the stream at full quality), merged by each
+   piece's date-time (every player lists the same 2 s pieces at the same times, so a switch
+   has no seam). A from-now part and the player read it instead of twitch.tv; a stretch where
+   every source has the ad is left out and goes on the tape as missed. Signed in to Twitch
+   (Turbo, subscribers), or when the relay can't reach the stream, everything reads
+   twitch.tv as before. Checked: recording and watching with `site` asked first
+   (`NERIA_TTV_ORDER=site,embed,popout`) open on the stream, not "Commercial break in
+   progress"; the 10-minute buffer reads the relay too. Not seen yet: a mid-roll (Twitch
+   decides when), and Twitch giving the ad to every player at once. Not yet:
    the queue row's own "get the part before", and a crash while it's fetched (the earlier part
    is dropped, the recording is kept).
-Dev hooks: `NERIA_DIALOG=live` / `live-upcoming` / `live-long` / `close-rec`, recording rows in
+Dev hooks: `NERIA_TTV_ORDER` (the relay's players, in order), `NERIA_TTV_OFF` (no relay), `NERIA_DIALOG=live` / `live-upcoming` / `live-long` / `close-rec`, recording rows in
 `NERIA_DEMO`, `NERIA_REC_STOP`, `NERIA_REC_DEBUG`; headless `--example record` (also
 `--queue`, `--kill-at`, `--crash-at` + `--save`); ui-check `live`, `live-soon`, `live-long`,
 `close-rec`.

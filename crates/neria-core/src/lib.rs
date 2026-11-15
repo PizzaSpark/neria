@@ -33,6 +33,7 @@ pub mod spotify;
 pub mod timeline;
 pub mod tools;
 pub mod tracks;
+pub mod ttv;
 pub mod update;
 pub mod web;
 pub mod ytmusic;

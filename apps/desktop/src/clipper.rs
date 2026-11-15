@@ -85,6 +85,12 @@ pub struct Clipper {
     buffer: Option<neria_core::live::ReplayBuffer>,
     /// Ticks since the buffer's line was last refreshed.
     buffer_ticks: u32,
+    /// A Twitch channel: looking up Neria's relay (no ads) before loading it.
+    relay_wait: Option<std::sync::mpsc::Receiver<Option<(String, String)>>>,
+    relay_tried: bool,
+    /// Playing through the relay: its master playlist (for the replay buffer). The stream is
+    /// live (mpv's yt-dlp info, which says so for twitch.tv, isn't there).
+    relay: Option<String>,
 }
 
 impl Clipper {
@@ -148,6 +154,9 @@ impl Clipper {
         live.set_buffer_text("".into());
         self.last_pos = 0.0;
         self.pending_load = true;
+        self.relay_wait = None;
+        self.relay_tried = false;
+        self.relay = None;
         *self.last_output.lock().unwrap() = None;
 
         ui.set_clip_loaded(true);
@@ -234,6 +243,8 @@ impl Clipper {
     /// Keep the last `minutes` of the open live link (the replay buffer), if there's room.
     fn start_buffer(&mut self, ui: &AppWindow, minutes: u32) {
         let Some(Source::Link(url)) = self.source.clone() else { return };
+        // Through the relay too: the minutes kept have no ads either.
+        let url = self.relay.clone().unwrap_or(url);
         let g = ui.global::<ClipLive>();
         // ~50 MB a minute at 1080p; leave room for the rest.
         let need = minutes as u64 * 60 * 1_000_000 + 1_000_000_000;
@@ -357,10 +368,42 @@ impl Clipper {
         if !self.pending_load {
             return;
         }
+        // A Twitch channel plays through the relay that leaves its ads out (looked up off
+        // this thread); signed in, or if the relay can't reach it, the link itself.
+        let mut via_relay = None;
+        if let Some(Source::Link(u)) = &self.source
+            && neria_core::ttv::login_of(u).is_some()
+            && std::env::var_os("NERIA_TTV_OFF").is_none()
+            && neria_core::cookies::args_for(u, &neria_core::settings::Settings::load()).is_empty()
+        {
+            if !self.relay_tried {
+                self.relay_tried = true;
+                let (tx, rx) = std::sync::mpsc::channel();
+                let url = u.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(neria_core::ttv::relay_for_player(&url, 720));
+                });
+                self.relay_wait = Some(rx);
+            }
+            if let Some(rx) = &self.relay_wait {
+                match rx.try_recv() {
+                    Ok(found) => {
+                        self.relay_wait = None;
+                        via_relay = found;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                    Err(_) => self.relay_wait = None,
+                }
+            }
+        }
+        if let Some((master, _)) = &via_relay {
+            self.relay = Some(master.clone());
+        }
         if let (Some(mpv), Some(source)) = (&self.mpv, &self.source) {
-            let target = match source {
-                Source::File(p) => p.to_string_lossy().into_owned(),
-                Source::Link(u) => u.clone(),
+            let target = match (source, &via_relay) {
+                (Source::File(p), _) => p.to_string_lossy().into_owned(),
+                (Source::Link(_), Some((_, media))) => media.clone(),
+                (Source::Link(u), None) => u.clone(),
             };
             let _ = mpv.set_property("pause", "yes");
             let _ = mpv.command(&["loadfile", &target, "replace"]);
@@ -493,6 +536,10 @@ impl Clipper {
             self.buffer_ticks = 0;
             self.refresh_buffer(ui);
         }
+        // Waiting for the relay's address: load once it's there.
+        if self.pending_load && self.relay_wait.is_some() && self.renderer.is_some() {
+            self.load_pending();
+        }
         let mut start_buffer = false;
         self.tick_player(ui, &mut start_buffer);
         if start_buffer {
@@ -531,9 +578,10 @@ impl Clipper {
                 }
                 // A live stream: its timeline is the part the site keeps (it grows), pinned
                 // to the clock from here; the selection starts as the last half minute.
-                let live = mpv
-                    .get_string("user-data/mpv/ytdl/json-subprocess-result")
-                    .is_some_and(|j| j.contains("\"is_live\": true") || j.contains("\\\"is_live\\\": true"));
+                let live = self.relay.is_some()
+                    || mpv
+                        .get_string("user-data/mpv/ytdl/json-subprocess-result")
+                        .is_some_and(|j| j.contains("\"is_live\": true") || j.contains("\\\"is_live\\\": true"));
                 // NERIA_LIVE_DEBUG=<file>: mpv's timing properties when a live stream starts.
                 if live && let Some(f) = std::env::var_os("NERIA_LIVE_DEBUG") {
                     let names = mpv.get_string("property-list").unwrap_or_default();
@@ -549,6 +597,7 @@ impl Clipper {
                     LIVE_ANCHOR.with(|a| a.set(Some(neria_core::live::now() - live_edge)));
                     // No filmstrip look-up for a live stream, so no title from there: mpv's.
                     if !self.title_known
+                        && self.relay.is_none()
                         && let Some(t) =
                             mpv.get_string("media-title").filter(|t| !t.trim().is_empty() && !t.contains("://"))
                     {

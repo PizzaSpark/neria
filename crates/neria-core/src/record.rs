@@ -292,8 +292,8 @@ fn write_manifest(work: &Path, m: &Manifest) {
     }
 }
 
-/// yt-dlp's arguments for one part.
-fn part_args(rec: &Recording, name: &str, from_start: bool, wait: bool) -> Vec<String> {
+/// yt-dlp's arguments for one part, read from `source` (the link, or Neria's Twitch relay).
+fn part_args(rec: &Recording, source: &str, name: &str, from_start: bool, wait: bool) -> Vec<String> {
     let mut a: Vec<String> = Vec::new();
     let mut push = |items: &[&str]| a.extend(items.iter().map(|x| x.to_string()));
     push(&["--encoding", "utf-8", "--newline", "--progress", "--color", "never", "--no-mtime", "--no-playlist"]);
@@ -324,8 +324,23 @@ fn part_args(rec: &Recording, name: &str, from_start: bool, wait: bool) -> Vec<S
     }
     a.extend(proc::split_args(&rec.settings.extra_args));
     a.push("--".into());
-    a.push(rec.url.to_string());
+    a.push(source.to_string());
     a
+}
+
+/// Where a part reads the stream from: a Twitch channel from now goes through the relay
+/// that leaves Twitch's ads out (`ttv`), unless you're signed in to Twitch (Turbo and
+/// subscribers get no ads, and the relay's address gets no sign-in) or the relay can't
+/// reach it; everything else reads the link itself.
+fn source_for(rec: &Recording, from_start: bool, wait: bool) -> Option<String> {
+    if from_start || wait || std::env::var_os("NERIA_TTV_OFF").is_some() {
+        return None;
+    }
+    crate::ttv::login_of(rec.url)?;
+    if !crate::cookies::args_for(rec.url, rec.settings).is_empty() {
+        return None;
+    }
+    crate::ttv::relay_url(rec.url)
 }
 
 /// What one line of output says.
@@ -584,11 +599,22 @@ pub fn record(
         };
         on(RecEvent::Stats(stats.clone()));
 
-        let args = part_args(rec, &part.name, from_start, wait);
+        let relay = source_for(rec, from_start, wait);
+        // Through the relay yt-dlp doesn't say when the stream began: Twitch's playlist does.
+        if relay.is_some()
+            && m.started_at.is_none()
+            && let Some(s) = crate::ttv::started_at(rec.url)
+        {
+            m.started_at = Some(s);
+            stats.started_at = Some(s);
+            part.offset = (now() - s - 15.0).max(0.0);
+        }
+        let args = part_args(rec, relay.as_deref().unwrap_or(rec.url), &part.name, from_start, wait);
         on(RecEvent::Log(format!(
-            "> yt-dlp (live part {}{})",
+            "> yt-dlp (live part {}{}{})",
             part.name,
-            if from_start { ", from the start" } else { "" }
+            if from_start { ", from the start" } else { "" },
+            if relay.is_some() { ", through Neria's Twitch relay: no ads" } else { "" }
         )));
         let started = Instant::now();
         let mut run = Running::default();
@@ -744,6 +770,20 @@ pub fn record(
             stats.rewind_failed = true;
             on(RecEvent::Log("Couldn't record from the start: recording from now".into()));
             continue;
+        }
+        // Ad stretches the relay had to leave out (every source had the ad): holes.
+        if relay.is_some()
+            && let Some(start) = m.started_at
+        {
+            for (at, len) in crate::ttv::gaps(rec.url) {
+                let pos = at - start;
+                let seen = m.holes.iter().any(|h| (h.at - pos).abs() < 1.0);
+                if at >= part.began - 30.0 && !seen {
+                    let hole = Hole { at: pos, len, about: false };
+                    m.holes.push(hole);
+                    stats.holes.push(hole);
+                }
+            }
         }
         // Keep the part (even an empty one is dropped at saving).
         let t = part_time(&m, &run);
@@ -1041,6 +1081,9 @@ pub fn fetch_earlier(
     if first.from_start {
         bail!("It's recorded from the start already");
     }
+    if m.started_at.is_none() || first.offset < 30.0 {
+        bail!("Neria doesn't know when the stream began");
+    }
     let _ = std::fs::write(early_busy(&rec.work), "");
     let result = fetch_earlier_inner(rec, &m, &first, slot, stop, cancel, &mut on);
     let _ = std::fs::remove_file(early_busy(&rec.work));
@@ -1072,7 +1115,7 @@ fn fetch_earlier_inner(
     // held 52): measure the file, and go on where it was (yt-dlp keeps its place in
     // `.ytdl`) until it really has passed that point. Twitch's count is ffmpeg's own clock.
     for _ in 0..4 {
-        let args = part_args(rec, "early", true, false);
+        let args = part_args(rec, rec.url, "early", true, false);
         let mut run = Running::default();
         reached = false;
         run_part(&args, slot, stop, cancel, |line| {
