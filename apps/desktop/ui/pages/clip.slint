@@ -5,8 +5,64 @@ import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive } from "../globals.slint";
+import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView } from "../globals.slint";
 import { Menu, MenuItem } from "../widgets.slint";
+
+// The timeline's zoom: out, in, fit the clip, the whole video, and how much is on screen.
+// Ctrl+scroll on the timeline (or a touchpad pinch) and + / − do the same.
+component ZoomButtons inherits HorizontalLayout {
+    spacing: 2px;
+    horizontal-stretch: 0;
+    if Screen.wide: Text {
+        text: ClipView.span-text;
+        color: Theme.muted;
+        font-size: 11px;
+        vertical-alignment: center;
+    }
+    if Screen.wide: Rectangle {
+        width: 6px;
+    }
+    VerticalLayout {
+        alignment: center;
+        IconButton {
+            icon: "\u{E71F}";
+            label: "Zoom out";
+            tint: ClipView.zoomed ? Theme.text : Theme.dim;
+            clicked => { ClipView.zoom(1.6, -1); }
+        }
+    }
+    VerticalLayout {
+        alignment: center;
+        IconButton {
+            icon: "\u{E8A3}";
+            label: "Zoom in";
+            tint: ClipView.can-zoom-in ? Theme.text : Theme.dim;
+            clicked => { ClipView.zoom(1 / 1.6, -1); }
+        }
+    }
+    if !ClipLive.on && !Watch.on: VerticalLayout {
+        alignment: center;
+        GhostButton {
+            compact: true;
+            icon: "\u{E9A6}";
+            text: Screen.wide ? "Fit clip" : "";
+            label: "Zoom to the clip";
+            clicked => { ClipView.fit-clip(); }
+        }
+    }
+    // Always there (with nothing to do when it all shows), so the buttons never move under
+    // the pointer.
+    VerticalLayout {
+        alignment: center;
+        GhostButton {
+            compact: true;
+            icon: "\u{E740}";
+            text: Screen.wide ? (ClipLive.on ? "All of it" : "Whole video") : "";
+            label: ClipLive.on ? "Show all the site keeps" : "Show the whole video";
+            clicked => { ClipView.whole(); }
+        }
+    }
+}
 
 // A live stream: save the last bit with one press (rewound from the site's window, or from
 // the replay buffer), go back to live, or keep the last few minutes when the site can't
@@ -72,6 +128,7 @@ component LiveRow inherits FlexboxLayout {
         text: "Stop keeping";
         clicked => { ClipLive.buffer-stop(); }
     }
+    if ClipLive.can-rewind && !Screen.compact: ZoomButtons { }
 }
 
 // Clip page → Picture: the shape chips, turn and mirror, Reset and Done. Takes the place of
@@ -379,6 +436,15 @@ export component ClipPage inherits FocusScope {
             ClipList.add();
             return accept;
         }
+        // + / −: zoom the timeline (around the playhead).
+        if event.text == "+" || event.text == "=" {
+            ClipView.zoom(1 / 1.6, -1);
+            return accept;
+        }
+        if event.text == "-" || event.text == "_" {
+            ClipView.zoom(1.6, -1);
+            return accept;
+        }
         if event.text == Key.Home {
             root.seek(root.in-time);
             return accept;
@@ -627,11 +693,32 @@ export component ClipPage inherits FocusScope {
                 GhostButton {
                     compact: true;
                     icon: "\u{E893}";
-                    // Room for the time first: an icon below wide windows (not on compact,
-                    // where this row has the room).
-                    text: Screen.wide || Screen.compact ? "Go live" : "";
+                    // Room for the time first: an icon below wide windows (at 400 the text
+                    // cut "0:24.93 behind live" short).
+                    text: Screen.wide ? "Go live" : "";
                     label: "Go live";
                     clicked => { ClipLive.go-live(); }
+                }
+            }
+            // Compact while watching: zoom out / in here (no In / Out row then).
+            if Screen.compact && Watch.on && (!ClipLive.on || ClipLive.can-rewind): VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                IconButton {
+                    icon: "\u{E71F}";
+                    label: "Zoom out";
+                    tint: ClipView.zoomed ? Theme.text : Theme.dim;
+                    clicked => { ClipView.zoom(1.6, -1); }
+                }
+            }
+            if Screen.compact && Watch.on && (!ClipLive.on || ClipLive.can-rewind): VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                IconButton {
+                    icon: "\u{E8A3}";
+                    label: "Zoom in";
+                    tint: ClipView.can-zoom-in ? Theme.text : Theme.dim;
+                    clicked => { ClipView.zoom(1 / 1.6, -1); }
                 }
             }
             // Listening volume: the player's own, never what gets saved.
@@ -647,8 +734,9 @@ export component ClipPage inherits FocusScope {
                     }
                 }
             }
-            // A live stream below wide windows: the time behind live comes first.
-            if !Screen.compact && (Screen.wide || !ClipLive.on): Slider {
+            // A live stream below wide windows: the time behind live comes first. So does the
+            // time on narrow medium windows (720 cut "0:05.00 / 0:20.00" short): mute stays.
+            if !Screen.compact && (Screen.wide || (!ClipLive.on && Screen.width >= 820px)): Slider {
                 width: 96px;
                 horizontal-stretch: 0;
                 minimum: 0;
@@ -686,6 +774,27 @@ export component ClipPage inherits FocusScope {
                 compact: true;
                 text: "Out  " + root.mark(root.out-time);
                 clicked => { root.set-out(); }
+            }
+            // Zoom out / in (no keyboard on a phone).
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                IconButton {
+                    icon: "\u{E71F}";
+                    label: "Zoom out";
+                    tint: ClipView.zoomed ? Theme.text : Theme.dim;
+                    clicked => { ClipView.zoom(1.6, -1); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                IconButton {
+                    icon: "\u{E8A3}";
+                    label: "Zoom in";
+                    tint: ClipView.can-zoom-in ? Theme.text : Theme.dim;
+                    clicked => { ClipView.zoom(1 / 1.6, -1); }
+                }
             }
             if !root.gif && !ClipLive.on: GhostButton {
                 horizontal-stretch: 0;
@@ -739,12 +848,13 @@ export component ClipPage inherits FocusScope {
             spacing: 8px;
             Text {
                 horizontal-stretch: 1;
-                text: Watch.on ? "Space play / pause  ·  ← → 5s (Shift 1s)  ·  M mute  ·  Home / End start / end" : "Space play clip  ·  I / O set in / out  ·  A add to clips  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  Home / End jump to in / out";
+                text: Watch.on ? "Space play / pause  ·  ← → 5s (Shift 1s)  ·  M mute  ·  + − zoom  ·  Home / End start / end" : "Space play clip  ·  I / O set in / out  ·  A add to clips  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  + − zoom  ·  Home / End jump to in / out";
                 color: Theme.muted;
                 font-size: 11px;
                 overflow: elide;
                 vertical-alignment: center;
             }
+            ZoomButtons { }
             if !Watch.on && !root.gif && !ClipLive.on: GhostButton {
                 horizontal-stretch: 0;
                 compact: true;

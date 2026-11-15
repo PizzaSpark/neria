@@ -1,4 +1,4 @@
-//! Local media inspection: ffprobe info, filmstrip thumbnails, waveform image.
+//! Local media inspection: ffprobe info, filmstrip thumbnails, sound levels for the waveform.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -7,6 +7,7 @@ use std::thread;
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
+use crate::timeline::{PEAKS_RATE, Peaks};
 use crate::{paths, proc};
 
 #[derive(Clone, Debug, Default)]
@@ -167,24 +168,18 @@ fn cache_for(path: &Path) -> PathBuf {
 /// format, ~30 MB an hour), so very long ones keep the filmstrip only.
 pub const LINK_WAVEFORM_MAX_SECS: f64 = 3.0 * 3600.0;
 
-/// The waveform of a link: its smallest sound-only format is fetched into the cache (with
-/// the site's sign-in, if any), drawn like a file's, and the sound is thrown away again.
+/// The sound levels of a link ([`Peaks`]): its smallest sound-only format is fetched into
+/// the cache (with the site's sign-in, if any), measured, and the sound is thrown away again.
 /// Cached per link. Stops (and cleans up) once `cancel` is set. Not for live streams.
-pub fn waveform_link(
+pub fn peaks_link(
     url: &str,
     settings: &crate::settings::Settings,
-    width: u32,
-    height: u32,
     cancel: &std::sync::atomic::AtomicBool,
-) -> Result<PathBuf> {
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for b in url.bytes() {
-        hash = (hash ^ b as u64).wrapping_mul(0x100000001b3);
-    }
-    let dir = paths::cache_dir().join(format!("link-{hash:016x}"));
-    let png = dir.join(format!("wave-8e8c88-{width}x{height}.png"));
-    if png.is_file() {
-        return Ok(png);
+) -> Result<Peaks> {
+    let dir = link_dir(url);
+    let cached = dir.join(PEAKS_FILE);
+    if let Some(p) = Peaks::load(&cached) {
+        return Ok(p);
     }
     std::fs::create_dir_all(&dir)?;
     let mut cmd = proc::command(paths::tool("yt-dlp"));
@@ -224,13 +219,55 @@ pub fn waveform_link(
         }
     }
     let audio = sound(&dir).context("couldn't fetch the sound")?;
-    let drawn = waveform(&audio, width, height);
-    let result = drawn.and_then(|p| {
-        std::fs::rename(&p, &png)?;
-        Ok(png.clone())
-    });
+    let measured = measure_peaks(&audio);
     let _ = std::fs::remove_file(&audio);
-    result
+    let peaks = measured?;
+    let _ = peaks.save(&cached);
+    Ok(peaks)
+}
+
+/// Cache folder for a link (page URL), shared by its filmstrip, storyboard and sound levels.
+fn link_dir(url: &str) -> PathBuf {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in url.bytes() {
+        hash = (hash ^ b as u64).wrapping_mul(0x100000001b3);
+    }
+    paths::cache_dir().join(format!("link-{hash:016x}"))
+}
+
+const PEAKS_FILE: &str = "peaks-200.bin";
+
+/// The sound levels of a file ([`Peaks`]), cached next to its filmstrip.
+pub fn peaks(path: &Path) -> Result<Peaks> {
+    let cached = cache_for(path).join(PEAKS_FILE);
+    if let Some(p) = Peaks::load(&cached) {
+        return Ok(p);
+    }
+    let peaks = measure_peaks(path)?;
+    let _ = peaks.save(&cached);
+    Ok(peaks)
+}
+
+/// Decodes the first sound track as mono 16-bit at a low rate and measures it.
+fn measure_peaks(path: &Path) -> Result<Peaks> {
+    use std::io::Read;
+    let mut child = proc::command(paths::tool("ffmpeg"))
+        .args(["-v", "error", "-i"])
+        .arg(path)
+        .args(["-map", "0:a:0", "-vn", "-ac", "1", "-ar", &PEAKS_RATE.to_string(), "-f", "s16le", "-"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    // Read as it decodes (an hour is ~58 MB of samples; never all held at once).
+    let out = std::io::BufReader::with_capacity(1 << 16, child.stdout.take().context("no output")?);
+    let mut bytes = out.bytes().map_while(|b| b.ok());
+    let samples = std::iter::from_fn(|| Some(i16::from_le_bytes([bytes.next()?, bytes.next()?])));
+    let peaks = Peaks::from_samples(samples);
+    let status = child.wait()?;
+    if !status.success() || peaks.data.is_empty() {
+        bail!("couldn't read the sound");
+    }
+    Ok(peaks)
 }
 
 /// Evenly spaced frames for the timeline filmstrip. Fast: each is a keyframe seek.
@@ -256,76 +293,26 @@ pub fn storyboard_strip(
     let title = v["title"].as_str().unwrap_or("").to_string();
     let duration = v["duration"].as_f64().filter(|d| *d > 0.0).context("unknown duration")?;
     let board = pick_storyboard(&v).context("no storyboard for this link")?;
-
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for b in url.bytes() {
-        hash = (hash ^ b as u64).wrapping_mul(0x100000001b3);
-    }
-    let dir = paths::cache_dir().join(format!("link-{hash:016x}"));
+    let dir = link_dir(url);
     std::fs::create_dir_all(&dir)?;
+    // Kept for the close-up filmstrip when zoomed (`storyboard_tiles`).
+    let boards: Vec<&Value> = v["formats"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|f| f["format_id"].as_str().is_some_and(|id| id.starts_with("sb")))
+        .collect();
+    let _ = std::fs::write(dir.join(BOARD_FILE), serde_json::json!({ "formats": boards }).to_string());
 
     // Which sprite and which cell of it each thumbnail comes from.
-    let per_sheet = (board.rows * board.cols).max(1);
-    let cells: Vec<(usize, u32)> = (0..count)
-        .map(|i| {
-            let t = duration * (i as f64 + 0.5) / count as f64;
-            let mut start = 0.0;
-            for (k, (_, d)) in board.fragments.iter().enumerate() {
-                if t < start + d || k + 1 == board.fragments.len() {
-                    let idx = (((t - start) * board.fps).floor().max(0.0) as u32).min(per_sheet - 1);
-                    return (k, idx);
-                }
-                start += d;
-            }
-            (0, 0)
-        })
-        .collect();
+    let cells: Vec<(usize, u32)> =
+        (0..count).map(|i| board.cell_at(duration * (i as f64 + 0.5) / count as f64)).collect();
 
-    // Fetch the sprites we need (in parallel), then crop the cells.
-    let mut needed: Vec<usize> = cells.iter().map(|(k, _)| *k).collect();
-    needed.dedup();
-    let fetches: Vec<_> = needed
+    let thumbs: Vec<PathBuf> = board
+        .crop_cells(&dir, &cells, height, |i, _, _| format!("sbthumb-{height}-{i:02}.jpg"))
         .into_iter()
-        .map(|k| {
-            let (url, path) = (board.fragments[k].0.clone(), dir.join(format!("sb-{k}.jpg")));
-            thread::spawn(move || {
-                if !path.is_file() {
-                    let bytes =
-                        crate::web::client().ok()?.get(&url).send().ok()?.error_for_status().ok()?.bytes().ok()?;
-                    std::fs::write(&path, &bytes).ok()?;
-                }
-                Some(())
-            })
-        })
+        .flatten()
         .collect();
-    for f in fetches {
-        let _ = f.join();
-    }
-
-    let jobs: Vec<_> = cells
-        .into_iter()
-        .enumerate()
-        .map(|(i, (k, idx))| {
-            let sprite = dir.join(format!("sb-{k}.jpg"));
-            let out = dir.join(format!("sbthumb-{height}-{i:02}.jpg"));
-            let (w, h) = (board.width, board.height);
-            let (x, y) = ((idx % board.cols) * w, (idx / board.cols) * h);
-            thread::spawn(move || {
-                if !out.is_file() && sprite.is_file() {
-                    let _ = proc::command(paths::tool("ffmpeg"))
-                        .args(["-v", "error", "-y", "-i"])
-                        .arg(&sprite)
-                        .args(["-vf", &format!("crop={w}:{h}:{x}:{y},scale=-2:{height}"), "-q:v", "4"])
-                        .arg(&out)
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status();
-                }
-                out.is_file().then_some(out)
-            })
-        })
-        .collect();
-    let thumbs: Vec<PathBuf> = jobs.into_iter().filter_map(|j| j.join().ok().flatten()).collect();
     if thumbs.is_empty() {
         bail!("couldn't build the filmstrip");
     }
@@ -340,6 +327,124 @@ struct Storyboard {
     fps: f64,
     /// (sprite url, seconds covered)
     fragments: Vec<(String, f64)>,
+}
+
+impl Storyboard {
+    /// Which sprite, and which cell of it, shows time `t`.
+    fn cell_at(&self, t: f64) -> (usize, u32) {
+        let per_sheet = (self.rows * self.cols).max(1);
+        let mut start = 0.0;
+        for (k, (_, d)) in self.fragments.iter().enumerate() {
+            if t < start + d || k + 1 == self.fragments.len() {
+                let idx = (((t - start) * self.fps).floor().max(0.0) as u32).min(per_sheet - 1);
+                return (k, idx);
+            }
+            start += d;
+        }
+        (0, 0)
+    }
+
+    /// Fetches the sprites these cells need (in parallel, cached), then crops each cell out
+    /// at `height`; `name(i, sprite, cell)` names a cell's file. `None` where it failed.
+    fn crop_cells(
+        &self,
+        dir: &Path,
+        cells: &[(usize, u32)],
+        height: u32,
+        name: impl Fn(usize, usize, u32) -> String,
+    ) -> Vec<Option<PathBuf>> {
+        let mut needed: Vec<usize> = cells.iter().map(|(k, _)| *k).collect();
+        needed.sort_unstable();
+        needed.dedup();
+        let fetches: Vec<_> = needed
+            .into_iter()
+            .map(|k| {
+                let (url, path) = (self.fragments[k].0.clone(), dir.join(format!("sb-{k}.jpg")));
+                thread::spawn(move || {
+                    if !path.is_file() {
+                        let bytes =
+                            crate::web::client().ok()?.get(&url).send().ok()?.error_for_status().ok()?.bytes().ok()?;
+                        std::fs::write(&path, &bytes).ok()?;
+                    }
+                    Some(())
+                })
+            })
+            .collect();
+        for f in fetches {
+            let _ = f.join();
+        }
+        let jobs: Vec<_> = cells
+            .iter()
+            .enumerate()
+            .map(|(i, &(k, idx))| {
+                let sprite = dir.join(format!("sb-{k}.jpg"));
+                let out = dir.join(name(i, k, idx));
+                let (w, h) = (self.width, self.height);
+                let (x, y) = ((idx % self.cols) * w, (idx / self.cols) * h);
+                thread::spawn(move || {
+                    if !out.is_file() && sprite.is_file() {
+                        let _ = proc::command(paths::tool("ffmpeg"))
+                            .args(["-v", "error", "-y", "-i"])
+                            .arg(&sprite)
+                            .args(["-vf", &format!("crop={w}:{h}:{x}:{y},scale=-2:{height}"), "-q:v", "4"])
+                            .arg(&out)
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null())
+                            .status();
+                    }
+                    out.is_file().then_some(out)
+                })
+            })
+            .collect();
+        jobs.into_iter().map(|j| j.join().ok().flatten()).collect()
+    }
+}
+
+const BOARD_FILE: &str = "storyboard.json";
+
+/// Close-up filmstrip frames for a link at these times (zoomed in), cropped from the
+/// storyboard `storyboard_strip` saved. A storyboard has a frame every few seconds, so
+/// neighbouring times can share one. Same order as `times`; `None` where none could be made.
+pub fn storyboard_tiles(url: &str, times: &[f64], height: u32) -> Vec<Option<PathBuf>> {
+    let dir = link_dir(url);
+    let board = std::fs::read(dir.join(BOARD_FILE))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|v| pick_storyboard(&v));
+    let Some(board) = board else { return vec![None; times.len()] };
+    let cells: Vec<(usize, u32)> = times.iter().map(|t| board.cell_at(*t)).collect();
+    board.crop_cells(&dir, &cells, height, |_, k, idx| format!("sbcell-{height}-{k}-{idx}.jpg"))
+}
+
+/// Close-up filmstrip frames for a file at these times; `key` names each in the cache (the
+/// tile grid's step and index, so scrolling back finds them). A few ffmpegs at a time.
+pub fn tiles(path: &Path, frames: &[(String, f64)], height: u32) -> Vec<Option<PathBuf>> {
+    let dir = cache_for(path);
+    let mut out = Vec::with_capacity(frames.len());
+    for chunk in frames.chunks(6) {
+        let jobs: Vec<_> = chunk
+            .iter()
+            .map(|(key, t)| {
+                let file = dir.join(format!("tile-{height}-{key}.jpg"));
+                let (path, t) = (path.to_path_buf(), *t);
+                thread::spawn(move || {
+                    if !file.is_file() {
+                        let _ = proc::command(paths::tool("ffmpeg"))
+                            .args(["-v", "error", "-y", "-ss", &format!("{t:.3}"), "-i"])
+                            .arg(&path)
+                            .args(["-frames:v", "1", "-vf", &format!("scale=-2:{height}"), "-q:v", "5"])
+                            .arg(&file)
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null())
+                            .status();
+                    }
+                    file.is_file().then_some(file)
+                })
+            })
+            .collect();
+        out.extend(jobs.into_iter().map(|j| j.join().ok().flatten()));
+    }
+    out
 }
 
 /// Prefer the smallest storyboard that is at least 90 px tall (few sprites, sharp enough).
@@ -373,11 +478,7 @@ fn pick_storyboard(v: &Value) -> Option<Storyboard> {
 /// Filmstrip for a remote stream URL; `key` (e.g. the page URL) names the cache,
 /// since stream URLs expire.
 pub fn thumbnails_remote(stream_url: &str, key: &str, duration: f64, count: usize, height: u32) -> Vec<PathBuf> {
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for b in key.bytes() {
-        hash = (hash ^ b as u64).wrapping_mul(0x100000001b3);
-    }
-    let dir = paths::cache_dir().join(format!("link-{hash:016x}"));
+    let dir = link_dir(key);
     let _ = std::fs::create_dir_all(&dir);
     thumbnails_into(stream_url.into(), &dir, duration, count, height)
 }
@@ -404,30 +505,6 @@ fn thumbnails_into(input: std::ffi::OsString, dir: &Path, duration: f64, count: 
         })
         .collect();
     jobs.into_iter().filter_map(|j| j.join().ok().flatten()).collect()
-}
-
-/// Render the audio track as a PNG waveform.
-pub fn waveform(path: &Path, width: u32, height: u32) -> Result<PathBuf> {
-    // Warm grey that reads on both themes' timeline (Studio + Play); the name
-    // carries the colour so older cached waveforms aren't reused.
-    let out = cache_for(path).join(format!("wave-8e8c88-{width}x{height}.png"));
-    if out.is_file() {
-        return Ok(out);
-    }
-    let filter =
-        format!("[0:a:0]aformat=channel_layouts=mono,showwavespic=s={width}x{height}:colors=0x8e8c88:scale=sqrt");
-    let status = proc::command(paths::tool("ffmpeg"))
-        .args(["-v", "error", "-y", "-i"])
-        .arg(path)
-        .args(["-filter_complex", &filter, "-frames:v", "1"])
-        .arg(&out)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-    if !status.success() || !out.is_file() {
-        bail!("waveform failed");
-    }
-    Ok(out)
 }
 
 #[cfg(test)]

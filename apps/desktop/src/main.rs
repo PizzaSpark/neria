@@ -33,6 +33,7 @@ mod signin;
 mod signin_ui;
 mod sound_ui;
 mod spotify_ui;
+mod timeline_ui;
 mod updates_ui;
 
 slint::include_modules!();
@@ -1465,7 +1466,18 @@ fn main() -> anyhow::Result<()> {
     }
 
     // The video preview renders through OpenGL, so insist on a GL renderer.
-    slint::BackendSelector::new().require_opengl().select()?;
+    let mut backend = slint::BackendSelector::new().require_opengl();
+    // Dev hook for scripted checks: open the window at "x,y" (physical px, e.g. on another
+    // screen) without taking the keyboard from whatever has it.
+    if let Some((x, y)) = std::env::var("NERIA_WINDOW_POS").ok().and_then(|v| {
+        let (x, y) = v.split_once(',')?;
+        Some((x.trim().parse::<i32>().ok()?, y.trim().parse::<i32>().ok()?))
+    }) {
+        backend = backend.with_winit_window_attributes_hook(move |a| {
+            a.with_position(slint::winit_030::winit::dpi::PhysicalPosition::new(x, y)).with_active(false)
+        });
+    }
+    backend.select()?;
 
     // Leftovers from an update (the replaced exe, old tool files).
     neria_core::update::cleanup();

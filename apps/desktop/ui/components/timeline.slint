@@ -1,14 +1,22 @@
 import { Theme, Screen } from "../theme.slint";
-import { ChapterMark } from "../types.slint";
+import { ChapterMark, Fmt } from "../types.slint";
 import { KeyPress } from "../widgets.slint";
-import { ClipItem } from "../globals.slint";
+import { ClipItem, ClipView, ClipLive } from "../globals.slint";
 
-// Filmstrip + waveform with draggable in/out handles and a playhead.
+// The clip timeline (Clip track 9), top to bottom: a thin overview of the whole video with
+// the part on screen framed (not on compact), a time ruler, the filmstrip and the waveform,
+// with the selection as a band between two thin handles and the playhead. Zooms and scrolls:
+// Ctrl+scroll (a touchpad pinch arrives as that) zooms around the pointer, scrolling moves
+// along, dragging the strip moves along when zoomed (scrubs when the whole video shows),
+// the ruler always scrubs. The view itself lives in `ClipView` (Rust clamps it, follows a
+// live stream's edge and fills in close-up frames and the waveform for what's on screen).
 export component Timeline inherits Rectangle {
     in property <float> duration;
     in property <float> position;
     in-out property <float> in-time;
     in-out property <float> out-time;
+    // The whole video's filmstrip (12 frames) and waveform, for the overview and as the
+    // strip's frames until close-ups arrive.
     in property <[image]> thumbs;
     in property <image> wave;
     in property <bool> has-video;
@@ -23,68 +31,249 @@ export component Timeline inherits Rectangle {
     callback seek(float);
 
     property <float> dur: max(0.001, root.duration);
-    property <length> eff-x: root.width * (root.effective-in / root.dur);
-    property <bool> early-start: root.show-keyframes && root.effective-in < root.in-time - 0.05;
-    property <length> handle-w: 14px;
-    property <length> in-x: root.width * (root.in-time / root.dur);
-    property <length> out-x: root.width * (root.out-time / root.dur);
-    property <length> pos-x: root.width * (root.position / root.dur);
-    // Compact windows: a shorter strip, so the page's main button stays in view.
-    property <length> strip-h: !root.has-video ? 0px : Screen.compact ? 50px : 66px;
+    property <bool> live: ClipLive.on;
+    property <float> vs: ClipView.span > 0 ? ClipView.start : 0;
+    property <float> vspan: ClipView.span > 0 ? ClipView.span : root.dur;
+    property <bool> overview: !Screen.compact;
+    property <length> ov-h: root.overview ? 20px : 0px;
+    property <length> ruler-h: Screen.compact ? 12px : 14px;
+    // Where the filmstrip (or, without a picture, the waveform) starts.
+    property <length> top: root.ov-h + root.ruler-h;
+    property <length> strip-h: !root.has-video ? 0px : Screen.compact ? 38px : 48px;
+    property <length> wave-y: root.top + root.strip-h;
+    // One filmstrip frame: about 16:9 at the strip's height.
+    property <length> tile-w: max(40px, root.strip-h * 16 / 9);
 
-    height: !root.has-video ? 64px : Screen.compact ? 76px : 100px;
+    pure function x-of(t: float) -> length {
+        (t - root.vs) / root.vspan * root.width
+    }
+    // The same, kept just around the timeline, so a band is never millions of px wide.
+    pure function cx(t: float) -> length {
+        max(-4px, min(root.width + 4px, root.x-of(t)))
+    }
+    pure function t-at(x: length) -> float {
+        root.vs + x / root.width * root.vspan
+    }
+
+    property <length> in-x: root.cx(root.in-time);
+    property <length> out-x: root.cx(root.out-time);
+    property <length> pos-x: root.x-of(root.position);
+    property <length> eff-x: root.cx(root.effective-in);
+    property <bool> early-start: root.show-keyframes && root.effective-in < root.in-time - 0.05;
+    // The clip's length on a tag inside the band; it's also the grip that moves the clip.
+    property <bool> show-length: root.handles && root.out-x - root.in-x > 64px;
+    property <length> length-y: root.top + max(4px, root.strip-h - 20px);
+
+    height: root.top + (!root.has-video ? (Screen.compact ? 50px : 46px) : (Screen.compact ? 62px : 76px));
     border-radius: 10px;
     background: Theme.surface-hi;
     clip: true;
 
-    if root.has-video: HorizontalLayout {
+    init => {
+        ClipView.width-px = self.width / 1px;
+        ClipView.resized();
+    }
+    changed width => {
+        ClipView.width-px = self.width / 1px;
+        ClipView.resized();
+    }
+
+    // ── Overview: the whole video, the part on screen framed ──
+    if root.overview: Rectangle {
         x: 0;
         y: 0;
         width: root.width;
-        height: root.strip-h;
-        for t in root.thumbs: Image {
-            source: t;
-            image-fit: cover;
-            min-width: 0;
-            horizontal-stretch: 1;
+        height: 16px;
+        border-radius: 5px;
+        clip: true;
+        property <length> wx0: root.vs / root.dur * self.width;
+        property <length> wx1: max(self.wx0 + 6px, (root.vs + root.vspan) / root.dur * self.width);
+        if root.has-video: HorizontalLayout {
+            for t in root.thumbs: Image {
+                source: t;
+                image-fit: cover;
+                min-width: 0;
+                horizontal-stretch: 1;
+            }
         }
+        if !root.has-video: Image {
+            width: parent.width;
+            height: parent.height;
+            source: root.wave;
+            image-fit: fill;
+        }
+        Rectangle {
+            x: 0;
+            width: parent.wx0;
+            background: Theme.strip-shade;
+        }
+        Rectangle {
+            x: parent.wx1;
+            width: max(0px, parent.width - parent.wx1);
+            background: Theme.strip-shade;
+        }
+        // The clip, along the bottom.
+        Rectangle {
+            x: root.in-time / root.dur * parent.width;
+            y: parent.height - 4px;
+            width: max(2px, (root.out-time - root.in-time) / root.dur * parent.width);
+            height: 4px;
+            background: Theme.accent;
+        }
+        Rectangle {
+            x: parent.wx0;
+            width: parent.wx1 - parent.wx0;
+            border-width: 2px;
+            border-color: Theme.ink;
+            border-radius: 4px;
+        }
+        // keyboard: the zoom buttons and the page's arrow keys move along too.
+        TouchArea {
+            mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+            property <float> press-start;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                    let t = self.mouse-x / root.width * root.dur;
+                    // Outside the frame: jump there (centred), then drag on from it.
+                    if t < root.vs || t > root.vs + root.vspan {
+                        ClipView.pan-to(t - root.vspan / 2);
+                    }
+                    self.press-start = ClipView.start;
+                    ClipView.dragging = true;
+                } else if e.kind == PointerEventKind.up {
+                    ClipView.dragging = false;
+                }
+            }
+            moved => {
+                if self.pressed {
+                    ClipView.pan-to(self.press-start + (self.mouse-x - self.pressed-x) / root.width * root.dur);
+                }
+            }
+        }
+    }
+
+    // ── Ruler: marks that suit the zoom (live: counted back from now) ──
+    property <float> step: max(0.1, ClipView.ruler-step);
+    property <float> minor: root.step / (Math.mod(root.step, 15) == 0 && root.step >= 15 ? 3 : 5);
+    pure function first-mark(s: float) -> float {
+        root.live ? root.dur - Math.floor((root.dur - root.vs) / s) * s : Math.ceil(root.vs / s) * s
+    }
+    property <float> first: root.first-mark(root.step);
+    property <int> mark-count: max(0, min(60, Math.floor((root.vs + root.vspan - root.first) / root.step) + 1));
+    property <float> first-minor: root.first-mark(root.minor);
+    property <int> minor-count: max(0, min(400, Math.floor((root.vs + root.vspan - root.first-minor) / root.minor) + 1));
+    for i in root.minor-count: Rectangle {
+        x: root.x-of(root.first-minor + i * root.minor);
+        y: root.ov-h;
+        width: 1px;
+        height: 3px;
+        background: Theme.line-strong;
+    }
+    for i in root.mark-count: Rectangle {
+        property <float> t: root.first + i * root.step;
+        // The live edge's "now" sits to the left of its mark, inside the timeline.
+        property <bool> at-edge: root.live && root.dur - self.t < root.step / 2;
+        x: root.x-of(self.t);
+        y: root.ov-h;
+        width: 1px;
+        height: root.ruler-h;
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: 1px;
+            height: 6px;
+            background: Theme.muted;
+        }
+        Text {
+            x: parent.at-edge ? -64px : 3px;
+            y: 0;
+            width: 60px;
+            height: root.ruler-h;
+            horizontal-alignment: parent.at-edge ? right : left;
+            vertical-alignment: center;
+            text: parent.at-edge ? "now" : root.live ? "−" + Fmt.tick(root.dur - parent.t, root.step) : Fmt.tick(parent.t, root.step);
+            color: Theme.muted;
+            font-family: Theme.mono;
+            font-size: Screen.compact ? 9px : 10px;
+        }
+    }
+    // Compact (no overview): where the part on screen is, as a thin bar along the top.
+    if Screen.compact && ClipView.zoomed: Rectangle {
+        x: root.vs / root.dur * root.width;
+        y: 0;
+        width: max(6px, root.vspan / root.dur * root.width);
+        height: 2px;
+        background: Theme.ink;
+    }
+
+    // ── Filmstrip: a frame per tile, close-ups where Rust has made them ──
+    property <float> tile-t: root.tile-w / root.width * root.vspan;
+    property <float> first-tile: Math.floor(root.vs / root.tile-t) * root.tile-t;
+    property <int> tile-count: root.has-video ? min(48, Math.ceil(root.width / root.tile-w) + 1) : 0;
+    property <int> thumb-count: root.thumbs.length;
+    property <length> end-x: root.x-of(root.dur);
+    for i in root.tile-count: Image {
+        property <float> t: root.first-tile + i * root.tile-t;
+        property <float> mid: self.t + root.tile-t / 2;
+        property <int> k: Math.floor((self.mid - ClipView.tiles-start) / ClipView.tiles-step);
+        // A close-up that isn't made yet is empty: the whole video's frame shows meanwhile.
+        property <bool> close: self.k >= 0 && self.k < ClipView.tiles.length && ClipView.tiles[self.k].width > 0;
+        visible: self.t < root.dur;
+        x: root.x-of(self.t);
+        y: root.top;
+        width: max(0px, min(root.tile-w, root.end-x - self.x));
+        height: root.strip-h;
+        source: self.close ? ClipView.tiles[self.k] : root.thumbs[max(0, min(root.thumb-count - 1, Math.floor(self.mid / root.dur * root.thumb-count)))];
+        image-fit: cover;
     }
     Image {
         x: 0;
-        y: root.strip-h;
+        y: root.wave-y;
         width: root.width;
-        height: root.height - root.strip-h;
-        source: root.wave;
+        height: root.height - root.wave-y;
+        source: ClipView.wave;
         image-fit: fill;
     }
 
-    // Dim everything outside the selection.
+    // ── Selection: dim outside, a see-through band inside ──
     Rectangle {
         x: 0;
-        width: root.in-x;
-        height: root.height;
+        y: root.top;
+        width: max(0px, root.in-x);
+        height: root.height - root.top;
         background: Theme.strip-shade;
     }
     Rectangle {
         x: root.out-x;
+        y: root.top;
         width: max(0px, root.width - root.out-x);
-        height: root.height;
+        height: root.height - root.top;
         background: Theme.strip-shade;
     }
-    Rectangle {
+    if root.handles: Rectangle {
         x: root.in-x;
+        y: root.top;
         width: max(0px, root.out-x - root.in-x);
-        height: root.height;
-        border-width: 2px;
-        border-color: Theme.accent;
-        border-radius: 8px;
+        height: root.height - root.top;
+        background: Theme.accent.with-alpha(0.12);
+        Rectangle {
+            y: 0;
+            height: 2px;
+            background: Theme.accent;
+        }
+        Rectangle {
+            y: parent.height - 2px;
+            height: 2px;
+            background: Theme.accent;
+        }
     }
 
     // Saved clips: a band each along the top, numbered like the list.
     for m[i] in root.marks: Rectangle {
-        x: root.width * (m.start / root.dur);
-        y: 0;
-        width: max(4px, root.width * ((m.end - m.start) / root.dur));
+        visible: m.end > root.vs && m.start < root.vs + root.vspan;
+        x: root.cx(m.start);
+        y: root.top;
+        width: max(4px, root.cx(m.end) - root.cx(m.start));
         height: 16px;
         border-radius: 4px;
         background: Theme.accent-hi.with-alpha(0.85);
@@ -101,25 +290,27 @@ export component Timeline inherits Rectangle {
     // Lossless cut starts earlier than the in point: show the extra footage.
     if root.early-start: Rectangle {
         x: root.eff-x;
+        y: root.top;
         width: max(0px, root.in-x - root.eff-x);
-        height: root.height;
+        height: root.height - root.top;
         background: Theme.warn.with-alpha(0.28);
     }
     if root.early-start: Rectangle {
         x: root.eff-x - 1px;
+        y: root.top;
         width: 2px;
-        height: root.height;
+        height: root.height - root.top;
         background: Theme.warn;
     }
 
-    // Keyframe ticks along the bottom edge.
+    // Keyframe ticks along the bottom edge (Rust sends the ones on screen).
     if root.show-keyframes: Rectangle {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
         for k in root.keyframe-ticks: Rectangle {
-            x: root.width * (k / root.dur) - 1px;
+            x: root.x-of(k) - 1px;
             y: root.height - 12px;
             width: 2px;
             height: 12px;
@@ -128,88 +319,226 @@ export component Timeline inherits Rectangle {
         }
     }
 
-    // Click or drag anywhere to scrub.
-    TouchArea {
-        mouse-cursor: pointer;
+    // A live stream's edge: pulsing, with LIVE next to it.
+    property <length> edge-x: root.x-of(root.dur);
+    if root.live && root.edge-x > -4px && root.edge-x < root.width + 4px: Rectangle {
+        x: root.edge-x - 3px;
+        y: root.top;
+        width: 3px;
+        height: root.height - root.top;
+        background: Theme.bad;
+        opacity: 0.55 + 0.45 * Math.sin(animation-tick() / 300ms * 1rad);
+    }
+    if root.live && root.edge-x > 30px && root.edge-x < root.width + 4px: Rectangle {
+        x: min(root.edge-x, root.width) - 38px;
+        y: root.top + 3px;
+        width: 32px;
+        height: 14px;
+        border-radius: 4px;
+        background: Theme.strip-shade;
+        Text {
+            text: "LIVE";
+            color: Theme.bad;
+            font-size: 9px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    // ── Gestures: one area decides on press what it grabs ──
+    // 0 nothing, 1 In, 2 Out, 3 the clip (by its length tag), 4 scrub, 5 move along.
+    property <int> drag;
+    property <bool> moved;
+    property <float> press-start;
+    property <float> press-in;
+    property <float> press-out;
+    pure function kind-at(x: length, y: length) -> int {
+        // y is from the ruler's top.
+        let din = abs(x - root.x-of(root.in-time));
+        let dout = abs(x - root.x-of(root.out-time));
+        if root.handles && dout < 10px && dout <= din {
+            return 2;
+        }
+        if root.handles && din < 10px {
+            return 1;
+        }
+        if root.show-length && x >= root.in-x + 6px && x <= root.in-x + 74px && y + root.ov-h >= root.length-y - 2px && y + root.ov-h <= root.length-y + 18px {
+            return 3;
+        }
+        if y < root.ruler-h || abs(x - root.pos-x) < 5px {
+            return 4;
+        }
+        return ClipView.zoomed ? 5 : 4;
+    }
+    // keyboard: I / O set the handles, the arrow keys and , . move the playhead, + − zoom.
+    area := TouchArea {
+        x: 0;
+        y: root.ov-h;
+        width: root.width;
+        height: root.height - root.ov-h;
+        property <int> hover: root.kind-at(self.mouse-x, self.mouse-y);
+        mouse-cursor: root.drag == 5 ? MouseCursor.grabbing
+            : (root.drag == 0 ? self.hover : root.drag) == 1 || (root.drag == 0 ? self.hover : root.drag) == 2 ? MouseCursor.ew-resize
+            : (root.drag == 0 ? self.hover : root.drag) == 3 ? MouseCursor.move
+            : (root.drag == 0 ? self.hover : root.drag) == 5 ? MouseCursor.grab
+            : MouseCursor.pointer;
         pointer-event(e) => {
-            if e.kind == PointerEventKind.down {
-                root.seek(max(0, min(1, self.mouse-x / root.width)) * root.duration);
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                root.drag = root.kind-at(self.mouse-x, self.mouse-y);
+                root.moved = false;
+                root.press-start = root.vs;
+                root.press-in = root.in-time;
+                root.press-out = root.out-time;
+                ClipView.dragging = true;
+                if root.drag == 4 {
+                    root.seek(max(0, min(root.duration, root.t-at(self.mouse-x))));
+                }
+            } else if e.kind == PointerEventKind.up {
+                // A click on the strip (no drag): the playhead goes there.
+                if (root.drag == 5 || root.drag == 3) && !root.moved {
+                    root.seek(max(0, min(root.duration, root.t-at(self.mouse-x))));
+                }
+                root.drag = 0;
+                ClipView.dragging = false;
             }
         }
         moved => {
-            if self.pressed {
-                root.seek(max(0, min(1, self.mouse-x / root.width)) * root.duration);
+            if !self.pressed || root.drag == 0 {
+                return;
             }
+            if abs(self.mouse-x - self.pressed-x) > 3px {
+                root.moved = true;
+            }
+            let t = max(0, min(root.duration, root.t-at(self.mouse-x)));
+            if root.drag == 1 {
+                root.in-time = min(root.out-time - 0.1, t);
+                root.seek(root.in-time);
+            } else if root.drag == 2 {
+                root.out-time = max(root.in-time + 0.1, t);
+                root.seek(root.out-time);
+            } else if root.drag == 3 && root.moved {
+                let len = root.press-out - root.press-in;
+                let start = max(0, min(root.duration - len, root.press-in + (self.mouse-x - self.pressed-x) / root.width * root.vspan));
+                root.in-time = start;
+                root.out-time = start + len;
+                root.seek(start);
+            } else if root.drag == 4 {
+                root.seek(t);
+            } else if root.drag == 5 && root.moved {
+                ClipView.pan-to(root.press-start - (self.mouse-x - self.pressed-x) / root.width * root.vspan);
+            }
+        }
+        scroll-event(e) => {
+            if e.modifiers.control {
+                ClipView.zoom(Math.exp(-(e.delta-y / 240px)), root.t-at(self.mouse-x));
+                return accept;
+            }
+            if ClipView.zoomed {
+                let d = abs(e.delta-x) > abs(e.delta-y) ? e.delta-x : e.delta-y;
+                // Twice the wheel's distance: a notch moves about a tenth of the view.
+                ClipView.pan-to(root.vs - 2 * d / root.width * root.vspan);
+                return accept;
+            }
+            return reject;
         }
     }
 
-    // Playhead
-    Rectangle {
+    // Playhead: ink on the ruler, light over the picture (dimmed footage is dark in both
+    // themes).
+    if root.pos-x > -6px && root.pos-x < root.width + 6px: Rectangle {
         x: root.pos-x - 1px;
+        y: root.ov-h;
         width: 2px;
-        height: root.height;
-        background: white;
+        height: root.ruler-h;
+        background: Theme.ink;
     }
-    Rectangle {
+    if root.pos-x > -6px && root.pos-x < root.width + 6px: Rectangle {
+        x: root.pos-x - 1px;
+        y: root.top;
+        width: 2px;
+        height: root.height - root.top;
+        background: Theme.strip-mark;
+    }
+    if root.pos-x > -6px && root.pos-x < root.width + 6px: Rectangle {
         x: root.pos-x - 5px;
-        y: 0;
+        y: root.ov-h;
         width: 10px;
-        height: 6px;
+        height: 5px;
         border-radius: 2px;
-        background: white;
+        background: Theme.ink;
     }
 
-    // In handle (sits just inside the selection)
-    if root.handles: Rectangle {
-        x: root.in-x;
-        width: root.handle-w;
-        height: root.height;
-        border-radius: 6px;
-        background: in-ta.pressed || in-ta.has-hover ? Theme.accent-hi : Theme.accent;
-        Rectangle {
-            width: 2px;
-            height: 24px;
-            border-radius: 1px;
-            background: Theme.strip-mark;
-        }
-        in-ta := TouchArea {
-            mouse-cursor: ew-resize;
-            moved => {
-                if self.pressed {
-                    root.in-time = max(0, min(root.out-time - 0.1, root.in-time + (self.mouse-x - self.pressed-x) / root.width * root.duration));
-                    root.seek(root.in-time);
-                }
-            }
+    // The clip's length (drag it to move the clip).
+    if root.show-length: Rectangle {
+        x: root.in-x + 8px;
+        y: root.length-y;
+        width: lt.preferred-width + 12px;
+        height: 16px;
+        border-radius: 4px;
+        background: root.drag == 3 || (root.drag == 0 && area.has-hover && area.hover == 3) ? Theme.accent-hi : Theme.accent;
+        lt := Text {
+            text: Fmt.time(root.out-time - root.in-time);
+            color: Theme.on-pop;
+            font-family: Theme.mono;
+            font-size: 10px;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: center;
         }
     }
 
-    // Out handle
-    if root.handles: Rectangle {
-        x: root.out-x - root.handle-w;
-        width: root.handle-w;
-        height: root.height;
-        border-radius: 6px;
-        background: out-ta.pressed || out-ta.has-hover ? Theme.accent-hi : Theme.accent;
+    // In and Out: thin lines with a grip on the inside.
+    property <bool> in-hot: root.drag == 1 || (root.drag == 0 && area.has-hover && area.hover == 1);
+    property <bool> out-hot: root.drag == 2 || (root.drag == 0 && area.has-hover && area.hover == 2);
+    property <length> grip-y: root.top + (root.height - root.top) / 2 - 12px;
+    if root.handles && root.in-x > -6px && root.in-x < root.width + 6px: Rectangle {
+        x: root.in-x - 1.5px;
+        y: root.top;
+        width: 3px;
+        height: root.height - root.top;
+        background: root.in-hot ? Theme.accent-hi : Theme.accent;
+    }
+    if root.handles && root.in-x > -12px && root.in-x < root.width + 6px: Rectangle {
+        x: root.in-x - 1.5px;
+        y: root.grip-y;
+        width: root.in-hot ? 11px : 9px;
+        height: 24px;
+        border-radius: 3px;
+        background: root.in-hot ? Theme.accent-hi : Theme.accent;
         Rectangle {
-            width: 2px;
-            height: 24px;
-            border-radius: 1px;
-            background: Theme.strip-mark;
+            x: 4px;
+            width: 1.5px;
+            height: 12px;
+            background: Theme.on-pop;
         }
-        out-ta := TouchArea {
-            mouse-cursor: ew-resize;
-            moved => {
-                if self.pressed {
-                    root.out-time = min(root.duration, max(root.in-time + 0.1, root.out-time + (self.mouse-x - self.pressed-x) / root.width * root.duration));
-                    root.seek(root.out-time);
-                }
-            }
+    }
+    if root.handles && root.out-x > -6px && root.out-x < root.width + 6px: Rectangle {
+        x: root.out-x - 1.5px;
+        y: root.top;
+        width: 3px;
+        height: root.height - root.top;
+        background: root.out-hot ? Theme.accent-hi : Theme.accent;
+    }
+    if root.handles && root.out-x > -6px && root.out-x < root.width + 12px: Rectangle {
+        x: root.out-x + 1.5px - self.width;
+        y: root.grip-y;
+        width: root.out-hot ? 11px : 9px;
+        height: 24px;
+        border-radius: 3px;
+        background: root.out-hot ? Theme.accent-hi : Theme.accent;
+        Rectangle {
+            x: parent.width - 5.5px;
+            width: 1.5px;
+            height: 12px;
+            background: Theme.on-pop;
         }
     }
 }
 
 // Under the timeline: the video's chapters as blocks you click to select one (In and Out
-// jump to its edges). The selected chapter is filled like a picked chip.
+// jump to its edges). The selected chapter is filled like a picked chip. Follows the
+// timeline's zoom, so a chapter sits under its part of the strip.
 export component ChapterStrip inherits Rectangle {
     in property <float> duration;
     in property <[ChapterMark]> chapters;
@@ -217,11 +546,17 @@ export component ChapterStrip inherits Rectangle {
     in property <float> out-time;
     callback picked(int);
     property <float> dur: max(0.001, root.duration);
+    property <float> vs: ClipView.span > 0 ? ClipView.start : 0;
+    property <float> vspan: ClipView.span > 0 ? ClipView.span : root.dur;
     height: 28px;
+    clip: true;
     for c[i] in root.chapters: Rectangle {
         property <bool> on: abs(root.in-time - c.start) < 0.05 && abs(root.out-time - min(c.end, root.duration)) < 0.05;
-        x: root.width * (c.start / root.dur);
-        width: max(2px, root.width * ((min(c.end, root.dur) - c.start) / root.dur) - 3px);
+        property <length> x0: max(0px, (c.start - root.vs) / root.vspan * root.width);
+        property <length> x1: min(root.width, (min(c.end, root.dur) - root.vs) / root.vspan * root.width);
+        visible: self.x1 > self.x0;
+        x: self.x0;
+        width: max(2px, self.x1 - self.x0 - 3px);
         height: root.height;
         border-radius: 6px;
         border-width: 2px;

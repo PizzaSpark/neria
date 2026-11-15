@@ -12,13 +12,13 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
   compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
   `music.rs` tags/M3U/sync/Lyrics only/numbering, `lyrics.rs` lyrics sources (LRCLIB,
   Spotify's own with a sign-in), `post.rs` items of posts/playlists for the picker,
-  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate, `picture.rs` turn/mirror/crop filters, `live.rs` live streams: rewind marks pinned to the clock, the replay buffer). Shared with the future Android app, so no UI code here.
+  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate, `picture.rs` turn/mirror/crop filters, `live.rs` live streams: rewind marks pinned to the clock, the replay buffer, `timeline.rs` the clip timeline's zoom: view maths, ruler steps, filmstrip tile grid, sound levels (peaks) drawn for any part). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI in `ui/`:
   - `app.slint`: `AppWindow` only, the one API Rust sees (all properties/callbacks); wires them
     into the pages and overlays. Re-exports the structs and `Fmt` from `types.slint`, and the
     feature globals from `globals.slint` (`Accounts`, `Extras`, `Background`, `QueueActions`,
-    `Presets`, `Names`, `Music` (lyrics sources, Lyrics only, numbering), `ClipSound` (Clip page → Sound), `ClipGif` (Make a GIF), `ClipPicture` (Picture mode), `ClipList` (the clip list), `ClipLive` (a live stream in the clipper)): newer features keep their state there and pages import them directly,
+    `Presets`, `Names`, `Music` (lyrics sources, Lyrics only, numbering), `ClipSound` (Clip page → Sound), `ClipGif` (Make a GIF), `ClipPicture` (Picture mode), `ClipList` (the clip list), `ClipLive` (a live stream in the clipper), `ClipView` (the timeline's zoom and scroll; Rust owns the view)): newer features keep their state there and pages import them directly,
     instead of threading every property through `app.slint` (Rust: `ui.global::<Extras>()`).
   - `pages/`: `download`, `clip`, `compress`, `settings` (drawer), `setup` (first run).
   - `dialogs/`: `match` (pick another match), `sync` (removed songs), `spotify` (heads-up),
@@ -38,7 +38,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
     as a Slint image), `compressor.rs` (compress page), `signin.rs` (`neria --sign-in <site>`:
     the WebView2 sign-in window, its own process) + `signin_ui.rs`, `extras_ui.rs` (captions,
     audio tracks, chapters), `background_ui.rs` (tray, notifications, Download later),
-    `names_ui.rs` (filename builder), `sound_ui.rs` (Clip page → Sound), `gif_ui.rs` (Make a GIF), `picture_ui.rs` (Picture mode), `clips_ui.rs` (clip list), `order_ui.rs` (queue order: the list is the truth, the
+    `names_ui.rs` (filename builder), `sound_ui.rs` (Clip page → Sound), `gif_ui.rs` (Make a GIF), `picture_ui.rs` (Picture mode), `clips_ui.rs` (clip list), `timeline_ui.rs` (the timeline's zoom: view, waveform from peaks, close-up frames), `order_ui.rs` (queue order: the list is the truth, the
     queue is told the order it shows), `bulk_ui.rs` (several links, Paste & download, clipboard
     watcher), `follow_ui.rs` (Follow, Settings → Following, the checks). Watch mode lives in
     `clipper.rs` (`Watch` global). Core: `cookies.rs` (per-site cookie files, only ever
@@ -85,7 +85,7 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   (new Neria release / newer tool builds; `--update` re-downloads into NERIA_HOME/bin, use a scratch copy)
 
 Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_CLIP_IN` /
-`NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
+`NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_VIEW` (`start,span` in seconds: open the timeline zoomed), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (file onto the Compress page), `NERIA_COMPRESS_START`
 (auto-start it), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
 failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_LYRICS_SPOTIFY` (tick Spotify's own lyrics, to see its warning and sign-in; `signed-in`: as if signed in), `NERIA_LYRICS_ONLY` (with a Spotify `NERIA_URL`: press "Lyrics only" once it's looked up), `NERIA_ADD_LYRICS` (a folder: "Add lyrics to songs I already have" on it, no picker), `NERIA_SETTINGS` (open the settings drawer; `download`, `following`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_COPIED` (a link: show the clipboard watcher's "Link copied" strip), `NERIA_WATCH` (a file or link: open it in watch mode), `NERIA_UPDATE_URL` (check this "latest
@@ -96,7 +96,7 @@ data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, 
 `signin` (a problem that sign-in fixes), `extras` / `captions` / `audio` / `chapters` (a video with all three, the
 picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`, `sound` / `sound-gain` / `sound-only` (Clip page → Sound, with `NERIA_OPEN`), `gif` (Make a GIF, with `NERIA_OPEN`: a real estimate), `picture` / `picture-result` / `clips` / `clips-page` (Picture mode, its result, the clip list; with `NERIA_OPEN`)),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
-`NERIA_WINDOW` (window size in logical px, e.g. `780x580`; resizing from outside with
+`NERIA_WINDOW_POS` (`x,y` physical px: open the window there without taking the keyboard; `ui-check.ps1` puts its windows on another screen this way unless `-MainScreen`), `NERIA_WINDOW` (window size in logical px, e.g. `780x580`; resizing from outside with
 MoveWindow/SetWindowPos also works, but in PowerShell don't name the window handle `$h` next to
 a `$H` height: variable names ignore case, so the handle becomes the height and the window
 jumps to 32767px tall; Windows doesn't enforce the 400x600 minimum on scripted resizes), `NERIA_FAKE_FREE_MB` (pretend the

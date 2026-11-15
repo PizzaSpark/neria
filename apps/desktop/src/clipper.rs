@@ -171,13 +171,18 @@ impl Clipper {
         self.apply_sound(ui);
         ui.set_clip_thumbs(ModelRc::from(Rc::new(VecModel::<slint::Image>::default())));
         ui.set_clip_keyframes(ModelRc::from(Rc::new(VecModel::<f32>::default())));
-        ui.set_clip_keyframe_ticks(ModelRc::from(Rc::new(VecModel::<f32>::default())));
+        crate::timeline_ui::reset(
+            ui,
+            match &source {
+                Source::File(p) => crate::timeline_ui::TileSource::File(p.clone()),
+                Source::Link(u) => crate::timeline_ui::TileSource::Link(u.clone()),
+            },
+        );
         let chapters = match &source {
             Source::Link(url) => crate::extras_ui::chapters_for(url),
             _ => Vec::new(),
         };
         set_chapters(ui, &chapters);
-        ui.set_clip_wave(slint::Image::default());
         ui.set_clip_frame(slint::Image::default());
         ui.set_page(1);
 
@@ -363,12 +368,10 @@ impl Clipper {
                 let (weak, load_gen, url, settings, cancel) =
                     (weak.clone(), load_gen.clone(), url.clone(), settings.clone(), cancel.clone());
                 std::thread::spawn(move || {
-                    let Ok(png) = media::waveform_link(&url, &settings, 1600, 68, &cancel) else { return };
+                    let Ok(peaks) = media::peaks_link(&url, &settings, &cancel) else { return };
                     let _ = weak.upgrade_in_event_loop(move |ui| {
-                        if load_gen.load(Ordering::SeqCst) == generation
-                            && let Ok(img) = slint::Image::load_from_path(&png)
-                        {
-                            ui.set_clip_wave(img);
+                        if load_gen.load(Ordering::SeqCst) == generation {
+                            crate::timeline_ui::peaks_ready(&ui, peaks);
                         }
                     });
                 });
@@ -422,13 +425,18 @@ impl Clipper {
                 set_chapters(&ui, &chapters);
             });
 
-            let wave_job = {
-                let path = path.clone();
-                let audio = info.has_audio;
+            // The waveform shows as soon as it's measured, not after the filmstrip.
+            if info.has_audio {
+                let (path, weak, load_gen) = (path.clone(), weak.clone(), load_gen.clone());
                 std::thread::spawn(move || {
-                    audio.then(|| media::waveform(&path, 1600, if has_video { 68 } else { 128 }).ok()).flatten()
-                })
-            };
+                    let Ok(peaks) = media::peaks(&path) else { return };
+                    let _ = weak.upgrade_in_event_loop(move |ui| {
+                        if load_gen.load(Ordering::SeqCst) == generation {
+                            crate::timeline_ui::peaks_ready(&ui, peaks);
+                        }
+                    });
+                });
+            }
             let keyframe_job = {
                 let path = path.clone();
                 std::thread::spawn(
@@ -436,9 +444,7 @@ impl Clipper {
                 )
             };
             let thumbs = if has_video { media::thumbnails(&path, info.duration, 12, 120) } else { Vec::new() };
-            let wave = wave_job.join().ok().flatten();
             let keyframes = keyframe_job.join().unwrap_or_default();
-            let ticks = media::decimate(&keyframes, info.duration, 300);
 
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 if load_gen.load(Ordering::SeqCst) != generation {
@@ -447,13 +453,10 @@ impl Clipper {
                 let to_model =
                     |v: &[f64]| ModelRc::from(Rc::new(VecModel::from(v.iter().map(|k| *k as f32).collect::<Vec<_>>())));
                 ui.set_clip_keyframes(to_model(&keyframes));
-                ui.set_clip_keyframe_ticks(to_model(&ticks));
+                crate::timeline_ui::keyframes_ready(&ui, keyframes);
                 let images: Vec<slint::Image> =
                     thumbs.iter().filter_map(|p| slint::Image::load_from_path(p).ok()).collect();
                 ui.set_clip_thumbs(ModelRc::from(Rc::new(VecModel::from(images))));
-                if let Some(img) = wave.and_then(|p| slint::Image::load_from_path(&p).ok()) {
-                    ui.set_clip_wave(img);
-                }
             });
         });
     }
@@ -525,6 +528,7 @@ impl Clipper {
                         ui.set_clip_out(d as f32);
                     }
                 }
+                crate::timeline_ui::length_known(ui, live);
             }
         }
         let paused = mpv.get_flag("pause").unwrap_or(true);
@@ -555,6 +559,7 @@ impl Clipper {
         }
         let paused = mpv.get_flag("pause").unwrap_or(true);
         ui.set_clip_playing(!paused && !ended);
+        crate::timeline_ui::tick(ui, ui.get_clip_position() as f64);
 
         if matches!(self.source, Some(Source::Link(_))) {
             let waiting = !self.duration_applied || mpv.get_flag("paused-for-cache").unwrap_or(false);
@@ -883,6 +888,7 @@ pub fn install(
     let clipper = Rc::new(RefCell::new(Clipper::default()));
 
     ui.global::<Fmt>().on_time(|t| format_time(t).into());
+    crate::timeline_ui::install(ui);
     ui.global::<Fmt>().on_keyframe_before(|t, keyframes| {
         let kf: Vec<f64> = keyframes.iter().map(|k| k as f64).collect();
         media::keyframe_before(&kf, t as f64) as f32

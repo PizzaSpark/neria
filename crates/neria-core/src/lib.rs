@@ -29,6 +29,7 @@ pub mod report;
 pub mod settings;
 pub mod sound;
 pub mod spotify;
+pub mod timeline;
 pub mod tools;
 pub mod tracks;
 pub mod update;

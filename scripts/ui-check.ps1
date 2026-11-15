@@ -19,7 +19,10 @@ param(
   [string[]]$Only = @(),
   [int]$Wait = 5,
   # Another build (e.g. target\clip\debug\neria.exe while the usual one is running).
-  [string]$Exe = ""
+  [string]$Exe = "",
+  # Open the windows on the main screen too (by default they go to another screen, if
+  # there is one, and never take the keyboard: you can keep working or playing).
+  [switch]$MainScreen
 )
 $ErrorActionPreference = "Stop"
 # "-Only a,b" through powershell -File arrives as one string.
@@ -73,6 +76,12 @@ if (-not (Test-Path $chaptered)) {
   $lines | Set-Content -Encoding ascii $meta
   & $ff -loglevel error -y -i $video -i $meta -map 0 -map_chapters 1 -c copy $chaptered
 }
+# Ten minutes with a sound that rises and falls, for the zoomed timeline (Clip track 9).
+$long = Join-Path $media "long.mp4"
+if (-not (Test-Path $long)) {
+  & $ff -loglevel error -y -f lavfi -i "testsrc2=size=640x360:rate=25" -f lavfi -i "aevalsrc=sin(440*2*PI*t)*abs(sin(0.7*t))*(0.3+0.7*abs(sin(0.05*t))):s=44100" -t 600 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 50 -c:a aac -shortest $long
+}
+$song = Join-Path $media "song.mp3"
 # A .gif, for opening one in the clipper.
 $gifFile = Join-Path $media "loop.gif"
 if (-not (Test-Path $gifFile)) { & $ff -loglevel error -y -i $video -t 4 -vf "fps=12,scale=360:-2" $gifFile }
@@ -119,6 +128,10 @@ $states = [ordered]@{
   "sound-gain" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-gain" }
   "gif"        = @{ NERIA_OPEN = $video; NERIA_DIALOG = "gif"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
   "clip-gif"   = @{ NERIA_OPEN = $gifFile }
+  # The timeline zoomed in (40 s of 10 min), and a sound-only file zoomed.
+  "clip-zoom"  = @{ NERIA_OPEN = $long; NERIA_CLIP_IN = "212"; NERIA_CLIP_OUT = "230"; NERIA_CLIP_VIEW = "200,40" }
+  "clip-zoom-ch" = @{ NERIA_OPEN = $chaptered; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "10"; NERIA_CLIP_VIEW = "3,8" }
+  "clip-zoom-song" = @{ NERIA_OPEN = $song; NERIA_CLIP_IN = "8"; NERIA_CLIP_OUT = "12"; NERIA_CLIP_VIEW = "5,10" }
   "picture"    = @{ NERIA_OPEN = $video; NERIA_DIALOG = "picture" }
   "picture-result" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "picture-result" }
   "clips"      = @{ NERIA_OPEN = $chaptered; NERIA_DIALOG = "clips" }
@@ -126,6 +139,8 @@ $states = [ordered]@{
   "sound-only" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-only"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
   # A link in the clipper: the quality row too (looked up for real, like "bulk").
   "clip-link"  = @{ NERIA_OPEN = "https://www.youtube.com/watch?v=jNQXAC9IVRw" }
+  # The same link zoomed in: close-ups from its storyboard.
+  "clip-link-zoom" = @{ NERIA_OPEN = "https://www.youtube.com/watch?v=jNQXAC9IVRw"; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "9"; NERIA_CLIP_VIEW = "4,6" }
   # A live stream in the clipper (a 24/7 channel; needs the internet and a long -Wait).
   "clip-live"  = @{ NERIA_OPEN = "https://www.youtube.com/@aljazeeraenglish/live" }
   "clip-live-buffer" = @{ NERIA_OPEN = "https://www.twitch.tv/lofigirl" }
@@ -152,6 +167,7 @@ Add-Type @"
 using System; using System.Runtime.InteropServices;
 public class NeriaShot {
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);
   [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint f);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
@@ -170,13 +186,19 @@ public class NeriaShot {
 }
 "@
 }
-[NeriaShot]::SetProcessDPIAware() | Out-Null
+# Per-monitor aware, so a window on a screen with another scale is measured in its own pixels.
+if (-not [NeriaShot]::SetProcessDpiAwarenessContext([IntPtr]::new(-4))) { [NeriaShot]::SetProcessDPIAware() | Out-Null }
+# Where the windows open (physical px, now that this script is DPI-aware).
+Add-Type -AssemblyName System.Windows.Forms
+$other = [System.Windows.Forms.Screen]::AllScreens | Where-Object { -not $_.Primary } | Select-Object -First 1
+$windowPos = if ($other -and -not $MainScreen) { "$($other.Bounds.X + 20),$($other.Bounds.Y + 20)" } else { "" }
 
 function Shot([string]$name, [string]$size, [hashtable]$envs) {
   $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
   $psi.UseShellExecute = $false
   $psi.EnvironmentVariables["NERIA_HOME"] = $home_
   $psi.EnvironmentVariables["NERIA_WINDOW"] = $size
+  if ($windowPos) { $psi.EnvironmentVariables["NERIA_WINDOW_POS"] = $windowPos }
   foreach ($k in $envs.Keys) { $psi.EnvironmentVariables[$k] = $envs[$k] }
   $p = [System.Diagnostics.Process]::Start($psi)
   try {

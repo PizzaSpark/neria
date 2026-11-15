@@ -108,6 +108,8 @@ export global Fmt {
     pure callback time(float) -> string;
     // Latest keyframe at or before t: where a lossless cut really starts.
     pure callback keyframe-before(float, [float]) -> float;
+    // A timeline ruler label for a mark at t, given the marks' step (tenths under a second).
+    pure callback tick(float, float) -> string;
 }
 
 // Format names the Settings drawer lists and the pages show ("mp4 · H.264").

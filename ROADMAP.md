@@ -580,7 +580,7 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
    link clip, not run on a live one); other sites' windows. Dev hooks: `NERIA_LIVE_DEBUG`
    (mpv's timing when a live stream opens); ui-check `clip-live`, `clip-live-buffer`,
    `watch-live`
-9. **Timeline redesign** (picked 2026-11-14, not started; mocks: `design/clip-timeline.html`).
+9. ✅ **Timeline redesign** (picked 2026-11-14; mocks: `design/clip-timeline.html`).
    Today the timeline always shows the whole video, so on a long video or an hour of live
    stream a short clip is a sliver hidden by two fat handles, with no zoom or scrolling.
    - **A · Zoom and scroll**, for every video: Ctrl+scroll / pinch zooms around the
@@ -593,6 +593,56 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
      live edge on the right, pulsing, and the view follows it while it shows the edge; the
      last 5 minutes by default, scroll left as far back as the site keeps; "Last 30 s"
      drops the clip at the edge to nudge
+   Built (core `timeline.rs`, `ClipView` global, `components/timeline.slint`,
+   `timeline_ui.rs`): Rust owns the view (start + span; clamping, zooming around a point,
+   the live edge, paging along with the playhead are tested maths in core), the timeline
+   only maps it to pixels. Top to bottom: an overview strip of the whole video with the part
+   on screen framed (drag the frame, click elsewhere to jump; not on compact, where a thin
+   bar along the top shows where you are), a ruler whose step suits the zoom (tenths under
+   a second; live: "−4:00" … "now" counted from the edge), the filmstrip, the waveform.
+   Ctrl+scroll zooms around the pointer (a Windows touchpad pinch arrives as that; a real
+   pinch gesture isn't wired), scroll moves along, + / − zoom around the playhead, and the
+   bar under the timeline has Zoom out / Zoom in / Fit clip / Whole video and "40 s on
+   screen" (wide); compact has − + next to In / Out. Dragging the strip moves along when
+   zoomed and still scrubs when the whole video shows; the ruler always scrubs; a click
+   moves the playhead. Thin handles with a grip, the clip a see-through band with its
+   length on a tag that is also the grip to move the clip (not the whole band: dragging
+   inside the selection still scrubs, as before). While playing, the view pages along when
+   the playhead runs off the right; a jump (Home, chapter, clip list ▷) out of sight
+   centres it; scrolled away while it plays, it's left alone. The chapter strip, clip
+   bands, keyframe ticks (thinned for what's on screen) and the early-start shading follow
+   the zoom. Detail: the waveform is now drawn by Neria from sound levels measured once
+   (200 per second, cached as `peaks-200.bin`; links measure the fetched sound, then throw
+   it away as before) for exactly what's on screen, so it's sharp at any zoom (replaces
+   ffmpeg's 1600 px picture); the filmstrip gets close-up frames on a fixed grid per zoom
+   step (files: ffmpeg seeks, 6 at a time, nearest the middle first; links: cells of the
+   site's storyboard, saved by the first look-up), made a moment after zooming stops and
+   kept, so scrolling back is instant; until they arrive the whole video's frame shows.
+   Live: opens on the last 5 minutes with the edge pulsing on the right ("LIVE"); the view
+   follows the edge while it shows it, scrolling back stops following until it's in view
+   again; zooming while following keeps the edge on the right. Live streams have no
+   filmstrip or waveform (none before either). Difference from the plan: "Save the last
+   30 s / 1 min / …" still saves at once (clock-based, checked against the stream's clock in
+   item 8) instead of dropping a selection at the edge: mpv's length lags the edge by ~15 s,
+   so a selection "at the edge" would end short of it; the selection still opens as the
+   last 30 s. Also below 820 px the volume slider gives way to the time (mute stays), and
+   compact's Go live is an icon (its text cut "0:24.93 behind live" short).
+   Dev hooks: `NERIA_CLIP_VIEW=start,span`; `NERIA_WINDOW_POS=x,y` (and ui-check puts its
+   windows on another screen, unfocused); ui-check `clip-zoom`, `clip-zoom-ch`,
+   `clip-zoom-song`. Checked: screenshots at every width of a 10-minute file zoomed to 40 s
+   (close-ups, overview frame, ruler, waveform, keyframe ticks), chapters zoomed, a
+   sound-only file zoomed, and a real YouTube live stream (−5:00 … now, the edge, the last
+   30 s at the edge); posted mouse messages: dragging the strip 300 px moved the view back
+   ~10 s (ruler, waveform, overview frame and selection with it, playhead left alone), the
+   wheel moved it forward (then doubled: a notch was only 5% of the view); dragging In moved
+   it 3:32 → 3:30.06, dragging the length tag moved the whole clip (length kept), Fit clip
+   and Whole video did what they say (the zoom row then got fixed so its buttons never shift:
+   "Whole video" and the readout used to come and go); a silent sample playing with 3 s on
+   screen paged along; a YouTube link: filmstrip and waveform as before (now from its sound
+   levels), close-ups from its storyboard when zoomed; light theme; the other Clip states
+   at 400 and 900. Not yet: a person using it; Ctrl+scroll (posted messages can't hold
+   Ctrl, and faking the key would reach whatever has the keyboard); the live view following
+   the edge over minutes
 
 ### Compress: understandable for everyone, advanced when needed
 1. Plain goals instead of numbers: **For Discord** (20 MB) · **For email** (25 MB) · **For

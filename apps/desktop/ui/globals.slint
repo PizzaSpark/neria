@@ -212,6 +212,38 @@ export global ClipLive {
     callback buffer-stop();
 }
 
+// Clip page → the timeline when zoomed (Clip track 9). Rust owns the view (core
+// `timeline.rs`: clamping, zoom maths, the live edge); the timeline maps it to pixels and
+// sends the gestures here.
+export global ClipView {
+    // On screen: start to start + span, in seconds. Span 0 until the length is known.
+    in property <float> start;
+    in property <float> span;
+    // Less than the whole video is on screen.
+    in property <bool> zoomed;
+    // Seconds between the ruler's labelled marks, and the zoom said plainly.
+    in property <float> ruler-step: 60;
+    in property <string> span-text;
+    // Shortest / whole: the zoom buttons that can't go further are greyed.
+    in property <bool> can-zoom-in: true;
+    // The waveform of what's on screen, drawn by Rust at the timeline's width.
+    in property <image> wave;
+    // Close-up filmstrip frames: frame i is at tiles-start + i * tiles-step.
+    in property <[image]> tiles;
+    in property <float> tiles-start;
+    in property <float> tiles-step: 1;
+    // The timeline tells Rust its size (for the waveform and the ruler).
+    in-out property <float> width-px: 800;
+    // A handle, the band or the strip is being dragged: the view doesn't chase the playhead.
+    in-out property <bool> dragging;
+    // factor under 1 zooms in; anchor is a time kept in place (-1: the playhead, or the middle).
+    callback zoom(float, float);
+    callback pan-to(float);
+    callback fit-clip();
+    callback whole();
+    callback resized();
+}
+
 // One clip of the clip list.
 export struct ClipItem {
     name: string,
