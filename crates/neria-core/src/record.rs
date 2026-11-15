@@ -1200,18 +1200,23 @@ fn part_file(work: &Path, part: &Part) -> Result<Option<PathBuf>> {
     if out.is_file() && crate::media::duration(&out).is_some_and(|d| d > 0.0) {
         return Ok(Some(out));
     }
-    // yt-dlp finished it (the stream ended): a normal file.
-    if let Some(done) = files.iter().find(|f| {
+    // yt-dlp finished it (the stream ended): a normal file. Kept as it is, unless it's from
+    // now (its timestamps may need mending, see `TS_FIX`) or starts with a bit to leave out.
+    let done = files.iter().find(|f| {
         let n = name(f);
         !n.ends_with(".part")
             && !n.ends_with(".ytdl")
             && !n.contains(".ready.")
             && !n.contains(".part-Frag")
             && !is_format_piece(&n)
-    }) {
+    });
+    if let Some(done) = done
+        && part.from_start
+        && part.skip <= 0.0
+    {
         return Ok(Some(done.clone()));
     }
-    let parts: Vec<&PathBuf> = files.iter().filter(|f| name(f).ends_with(".part")).collect();
+    let parts: Vec<&PathBuf> = files.iter().filter(|f| name(f).ends_with(".part")).chain(done).collect();
     let pieces: Vec<&PathBuf> = parts.iter().copied().filter(|f| is_format_piece(&name(f))).collect();
     let mut args: Vec<String> = Vec::new();
     if pieces.len() >= 2 {
@@ -1223,7 +1228,7 @@ fn part_file(work: &Path, part: &Part) -> Result<Option<PathBuf>> {
         args.extend(["-c", "copy", "-shortest", "-avoid_negative_ts", "make_zero"].map(String::from));
     } else if let Some(p) = parts.first().or(files.iter().find(|f| is_format_piece(&name(f))).as_ref()) {
         args.extend(["-i".into(), s(p), "-map".into(), "0".into(), "-dn".into(), "-ignore_unknown".into()]);
-        args.extend(["-c", "copy", "-bsf:a", "aac_adtstoasc", "-avoid_negative_ts", "make_zero"].map(String::from));
+        args.extend(["-c", "copy", "-bsf:a", "aac_adtstoasc", "-bsf:v", TS_FIX, "-avoid_negative_ts", "make_zero"].map(String::from));
     } else {
         return Ok(None);
     }
@@ -1240,6 +1245,13 @@ fn part_file(work: &Path, part: &Part) -> Result<Option<PathBuf>> {
         }
     }
 }
+
+/// A from-now part's frames that show at the stream's own clock instead of the part's: Twitch
+/// stitches its ad in front for viewers who aren't signed in, and where the ad ends two
+/// frames come out ~5000 s ahead of where they're decoded (shown: a saved file that claimed
+/// 7878 s for 4517 s, and a player that stalls there). Normal frames show within a second of
+/// being decoded, so a frame more than 5 s ahead is shown where it's decoded.
+const TS_FIX: &str = "setts=pts='if(gt(PTS-DTS,5/TB),DTS,PTS)'";
 
 /// The earlier part, cut where the recording takes over.
 fn early_file(work: &Path, e: &Early) -> Option<PathBuf> {
@@ -1421,7 +1433,7 @@ fn clip_last_as(work: &Path, seconds: f64, out_dir: &Path, title: &str, tag: &st
         args.extend(["-map", "0:v?", "-map", "1:a?", "-map", "0:a?", "-map", "1:v?"].map(String::from));
     } else if let Some(f) = files.first() {
         args.extend(["-sseof".into(), format!("-{seconds:.3}"), "-i".into(), s(f), "-map".into(), "0".into()]);
-        args.extend(["-dn".into(), "-bsf:a".into(), "aac_adtstoasc".into()]);
+        args.extend(["-dn".into(), "-bsf:a".into(), "aac_adtstoasc".into(), "-bsf:v".into(), TS_FIX.into()]);
     } else {
         bail!("Nothing recorded yet");
     }

@@ -810,9 +810,13 @@ see `docs/UPSTREAM.md`). Ticked only where a real stream covered it; the rest is
    break in progress" ad, which the match skips (30 s in). Checked headless (`--earlier-at`):
    osu! on Twitch, 1:05:13 before + 9:30 after, one file, picture continuous across the join.
    Not offered when the site keeps no past (Twitch subscriber-only broadcasts fail with the
-   site's words). **Found, not fixed**: a Twitch from-now recording carries two frames with the
-   stream's own clock where its ad ends (~31 s in), so the saved file claims a wrong length
-   (7878 s for 4517 s); likely also what showed as a black picture while watching. Not yet:
+   site's words). **Fixed on the way**: a Twitch from-now recording carried two frames shown at
+   the stream's own clock where its ad ends (~31 s in), so the saved file claimed a wrong
+   length (7878 s for 4517 s); saving, "Clip the last" and a part the stream ended now show
+   any frame more than 5 s ahead of its decoding where it's decoded (`TS_FIX`, ffmpeg's
+   `setts`): that part saves at 45.8 s, as long as its sound. A part the stream ended also
+   gets its start left out now (`skip`), as the others did. The black picture while
+   watching wasn't seen again; the same spot in the player is the likeliest cause. Not yet:
    the queue row's own "get the part before", and a crash while it's fetched (the earlier part
    is dropped, the recording is kept).
 Dev hooks: `NERIA_DIALOG=live` / `live-upcoming` / `live-long` / `close-rec`, recording rows in
