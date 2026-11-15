@@ -36,6 +36,22 @@ pub fn fingerprint(input: &OsStr) -> Result<Vec<u32>> {
     Ok(out.stdout.as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
 }
 
+/// The fingerprint of `secs` of `input` from `from` seconds in.
+pub fn fingerprint_range(input: &OsStr, from: f64, secs: f64) -> Result<Vec<u32>> {
+    let out = proc::command(paths::tool("ffmpeg"))
+        .args(["-hide_banner", "-v", "error", "-ss", &format!("{from:.3}"), "-i"])
+        .arg(input)
+        .args(["-t", &format!("{secs:.3}"), "-vn", "-f", "chromaprint", "-fp_format", "raw", "-"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .context("failed to start ffmpeg")?;
+    if !out.status.success() {
+        bail!("fingerprint failed: {}", String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or(""));
+    }
+    Ok(out.stdout.as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Alignment {
     /// 0..1, 1 = identical bits at the best offset. Unrelated audio sits near 0.5.

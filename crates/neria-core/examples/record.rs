@@ -10,6 +10,8 @@
 //! - `--kill-at <t>`: kill yt-dlp at `t` seconds without stopping (a dropped connection).
 //! - `--crash-at <t>`: give up at `t` as if Neria died: the parts are left; then
 //!   `--save <work dir>` saves them as Neria does at its next start.
+//! - `--earlier-at <t>`: at `t` seconds in, "Also get the part before" (a from-now
+//!   recording): fetched next to it, joined in front where the sound matches.
 //! - `--queue`: through the download queue instead (as the app does): the row's state,
 //!   "Clip the last" (`--clip`) and Stop go through it.
 
@@ -120,6 +122,28 @@ fn main() -> anyhow::Result<()> {
     let slot = Arc::new(Mutex::new(None));
     let stop = Arc::new(AtomicBool::new(false));
     let cancel = Arc::new(AtomicBool::new(false));
+    // "Also get the part before" at `t` seconds in (a from-now recording): fetched next to
+    // it, joined in front on saving.
+    if let Some(at) = opt(&args, "--earlier-at").and_then(|v| v.parse::<f64>().ok()) {
+        let (url, settings, stop) = (url.clone(), settings.clone(), stop.clone());
+        let (out_dir, title, work, live) = (out_dir.clone(), title.clone(), rec.work.clone(), rec.live.clone());
+        let (audio, max_height) = (rec.audio, rec.max_height);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs_f64(at));
+            let rec = Recording { url: &url, settings: &settings, audio, max_height, live, title: &title, out_dir: &out_dir, work };
+            let slot = Mutex::new(None);
+            let started = Instant::now();
+            let mut printed = Instant::now();
+            let never = AtomicBool::new(false);
+            let result = record::fetch_earlier(&rec, &slot, &stop, &never, |got, of| {
+                if printed.elapsed() >= Duration::from_secs(10) {
+                    printed = Instant::now();
+                    println!("earlier: {} of {}", fmt::duration(got), fmt::duration(of));
+                }
+            });
+            println!("earlier done in {:.0} s: {result:?}", started.elapsed().as_secs_f64());
+        });
+    }
     // The clock: stop (or clip, kill, crash) on time from another thread, as the UI would.
     {
         let (slot, stop, cancel, work) = (slot.clone(), stop.clone(), cancel.clone(), rec.work.clone());

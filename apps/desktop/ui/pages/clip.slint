@@ -6,7 +6,7 @@ import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
 import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions } from "../globals.slint";
-import { Menu, MenuItem } from "../widgets.slint";
+import { Menu, MenuItem, TextLink } from "../widgets.slint";
 
 // The timeline's zoom: out, in, fit the clip, the whole video, and how much is on screen.
 // Ctrl+scroll on the timeline (or a touchpad pinch) and + / − do the same.
@@ -67,6 +67,49 @@ component ZoomButtons inherits HorizontalLayout {
 // A live stream: save the last bit with one press (rewound from the site's window, or from
 // the replay buffer), go back to live, or keep the last few minutes when the site can't
 // rewind. Wraps on narrow windows.
+// "Save the last ▾": the last 30 s / 1 min / 5 min / 10 min as a file of their own, from a
+// recording or from what the site (or the replay buffer) keeps. `note` instead of the picks
+// says why it can't yet.
+component LastMenu inherits VerticalLayout {
+    in property <string> note;
+    callback picked(float);
+    alignment: center;
+    horizontal-stretch: Screen.compact ? 1 : 0;
+    GhostButton {
+        text: Screen.compact ? "Last" : "Save the last";
+        label: "Save the last few minutes";
+        icon: "\u{E81C}";
+        trail: "\u{E70E}";
+        clicked => { menu.show(); }
+    }
+    menu := PopupWindow {
+        x: 0;
+        y: root.note == "" ? -174px : -54px;
+        Menu {
+            width: 210px;
+            if root.note != "": MenuItem {
+                text: root.note;
+            }
+            if root.note == "": MenuItem {
+                text: "30 seconds";
+                clicked => { root.picked(30); }
+            }
+            if root.note == "": MenuItem {
+                text: "1 minute";
+                clicked => { root.picked(60); }
+            }
+            if root.note == "": MenuItem {
+                text: "5 minutes";
+                clicked => { root.picked(300); }
+            }
+            if root.note == "": MenuItem {
+                text: "10 minutes";
+                clicked => { root.picked(600); }
+            }
+        }
+    }
+}
+
 component LiveRow inherits FlexboxLayout {
     spacing: 8px;
     horizontal-stretch: 1;
@@ -468,7 +511,7 @@ export component ClipPage inherits FocusScope {
             PageTitle {
                 horizontal-stretch: 1;
                 spacing: 4px;
-                title: Watch.on ? (Watch.recording-id != 0 ? "Watching it live." : "Watch it first.") : "Cut the good part.";
+                title: !Watch.on ? "Cut the good part." : Watch.recording-id != 0 && !Watch.rec-done ? "Recording it live." : Watch.recording-id != 0 || ClipLive.on ? "Watching it live." : "Watch it first.";
                 subtitle: root.loaded ? root.name : Screen.compact ? "" : "Trim a file, or preview a link and download only the part you want.";
             }
             // Watching: back to the preview it came from.
@@ -882,16 +925,48 @@ export component ClipPage inherits FocusScope {
             show-clip: false;
         }
 
-        // Watching a recording: it's being recorded already; stop it, or clip a part.
-        if root.loaded && Watch.on && Watch.recording-id != 0: HorizontalLayout {
-            spacing: 8px;
-            if !Screen.compact: Text {
-                horizontal-stretch: 1;
-                text: Watch.rec-text;
-                color: Watch.rec-clipping ? Theme.ink : Theme.muted;
+        // Narrow: the part before, on its own line above the buttons.
+        if root.loaded && Watch.on && Watch.recording-id != 0 && !Watch.rec-done && Screen.compact
+            && Watch.rec-earlier != "": HorizontalLayout {
+            alignment: start;
+            if Watch.rec-earlier-link: TextLink {
+                text: Watch.rec-earlier;
+                clicked => { Watch.earlier(); }
+            }
+            if !Watch.rec-earlier-link: Text {
+                text: Watch.rec-earlier;
+                color: Theme.muted;
                 font-size: 12px;
                 overflow: elide;
-                vertical-alignment: center;
+            }
+        }
+        // Watching a recording: clip a part (Start / End, or the last few minutes), or stop it.
+        if root.loaded && Watch.on && Watch.recording-id != 0 && !Watch.rec-done: HorizontalLayout {
+            spacing: 8px;
+            if !Screen.compact: VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: Watch.rec-text;
+                    color: Watch.rec-clipping ? Theme.ink : Theme.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+                // "Also get the 2 h 19 min before": fetched next to it, joined in front.
+                if Watch.rec-earlier != "" && Watch.rec-earlier-link: HorizontalLayout {
+                    alignment: start;
+                    TextLink {
+                        text: Watch.rec-earlier;
+                        clicked => { Watch.earlier(); }
+                    }
+                }
+                if Watch.rec-earlier != "" && !Watch.rec-earlier-link: Text {
+                    text: Watch.rec-earlier;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    overflow: elide;
+                }
             }
             // Start a clip (10 s back), End clip saves it; the recording goes on.
             if !Watch.rec-clipping: PrimaryButton {
@@ -907,16 +982,93 @@ export component ClipPage inherits FocusScope {
                 icon: "\u{E8C6}";
                 clicked => { QueueActions.clip-end(Watch.recording-id); }
             }
+            LastMenu {
+                note: Watch.rec-can-clip ? "" : "You can clip once it has caught up";
+                picked(secs) => { QueueActions.clip-last(Watch.recording-id, secs); }
+            }
             GhostButton {
                 horizontal-stretch: Screen.compact ? 1 : 0;
-                text: Screen.compact ? "Stop" : "Stop recording";
-                label: "Stop recording";
+                text: "Stop";
+                label: "Stop and save the recording";
                 icon: "\u{E71A}";
                 clicked => { QueueActions.stop(Watch.recording-id); }
             }
         }
+        // The recording ended: where it is, trim it, or record again while the stream's on.
+        if root.loaded && Watch.on && Watch.recording-id != 0 && Watch.rec-done: HorizontalLayout {
+            spacing: 8px;
+            if !Screen.compact && Watch.rec-saved: VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                Tag {
+                    text: "Saved";
+                    kind: 1;
+                }
+            }
+            if !Screen.compact: Text {
+                horizontal-stretch: 1;
+                text: Watch.rec-text;
+                color: Theme.muted;
+                font-size: 12px;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            if Screen.compact && !Watch.rec-saved && !Watch.rec-again: Text {
+                horizontal-stretch: 1;
+                text: Watch.rec-text;
+                color: Theme.muted;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+            if Watch.rec-saved: GhostButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: Screen.compact ? "Show" : "Show file";
+                label: "Show the file";
+                icon: "\u{E838}";
+                clicked => { Watch.show-file(); }
+            }
+            if Watch.rec-saved: GhostButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: Screen.compact ? "Trim" : "Trim it";
+                label: "Trim the recording";
+                icon: "\u{E8C6}";
+                clicked => { Watch.trim(); }
+            }
+            if Watch.rec-again: PrimaryButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: Screen.compact ? "Again" : "Record again";
+                icon: "\u{E7C8}";
+                enabled: root.tools-ready;
+                clicked => { Watch.record(); }
+            }
+        }
+        // Watching a live stream, not recording: save the last few minutes, or record.
+        if root.loaded && Watch.on && Watch.recording-id == 0 && ClipLive.on: HorizontalLayout {
+            spacing: 8px;
+            if !Screen.compact: Text {
+                horizontal-stretch: 1;
+                text: ClipLive.can-rewind ? "Not recording · you can still save the last few minutes"
+                    : ClipLive.buffering ? "Not recording · " + ClipLive.buffer-text
+                    : ClipLive.buffer-text != "" ? "Not recording · " + ClipLive.buffer-text : "Not recording";
+                color: Theme.muted;
+                font-size: 12px;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            LastMenu {
+                note: ClipLive.can-rewind || ClipLive.buffering ? "" : "Nothing kept to clip from yet";
+                picked(secs) => { ClipLive.last(secs); }
+            }
+            PrimaryButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: "Record";
+                icon: "\u{E7C8}";
+                enabled: root.tools-ready;
+                clicked => { Watch.record(); }
+            }
+        }
         // Watching: download the whole thing, or start clipping it.
-        if root.loaded && Watch.on && Watch.recording-id == 0: HorizontalLayout {
+        if root.loaded && Watch.on && Watch.recording-id == 0 && !ClipLive.on: HorizontalLayout {
             spacing: 8px;
             if !Screen.compact: Text {
                 horizontal-stretch: 1;

@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria Live Screen</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#5f5d5a; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --live:#ff5a5f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono"; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono"; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; padding: 16px 20px 14px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; }
+  .q.wide { width: 760px; }
+  .q.narrow { width: 400px; padding: 14px 16px 12px; }
+  .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grow { flex: 1; min-width: 0; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .mut { color: var(--muted); }
+  .tag { font: 700 10.5px "Space Grotesk"; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .tag.live { background: #3d1719; color: var(--live); }
+  .tag.rec { background: var(--live); color: #1a0506; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25 } }
+  .ghost { height: 32px; padding: 0 11px; border: 2px solid var(--ls); border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; flex: none; }
+  .ghost.off { color: var(--dim); border-color: var(--line); }
+  .btn { height: 34px; padding: 0 14px; border-radius: 9px; background: var(--pop); color: var(--onpop); font: 600 13px "Inter Tight";
+         border: 2px solid var(--hard); box-shadow: 2px 2px 0 var(--hard); display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; flex: none; }
+  .btn.red { background: var(--live); color: #1a0506; }
+  .btn .car { border-left: 2px solid rgba(0,0,0,.35); padding-left: 8px; margin-left: 4px; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  .seg2 { display: inline-flex; border: 2px solid var(--ls); border-radius: 9px; overflow: hidden; flex: none; }
+  .seg2 span { padding: 6px 11px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+  .seg2 span.on { background: var(--ink); color: var(--bg); }
+  .seg2 small { color: inherit; opacity: .65; font-size: 11px; margin-left: 4px; }
+
+  /* Download page preview */
+  .url { border: 2px solid var(--ls); border-radius: 10px; padding: 8px 8px 8px 14px; display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .prev { display: flex; gap: 14px; align-items: flex-start; }
+  .th { width: 150px; aspect-ratio: 16/9; border-radius: 9px; flex: none; position: relative; }
+  .narrow .prev .th { width: 104px; }
+  .th .tag { position: absolute; left: 6px; top: 6px; }
+  .prev .t { font-size: 15px; font-weight: 600; }
+  .prev .m { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .actrow { display: flex; gap: 8px; align-items: center; margin-top: 12px; justify-content: flex-end; flex-wrap: wrap; }
+
+  /* live screen */
+  .head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .head .t { font: 700 16px "Space Grotesk"; }
+  .video { border-radius: 10px; aspect-ratio: 16/9; position: relative; overflow: hidden; }
+  .video .badge { position: absolute; left: 10px; top: 10px; }
+  .video .golive { position: absolute; right: 10px; bottom: 10px; }
+  .tl { margin-top: 12px; position: relative; height: 34px; border-radius: 6px; background: var(--panel); overflow: visible; }
+  .tl .kept { position: absolute; top: 0; bottom: 0; background: #2c2c32; border-radius: 6px; }
+  .tl .recd { position: absolute; top: 0; bottom: 0; background: rgba(255,90,95,.22); border-top: 2px solid var(--live); }
+  .tl .catch { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(90deg, rgba(255,90,95,.3) 0 6px, transparent 6px 9px); border-top: 2px dashed var(--live); }
+  .tl .clip { position: absolute; top: 0; bottom: 0; background: rgba(255,210,63,.28); border-left: 3px solid var(--pop); }
+  .tl .ph { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+  .tl .edge { position: absolute; top: -4px; bottom: -4px; right: 0; width: 3px; background: var(--live); border-radius: 2px; animation: edge 1.6s ease-out infinite; }
+  @keyframes edge { 0% { box-shadow: 0 0 0 0 rgba(255,90,95,.6) } 100% { box-shadow: 0 0 0 7px rgba(255,90,95,0) } }
+  .ticks { display: flex; justify-content: space-between; font: 500 10px "JetBrains Mono"; color: var(--dim); margin-top: 4px; }
+  .bar { display: flex; gap: 8px; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .narrow .bar { gap: 7px; }
+  .status { font-size: 12.5px; color: var(--muted); }
+  .status b { color: var(--ink); font-weight: 600; }
+  .big { font: 700 15px "Space Grotesk"; color: var(--ink); }
+  .menu { background: var(--panel); border: 1px solid var(--ls); border-radius: 10px; padding: 6px; width: 250px; font-size: 12.5px;
+          box-shadow: 0 12px 30px -10px rgba(0,0,0,.7); color: var(--ink); }
+  .menu div { padding: 7px 10px; border-radius: 6px; }
+  .menu .h { color: var(--muted); font-size: 11.5px; padding-top: 0; }
+  .menu .on { background: var(--raised); }
+  .menu small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+
+  .t1 { background: linear-gradient(135deg, #2a3a2a, #4f7a3a 45%, #c9a35a 80%, #6a4a8a); }
+  .t2 { background: linear-gradient(160deg, #0f3b3a, #2f8f7a 60%, #d8e3a0); }
+
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 880px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk"; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>One live screen: watch, record, clip</h1>
+  <p class="lead">Today a live stream is split across three places: the Download page decides <b>from the start / from now</b>
+  before you've seen anything, <b>Record</b> drops a row in the queue, and watching or clipping is a separate trip (the
+  unlabelled ▶ on the thumbnail, or Watch on the row). And when the recording stops, the player keeps a dead
+  <b>Start clip</b> and a <b>Stop recording</b> that does nothing.<br><br>
+  This revises <b>1A</b> of <code>live-track.html</code> (the start point said on the preview). The queue row (2A) and
+  "Clip the last…" (3A) stay; they become the background view of what this screen shows.</p>
+
+  <section>
+    <div class="label"><span>The flow</span><h2>Paste → Watch or Record → the same live screen</h2></div>
+    <ul class="why">
+      <li><b>Watch</b> and <b>Record</b> both land on the live screen (the Clip page in live mode). Watch just plays; Record plays <i>and</i> records.</li>
+      <li>On that screen you can <b>start or stop recording any time</b>, and <b>clip whether or not you record</b>.</li>
+      <li>The start point (now / from the start) moves off the preview and onto the screen, next to Record.</li>
+      <li>Leaving the screen never stops a recording: it carries on as a row in the queue, and Watch on the row brings you back.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="label"><span>Step 1</span><h2>The preview: two plain buttons</h2></div>
+    <p class="why">No start-point line here any more. Just what it is, and the two things you can do.</p>
+    <div class="pair">
+      <div class="scroll"><div class="q wide">
+        <div class="url"><span class="grow ell">https://www.twitch.tv/cdawg</span><span class="ghost">Paste</span></div>
+        <div class="prev"><div class="th t1"><span class="tag live"><span class="dot"></span>LIVE</span></div>
+          <div class="grow"><div class="t ell">CDawg (live) 2026-11-15 20:41</div>
+            <div class="m">CDawg · live for 2 h 19 min · up to 1080p</div></div></div>
+        <div class="actrow"><span class="ghost">▶ Watch</span><span class="btn">◉ Record</span></div>
+      </div></div>
+      <div class="q narrow">
+        <div class="url"><span class="grow ell">https://www.twitch.tv/cdawg</span><span class="ghost">Paste</span></div>
+        <div class="prev"><div class="th t1"><span class="tag live"><span class="dot"></span>LIVE</span></div>
+          <div class="grow"><div class="t ell">CDawg (live) 2026-11-15…</div>
+            <div class="m">live for 2 h 19 min · 1080p</div></div></div>
+        <div class="actrow"><span class="ghost" style="flex:1">▶ Watch</span><span class="btn" style="flex:1">◉ Record</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Step 2</span><h2>The live screen, in each state</h2></div>
+    <p class="why">Same screen throughout; only the bottom bar changes. Timeline: grey = what you can clip from,
+    red-topped = recorded, yellow = the clip you're marking, red edge = now.</p>
+
+    <div class="opt">
+      <h3>Watching, not recording</h3>
+      <p>Clipping still works: on YouTube from the last hour the site keeps; on Twitch (can't rewind) Neria keeps the last
+      few minutes on disk while you watch (see Question 2). <b>Record</b> is one press away.</p>
+      <div class="pair">
+        <div class="scroll"><div class="q wide">
+          <div class="head"><span class="tag live"><span class="dot"></span>LIVE</span><span class="t grow ell">CDawg (live) 2026-11-15 20:41</span><span class="ghost">✕ Close</span></div>
+          <div class="video t1"><span class="ghost golive" style="background:rgba(0,0,0,.5)">● Live</span></div>
+          <div class="tl"><div class="kept" style="left:62%;right:0"></div><div class="ph" style="right:1%"></div><div class="edge"></div></div>
+          <div class="ticks"><span></span><span>−10:00</span><span>now</span></div>
+          <div class="bar">
+            <span class="status grow">Not recording · <b>you can clip the last 10 min</b></span>
+            <span class="ghost">✂ Start clip</span><span class="ghost">Save the last ▾</span>
+            <span class="btn">◉ Record <span class="car">▾</span></span>
+          </div>
+        </div></div>
+        <div class="q narrow">
+          <div class="head"><span class="tag live"><span class="dot"></span>LIVE</span><span class="t grow ell">CDawg (live) 2026-11-15</span><span class="ghost">✕</span></div>
+          <div class="video t1"></div>
+          <div class="tl"><div class="kept" style="left:62%;right:0"></div><div class="edge"></div></div>
+          <div class="bar">
+            <span class="status grow">Not recording · <b>last 10 min clippable</b></span>
+          </div>
+          <div class="row" style="margin-top:8px"><span class="ghost" style="flex:1">✂ Start clip</span><span class="ghost">Last ▾</span><span class="btn" style="flex:1">◉ Record ▾</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>Recording (from now)</h3>
+      <p>The status turns into the recorder: REC, the time, the size. <b>Stop</b> saves. Clipping cuts from what's recorded.</p>
+      <div class="pair">
+        <div class="scroll"><div class="q wide">
+          <div class="head"><span class="tag rec"><span class="dot"></span>REC</span><span class="t grow ell">CDawg (live) 2026-11-15 20:41</span><span class="ghost">✕ Close</span></div>
+          <div class="video t1"></div>
+          <div class="tl"><div class="kept" style="left:40%;right:0"></div><div class="recd" style="left:55%;right:0"></div><div class="clip" style="left:88%;right:1%"></div><div class="ph" style="right:1%"></div><div class="edge"></div></div>
+          <div class="ticks"><span></span><span>you pressed Record 6:12 ago</span><span>now</span></div>
+          <div class="bar">
+            <span class="status grow"><span class="big">6:12</span> recorded · 212 MB · <span style="color:var(--ink)">clipping from 5:40 · 0:32 so far</span></span>
+            <span class="btn">✂ End clip</span><span class="ghost">■ Stop &amp; save</span>
+          </div>
+        </div></div>
+        <div class="q narrow">
+          <div class="head"><span class="tag rec"><span class="dot"></span>REC</span><span class="t grow ell">CDawg (live) 2026-11-15</span><span class="ghost">✕</span></div>
+          <div class="video t1"></div>
+          <div class="tl"><div class="kept" style="left:40%;right:0"></div><div class="recd" style="left:55%;right:0"></div><div class="edge"></div></div>
+          <div class="bar"><span class="status grow"><span class="big">6:12</span> · 212 MB</span></div>
+          <div class="row" style="margin-top:8px"><span class="ghost" style="flex:1">✂ Start clip</span><span class="ghost">Last ▾</span><span class="ghost" style="flex:1">■ Stop</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>Recording from the start, still catching up</h3>
+      <p>The honest version of the wait: the dashed part is still coming in. <b>Clipping isn't dead</b>: "Save the last" and
+      Start clip work on what you see live (it's the part you're watching), and the earlier part is clippable once it's in.</p>
+      <div class="pair">
+        <div class="scroll"><div class="q wide">
+          <div class="head"><span class="tag rec"><span class="dot"></span>REC</span><span class="t grow ell">CDawg (live) 2026-11-15 20:41</span><span class="ghost">✕ Close</span></div>
+          <div class="video t1"></div>
+          <div class="tl"><div class="recd" style="left:0;width:36%"></div><div class="catch" style="left:36%;right:0"></div><div class="ph" style="right:1%"></div><div class="edge"></div></div>
+          <div class="ticks"><span>stream start · 2:19:00 ago</span><span>catching up: 51:10 of 2:19:00 · ~14 min left</span><span>now</span></div>
+          <div class="bar">
+            <span class="status grow"><span class="big">51:10</span> recorded · 1.1 GB</span>
+            <span class="ghost">✂ Start clip</span><span class="ghost">Save the last ▾</span><span class="ghost">■ Stop &amp; save</span>
+          </div>
+        </div></div>
+        <div class="q narrow">
+          <div class="head"><span class="tag rec"><span class="dot"></span>REC</span><span class="t grow ell">CDawg (live) 2026-11-15</span><span class="ghost">✕</span></div>
+          <div class="video t1"></div>
+          <div class="tl"><div class="recd" style="left:0;width:36%"></div><div class="catch" style="left:36%;right:0"></div><div class="edge"></div></div>
+          <div class="bar"><span class="status grow"><span class="big">51:10</span> of 2:19:00 · ~14 min to catch up</span></div>
+          <div class="row" style="margin-top:8px"><span class="ghost" style="flex:1">✂ Start clip</span><span class="ghost">Last ▾</span><span class="ghost" style="flex:1">■ Stop</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>Stopped and saved (fixes today's dead end)</h3>
+      <p>Instead of "The recording has stopped." with a greyed Start clip and a Stop that does nothing: say what happened
+      and offer the next steps. The live picture keeps playing, so you can just <b>Record again</b>. If the stream ended:
+      "The stream ended · saved 2:14:00", no Record again.</p>
+      <div class="pair">
+        <div class="scroll"><div class="q wide">
+          <div class="head"><span class="tag live"><span class="dot"></span>LIVE</span><span class="t grow ell">CDawg (live) 2026-11-15 20:41</span><span class="ghost">✕ Close</span></div>
+          <div class="video t1"></div>
+          <div class="tl"><div class="kept" style="left:40%;right:0"></div><div class="ph" style="right:1%"></div><div class="edge"></div></div>
+          <div class="bar">
+            <span class="tag ok">Saved</span><span class="status grow"><b>6:40</b> · 230 MB · you stopped it</span>
+            <span class="ghost">Show file</span><span class="ghost">✂ Trim it</span><span class="btn">◉ Record again</span>
+          </div>
+        </div></div>
+        <div class="q narrow">
+          <div class="head"><span class="tag live"><span class="dot"></span>LIVE</span><span class="t grow ell">CDawg (live) 2026-11-15</span><span class="ghost">✕</span></div>
+          <div class="video t1"></div>
+          <div class="bar"><span class="tag ok">Saved</span><span class="status grow"><b>6:40</b> · 230 MB</span></div>
+          <div class="row" style="margin-top:8px"><span class="ghost" style="flex:1">Show file</span><span class="ghost" style="flex:1">✂ Trim it</span><span class="btn" style="flex:1">◉ Again</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Question 1</span><h2>Where "from now / from the start" goes</h2></div>
+    <p class="why">It has to be a real choice, not a sentence with a link. Three ways:</p>
+
+    <div class="opt">
+      <h3>A · In Record's menu <span class="rec">simplest</span></h3>
+      <p>Record = from now (instant, clipping works right away). The ▾ offers the other one with its cost. Same split
+      button that's already there.</p>
+      <div class="pair">
+        <div class="menu"><div class="h">Start recording…</div>
+          <div class="on">From now<small>starts this second</small></div>
+          <div>From the start<small>2 h 19 min back · ~23 min to catch up</small></div></div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>B · A two-way switch next to Record</h3>
+      <p>Always visible before you record, so nobody misses that "from the start" exists. Costs a slot in the bar
+      (at 400 px it takes its own line).</p>
+      <div class="pair">
+        <div class="scroll"><div class="q wide">
+          <div class="bar" style="margin-top:0;padding-top:0;border:0">
+            <span class="status grow">Not recording · <b>you can clip the last 10 min</b></span>
+            <span class="seg2"><span class="on">From now</span><span>From the start<small>~23 min</small></span></span>
+            <span class="btn">◉ Record</span>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>C · Always from now, then "get the earlier part too" <span class="rec">recommended, needs a check</span></h3>
+      <p>Record never makes you choose or wait. While it records, a link offers the part before you pressed it; Neria
+      fetches that in the background and joins it on Stop (the parts already join without re-encoding). Needs a check
+      that both can run at once on YouTube and Twitch; if not, it falls back to A.</p>
+      <div class="pair">
+        <div class="scroll"><div class="q wide">
+          <div class="bar" style="margin-top:0;padding-top:0;border:0">
+            <span class="status grow"><span class="big">6:12</span> recorded · 212 MB · <span class="lnk">Also get the 2 h 19 min before</span></span>
+            <span class="ghost">✂ Start clip</span><span class="ghost">■ Stop &amp; save</span>
+          </div>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Question 2</span><h2>Clipping while only watching a stream that can't rewind (Twitch)</h2></div>
+    <table class="cmp">
+      <tr><th></th><th>What you see</th><th>Cost</th></tr>
+      <tr><td><b>A · Always on</b> (recommended)</td><td>"Not recording · you can clip the last 10 min". Clipping just works, like YouTube.</td><td>~500 MB of disk while watching at 1080p, deleted when you close</td></tr>
+      <tr><td><b>B · A switch</b></td><td>"Not recording · Keep the last 10 min so I can clip" (off). Start clip is greyed until it's on.</td><td>Nothing until switched on, but the first moment you wanted is gone</td></tr>
+    </table>
+  </section>
+</div>
+</body>
+</html>

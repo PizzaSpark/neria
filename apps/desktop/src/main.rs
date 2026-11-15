@@ -925,6 +925,7 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             ui.set_probe_state(2);
             ui.set_probe_title(info.title.as_str().into());
             ui.set_probe_meta(info.meta_line().into());
+            ui.global::<Presets>().set_top(info.max_height.map(|h| format!("{h}p")).unwrap_or_default().into());
             let settings = Settings { caption_langs: vec!["en".into()], ..Settings::load() };
             extras_ui::set_info(ui, &info, &settings);
             let kind = match which {
@@ -979,6 +980,7 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             ui.set_probe_state(2);
             ui.set_probe_title(info.title.as_str().into());
             ui.set_probe_meta(info.meta_line().into());
+            ui.global::<Presets>().set_top(info.max_height.map(|h| format!("{h}p")).unwrap_or_default().into());
             live_ui::set_info(ui, info.live.as_ref(), None);
         }
         "later" => {
@@ -1356,7 +1358,7 @@ fn count_picked(ui: &AppWindow) {
 
 /// The link to use for `text`: Spotify URIs as they are, web links with
 /// `https://` added if it was left out. `None` if it isn't a link.
-fn link_of(text: &str) -> Option<String> {
+pub(crate) fn link_of(text: &str) -> Option<String> {
     let text = text.trim();
     if text.starts_with("spotify:") {
         return Some(text.to_string());
@@ -1404,6 +1406,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
         state.last_url.borrow_mut().clear();
         ui.set_probe_blocked(false);
         ui.set_probe_state(if partial_link(text) { 0 } else { 4 });
+        ui.global::<Presets>().set_top("".into());
         ui.set_probe_is_spotify(false);
         ui.set_probe_is_gif(false);
         return;
@@ -1421,6 +1424,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
     clear_picker(ui, state);
     clear_link_notes(ui, state);
     ui.set_probe_state(1);
+    ui.global::<Presets>().set_top("".into());
     ui.set_probe_blocked(false);
     ui.set_probe_title("".into());
     ui.set_probe_meta(url.as_str().into());
@@ -1464,6 +1468,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     ui.set_probe_state(2);
                     ui.set_probe_title(info.title.as_str().into());
                     ui.set_probe_meta(info.meta_line().into());
+            ui.global::<Presets>().set_top(info.max_height.map(|h| format!("{h}p")).unwrap_or_default().into());
                     ui.set_probe_is_gif(info.gif || is_single_gif(&info));
                     live_ui::set_info(&ui, info.live.as_ref(), info.thumbnail_url.clone());
                     extras_ui::set_info(&ui, &info, &settings);
@@ -1796,6 +1801,7 @@ fn main() -> anyhow::Result<()> {
                 queue.add_group(&title, post::is_playlist(&items), reqs);
             } else {
                 let title_hint = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { url.clone() };
+                let live_title = title_hint.clone();
                 let (quality, preset) = chosen_quality(&ui);
                 let quality = if ui.get_probe_is_gif() { Quality::Best } else { quality };
                 let mut req = DownloadRequest::new(url, quality, title_hint);
@@ -1806,7 +1812,19 @@ fn main() -> anyhow::Result<()> {
                 if live_ui::make_recording(&mut req) {
                     // A live stream is recorded as it is (captions and chapters don't apply).
                     req.force = false;
-                    queue.add(req);
+                    let upcoming = live_ui::upcoming();
+                    let id = queue.add(req);
+                    // On now: the player opens on it, to clip as it happens (once the preview
+                    // below is cleared). Not on yet: its row waits for it.
+                    if !upcoming {
+                        live_ui::note_title(id, &live_title);
+                        let weak = ui.as_weak();
+                        slint::Timer::single_shot(Duration::from_millis(0), move || {
+                            if let Some(ui) = weak.upgrade() {
+                                ui.global::<QueueActions>().invoke_watch(id as i32);
+                            }
+                        });
+                    }
                 } else {
                     // Captions, audio tracks and chapters picked on the preview.
                     let reqs = extras_ui::requests(&ui, req, &settings.lock().unwrap().clone());

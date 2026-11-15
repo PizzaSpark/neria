@@ -193,6 +193,11 @@ pub struct LiveStats {
     pub reconnects: u32,
     /// Asked for from the start, but the site wouldn't: recording from now instead.
     pub rewind_failed: bool,
+    /// "Also get the part before": stream seconds fetched, of how many (while it runs).
+    pub earlier: Option<(f64, f64)>,
+    /// It's fetched and will be joined in front; or why it couldn't be.
+    pub earlier_done: bool,
+    pub earlier_failed: Option<String>,
 }
 
 impl LiveStats {
@@ -987,6 +992,171 @@ fn run_part(
     }
 }
 
+/// "Also get the part before": a from-now recording's earlier part, fetched from the start
+/// next to it (`fetch_earlier`) and joined in front of it on saving. Where the two meet is
+/// found by their sound: the clock is a few seconds off (11 s on YouTube, 5 s on Twitch in
+/// tests), and Twitch starts a from-now recording with its own ad, which the earlier part
+/// doesn't have; so the first stretch of the recording that matches is where it takes over.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Early {
+    /// It got as far as where the recording began (else it was stopped short: a hole).
+    pub whole: bool,
+    /// Seconds of the earlier part to keep, and seconds at the start of the recording to
+    /// leave out (the ad, or what the earlier part already has).
+    pub until: f64,
+    pub skip: f64,
+    /// No stretch matched: joined where the clock says.
+    pub by_clock: bool,
+    /// How much of the stream the earlier part holds.
+    pub got: f64,
+}
+
+fn early_path(work: &Path) -> PathBuf {
+    work.join("early.json")
+}
+
+/// The earlier part is being fetched (saving waits for it to be cut and matched).
+fn early_busy(work: &Path) -> PathBuf {
+    work.join("early.busy")
+}
+
+/// The earlier part of a recording, once fetched.
+pub fn early_of(work: &Path) -> Option<Early> {
+    serde_json::from_str(&std::fs::read_to_string(early_path(work)).ok()?).ok()
+}
+
+/// Fetch the part of the stream before a from-now recording began, from the start, until it
+/// has passed that point (or `stop`); then find where the two meet. `on(got, of)`: stream
+/// seconds fetched so far, of how many. Runs next to `record` (its own yt-dlp in `slot`).
+pub fn fetch_earlier(
+    rec: &Recording,
+    slot: &Mutex<Option<Child>>,
+    stop: &AtomicBool,
+    cancel: &AtomicBool,
+    mut on: impl FnMut(f64, f64),
+) -> Result<Early> {
+    let m = read_manifest(&rec.work).context("Nothing recorded yet")?;
+    let first = m.parts.first().cloned().context("Nothing recorded yet")?;
+    if first.from_start {
+        bail!("It's recorded from the start already");
+    }
+    let _ = std::fs::write(early_busy(&rec.work), "");
+    let result = fetch_earlier_inner(rec, &m, &first, slot, stop, cancel, &mut on);
+    let _ = std::fs::remove_file(early_busy(&rec.work));
+    let early = result?;
+    if let Ok(text) = serde_json::to_string_pretty(&early) {
+        std::fs::write(early_path(&rec.work), text)?;
+    }
+    Ok(early)
+}
+
+fn fetch_earlier_inner(
+    rec: &Recording,
+    m: &Manifest,
+    first: &Part,
+    slot: &Mutex<Option<Child>>,
+    stop: &AtomicBool,
+    cancel: &AtomicBool,
+    on: &mut impl FnMut(f64, f64),
+) -> Result<Early> {
+    // A minute and a half past where the recording began: room for the sound to match,
+    // even after Twitch's ad at its start.
+    let want = first.offset + 90.0;
+    let mut target = want;
+    let mut reached: bool;
+    let mut got = 0.0;
+    let mut file = None;
+    let mut last = Instant::now() - Duration::from_secs(1);
+    // YouTube's piece count only estimates how far it is (it said 53 min where the file
+    // held 52): measure the file, and go on where it was (yt-dlp keeps its place in
+    // `.ytdl`) until it really has passed that point. Twitch's count is ffmpeg's own clock.
+    for _ in 0..4 {
+        let args = part_args(rec, "early", true, false);
+        let mut run = Running::default();
+        reached = false;
+        run_part(&args, slot, stop, cancel, |line| {
+            match if line.is_empty() { Line::Quiet } else { parse(line) } {
+                Line::Fragment { stream, bytes, index, count } => {
+                    let i = (stream as usize).min(3);
+                    if let Some(b) = bytes {
+                        run.bytes[i] = b;
+                    }
+                    run.index[i] = index.or(run.index[i]);
+                    run.count = count.or(run.count);
+                    run.any_data = true;
+                }
+                Line::Ffmpeg { bytes, time } => {
+                    run.ffmpeg_bytes = bytes.or(run.ffmpeg_bytes);
+                    run.ffmpeg_time = time.or(run.ffmpeg_time);
+                    run.any_data |= time.is_some_and(|t| t > 0.0);
+                }
+                _ => {}
+            }
+            let t = part_time(m, &run);
+            if last.elapsed() >= Duration::from_millis(500) {
+                last = Instant::now();
+                on(t.min(first.offset), first.offset);
+                // Still moving: saving waits for it.
+                let _ = std::fs::write(early_busy(&rec.work), "");
+            }
+            if t >= target && !reached {
+                reached = true;
+                if let Some(c) = slot.lock().unwrap().as_mut() {
+                    proc::kill_tree(c);
+                }
+            }
+        })?;
+        if cancel.load(Ordering::SeqCst) {
+            bail!("Cancelled");
+        }
+        if file.is_none() && !run.any_data {
+            let _ = files_of(&rec.work, "early").iter().map(std::fs::remove_file).count();
+            bail!("The site wouldn't give the earlier part");
+        }
+        let estimate = part_time(m, &run);
+        let _ = std::fs::remove_file(rec.work.join("early.ready.mp4"));
+        let part = Part { name: "early".into(), from_start: true, recorded: estimate, ..Part::default() };
+        file = part_file(&rec.work, &part)?;
+        got = file.as_deref().and_then(crate::media::duration).unwrap_or(0.0);
+        let resumable = has_ytdl(&rec.work, "early");
+        if !reached || got >= want - 30.0 || !resumable || stop.load(Ordering::SeqCst) {
+            break;
+        }
+        // Short of it: ask for what's missing on top of where the count says it is.
+        target = estimate + (want - got) + 15.0;
+    }
+    let file = file.context("The earlier part came out empty")?;
+    on(got.min(first.offset), first.offset);
+    if got < first.offset - 2.0 {
+        // Stopped short (Stop, or the site): keep what there is; the rest is a hole.
+        return Ok(Early { whole: false, until: got, skip: 0.0, by_clock: true, got });
+    }
+    let (until, skip, by_clock) = match_seam(&rec.work, first, &file).unwrap_or((first.offset, 0.0, true));
+    Ok(Early { whole: true, until: until.min(got), skip, by_clock, got })
+}
+
+/// Where the recording's own part (`first`, from now) takes over from the earlier part
+/// (`early`): (seconds of the earlier part to keep, seconds of `first` to leave out). Tries a
+/// stretch at 0, 30, 60 s into `first` (Twitch's ad at the start matches nothing).
+fn match_seam(work: &Path, first: &Part, early: &Path) -> Option<(f64, f64, bool)> {
+    use crate::fingerprint::{align, fingerprint_range};
+    let own = files_of(work, &first.name).into_iter().find(|f| {
+        let n = f.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        !n.ends_with(".ytdl") && !n.contains(".ready.") && !is_format_piece(n)
+    })?;
+    for at in [0.0, 30.0, 60.0] {
+        let Ok(clip) = fingerprint_range(own.as_os_str(), at, 25.0) else { continue };
+        // Around where the clock puts it: its guess is off by seconds, not minutes.
+        let from = (first.offset + at - 150.0).max(0.0);
+        let Ok(song) = fingerprint_range(early.as_os_str(), from, 300.0) else { continue };
+        if let Some(a) = align(&clip, &song).filter(|a| a.similarity >= 0.8) {
+            return Some((from + a.offset_secs, at, false));
+        }
+    }
+    None
+}
+
 /// Throw a recording away (Cancel).
 pub fn discard(work: &Path) {
     for _ in 0..20 {
@@ -1071,6 +1241,24 @@ fn part_file(work: &Path, part: &Part) -> Result<Option<PathBuf>> {
     }
 }
 
+/// The earlier part, cut where the recording takes over.
+fn early_file(work: &Path, e: &Early) -> Option<PathBuf> {
+    let whole = work.join("early.ready.mp4");
+    if !whole.is_file() || e.until < 1.0 {
+        return None;
+    }
+    let out = work.join("early.cut.mp4");
+    if out.is_file() && crate::media::duration(&out).is_some_and(|d| d > 0.0) {
+        return Some(out);
+    }
+    let args: Vec<String> = ["-i", &s(&whole), "-t", &format!("{:.3}", e.until), "-map", "0", "-c", "copy"]
+        .iter()
+        .map(|x| x.to_string())
+        .chain(["-avoid_negative_ts", "make_zero", "-movflags", "+faststart"].map(String::from))
+        .collect();
+    ffmpeg(&args, &out).ok().map(|_| out)
+}
+
 /// `p0.f135.mp4.part`: one stream of a two-stream download.
 fn is_format_piece(name: &str) -> bool {
     name.split('.')
@@ -1081,12 +1269,33 @@ fn is_format_piece(name: &str) -> bool {
 /// Make the recording in `work` into its file in `out_dir` (one file; numbered files when
 /// the parts can't be joined), then remove `work`. Runs again safely after a crash midway.
 pub fn save(work: &Path, out_dir: &Path) -> Result<Saved> {
-    let m = read_manifest(work).context("The recording's list of parts is missing")?;
+    // The earlier part is still coming in (the stream ended while it was) or being cut and
+    // matched (Stop ends its download too): wait while it's moving (it touches its marker).
+    while std::fs::metadata(early_busy(work))
+        .and_then(|m| m.modified())
+        .is_ok_and(|t| t.elapsed().unwrap_or_default() < Duration::from_secs(90))
+    {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    let mut m = read_manifest(work).context("The recording's list of parts is missing")?;
+    let early = early_of(work);
+    if let (Some(e), Some(first)) = (early.as_ref(), m.parts.first_mut()) {
+        first.skip = first.skip.max(e.skip);
+        first.recorded = (first.recorded - e.skip).max(0.0);
+        if !e.whole && first.offset > e.got + 2.0 {
+            m.holes.push(Hole { at: e.got, len: first.offset - e.got, about: true });
+        }
+    }
     let need = part_bytes(work, &m.parts) as u64 + crate::disk::MARGIN / 4;
     if let Err(e) = crate::disk::check(out_dir, need.saturating_sub(crate::disk::MARGIN)) {
         bail!("{e}. Free some space, then press Retry to save the recording.");
     }
     let mut ready = Vec::new();
+    if let Some(e) = early.as_ref()
+        && let Some(f) = early_file(work, e)
+    {
+        ready.push(f);
+    }
     for p in &m.parts {
         if let Some(f) = part_file(work, p)? {
             ready.push(f);

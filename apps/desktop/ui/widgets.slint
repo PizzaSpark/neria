@@ -48,7 +48,8 @@ export component PrimaryButton inherits Rectangle {
     callback menu-clicked();
     property <length> menu-w: root.has-menu ? 34px : 0px;
     property <bool> menu-pressed;
-    property <length> lift: !root.enabled ? 0px : ta.pressed || root.menu-pressed ? 1px : 3px;
+    // Greyed out it stays up (no shadow under it), so it lines up with a GhostButton beside it.
+    property <length> lift: root.enabled && (ta.pressed || root.menu-pressed) ? 1px : 3px;
     min-width: face-row.preferred-width + 3px + root.menu-w;
     height: 44px;
     accessible-role: button;
@@ -152,6 +153,8 @@ export component GhostButton inherits Rectangle {
     // Something is set here (Sound, Picture changed): a yellow outline says so, also when
     // the button is only an icon.
     in property <bool> on;
+    // A small icon after the text (a fold's chevron).
+    in property <string> trail;
     callback clicked();
     // Regular size matches PrimaryButton exactly: the same 44px slot with a 41px face at
     // the top (the yellow button's 3px shadow sits below its face), so a pair lines up.
@@ -196,6 +199,11 @@ export component GhostButton inherits Rectangle {
                 font-size: root.compact ? 12px : 13px;
                 font-weight: 500;
                 vertical-alignment: center;
+            }
+            if root.trail != "": Icon {
+                text: root.trail;
+                font-size: 10px;
+                color: Theme.muted;
             }
         }
     }

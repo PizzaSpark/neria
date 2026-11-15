@@ -4,8 +4,8 @@ import { Presets } from "../globals.slint";
 import { ChoiceChips, Chip, GhostButton, TextLink } from "../widgets.slint";
 
 // What kind of file, in plain words: Best quality · Compatible · Smallest file · Audio
-// only. "Advanced" folds out the resolution cap and the container (or audio format) right
-// here; the format button ("mp4 · H.264") opens Settings. Sits under the preview title on
+// only. The format button ("⚙ mp4 ▾") folds out the resolution cap and the container (or audio format) right
+// here, with "More in Settings" under them. Sits under the preview title on
 // wide windows, in its own row on narrower ones; chips wrap when even that is too narrow.
 export component QualityRow inherits VerticalLayout {
     // Highest resolution (Advanced): 0 any, 1 1080p, 2 720p, 3 480p.
@@ -19,6 +19,8 @@ export component QualityRow inherits VerticalLayout {
     in property <bool> show-clip;
     // A Spotify link: "Lyrics only" saves just the songs' lyrics.
     in property <bool> show-lyrics;
+    // The video's best resolution ("2160p"), said on "Highest" for Best quality; empty: unknown.
+    in property <string> top;
     callback lyrics-only();
     callback changed();
     callback open-settings();
@@ -65,16 +67,7 @@ export component QualityRow inherits VerticalLayout {
             }
         }
         if root.spotify: Rectangle { horizontal-stretch: 1; }
-        if !root.spotify: VerticalLayout {
-            alignment: start;
-            padding-top: 7px;
-            horizontal-stretch: 0;
-            TextLink {
-                text: "Advanced";
-                icon: Presets.advanced ? "\u{E70E}" : "\u{E70D}";
-                clicked => { Presets.advanced = !Presets.advanced; }
-            }
-        }
+        // The format, and the fold with the numbers ("Up to", "As"); Settings is inside it.
         VerticalLayout {
             alignment: start;
             padding-top: 2px;
@@ -83,8 +76,16 @@ export component QualityRow inherits VerticalLayout {
                 compact: true;
                 icon: "\u{E713}";
                 text: root.format-text;
-                label: "Format settings: " + root.format-text;
-                clicked => { root.open-settings(); }
+                trail: root.spotify ? "" : Presets.advanced ? "\u{E70E}" : "\u{E70D}";
+                label: root.spotify ? "Format settings: " + root.format-text
+                    : (Presets.advanced ? "Hide advanced: " : "Advanced: ") + root.format-text;
+                clicked => {
+                    if root.spotify {
+                        root.open-settings();
+                    } else {
+                        Presets.advanced = !Presets.advanced;
+                    }
+                }
             }
         }
     }
@@ -101,7 +102,7 @@ export component QualityRow inherits VerticalLayout {
             font-size: 12px;
             vertical-alignment: center;
         }
-        for option[i] in ["Any", "1080p", "720p", "480p"]: Chip {
+        for option[i] in [root.top == "" || Presets.preset != 0 ? "Highest" : "Highest (" + root.top + ")", "1080p", "720p", "480p"]: Chip {
             horizontal-stretch: 0;
             text: option;
             selected: root.quality == i;
@@ -161,5 +162,12 @@ export component QualityRow inherits VerticalLayout {
         color: Theme.muted;
         font-size: 12px;
         wrap: word-wrap;
+    }
+    if Presets.advanced && !root.spotify: HorizontalLayout {
+        alignment: start;
+        TextLink {
+            text: "More in Settings";
+            clicked => { root.open-settings(); }
+        }
     }
 }

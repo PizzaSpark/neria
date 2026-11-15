@@ -132,6 +132,20 @@ export global Watch {
     in property <bool> rec-can-clip;
     in property <bool> rec-clipping;
     in property <string> rec-text;
+    // That recording has ended: saved (with Show file / Trim it), or why it couldn't be;
+    // and whether the stream is still on to record again.
+    in property <bool> rec-done;
+    in property <bool> rec-saved;
+    in property <bool> rec-again;
+    // "Also get the 2 h 19 min before" (a link while `rec-earlier-link`), then how that's
+    // going ("Getting the part before · 12:00 of 2:19:00"); empty: nothing to say.
+    in property <string> rec-earlier;
+    in property <bool> rec-earlier-link;
+    callback earlier();
+    // Watching a live stream, not recording it: Record starts a recording right here.
+    callback record();
+    callback show-file();
+    callback trim();
     callback back(); // to the Download page (a file open before comes back)
     callback download(); // the whole link, with the chips as they are
     callback clip-this(); // stay, with In/Out
@@ -354,6 +368,9 @@ export global QueueActions {
 export global Presets {
     in-out property <int> preset;
     in-out property <bool> advanced;
+    // The previewed video's best resolution ("2160p"; empty: not known), so the first
+    // "Up to" chip can say what "Highest" gets.
+    in-out property <string> top;
 }
 
 // One piece of a file name in the builder: a field chip, or text you typed.

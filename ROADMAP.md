@@ -794,6 +794,27 @@ see `docs/UPSTREAM.md`). Ticked only where a real stream covered it; the rest is
    tape; Cancel clip in ⋯). Cut from what's recorded, no second download. Checked in the app:
    Start at 30 s, End at 70 s gave a 50 s clip, from the row and from the player, at 1100 and
    400 wide. Not yet: a keyboard shortcut for "Clip the last"
+8. **One live screen** (asked for 2026-11-15, mock `design/live-screen.html`, picked C and an
+   always-on buffer): the preview says "LIVE · Records from now · the player opens, so you can
+   clip as it happens" with **Watch**; **Record** records from now and opens the player on it
+   ("Recording it live."). The player's bar: not recording → "Save the last ▾" + Record (Twitch
+   and others that can't rewind keep the last 10 min by themselves, with a free-space check);
+   recording → Start clip / Save the last ▾ / Stop; ended → "Saved · 0:24 · 9.6 MB · you
+   stopped it" with Show file / Trim it / Record again (no Record again once the stream ended).
+   **"Also get the 1 h 8 min before"** under the recording's line: `record::fetch_earlier` runs
+   from the start next to it until past where it began (YouTube's piece count overshoots:
+   the file is measured and yt-dlp resumes until it really has), then the join is found by
+   the sound (Chromaprint on 25 s of the recording against 5 min of the earlier part, at 0 /
+   30 / 60 s in, ≥ 0.8); saving cuts the earlier part there and puts it in front. Measured:
+   the clock alone is 5–11 s off; Twitch starts a from-now recording with its own "Commercial
+   break in progress" ad, which the match skips (30 s in). Checked headless (`--earlier-at`):
+   osu! on Twitch, 1:05:13 before + 9:30 after, one file, picture continuous across the join.
+   Not offered when the site keeps no past (Twitch subscriber-only broadcasts fail with the
+   site's words). **Found, not fixed**: a Twitch from-now recording carries two frames with the
+   stream's own clock where its ad ends (~31 s in), so the saved file claims a wrong length
+   (7878 s for 4517 s); likely also what showed as a black picture while watching. Not yet:
+   the queue row's own "get the part before", and a crash while it's fetched (the earlier part
+   is dropped, the recording is kept).
 Dev hooks: `NERIA_DIALOG=live` / `live-upcoming` / `live-long` / `close-rec`, recording rows in
 `NERIA_DEMO`, `NERIA_REC_STOP`, `NERIA_REC_DEBUG`; headless `--example record` (also
 `--queue`, `--kill-at`, `--crash-at` + `--save`); ui-check `live`, `live-soon`, `live-long`,

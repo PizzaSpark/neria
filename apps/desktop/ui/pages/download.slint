@@ -436,10 +436,17 @@ export component DownloadPage inherits Rectangle {
                         overflow: elide;
                     }
                     if Live.hint == "": Rectangle { horizontal-stretch: 1; }
-                    if Live.switch != "": TextLink {
+                    // Just watch it: the player, with Record and "Save the last" there.
+                    if !Live.upcoming: VerticalLayout {
+                        alignment: center;
                         horizontal-stretch: 0;
-                        text: Screen.wide ? Live.switch : Live.switch-short;
-                        clicked => { Live.flip(); }
+                        GhostButton {
+                            compact: true;
+                            text: "Watch";
+                            icon: "\u{E768}";
+                            label: "Watch it live";
+                            clicked => { Watch.start(); }
+                        }
                     }
                 }
                 // Compact: the same on three short lines (the column next to the picture is
@@ -472,11 +479,15 @@ export component DownloadPage inherits Rectangle {
                         font-size: 12px;
                         overflow: elide;
                     }
-                    if Live.switch != "": HorizontalLayout {
+                    if !Live.upcoming: HorizontalLayout {
                         alignment: start;
-                        TextLink {
-                            text: Live.switch-short;
-                            clicked => { Live.flip(); }
+                        padding-top: 4px;
+                        GhostButton {
+                            compact: true;
+                            text: "Watch";
+                            icon: "\u{E768}";
+                            label: "Watch it live";
+                            clicked => { Watch.start(); }
                         }
                     }
                 }
@@ -530,6 +541,7 @@ export component DownloadPage inherits Rectangle {
                     padding-top: 8px;
                     QualityRow {
                         quality <=> root.quality;
+                        top: Presets.top;
                         container-index <=> root.container-index;
                         audio-format-index <=> root.audio-format-index;
                         spotify: root.no-quality;
@@ -538,12 +550,13 @@ export component DownloadPage inherits Rectangle {
                         changed => { root.settings-changed(); }
                         open-settings => { root.open-settings(); }
                         clip-first => { root.clip-open-link(root.url, root.probe-title); }
-                        show-clip: root.pick-items.length == 0;
+                        show-clip: root.pick-items.length == 0 && !Live.on;
                         show-lyrics: root.lyrics-ready;
                         lyrics-only => { Music.lyrics-only(); }
                     }
                 }
-                if root.probe-state == 2 && !root.probe-is-spotify && !root.chips-inline && root.pick-items.length == 0: HorizontalLayout {
+                // Not for a live stream: Watch opens the player, where it's clipped.
+                if root.probe-state == 2 && !root.probe-is-spotify && !root.chips-inline && root.pick-items.length == 0 && !Live.on: HorizontalLayout {
                     padding-top: 8px;
                     alignment: start;
                     GhostButton {
@@ -615,6 +628,7 @@ export component DownloadPage inherits Rectangle {
 
         if !root.chips-inline: QualityRow {
             quality <=> root.quality;
+            top: Presets.top;
             container-index <=> root.container-index;
             audio-format-index <=> root.audio-format-index;
             spotify: root.no-quality;

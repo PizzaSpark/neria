@@ -231,6 +231,28 @@ impl Clipper {
         }
     }
 
+    /// Keep the last `minutes` of the open live link (the replay buffer), if there's room.
+    fn start_buffer(&mut self, ui: &AppWindow, minutes: u32) {
+        let Some(Source::Link(url)) = self.source.clone() else { return };
+        let g = ui.global::<ClipLive>();
+        // ~50 MB a minute at 1080p; leave room for the rest.
+        let need = minutes as u64 * 60 * 1_000_000 + 1_000_000_000;
+        let dir = neria_core::paths::app_dir();
+        if neria_core::disk::free_space(&dir).is_some_and(|free| free < need) {
+            g.set_buffer_text(format!("Not enough space to keep the last {minutes} min").into());
+            return;
+        }
+        match neria_core::live::ReplayBuffer::start(&url, &neria_core::settings::Settings::load(), minutes) {
+            Ok(b) => {
+                self.buffer = Some(b);
+                self.buffer_ticks = 0;
+                g.set_buffering(true);
+                g.set_buffer_text(format!("Keeping the last {minutes} min  ·  starting…").into());
+            }
+            Err(e) => ui.set_clip_status(format!("Couldn't keep it: {e}").into()),
+        }
+    }
+
     /// Stop a running replay buffer (on quit: its ffmpeg mustn't outlive Neria).
     pub fn stop_buffer(&mut self) {
         self.buffer = None;
@@ -471,6 +493,14 @@ impl Clipper {
             self.buffer_ticks = 0;
             self.refresh_buffer(ui);
         }
+        let mut start_buffer = false;
+        self.tick_player(ui, &mut start_buffer);
+        if start_buffer {
+            self.start_buffer(ui, 10);
+        }
+    }
+
+    fn tick_player(&mut self, ui: &AppWindow, start_buffer: &mut bool) {
         let Some(mpv) = &self.mpv else { return };
         mpv.drain_events();
         if let Some(d) = mpv.get_f64("duration").filter(|d| *d > 0.0) {
@@ -528,6 +558,11 @@ impl Clipper {
                     let g = ui.global::<ClipLive>();
                     g.set_on(true);
                     g.set_can_rewind(d > 90.0);
+                    // Can't rewind (Twitch): keep the last 10 minutes from the start, so a
+                    // moment you want to clip is already there. Not while it's recorded.
+                    if d <= 90.0 && self.buffer.is_none() && ui.global::<Watch>().get_recording_id() == 0 {
+                        *start_buffer = true;
+                    }
                     if std::env::var_os("NERIA_CLIP_IN").is_none() {
                         ui.set_clip_in((d - 30.0).max(0.0) as f32);
                         ui.set_clip_out(d as f32);
@@ -1170,19 +1205,8 @@ pub fn install(
         let (clipper, weak) = (clipper.clone(), ui.as_weak());
         move || {
             let ui = weak.unwrap();
-            let mut c = clipper.borrow_mut();
-            let Some(Source::Link(url)) = c.source.clone() else { return };
             let minutes = [5, 10, 30, 60][ui.global::<ClipLive>().get_keep().clamp(0, 3) as usize];
-            match neria_core::live::ReplayBuffer::start(&url, &neria_core::settings::Settings::load(), minutes) {
-                Ok(b) => {
-                    c.buffer = Some(b);
-                    c.buffer_ticks = 0;
-                    ui.global::<ClipLive>().set_buffering(true);
-                    ui.global::<ClipLive>()
-                        .set_buffer_text(format!("Keeping the last {minutes} min  ·  starting…").into());
-                }
-                Err(e) => ui.set_clip_status(format!("Couldn't keep it: {e}").into()),
-            }
+            clipper.borrow_mut().start_buffer(&ui, minutes);
         }
     });
     live.on_buffer_stop({
@@ -1291,6 +1315,49 @@ pub fn install(
             clipper.borrow_mut().unwatch(&ui);
             ui.global::<Watch>().set_recording_id(0);
             ui.set_page(0);
+        }
+    });
+    // Watching a live stream: record it from now, right here (the bar follows the recording).
+    watch.on_record({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            let mut c = clipper.borrow_mut();
+            let Some(Source::Link(url)) = c.source.clone() else { return };
+            let title = ui.get_clip_name().to_string();
+            let Some(id) = crate::live_ui::record_now(&ui, &url, &title) else { return };
+            // The recording takes over from the replay buffer (it has the same, and more).
+            c.buffer = None;
+            ui.global::<ClipLive>().set_buffering(false);
+            ui.global::<ClipLive>().set_buffer_text("".into());
+            let w = ui.global::<Watch>();
+            w.set_rec_done(false);
+            w.set_rec_text("Starting the recording…".into());
+            w.set_recording_id(id as i32);
+        }
+    });
+    watch.on_show_file({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            let id = ui.global::<Watch>().get_recording_id() as u64;
+            if let Some(path) = crate::QUEUE.get().and_then(|q| q.file_of(id)) {
+                crate::reveal(&path);
+            }
+        }
+    });
+    // The saved recording into the clipper, to cut it finer.
+    watch.on_trim({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move || {
+            let ui = weak.unwrap();
+            let id = ui.global::<Watch>().get_recording_id() as u64;
+            let Some(path) = crate::QUEUE.get().and_then(|q| q.file_of(id)) else { return };
+            let mut c = clipper.borrow_mut();
+            c.previous = None;
+            c.keep_open = false;
+            ui.global::<Watch>().set_recording_id(0);
+            c.open(&ui, &path);
         }
     });
     watch.on_download({

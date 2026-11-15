@@ -60,6 +60,8 @@ pub struct Compressor {
     preview_cancel: Option<Arc<AtomicBool>>,
     /// Estimated sizes of the "keeping" goals, by preview key.
     estimates: HashMap<String, u64>,
+    /// Preview keys whose size couldn't be worked out (shown blank, not "working…").
+    no_estimate: std::collections::HashSet<String>,
     /// Trim strip frames made for this file.
     strip_for: Option<PathBuf>,
     running: Option<Arc<AtomicBool>>,
@@ -426,7 +428,14 @@ impl Compressor {
                                         Target::Quality(_) => self
                                             .estimates
                                             .get(&self.preview_key(it, &opts, *g))
-                                            .map_or("about …".into(), |b| format!("about {}", fmt::mb(*b as f64))),
+                                            .map_or_else(
+                                                || {
+                                                    // Still being worked out (a few seconds per goal).
+                                                    let key = self.preview_key(it, &opts, *g);
+                                                    if self.no_estimate.contains(&key) { String::new() } else { "working…".into() }
+                                                },
+                                                |b| format!("about {}", fmt::mb(*b as f64)),
+                                            ),
                                     };
                                     CmpGoal {
                                         name: g.label().into(),
@@ -781,6 +790,7 @@ impl Compressor {
                             }
                         }
                         Err(_) if current => {
+                            cmp.no_estimate.insert(key);
                             c.set_before(Image::default());
                             c.set_after(Image::default());
                         }
@@ -798,14 +808,20 @@ impl Compressor {
                 if cancel.load(Ordering::SeqCst) || g2.load(Ordering::SeqCst) != generation {
                     break;
                 }
-                if let Ok(p) = compress::preview(&path, &info, &o, &enc, &format!("{name}-e{i}"), 120, &cancel) {
-                    let _ = w2.upgrade_in_event_loop(move |ui| {
-                        with(|cmp| {
-                            cmp.estimates.insert(k, p.bytes);
-                            cmp.refresh(&ui);
-                        })
-                    });
+                let result = compress::preview(&path, &info, &o, &enc, &format!("{name}-e{i}"), 120, &cancel);
+                if cancel.load(Ordering::SeqCst) {
+                    break;
                 }
+                let _ = w2.upgrade_in_event_loop(move |ui| {
+                    with(|cmp| {
+                        if let Ok(p) = result {
+                            cmp.estimates.insert(k, p.bytes);
+                        } else {
+                            cmp.no_estimate.insert(k);
+                        }
+                        cmp.refresh(&ui);
+                    })
+                });
             }
         });
     }

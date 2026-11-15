@@ -900,6 +900,67 @@ impl Queue {
         .len()
     }
 
+    /// "Also get the part before" on a recording from now: fetch the stream from its start
+    /// next to it, until where the recording began, and join it in front when it's saved.
+    /// Progress and the outcome show in the row's `live` stats.
+    pub fn get_earlier(&self, id: u64) {
+        let (req, stop, cancel) = {
+            let entries = self.inner.entries.lock().unwrap();
+            let Some(e) = entries.iter().find(|e| e.snap.id == id && e.snap.state == JobState::Downloading) else {
+                return;
+            };
+            let Some(live) = e.snap.live.as_ref() else { return };
+            if live.earlier.is_some() || live.earlier_done || e.req.live.as_ref().is_none_or(|l| l.work.is_none()) {
+                return;
+            }
+            (e.req.clone(), e.stop.clone(), e.cancel.clone())
+        };
+        self.update(id, true, |s| {
+            if let Some(l) = s.live.as_mut() {
+                l.earlier = Some((0.0, l.joined.unwrap_or(0.0)));
+                l.earlier_failed = None;
+            }
+        });
+        let queue = self.clone();
+        std::thread::spawn(move || {
+            let settings = queue.inner.settings.lock().unwrap().clone();
+            let dir = download::out_dir(&req, &settings);
+            let live = req.live.clone().unwrap_or_default();
+            let title = if req.title_hint.is_empty() { "Live".to_string() } else { req.title_hint.clone() };
+            let rec = crate::record::Recording {
+                url: &req.url,
+                settings: &settings,
+                audio: req.quality == Quality::Audio,
+                max_height: match req.preset {
+                    crate::settings::Preset::Smallest => Some(req.quality.max_height().unwrap_or(480).min(480)),
+                    _ => req.quality.max_height(),
+                },
+                work: live.work.clone().unwrap_or_default(),
+                live,
+                title: &title,
+                out_dir: &dir,
+            };
+            let slot = Mutex::new(None);
+            let result = crate::record::fetch_earlier(&rec, &slot, &stop, &cancel, |got, of| {
+                queue.update(id, true, |s| {
+                    if let Some(l) = s.live.as_mut() {
+                        l.earlier = Some((got, of));
+                    }
+                })
+            });
+            queue.push_log(id, format!("Earlier part: {result:?}"));
+            queue.update(id, true, |s| {
+                if let Some(l) = s.live.as_mut() {
+                    l.earlier = None;
+                    match &result {
+                        Ok(_) => l.earlier_done = true,
+                        Err(e) => l.earlier_failed = Some(e.to_string()),
+                    }
+                }
+            });
+        });
+    }
+
     /// How far back "Start clip" begins, so the first words aren't lost to a late press.
     pub const CLIP_LEAD: f64 = 10.0;
 
@@ -1677,6 +1738,12 @@ impl Queue {
                     s.postprocessor = saving.then(|| "Saving".into());
                     s.downloaded = Some(st.bytes as f64);
                     s.speed = (st.speed > 0.0).then_some(st.speed);
+                    let mut st = st;
+                    if let Some(old) = s.live.as_ref() {
+                        st.earlier = old.earlier;
+                        st.earlier_done = old.earlier_done;
+                        st.earlier_failed = old.earlier_failed.clone();
+                    }
                     s.live = Some(st);
                 }),
                 RecEvent::Log(line) => self.push_log(id, line),
