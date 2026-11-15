@@ -152,6 +152,15 @@ them; related ideas are merged into one item so they get built together.
 - Download track follow-up: "Your own sound…" in both sound menus
 - Notes: `docs/releases/v0.5.0.md`
 
+### v0.6.0: Compress track (2026-11-15)
+- **Compress track**, items 1–5 under "Compress": goals in plain words with what each will
+  look like (Discord 20 MB, email 18 MB, WhatsApp 16 MB, two "look" goals, custom), before /
+  after and a 10 s sample, several files and folders, trim with chapters, and an Advanced fold
+  in plain words (format, graphics card, picture, sound, every track kept, black bars cut)
+- Fixes: sizes in MB as upload limits count them, graphics cards missing the size (redone on
+  the processor), sideways phone videos squashed when scaled
+- Notes: `docs/releases/v0.6.0.md`
+
 ## Now: after v0.3.0
 Loose ends left from v0.3 (released 2026-11-12 without them).
 1. **Check what's left on real links**: an Instagram carousel all the way through with
