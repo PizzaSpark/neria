@@ -12,7 +12,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
   compression, media info, Spotify: `spotify.rs` links/metadata, `ytmusic.rs` matching,
   `music.rs` tags/M3U/sync/Lyrics only/numbering, `lyrics.rs` lyrics sources (LRCLIB,
   Spotify's own with a sign-in), `post.rs` items of posts/playlists for the picker,
-  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate, `picture.rs` turn/mirror/crop filters, `live.rs` live streams: rewind marks pinned to the clock, the replay buffer, `ttv.rs` Twitch without its ads: a loopback relay serving the players that come without the ad (TTV-AB's idea), `record.rs` recording a live stream (from the start / from now, parts joined on Stop or at the next start, holes and getting them back (`repair_holes`, spliced by sound), Clip the last…; `fmt::live_row` words its queue row), `timeline.rs` the clip timeline's zoom: view maths, ruler steps, filmstrip tile grid, sound levels (peaks) drawn for any part, `compress.rs` goals (`Goal`), the plan and its plain hint (`Look`), sound files (`plan_sound`: M4A (AAC), MP3 or Opus; in a list AAC for "Plays everywhere", else Opus), black bars, kept tracks, trimming, the before/after samples, how long a size holds). Shared with the future Android app, so no UI code here.
+  `folders.rs` Audio/Video/Photos folders, `sound.rs` clip sound: gain/even out/mute/fades, `gif.rs` X GIFs + Make a GIF: GIF/WebP/MP4 and the size estimate, `picture.rs` turn/mirror/crop filters, `live.rs` live streams: rewind marks pinned to the clock, the replay buffer, `ttv.rs` Twitch without its ads: a loopback relay serving the players that come without the ad (TTV-AB's idea), `record.rs` recording a live stream (from the start / from now, parts joined on Stop or at the next start, holes and getting them back (`repair_holes`, spliced by sound), Clip the last…; `fmt::live_row` words its queue row), `timeline.rs` the clip timeline's zoom: view maths, ruler steps, filmstrip tile grid, sound levels (peaks) drawn for any part, `compress.rs` goals (`Goal`), the plan and its plain hint (`Look`), sound files (`plan_sound`: M4A (AAC), MP3 or Opus; in a list AAC for "Plays everywhere", else Opus), black bars, kept tracks, trimming, the before/after samples, how long a size holds), `transcribe.rs` speech to text, optional: whisper.cpp's `whisper-cli` + the large-v3-turbo model fetched on demand into `bin/whisper/` (CPU pack, or the NVIDIA pack), never at first run; sound joined in order, `.txt` / `.srt` written from its JSON). Shared with the future Android app, so no UI code here.
 - `crates/neria-player`: libmpv loaded at runtime (libloading) + OpenGL render API.
 - `apps/desktop`: Slint UI in `ui/`:
   - `app.slint`: `AppWindow` only, the one API Rust sees (all properties/callbacks); wires them
@@ -24,7 +24,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
   - `dialogs/`: `match` (pick another match), `sync` (removed songs), `spotify` (heads-up),
     `drop` (drag-and-drop overlay + clip/compress choice), `tracks` (captions / audio tracks /
     chapters picker), `background` (close-to-tray question, Download later), `names`
-    (filename builder), `sound` (Clip page → Sound: volume, fades, sound only), `gif` (Make a GIF), `clips` (the clip list).
+    (filename builder), `sound` (Clip page → Sound: volume, fades, sound only), `gif` (Make a GIF), `clips` (the clip list), `transcribe` (speech to text: get it, choices, at work, saved; one dialog for the Clip page, dropped files and Extras → Transcript).
   - `components/`: `job-row`, `quality-row` (presets + Advanced), `pick-list`, `timeline` (+
     `ChapterStrip`), `extras-row`, `sidebar` (rail + compact `TabBar`), `update-banner`,
     `trim-strip` (Compress page's trim).
@@ -40,7 +40,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
     as a Slint image), `compressor.rs` (compress page; kept parts, Volume), `cmp_player.rs` (its 10 s sample played in the page, Now / After: its own mpv drawn from the rendering hook in `clipper.rs`), `signin.rs` (`neria --sign-in <site>`:
     the WebView2 sign-in window, its own process) + `signin_ui.rs`, `extras_ui.rs` (captions,
     audio tracks, chapters), `background_ui.rs` (tray, notifications, Download later),
-    `names_ui.rs` (filename builder), `sound_ui.rs` (Clip page → Sound), `gif_ui.rs` (Make a GIF), `picture_ui.rs` (Picture mode), `clips_ui.rs` (clip list), `timeline_ui.rs` (the timeline's zoom: view, waveform from peaks, close-up frames), `order_ui.rs` (queue order: the list is the truth, the
+    `names_ui.rs` (filename builder), `sound_ui.rs` (Clip page → Sound), `gif_ui.rs` (Make a GIF), `transcribe_ui.rs` (the Transcribe dialog, Settings → Speech to text, Extras → Transcript), `picture_ui.rs` (Picture mode), `clips_ui.rs` (clip list), `timeline_ui.rs` (the timeline's zoom: view, waveform from peaks, close-up frames), `order_ui.rs` (queue order: the list is the truth, the
     queue is told the order it shows), `bulk_ui.rs` (several links, Paste & download, clipboard
     watcher), `follow_ui.rs` (Follow, Settings → Following, the checks), `live_ui.rs` (a live link's preview line, recording rows' Stop / Clip the last, saving recordings on quit). Watch mode lives in
     `clipper.rs` (`Watch` global). Core: `cookies.rs` (per-site cookie files, only ever
@@ -75,6 +75,8 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   (`--range <a> <b>`, `--parts 10-20,60-75 [--each]` (joined, or a file each), `--even <LUFS>`, `--sound m4a|mp3|opus` (a sound file's format),
   `--first-only` (else every sound track, captions, chapters), `--bars`,
   `--preview` (size estimate + before/after frames, no encode), `--sample <at> <secs>`)
+- `NERIA_HOME=target/debug cargo run -p neria-core --example transcribe -- <file>... [--lang en] [--srt|--both] [--no-times] [--range a b] [--out dir]`
+  (several files: one transcript, joined in order; `--status`, `--get [cpu|gpu]`, `--remove`)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
   (`--lyrics-only`, `--number`, `--add-lyrics`, `--no-lyrics`, `--no-verify`,
   `--no-spotify-preview`, `--spotify-lyrics`: see the example's header)
@@ -88,12 +90,12 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   newest upload: use a scratch NERIA_HOME with a `bin` junction)
   `smoke` also takes the Download page's picks: `NERIA_PRESET`, `NERIA_CONTAINER`, `NERIA_TEMPLATE`,
   `NERIA_CAPTIONS` / `NERIA_CAPTIONS_AUTO` / `NERIA_SUB_FORMAT` / `NERIA_SUB_MODE` / `NERIA_SUBS_ONLY`,
-  `NERIA_AUDIO_LANGS`, `NERIA_CHAPTERS`, `NERIA_SOUND` (a link clip's Sound), `NERIA_GIF` (Make a GIF from a link clip), `NERIA_ASPECT` / `NERIA_TURN` (Picture) (see the example's header)
+  `NERIA_AUDIO_LANGS`, `NERIA_CHAPTERS`, `NERIA_SOUND` (a link clip's Sound), `NERIA_GIF` (Make a GIF from a link clip), `NERIA_TRANSCRIPT` (`text`/`srt`/`both`: a transcript after the download), `NERIA_ASPECT` / `NERIA_TURN` (Picture) (see the example's header)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example updates -- [--any-age] [--update <tool>]`
   (new Neria release / newer tool builds; `--update` re-downloads into NERIA_HOME/bin, use a scratch copy)
 
 Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_CLIP_IN` /
-`NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_VIEW` (`start,span` in seconds: open the timeline zoomed), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (files or folders onto the Compress page, `;` between), `NERIA_COMPRESS_START`
+`NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_VIEW` (`start,span` in seconds: open the timeline zoomed), `NERIA_CLIP_LOOP` (loop on), `NERIA_TRANSCRIBE` (files, `;` between: the Transcribe dialog as if dropped; `NERIA_TRANSCRIBE_START` presses Transcribe), `NERIA_FAKE_NVIDIA` (offer the NVIDIA pack), `NERIA_COMPRESS` (files or folders onto the Compress page, `;` between), `NERIA_COMPRESS_START`
 (auto-start once read), `NERIA_COMPRESS_GOAL` (`discord`, `email`, `whatsapp`, `sharp`, `tiny` or MB),
 `NERIA_COMPRESS_TRIM` (`in,out` seconds: Trim open on that part), `NERIA_COMPRESS_PARTS` (`10-20,30-40`: those parts kept; `NERIA_COMPRESS_EACH`: a file each), `NERIA_COMPRESS_EVEN` (`14` / `16`: Volume → Even out), `NERIA_COMPRESS_FORMAT` (a sound file's: `m4a`, `mp3`, `opus`), `NERIA_COMPRESS_PLAY` (press the sample player once read), `NERIA_COMPRESS_ADVANCED` (the fold open), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
@@ -103,7 +105,7 @@ release" JSON instead of GitHub; test self-update with a local server and a copy
 rows in every state, for design checks), `NERIA_SYNC_REVIEW` (open the removed-songs dialog), `NERIA_DIALOG` (open a dialog with sample
 data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, `update-ready`, `update-failed`,
 `signin` (a problem that sign-in fixes), `extras` / `captions` / `audio` / `chapters` (a video with all three, the
-picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`, `sound` / `sound-gain` / `sound-only` / `sound-as` (Clip page → Sound, with `NERIA_OPEN`; `sound-as` wants a sound file: Save as opus), `gif` (Make a GIF, with `NERIA_OPEN`: a real estimate), `picture` / `picture-result` / `clips` / `clips-page` (Picture mode, its result, the clip list; with `NERIA_OPEN`)),
+picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`, `sound` / `sound-gain` / `sound-only` / `sound-as` (Clip page → Sound, with `NERIA_OPEN`; `sound-as` wants a sound file: Save as opus), `gif` (Make a GIF, with `NERIA_OPEN`: a real estimate), `transcribe` / `transcribe-get` / `transcribe-files` / `transcribe-work` / `transcribe-done` / `transcribe-failed` / `transcript` (speech to text, sample data), `picture` / `picture-result` / `clips` / `clips-page` (Picture mode, its result, the clip list; with `NERIA_OPEN`)),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
 `NERIA_WINDOW_POS` (`x,y` physical px: open the window there without taking the keyboard; `ui-check.ps1` puts its windows on another screen this way unless `-MainScreen`), `NERIA_WINDOW` (window size in logical px, e.g. `780x580`; resizing from outside with
 MoveWindow/SetWindowPos also works, but in PowerShell don't name the window handle `$h` next to

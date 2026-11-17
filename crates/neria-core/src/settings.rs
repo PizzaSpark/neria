@@ -132,6 +132,8 @@ pub struct Settings {
     pub caption_mode: crate::tracks::SubMode,
     /// Chapters: one file per chapter instead of one file.
     pub chapters_separate: bool,
+    /// Speech to text: the language, what to save and the times, as picked last time.
+    pub transcribe: crate::transcribe::Spec,
     /// Closing with downloads going: "ask", "tray" (keep going there) or "quit".
     pub close_action: String,
     /// Windows notifications when something finishes or fails.
@@ -188,6 +190,7 @@ impl Default for Settings {
             tips_done: false,
             watch_clipboard: false,
             caption_langs: Vec::new(),
+            transcribe: Default::default(),
             caption_format: Default::default(),
             caption_mode: Default::default(),
             chapters_separate: false,

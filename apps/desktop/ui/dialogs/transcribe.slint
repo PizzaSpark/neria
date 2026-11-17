@@ -1,0 +1,269 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { Transcribe } from "../globals.slint";
+import { PrimaryButton, GhostButton, SectionTitle, Hint, Dialog, ChoiceChips, Tick, Bar, Notice } from "../widgets.slint";
+
+// A small heading with its controls under it.
+component Part inherits VerticalLayout {
+    in property <string> title;
+    spacing: 8px;
+    SectionTitle { text: root.title; }
+    @children
+}
+
+// Speech to text: what's said in a video or sound file, written down as a transcript to
+// read or as captions. Works on this PC; set up with a one-time download the first time.
+export component TranscribeDialog inherits Dialog {
+    property <int> view: Transcribe.view;
+    title: root.view == 0 ? "Speech to text"
+        : Transcribe.for-download ? "Transcript of this download"
+        : root.view == 3 ? "Transcript saved"
+        : "Transcribe";
+    subtitle: root.view == 0 ? "Writes down what's said, on this PC" : Transcribe.subtitle;
+    card-width: 540px;
+    // The choices scroll in the room they get; getting it has a fixed card (its wrapped
+    // text doesn't measure itself for `fit`); the rest are as tall as they are.
+    card-height: root.view == 0 ? 440px : 640px;
+    fit: root.view >= 2;
+    // Closing while it works keeps it going (it says so when done); while getting it too.
+    close => { Transcribe.open = false; }
+
+    // Not set up yet: what it is, what it costs, get it.
+    if root.view == 0: VerticalLayout {
+        vertical-stretch: 1;
+        spacing: 16px;
+        Text {
+            text: "Neria can write down what's said in a video or sound file: a transcript to read, or captions for the video. It works in English, Filipino and 97 other languages, mixed ones too.";
+            color: Theme.ink;
+            font-family: Theme.body;
+            font-size: 14px;
+            wrap: word-wrap;
+        }
+        Hint {
+            text: "It runs on this PC, so nothing you transcribe is uploaded. It needs a one-time download first (the Whisper speech model), kept in Neria's folder. Settings → Download can remove it again.";
+        }
+        if Transcribe.nvidia: VerticalLayout {
+            spacing: 4px;
+            Tick {
+                text: "Use my NVIDIA graphics card";
+                checked <=> Transcribe.use-gpu;
+            }
+            Hint {
+                text: "About 20 times faster: a 30-minute talk in under a minute instead of about 15. Adds a bigger download (685 MB).";
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+        if Transcribe.getting: VerticalLayout {
+            spacing: 8px;
+            Bar { value: Transcribe.progress; }
+            Text {
+                text: Transcribe.status;
+                color: Theme.muted;
+                font-family: Theme.body;
+                font-size: 12px;
+                overflow: elide;
+            }
+        }
+        if Transcribe.error != "" && !Transcribe.getting: Notice {
+            text: Transcribe.error;
+            color: Theme.bad;
+            wrap: true;
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: end;
+            GhostButton {
+                text: Transcribe.getting ? "Stop" : "Not now";
+                clicked => {
+                    if Transcribe.getting {
+                        Transcribe.stop();
+                    } else {
+                        Transcribe.open = false;
+                    }
+                }
+            }
+            PrimaryButton {
+                text: Transcribe.get-size == "" ? "Get it" : "Get it · " + Transcribe.get-size;
+                icon: "\u{E896}";
+                enabled: !Transcribe.getting;
+                clicked => { Transcribe.get(); }
+            }
+        }
+    }
+
+    // The choices.
+    if root.view == 1: ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            spacing: 18px;
+            padding-right: Theme.lane;
+            if Transcribe.has-selection: Part {
+                title: "What";
+                ChoiceChips {
+                    options: [Transcribe.selection-text, "The whole " + (Transcribe.is-link ? "video" : "file")];
+                    current <=> Transcribe.part;
+                }
+            }
+            if Transcribe.files > 1: Part {
+                title: Transcribe.files + " files";
+                ChoiceChips {
+                    options: ["One transcript, in this order", "One for each"];
+                    current <=> Transcribe.together;
+                }
+                Hint { text: Transcribe.files-text; }
+            }
+            Part {
+                title: "Language";
+                ChoiceChips {
+                    options: Transcribe.languages;
+                    current <=> Transcribe.language;
+                    changed => { Transcribe.changed(); }
+                }
+                Hint {
+                    text: "Detect works for any language, and for talks that mix two. Pick one only if it guesses wrong.";
+                }
+            }
+            Part {
+                title: "Save as";
+                ChoiceChips {
+                    options: ["Text", "Captions (.srt)", "Both"];
+                    current <=> Transcribe.output;
+                    changed => { Transcribe.changed(); }
+                }
+                Hint {
+                    text: Transcribe.output == 0 ? "A .txt to read, search or paste into notes."
+                        : Transcribe.output == 1 ? "Captions next to the video, with the same name: most players show them on their own."
+                        : "A .txt to read, and captions next to the video.";
+                }
+                if Transcribe.output != 1: Tick {
+                    text: "Time before each line, like [12:43]";
+                    checked <=> Transcribe.times;
+                    toggled => { Transcribe.changed(); }
+                }
+            }
+        }
+    }
+    if root.view == 1: Text {
+        text: Transcribe.for-download ? "Written once the download is done, next to it."
+            : Transcribe.is-link ? "Downloads it first, then writes the transcript next to it."
+            : "Saved next to the " + (Transcribe.files > 1 ? "first file." : "file.");
+        color: Theme.muted;
+        font-family: Theme.body;
+        font-size: 12px;
+        wrap: word-wrap;
+    }
+    if root.view == 1: HorizontalLayout {
+        spacing: 12px;
+        alignment: end;
+        if Transcribe.for-download && Transcribe.download-on: GhostButton {
+            text: "Turn off";
+            clicked => { Transcribe.set-download(false); }
+        }
+        if !(Transcribe.for-download && Transcribe.download-on): GhostButton {
+            text: "Cancel";
+            clicked => { Transcribe.open = false; }
+        }
+        PrimaryButton {
+            text: Transcribe.for-download ? (Transcribe.download-on ? "Done" : "Add to this download") : "Transcribe";
+            icon: Transcribe.for-download ? "\u{E73E}" : "\u{E70B}";
+            clicked => {
+                if Transcribe.for-download {
+                    Transcribe.set-download(true);
+                } else {
+                    Transcribe.start();
+                }
+            }
+        }
+    }
+
+    // At work.
+    if root.view == 2: VerticalLayout {
+        vertical-stretch: 1;
+        spacing: 10px;
+        Bar { value: Transcribe.progress; }
+        Text {
+            text: Transcribe.status;
+            color: Theme.ink;
+            font-family: Theme.body;
+            font-size: 13px;
+            overflow: elide;
+        }
+        Text {
+            text: Transcribe.heard;
+            color: Theme.muted;
+            font-family: Theme.body;
+            font-size: 13px;
+            font-italic: true;
+            wrap: word-wrap;
+            // Room for three lines, so the card doesn't jump with each line heard.
+            min-height: 52px;
+            vertical-alignment: top;
+        }
+        Hint { text: "You can close this: it keeps going and tells you when it's saved."; }
+        HorizontalLayout {
+            alignment: end;
+            GhostButton {
+                text: "Stop";
+                clicked => { Transcribe.stop(); }
+            }
+        }
+    }
+
+    // Saved, or not.
+    if root.view == 3: VerticalLayout {
+        vertical-stretch: 1;
+        spacing: 10px;
+        Text {
+            text: Transcribe.result;
+            color: Theme.ok;
+            font-family: Theme.body;
+            font-size: 14px;
+            wrap: word-wrap;
+        }
+        Text {
+            text: Transcribe.result-files;
+            color: Theme.muted;
+            font-family: Theme.body;
+            font-size: 12px;
+            wrap: word-wrap;
+            vertical-stretch: 1;
+            vertical-alignment: top;
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: end;
+            GhostButton {
+                text: "Show in folder";
+                icon: "\u{E838}";
+                clicked => { Transcribe.show-result(); }
+            }
+            PrimaryButton {
+                text: "Open it";
+                icon: "\u{E8E5}";
+                clicked => { Transcribe.open-result(); }
+            }
+        }
+    }
+    if root.view == 4: VerticalLayout {
+        vertical-stretch: 1;
+        spacing: 10px;
+        Notice {
+            text: Transcribe.error;
+            color: Theme.bad;
+            wrap: true;
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: end;
+            GhostButton {
+                text: "Close";
+                clicked => { Transcribe.open = false; }
+            }
+            PrimaryButton {
+                text: "Try again";
+                icon: "\u{E72C}";
+                clicked => { Transcribe.start(); }
+            }
+        }
+    }
+}

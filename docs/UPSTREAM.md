@@ -118,6 +118,19 @@ preferred, `--from/--to` search range, `--rank` for the next-best loop, paletteg
 paletteuse (sierra2_4a) render. `legacy/` holds older OpenCV/SSIM experiments, not needed.
 Port to Rust in `neria-core` (no Python in Neria).
 
+### whisper.cpp (MIT; prebuilt, run as a tool: `transcribe.rs`)
+ggml-org/whisper.cpp, its own Windows builds, fetched on demand like ffmpeg (never bundled):
+`whisper-blas-bin-x64.zip` (CPU) or `whisper-bin-win-cuda-12.4.0-x64.zip` (NVIDIA; only
+`whisper-cli.exe`, `whisper.dll`, `ggml*.dll`, cuBLAS/cudart are kept). The release tagged
+"latest" (`v1.9.5`) carries no files; the builds hang off `bNNNN` releases, so Neria takes the
+newest one listing the asset (`b5454` known good, the fallback). The CUDA 11.8 zip lacks
+cuBLAS and silently runs on the CPU: don't use it. Models from Hugging Face:
+`ggerganov/whisper.cpp` (`ggml-large-v3-turbo-q5_0.bin`) and `ggml-org/whisper-vad`
+(`ggml-silero-v5.1.2.bin`). Flags we rely on: `-oj` (JSON: `result.language`,
+`transcription[].offsets` in ms), `-pp` ("progress = N%" on stderr), `--vad -vm`, `--prompt`,
+`-ng` (the CPU when the card can't). If an update breaks it, check whisper-cli's
+`examples/cli/cli.cpp` for renamed flags first.
+
 ### ytarchive and streamlink (ideas only, for recording live streams: `record.rs`)
 
 Read 2026-11-15: ytarchive `2110ce2` (2025-06-25, 0.5.0; `Info.go`, `util.go`,
@@ -192,3 +205,4 @@ Also skim both repos' open issues for the symptom (e.g. "429", "embed", "no matc
 | 2026-11-14 | syncedlyrics | n/a → `3c8a318` | Studied: Musixmatch desktop API (now serves decoys anonymously, not used), Genius tokenless search (ported idea, credit in `lyrics.rs`), NetEase (hard-coded cookies, not used). Latest commit is from 2024. |
 | 2026-11-15 | TTV-AB | n/a → `1825fa5` | Idea ported for Twitch recordings and watching without ads (`ttv.rs`, credit there): ask Twitch for the stream as other players (`embed`, `popout`, `mobile_web`, `frontpage`), which came without the pre-roll `site` got; merge their playlists by each piece's date-time. Our own Rust relay; no code copied. |
 | 2026-11-14 | spotify-lyrics-api | `e158b96` (still latest) | Now the idea behind the opt-in "Spotify's own synced lyrics" (user asked for it, with a spare-account warning). Our own Rust; secret read from Spotify's script, not from spot-secrets-go. No code copied. |
+| 2026-11-18 | whisper.cpp | n/a → `b5454` | Speech to text (`transcribe.rs`): its prebuilt `whisper-cli` + ggml models, run as a tool. No code copied; JSON output parsed. |

@@ -36,6 +36,7 @@ mod signin_ui;
 mod sound_ui;
 mod spotify_ui;
 mod timeline_ui;
+mod transcribe_ui;
 mod updates_ui;
 
 slint::include_modules!();
@@ -774,6 +775,12 @@ thread_local! {
 /// Dev hook (`NERIA_DIALOG`): open a dialog with sample data, for design checks.
 /// `match`, `sync`, `spotify`, `toast`, `update`, `update-ready`, `update-failed`.
 fn demo_dialog(ui: &AppWindow, which: &str) {
+    // Speech to text: `transcribe`, `transcribe-get`, `-files`, `-work`, `-done`, `-failed`,
+    // `transcript` (see `transcribe_ui::demo`).
+    if which.starts_with("transcri") {
+        transcribe_ui::demo(ui, which);
+        return;
+    }
     match which {
         "match" => {
             let item = |title: &str,
@@ -2026,6 +2033,7 @@ fn main() -> anyhow::Result<()> {
     background_ui::install(&ui, queue.clone(), settings.clone());
     names_ui::install(&ui, settings.clone());
     extras_ui::install(&ui);
+    transcribe_ui::install(&ui, settings.clone());
     live_ui::install(&ui, &queue);
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());

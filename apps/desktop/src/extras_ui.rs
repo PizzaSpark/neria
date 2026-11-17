@@ -199,6 +199,7 @@ fn refresh_rows(ui: &AppWindow) {
 
 /// A new preview: what this video has, with last time's captions languages ticked.
 pub fn set_info(ui: &AppWindow, info: &MediaInfo, settings: &Settings) {
+    crate::transcribe_ui::reset_download(ui);
     let ex = ui.global::<Extras>();
     ex.set_sub_format(settings.caption_format.index());
     ex.set_sub_mode(settings.caption_mode.index());
@@ -236,6 +237,7 @@ pub fn set_info(ui: &AppWindow, info: &MediaInfo, settings: &Settings) {
 
 /// No video previewed (cleared, a playlist, an error).
 pub fn clear(ui: &AppWindow) {
+    crate::transcribe_ui::reset_download(ui);
     STATE.with(|s| *s.borrow_mut() = State::default());
     ui.global::<Extras>().set_open(0);
     refresh_buttons(ui);
@@ -246,10 +248,17 @@ pub fn clear(ui: &AppWindow) {
 pub fn requests(ui: &AppWindow, base: DownloadRequest, settings: &Settings) -> Vec<DownloadRequest> {
     let reqs = with_tracks(ui, base);
     let separate = ui.global::<Extras>().get_chapter_mode() == 1;
-    match <[DownloadRequest; 1]>::try_from(reqs) {
+    let mut reqs = match <[DownloadRequest; 1]>::try_from(reqs) {
         Ok([one]) => STATE.with(|s| with_chapters(&s.borrow(), one, separate, settings)),
         Err(many) => many,
+    };
+    // Extras → Transcript: each file saved gets one (not captions-only downloads).
+    if let Some(spec) = crate::transcribe_ui::download_spec() {
+        for r in reqs.iter_mut().filter(|r| !r.captions_only()) {
+            r.transcribe = Some(spec.clone());
+        }
     }
+    reqs
 }
 
 /// Picked chapters: a part of the video, several parts joined, or one file per chapter.

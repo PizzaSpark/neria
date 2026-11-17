@@ -1606,6 +1606,29 @@ impl Queue {
             }
         }
 
+        // Extras → Transcript: speech to text on what was saved. A transcript that fails
+        // leaves the download saved, with a note on its row.
+        let mut transcript_note = None;
+        if let (Some(spec), Ok(true), false) = (&req.transcribe, &result, cancelled) {
+            let file = {
+                let entries = self.inner.entries.lock().unwrap();
+                entries.iter().find(|e| e.snap.id == id).and_then(|e| e.snap.file.clone())
+            };
+            if let Some(file) = file.filter(|f| f.is_file()) {
+                self.update(id, true, |s| {
+                    s.state = JobState::Processing;
+                    s.postprocessor = Some("Transcribing".into());
+                });
+                let treq =
+                    crate::transcribe::Request { inputs: vec![file], range: None, spec: spec.clone(), out_dir: None };
+                match crate::transcribe::run(&treq, &cancel, |_| {}) {
+                    Ok(_) => {}
+                    Err(_) if cancel.load(Ordering::SeqCst) => cancelled = true,
+                    Err(e) => transcript_note = Some(format!("Saved, but no transcript: {e}")),
+                }
+            }
+        }
+
         // Spotify track downloaded: add Spotify tags, cover art and lyrics.
         let mut tag_error = None;
         let mut lyrics_status = None;
@@ -1634,7 +1657,7 @@ impl Queue {
             if lyrics_status.is_some() {
                 s.lyrics = lyrics_status.clone();
             }
-            if let Some(e) = &gif_error {
+            if let Some(e) = gif_error.as_ref().or(transcript_note.as_ref()) {
                 s.note = Some(e.clone());
                 s.note_strong = false;
             }

@@ -11,6 +11,8 @@
 //! - `NERIA_SOUND=even:-14,fade-in:1,fade-out:2` (or `gain:6`, `mute`): the Clip page's
 //!   Sound, changed after the download as a link clip gets it
 //! - `NERIA_GIF=gif|webp|mp4`: Make a GIF from the link clip after the download
+//! - `NERIA_TRANSCRIPT=text|srt|both`: a transcript after the download (speech to text
+//!   must be set up: `--example transcribe -- --get`)
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -111,6 +113,17 @@ fn main() -> anyhow::Result<()> {
                     "webp" => neria_core::gif::Kind::Webp,
                     "mp4" => neria_core::gif::Kind::Mp4,
                     _ => neria_core::gif::Kind::Gif,
+                },
+                ..Default::default()
+            });
+        }
+        // `NERIA_TRANSCRIPT=text|srt|both`: Extras → Transcript.
+        if let Some(kind) = env("NERIA_TRANSCRIPT") {
+            req.transcribe = Some(neria_core::transcribe::Spec {
+                output: match kind.as_str() {
+                    "srt" => neria_core::transcribe::Output::Captions,
+                    "both" => neria_core::transcribe::Output::Both,
+                    _ => neria_core::transcribe::Output::Text,
                 },
                 ..Default::default()
             });

@@ -642,9 +642,9 @@ export component DownloadPage inherits Rectangle {
             lyrics-only => { Music.lyrics-only(); }
         }
 
-        // Captions, audio tracks, chapters of a single video.
-        if root.probe-state == 2 && !root.picking && !root.probe-is-spotify
-            && (Extras.captions-text != "" || Extras.audio-text != "" || Extras.chapters-text != "" || Extras.no-captions): ExtrasRow { }
+        // Captions, audio tracks, chapters, transcript of a single video.
+        // Transcript is there for any single video, so the row always shows.
+        if root.probe-state == 2 && !root.picking && !root.probe-is-spotify: ExtrasRow { }
 
         // Queue
         VerticalLayout {

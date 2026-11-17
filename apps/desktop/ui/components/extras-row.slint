@@ -1,10 +1,11 @@
 import { Theme, Screen } from "../theme.slint";
-import { Extras } from "../globals.slint";
+import { Extras, Transcribe } from "../globals.slint";
 import { GhostButton } from "../widgets.slint";
 
 // Under the quality chips of a single video: small buttons saying what's picked
 // ("Captions: English", "Audio: Original", "Chapters: all 9"), each opening its picker.
-// Only the ones the video has something to pick for; wraps on narrow windows.
+// Only the ones the video has something to pick for, and Transcript (speech to text, any
+// video); wraps on narrow windows.
 export component ExtrasRow inherits FlexboxLayout {
     spacing: 8px;
     // Like ChoiceChips: take the row's width, so it only wraps when it has to and never
@@ -28,6 +29,13 @@ export component ExtrasRow inherits FlexboxLayout {
         icon: "\u{E8FD}";
         text: Extras.chapters-text;
         clicked => { Extras.show(3); }
+    }
+    GhostButton {
+        compact: true;
+        icon: "\u{E70B}";
+        text: Extras.transcript-text;
+        on: Extras.transcript-on;
+        clicked => { Transcribe.open-for-download(); }
     }
     if Extras.no-captions: Text {
         text: "No captions on this video";

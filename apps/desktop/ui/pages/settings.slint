@@ -1,7 +1,7 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { Accounts, Background, Names, Bulk, Following, FollowItem, Music } from "../globals.slint";
+import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider, Notice } from "../widgets.slint";
 
 // One group of settings under a small heading.
@@ -506,6 +506,38 @@ export component SettingsDrawer inherits Rectangle {
                                     }
                                 }
                                 Hint { text: "For single videos. Items picked from a playlist or post are named by their number and title."; }
+                            }
+
+                            Group {
+                                title: "Speech to text";
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    Text {
+                                        horizontal-stretch: 1;
+                                        text: Transcribe.settings-text;
+                                        color: Transcribe.ready ? Theme.ink : Theme.muted;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                        wrap: word-wrap;
+                                    }
+                                    GhostButton {
+                                        horizontal-stretch: 0;
+                                        compact: true;
+                                        text: Transcribe.ready ? "Remove" : "Get it…";
+                                        clicked => {
+                                            if Transcribe.ready {
+                                                Transcribe.remove();
+                                            } else {
+                                                Transcribe.open-get();
+                                            }
+                                        }
+                                    }
+                                }
+                                if Transcribe.ready && Transcribe.nvidia && !Transcribe.on-gpu: TextLink {
+                                    text: "Use my NVIDIA graphics card: about 20 times faster (685 MB)";
+                                    clicked => { Transcribe.use-gpu = true; Transcribe.open-get(); }
+                                }
+                                Hint { text: "Writes down what's said in a video or sound file, on this PC: Clip page → Export ▾ → Transcribe, drop a file on Neria, or Transcript under a video's preview."; }
                             }
                         }
 

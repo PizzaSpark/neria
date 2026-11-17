@@ -749,6 +749,26 @@ Dev hooks: `NERIA_COMPRESS` (files or folders, `;` between), `NERIA_COMPRESS_GOA
 `NERIA_COMPRESS_TRIM`, `NERIA_COMPRESS_ADVANCED`; ui-check `cmp-film`, `cmp-long`, `cmp-trim`,
 `cmp-sharp`, `cmp-many`.
 
+## Speech to text (optional)
+Built 2026-11-18 (asked for after Adobe's and Gemini's transcribers failed on a Taglish
+lecture; whisper large-v3 got it). Nothing is downloaded until someone uses it.
+- [x] Engine: whisper.cpp's `whisper-cli` + `ggml-large-v3-turbo-q5_0` (575 MB) and Silero
+  voice detection, into `bin/whisper/`; the NVIDIA pack (685 MB, cuBLAS) when there's a card,
+  else the CPU pack (22 MB). Measured on an RTX 3060 laptop: a 12.7-min lecture in 24 s on the
+  card, about 2.3× real time on the CPU. A short English prompt brings back punctuation
+- [x] Transcript `.txt` (`[12:43]` before each line, or not) and/or `.srt` captions (cut to
+  two lines); language detected (mixed talks too) or picked; several files joined in order
+  ("Part 2 · …" lines, times running on), or one each
+- [x] Where: Clip page Export ▾ → Transcribe… (the selection or all; a link is downloaded
+  first), a dropped file or several (Clip / Compress / Transcribe), Extras → Transcript on
+  the Download page (after the download, "Writing the transcript…" on its row),
+  Settings → Download → Speech to text (status, Remove, switch to the NVIDIA pack)
+- [ ] Later, if wanted: captions burned into a clip; translate to English (`--translate`);
+  speaker names; a smaller model for slow PCs
+Dev hooks: `NERIA_TRANSCRIBE` (+ `_START`), `NERIA_TRANSCRIPT` (smoke), `NERIA_FAKE_NVIDIA`;
+ui-check `transcribe-get`, `transcribe`, `transcribe-files`, `transcribe-work`,
+`transcribe-done`, `transcript`.
+
 ## Livestreams (own milestone)
 Built 2026-11-15 on branch `live-track` (mock: `design/live-track.html`, picked 1A · 2A · 3A;
 engine `record.rs`, row `fmt::live_row`, UI `live_ui.rs`; ideas from ytarchive and streamlink,

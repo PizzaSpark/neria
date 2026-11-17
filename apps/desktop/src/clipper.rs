@@ -1327,6 +1327,46 @@ pub fn install(
         }
     });
 
+    // Export ▾ → Transcribe…: the file (its selection, or all of it), or the link's part
+    // downloaded first and transcribed after (see `transcribe_ui`).
+    ui.global::<crate::Transcribe>().on_open_for_clip({
+        let (clipper, weak, enqueue) = (clipper.clone(), ui.as_weak(), enqueue.clone());
+        move || {
+            let ui = weak.unwrap();
+            let c = clipper.borrow();
+            if let Some(mpv) = &c.mpv {
+                let _ = mpv.set_property("pause", "yes");
+            }
+            let sel = (ui.get_clip_in() as f64, ui.get_clip_out() as f64);
+            let duration = ui.get_clip_duration() as f64;
+            match c.source.clone() {
+                Some(Source::File(path)) => crate::transcribe_ui::open_clip_file(&ui, path, sel, duration),
+                Some(Source::Link(url)) => {
+                    let (weak, enqueue) = (weak.clone(), enqueue.clone());
+                    let go = move |spec: neria_core::transcribe::Spec, selection: bool| {
+                        let ui = weak.unwrap();
+                        let Some(mut req) = link_request(&ui, url.clone()) else { return };
+                        if !selection {
+                            req.section = None;
+                            req.live_window = None;
+                        }
+                        req.transcribe = Some(spec);
+                        enqueue(vec![req], String::new());
+                        ui.set_clip_status("Added to the download queue, then transcribed".into());
+                    };
+                    crate::transcribe_ui::open_clip_link(
+                        &ui,
+                        ui.get_clip_name().to_string(),
+                        sel,
+                        duration,
+                        Rc::new(go),
+                    );
+                }
+                None => crate::show_toast(&ui, "Open a video or sound file first, then transcribe it."),
+            }
+        }
+    });
+
     ui.on_clip_cancel_export({
         let clipper = clipper.clone();
         move || {

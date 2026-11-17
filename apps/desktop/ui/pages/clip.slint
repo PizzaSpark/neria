@@ -5,7 +5,7 @@ import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions } from "../globals.slint";
+import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions, Transcribe } from "../globals.slint";
 import { Menu, MenuItem, TextLink } from "../widgets.slint";
 
 // The timeline's zoom: out, in, fit the clip, the whole video, and how much is on screen.
@@ -275,9 +275,9 @@ component ExportButton inherits HorizontalLayout {
     }
     menu := PopupWindow {
         x: root.width - 250px;
-        y: -98px;
+        y: -144px;
         width: 250px;
-        height: 92px;
+        height: 138px;
         Menu {
             x: 0;
             y: 0;
@@ -294,6 +294,11 @@ component ExportButton inherits HorizontalLayout {
                     ClipGif.open = true;
                     ClipGif.changed();
                 }
+            }
+            MenuItem {
+                icon: "\u{E70B}";
+                text: "Transcribe…";
+                clicked => { Transcribe.open-for-clip(); }
             }
         }
     }

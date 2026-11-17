@@ -70,6 +70,7 @@ pub fn postprocessor(name: &str) -> &'static str {
         "Sound" => "Changing the sound…",
         "Picture" => "Cropping and turning the picture…",
         "Joining" => "Joining the chapters…",
+        "Transcribing" => "Writing the transcript…",
         "UpdatingYtdlp" => "The site changed. Updating the downloader, then trying again…",
         _ => "Processing…",
     }

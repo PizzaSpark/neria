@@ -5,9 +5,10 @@ import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, LiveRow, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe } from "globals.slint";
 import { ClipsDialog } from "dialogs/clips.slint";
 import { GifDialog } from "dialogs/gif.slint";
+import { TranscribeDialog } from "dialogs/transcribe.slint";
 import { SoundDialog } from "dialogs/sound.slint";
 import { NamesDialog } from "dialogs/names.slint";
 import { CloseAskDialog, LaterDialog } from "dialogs/background.slint";
@@ -23,7 +24,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -202,7 +203,8 @@ export component AppWindow inherits Window {
     in property <int> drop-kind;
     in property <string> drop-file;
     in-out property <bool> drop-choice-open;
-    callback drop-choose(int); // 1 clip, 2 compress
+    in property <bool> drop-several;
+    callback drop-choose(int); // 1 clip, 2 compress, 3 transcribe
     in-out property <bool> drawer-open;
     // Settings section to show: 0 Download, 1 Spotify, 2 Network, 3 Appearance, 4 About.
     in-out property <int> settings-section;
@@ -639,8 +641,16 @@ export component AppWindow inherits Window {
         width: root.width;
         height: root.height;
         name: root.drop-name;
+        several: root.drop-several;
         close => { root.drop-choice-open = false; }
         choose(kind) => { root.drop-choose(kind); }
+    }
+
+    if Transcribe.open: TranscribeDialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
     }
 
     if !root.tools-ready: SetupScreen {

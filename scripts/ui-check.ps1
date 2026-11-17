@@ -170,6 +170,14 @@ $states = [ordered]@{
   "sound-gain" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-gain" }
   "gif"        = @{ NERIA_OPEN = $video; NERIA_DIALOG = "gif"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
   "clip-gif"   = @{ NERIA_OPEN = $gifFile }
+  # Speech to text: getting it (as on a PC with an NVIDIA card), the choices for a clip's
+  # file and for three dropped parts, at work, saved, and Extras → Transcript for a preview.
+  "transcribe-get"   = @{ NERIA_DIALOG = "transcribe-get" }
+  "transcribe"       = @{ NERIA_DIALOG = "transcribe" }
+  "transcribe-files" = @{ NERIA_DIALOG = "transcribe-files" }
+  "transcribe-work"  = @{ NERIA_DIALOG = "transcribe-work" }
+  "transcribe-done"  = @{ NERIA_DIALOG = "transcribe-done" }
+  "transcript"       = @{ NERIA_DIALOG = "transcript" }
   # The timeline zoomed in (40 s of 10 min), and a sound-only file zoomed.
   "clip-zoom"  = @{ NERIA_OPEN = $long; NERIA_CLIP_IN = "212"; NERIA_CLIP_OUT = "230"; NERIA_CLIP_VIEW = "200,40" }
   "clip-zoom-ch" = @{ NERIA_OPEN = $chaptered; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "10"; NERIA_CLIP_VIEW = "3,8" }

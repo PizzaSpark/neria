@@ -1,5 +1,6 @@
 //! Drag things in from other apps. Files from Explorer: onto Clip or Compress opens them
-//! there; anywhere else asks which of the two. Links from a browser: onto Clip opens them in
+//! there; anywhere else asks: clip, compress or transcribe it (several: compress or
+//! transcribe them). Links from a browser: onto Clip opens them in
 //! the clipper; anywhere else they go into the Download box. Slint doesn't deliver drops
 //! from other apps on Windows yet and winit only reports files, so on Windows Neria
 //! registers its own OLE drop target (`ole` below); winit's file events stay as a fallback.
@@ -18,6 +19,11 @@ use crate::AppWindow;
 const VIDEO: &[&str] =
     &["mp4", "mkv", "webm", "mov", "avi", "m4v", "flv", "wmv", "ts", "mts", "m2ts", "3gp", "mpg", "mpeg", "ogv"];
 const AUDIO: &[&str] = &["mp3", "m4a", "aac", "wav", "flac", "opus", "ogg", "wma"];
+
+thread_local! {
+    /// Several files dropped on the Download page, waiting for "Compress them" / "Transcribe them".
+    static DROPPED: std::cell::RefCell<Vec<PathBuf>> = const { std::cell::RefCell::new(Vec::new()) };
+}
 
 /// `drop-kind` in the UI: 0 not media, 1 video, 2 audio, 3 a link.
 const LINK: i32 = 3;
@@ -117,9 +123,17 @@ pub fn install(ui: &AppWindow) {
             let ui = weak.unwrap();
             let file = ui.get_drop_file().to_string();
             ui.set_drop_choice_open(false);
+            // Several dropped at once: all of them (compress them, or transcribe them).
+            let several = DROPPED.with(|d| d.take());
+            let files = if ui.get_drop_several() && !several.is_empty() { several } else { vec![PathBuf::from(&file)] };
             match page {
                 1 => ui.invoke_clip_open_path(file.into()),
-                2 => ui.global::<crate::Compress>().invoke_open_path(file.into()),
+                2 => {
+                    for f in files {
+                        ui.global::<crate::Compress>().invoke_open_path(f.to_string_lossy().as_ref().into());
+                    }
+                }
+                3 => crate::transcribe_ui::open_files(&ui, files),
                 _ => {}
             }
         }
@@ -133,13 +147,24 @@ fn compressible(path: &Path) -> bool {
 }
 
 /// Several files (or folders) dropped at once: the Compress page takes every video, sound
-/// file and folder; anywhere else only the first one opens.
+/// file and folder; the Download page asks to compress or transcribe them all; anywhere
+/// else only the first one opens.
 fn dropped_files(ui: &AppWindow, first: PathBuf, all: Vec<PathBuf>) {
     let takes = |p: &PathBuf| p.is_dir() || compressible(p);
     if ui.get_page() == 2 && ui.get_tools_ready() && all.iter().any(takes) {
         for p in all.into_iter().filter(takes) {
             ui.global::<crate::Compress>().invoke_open_path(p.to_string_lossy().as_ref().into());
         }
+        return;
+    }
+    // Several video or sound files on the Download page: compress or transcribe them all.
+    let media: Vec<PathBuf> = all.iter().filter(|p| p.is_file() && compressible(p)).cloned().collect();
+    if ui.get_page() == 0 && ui.get_tools_ready() && media.len() > 1 {
+        ui.set_drop_file(media[0].to_string_lossy().as_ref().into());
+        ui.set_drop_name(format!("{} files", media.len()).into());
+        ui.set_drop_several(true);
+        DROPPED.with(|d| d.replace(media));
+        ui.set_drop_choice_open(true);
         return;
     }
     let more = all.len() > 1;
@@ -194,6 +219,7 @@ fn dropped(ui: &AppWindow, path: PathBuf) {
         2 => ui.global::<crate::Compress>().invoke_open_path(file.into()),
         // Download page (or anywhere else): ask.
         _ => {
+            ui.set_drop_several(false);
             ui.set_drop_file(file.into());
             ui.set_drop_name(name(&path).into());
             ui.set_drop_choice_open(true);

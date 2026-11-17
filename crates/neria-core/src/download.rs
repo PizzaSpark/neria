@@ -78,6 +78,9 @@ pub struct DownloadRequest {
     pub live: Option<crate::record::LiveJob>,
     /// A link clip made into a GIF / WebP / GIF-like MP4 after the download (Make a GIF).
     pub gif_spec: Option<crate::gif::GifSpec>,
+    /// Write a transcript of it after the download (Extras → Transcript; speech to text).
+    #[serde(default)]
+    pub transcribe: Option<crate::transcribe::Spec>,
 }
 
 impl Default for DownloadRequest {
@@ -117,6 +120,7 @@ impl DownloadRequest {
             audio_edit: None,
             picture: None,
             gif_spec: None,
+            transcribe: None,
             live_window: None,
             live: None,
         }
