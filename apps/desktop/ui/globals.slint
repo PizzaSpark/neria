@@ -489,6 +489,8 @@ export global Compress {
     in property <string> advanced-line; // "Plays everywhere · graphics card · 720p · sound 96 kbps"
     // 0 plays everywhere (H.264), 1 smaller (H.265), 2 smallest (AV1)
     in-out property <int> format;
+    // A sound file on its own: 0 M4A (AAC), 1 MP3, 2 Opus
+    in-out property <int> sound-format;
     in property <string> format-warning; // "May not play in Discord on some phones."
     in-out property <bool> use-gpu: true;
     in property <bool> gpu-available;

@@ -49,13 +49,19 @@ impl Codec {
     }
 }
 
-/// A sound file's format. "Plays everywhere" (H.264 for videos) is AAC in .m4a; Smaller and
-/// Smallest are Opus, which sounds as good at about two-thirds of the bitrate.
+/// A sound file's format: AAC in .m4a (the default, "Plays everywhere" for videos is H.264
+/// and AAC), MP3 (plays on anything, ever; needs about a third more bitrate for the same
+/// sound), or Opus (sounds as good at about two-thirds of AAC's bitrate; videos' Smaller and
+/// Smallest pick it).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SoundCodec {
     Aac,
+    Mp3,
     Opus,
 }
+
+/// The bitrates an MP3 at 44.1 / 48 kHz can have (MPEG-1 Layer III).
+const MP3_KBPS: [f64; 14] = [32.0, 40.0, 48.0, 56.0, 64.0, 80.0, 96.0, 112.0, 128.0, 160.0, 192.0, 224.0, 256.0, 320.0];
 
 impl SoundCodec {
     pub fn for_codec(c: Codec) -> Self {
@@ -65,6 +71,7 @@ impl SoundCodec {
     pub fn label(self) -> &'static str {
         match self {
             Self::Aac => "AAC",
+            Self::Mp3 => "MP3",
             Self::Opus => "Opus",
         }
     }
@@ -72,6 +79,7 @@ impl SoundCodec {
     pub fn ext(self) -> &'static str {
         match self {
             Self::Aac => "m4a",
+            Self::Mp3 => "mp3",
             Self::Opus => "opus",
         }
     }
@@ -79,7 +87,7 @@ impl SoundCodec {
     /// More than this sounds no better (stereo).
     fn max_kbps(self) -> f64 {
         match self {
-            Self::Aac => 192.0,
+            Self::Aac | Self::Mp3 => 192.0,
             Self::Opus => 160.0,
         }
     }
@@ -88,6 +96,7 @@ impl SoundCodec {
     fn min_kbps(self) -> f64 {
         match self {
             Self::Aac => 24.0,
+            Self::Mp3 => 32.0,
             Self::Opus => 12.0,
         }
     }
@@ -96,6 +105,7 @@ impl SoundCodec {
     fn mono_below(self) -> f64 {
         match self {
             Self::Aac => 48.0,
+            Self::Mp3 => 80.0,
             Self::Opus => 24.0,
         }
     }
@@ -104,7 +114,16 @@ impl SoundCodec {
     fn ok_kbps(self) -> f64 {
         match self {
             Self::Aac => 48.0,
+            Self::Mp3 => 64.0,
             Self::Opus => 24.0,
+        }
+    }
+
+    /// A bitrate it can really be made at, not above `k`: MP3 has fixed steps.
+    fn snap(self, k: f64) -> f64 {
+        match self {
+            Self::Mp3 => MP3_KBPS.iter().copied().rfind(|&s| s <= k + 0.01).unwrap_or(MP3_KBPS[0]),
+            _ => k.floor(),
         }
     }
 
@@ -113,6 +132,7 @@ impl SoundCodec {
         let k = if channels == 1 { kbps * 2.0 } else { kbps };
         let steps = match self {
             Self::Aac => [160.0, 112.0, 80.0, 48.0],
+            Self::Mp3 => [192.0, 128.0, 96.0, 64.0],
             Self::Opus => [128.0, 80.0, 48.0, 24.0],
         };
         if k >= steps[0] {
@@ -388,6 +408,8 @@ pub struct Options {
     /// Even out the sound to this loudness (LUFS), measured first (two passes, as the Clip
     /// page's Sound does).
     pub even: Option<f32>,
+    /// A sound file's format, picked on its own (None: from `codec`, AAC or Opus).
+    pub sound_codec: Option<SoundCodec>,
     /// Keep every sound track, the text captions and the chapter marks (else: the first
     /// sound track only, no captions, no chapters).
     pub keep_tracks: bool,
@@ -424,6 +446,7 @@ impl Options {
             parts: Vec::new(),
             part_no: None,
             even: None,
+            sound_codec: None,
             keep_tracks: true,
             crop: None,
         }
@@ -763,13 +786,15 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
     if length < 0.1 {
         bail!("The part to keep is empty: move Out after In.");
     }
-    let sc = SoundCodec::for_codec(opts.codec);
+    let sc = opts.sound_codec.unwrap_or(SoundCodec::for_codec(opts.codec));
     let (kbps, target_bytes) = match opts.target {
         Target::Quality(level) => {
-            // 0.7 (Smaller, still sharp): AAC 128 / Opus 96; 0.25: AAC 72 / Opus 48.
+            // 0.7 (Smaller, still clear): AAC 128 / MP3 160 / Opus 96; 0.25: AAC 72 /
+            // MP3 96 / Opus 48.
             let l = level.clamp(0.0, 1.0) as f64;
             let k = match sc {
                 SoundCodec::Aac => 40.0 + l * 125.0,
+                SoundCodec::Mp3 => 64.0 + l * 137.0,
                 SoundCodec::Opus => 24.0 + l * 103.0,
             };
             ((k / 8.0).round() * 8.0, None)
@@ -792,7 +817,7 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
     let now = info.size_bytes as f64 * 8.0 / 1000.0 / info.duration;
     // Mono sounds the same at half of stereo's bitrate.
     let max = if info.audio_channels == 1 { sc.max_kbps() / 2.0 } else { sc.max_kbps() };
-    let kbps = kbps.min(max).min(now.floor().max(sc.min_kbps())).max(sc.min_kbps());
+    let kbps = sc.snap(kbps.min(max).min(now.floor().max(sc.min_kbps())).max(sc.min_kbps()));
     let channels = if info.audio_channels == 1 || kbps < sc.mono_below() { 1 } else { 2 };
     Ok(Plan {
         encoder: Encoder::Cpu(opts.codec),
@@ -831,7 +856,7 @@ pub fn longest_fit(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Opti
     }
     if !info.has_video {
         // A sound file: as long as just-OK sound (as `plan_sound` counts the room) fits.
-        let sc = SoundCodec::for_codec(opts.codec);
+        let sc = opts.sound_codec.unwrap_or(SoundCodec::for_codec(opts.codec));
         let ok = if info.audio_channels == 1 { sc.ok_kbps() / 2.0 } else { sc.ok_kbps() };
         let secs = (mb * 1e6 * 8.0 / 1000.0 * 0.97 / ok).floor();
         return (secs >= 1.0 && secs < opts.length(info)).then_some(secs);
@@ -999,6 +1024,8 @@ pub fn build_args(
         a.extend(["-vn", "-sn", "-dn"].map(String::from));
         match sc {
             SoundCodec::Aac => a.extend(["-c:a", "aac"].map(String::from)),
+            // Constant bitrate: the size is exactly what it says.
+            SoundCodec::Mp3 => a.extend(["-c:a", "libmp3lame"].map(String::from)),
             SoundCodec::Opus => a.extend(["-c:a", "libopus", "-vbr", "on"].map(String::from)),
         }
         a.extend(["-b:a".into(), format!("{}k", plan.audio_kbps.unwrap_or(96))]);
@@ -1185,10 +1212,10 @@ pub fn run(
         match plan.target_bytes {
             Some(target) if bytes > target && attempt < ATTEMPTS => {
                 let over = fmt::mb(bytes as f64);
-                if plan.sound.is_some() {
+                if let Some(sc) = plan.sound {
                     // Sound: its bitrate, by how far over, plus a margin.
                     let factor = target as f64 / bytes as f64 * 0.95;
-                    plan.audio_kbps = plan.audio_kbps.map(|k| ((k as f64 * factor).floor() as u32).max(8));
+                    plan.audio_kbps = plan.audio_kbps.map(|k| sc.snap((k as f64 * factor).max(8.0)) as u32);
                     on(Progress { fraction: 0.0, stage: format!("{over} is a bit over, redoing smaller…") });
                 } else if let Encoder::Gpu(codec, _) = plan.encoder {
                     // Graphics cards keep their own idea of the bitrate (Intel's came out
@@ -1493,6 +1520,23 @@ mod tests {
     }
 
     #[test]
+    fn mp3_takes_its_steps() {
+        let mut o = opts(Target::SizeMb(20.0));
+        o.sound_codec = Some(SoundCodec::Mp3);
+        // 20 MB over 30 min leaves ~86 kbps: MP3 has 80, and that's mono-or-stereo's edge.
+        let p = plan(&song(), &o, &Encoders::default()).unwrap();
+        assert_eq!((p.sound, p.audio_kbps, p.channels, p.ext()), (Some(SoundCodec::Mp3), Some(80), 2, "mp3"));
+        let args = build_args(Path::new("in.wav"), Path::new("out.mp3"), &song(), &p, None, None);
+        assert!(args.windows(2).any(|w| w == ["-c:a", "libmp3lame"]));
+        assert!(!args.iter().any(|a| a == "+faststart"));
+        // "Smaller, still clear": 160; never off the steps.
+        o.target = Target::Quality(0.7);
+        assert_eq!(plan(&song(), &o, &Encoders::default()).unwrap().audio_kbps, Some(160));
+        o.target = Target::SizeMb(5.0); // ~22 kbps: under MP3's least
+        assert!(plan(&song(), &o, &Encoders::default()).is_err());
+    }
+
+    #[test]
     fn mono_sound_needs_half() {
         // A mono voice recording for Discord: 96 kbps sounds the same, so not 192.
         let voice = FileInfo { audio_channels: 1, duration: 760.0, ..song() };
@@ -1517,6 +1561,7 @@ mod tests {
             parts: Vec::new(),
             part_no: None,
             even: None,
+            sound_codec: None,
             keep_tracks: false,
             crop: None,
         }

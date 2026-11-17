@@ -120,6 +120,15 @@ fn place(goal: Goal) -> String {
     }
 }
 
+/// A sound file's format chip (Advanced → Format): M4A, MP3 or Opus.
+fn sound_codec_of(c: &Compress) -> compress::SoundCodec {
+    match c.get_sound_format() {
+        1 => compress::SoundCodec::Mp3,
+        2 => compress::SoundCodec::Opus,
+        _ => compress::SoundCodec::Aac,
+    }
+}
+
 /// The goal's name for this file: a sound file is "still clear", not "still sharp".
 fn goal_name(goal: Goal, info: &FileInfo) -> String {
     match goal {
@@ -212,6 +221,11 @@ impl Compressor {
         o.crop = if c.get_cut_bars() { item.bars } else { None };
         if c.get_volume() == 1 {
             o.even = Some(if c.get_loudness() == 1 { -16.0 } else { -14.0 });
+        }
+        // One sound file picks its own format; in a list, sound files follow Format (AAC for
+        // Plays everywhere, else Opus).
+        if self.items.len() == 1 && item.info.as_ref().is_some_and(|i| !i.has_video) {
+            o.sound_codec = Some(sound_codec_of(c));
         }
         if self.items.len() == 1 && c.get_trim_open() && !self.parts.is_empty() {
             // Parts kept: one is a plain trim; joined, they're one file; one file each,
@@ -432,8 +446,12 @@ impl Compressor {
         let sound_names = ["sound 128 kbps", "sound 96 kbps", "sound 64 kbps", "no sound"];
         let format = format_names[c.get_format().clamp(0, 2) as usize].to_string();
         let line = if sound_file {
-            let sc = compress::SoundCodec::for_codec(codec);
-            vec![format, format!("{} (.{})", sc.label(), sc.ext())]
+            let sc = sound_codec_of(&c);
+            let mut line = vec![format!("{} (.{})", sc.label(), sc.ext())];
+            if c.get_volume() == 1 {
+                line.push("evened out".into());
+            }
+            line
         } else {
             let mut line = vec![
                 format,
@@ -449,6 +467,10 @@ impl Compressor {
         c.set_advanced_line(line.join(" · ").into());
         c.set_format_warning(
             match goal.as_ref().ok().and_then(|g| g.must_play_in()) {
+                Some(place) if sound_file && sound_codec_of(&c) == compress::SoundCodec::Opus => format!(
+                    "Opus may not play in {place} on every phone or computer. M4A or MP3 are the safe picks for sending."
+                ),
+                Some(_) if sound_file => String::new(),
                 Some(place) if c.get_format() != 0 => format!(
                     "{} may not play in {place} on every phone or computer. Plays everywhere is the safe pick for sending.",
                     format_names[c.get_format() as usize]
@@ -1536,6 +1558,14 @@ pub fn dev_hooks(ui: &AppWindow) {
     }
     if std::env::var_os("NERIA_COMPRESS_EACH").is_some() {
         c.set_split(1);
+    }
+    // A sound file's format: `m4a`, `mp3` or `opus`.
+    if let Ok(f) = std::env::var("NERIA_COMPRESS_FORMAT") {
+        c.set_sound_format(match f.trim().to_ascii_lowercase().as_str() {
+            "mp3" => 1,
+            "opus" => 2,
+            _ => 0,
+        });
     }
     if let Some(v) = std::env::var_os("NERIA_COMPRESS") {
         let paths: Vec<PathBuf> =

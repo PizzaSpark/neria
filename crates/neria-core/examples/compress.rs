@@ -7,6 +7,7 @@
 //! - `--parts 10-20,60-75`: those parts joined into one file (the goal is for it); add
 //!   `--each` for one file per part (each fits the goal on its own)
 //! - `--even <LUFS>`: even out the sound (-14 online video, -16 podcast), measured first
+//! - `--sound m4a|mp3|opus`: a sound file's format (else from the codec: AAC or Opus)
 //! - `--first-only`: the first sound track only, no captions, no chapters (default: keep them)
 //! - `--bars`: look for black bars and cut them
 //! - `--preview`: no encode; the size estimate and the before/after frames (paths printed)
@@ -68,6 +69,13 @@ fn main() -> anyhow::Result<()> {
     }
     if let Some(i) = flag("--even") {
         opts.even = Some(num(i + 1)? as f32);
+    }
+    if let Some(i) = flag("--sound") {
+        opts.sound_codec = match args.get(i + 1).map(String::as_str) {
+            Some("mp3") => Some(compress::SoundCodec::Mp3),
+            Some("opus") => Some(compress::SoundCodec::Opus),
+            _ => Some(compress::SoundCodec::Aac),
+        };
     }
     // `--parts 10-20,60-75`: joined into one file, or with `--each` one file per part.
     let mut each = Vec::new();

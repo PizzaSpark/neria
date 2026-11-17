@@ -269,17 +269,31 @@ component Advanced inherits VerticalLayout {
         VerticalLayout {
             spacing: 6px;
             OptionHead { text: "Format"; }
-            ChoiceChips {
+            if !Compress.sound-file: ChoiceChips {
                 options: ["Plays everywhere", "Smaller", "Smallest"];
                 current <=> Compress.format;
                 changed => { Compress.changed(); }
+            }
+            // A sound file picks its kind of file: what each is good for, said under it.
+            if Compress.sound-file: ChoiceChips {
+                options: ["M4A", "MP3", "Opus"];
+                current <=> Compress.sound-format;
+                changed => { Compress.changed(); }
+            }
+            if Compress.sound-file: Text {
+                text: Compress.sound-format == 1 ? "Plays on anything, even old car stereos. Needs a bit more room for the same sound."
+                    : Compress.sound-format == 2 ? "The smallest for the same sound. Some older players and apps can't play it."
+                    : "AAC: plays on phones, computers and in most apps, and sounds better than MP3 at the same size.";
+                color: Theme.muted;
+                font-size: 12px;
+                wrap: word-wrap;
             }
             if Compress.format-warning != "": Notice {
                 text: Compress.format-warning;
                 wrap: true;
             }
         }
-        // A sound file: only the format matters (Plays everywhere is AAC, the others Opus).
+        // A sound file: only its format and the volume matter.
         if !Compress.sound-file: Tick {
             text: Compress.gpu-text;
             checked <=> Compress.use-gpu;
