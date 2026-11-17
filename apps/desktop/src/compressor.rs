@@ -1005,7 +1005,27 @@ impl Compressor {
         if self.strip_for.as_ref() != Some(&it.path) {
             self.strip_for = Some(it.path.clone());
             c.set_strip(ModelRc::default());
+            c.set_strip_wave(Image::default());
             let (path, weak) = (it.path.clone(), ui.as_weak());
+            if !info.has_video {
+                // A sound file: its waveform (the Clip page's sound levels, cached per file).
+                std::thread::spawn(move || {
+                    let Ok(peaks) = media::peaks(&path) else { return };
+                    let view = neria_core::timeline::View::whole(info.duration.max(peaks.duration()));
+                    let (w, h) = (1000, 88);
+                    let px = peaks.render(view, w, h, crate::timeline_ui::WAVE_RGB);
+                    let _ = weak.upgrade_in_event_loop(move |ui| {
+                        // Still the file whose strip it is.
+                        let mut still = false;
+                        with(|c| still = c.strip_for.as_ref() == Some(&path));
+                        if still {
+                            ui.global::<Compress>().set_strip_wave(crate::timeline_ui::image(&px, w, h));
+                        }
+                    });
+                });
+                self.trim_text(ui);
+                return;
+            }
             std::thread::spawn(move || {
                 let frames = media::thumbnails(&path, info.duration, 10, 72);
                 let _ = weak.upgrade_in_event_loop(move |ui| {

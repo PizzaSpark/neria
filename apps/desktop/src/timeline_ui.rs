@@ -60,7 +60,7 @@ const TILE_H: u32 = 96;
 /// A filmstrip frame's width on screen, logical px (the strip's height × 16:9).
 const TILE_PX: f64 = 85.0;
 /// The waveform's colour (warm grey, reads on both themes; as `showwavespic` drew it).
-const WAVE_RGB: [u8; 3] = [0x8e, 0x8c, 0x88];
+pub(crate) const WAVE_RGB: [u8; 3] = [0x8e, 0x8c, 0x88];
 
 fn duration(ui: &AppWindow) -> f64 {
     ui.get_clip_duration() as f64
@@ -173,7 +173,7 @@ fn set_view_by_hand(ui: &AppWindow, v: View) {
     STATE.with_borrow_mut(|s| s.follow = live && s.view.shows_edge(d));
 }
 
-fn image(px: &[u8], w: u32, h: u32) -> Image {
+pub(crate) fn image(px: &[u8], w: u32, h: u32) -> Image {
     Image::from_rgba8(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(px, w, h))
 }
 

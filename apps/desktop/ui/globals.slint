@@ -512,6 +512,7 @@ export global Compress {
     in-out property <float> trim-in;
     in-out property <float> trim-out;
     in property <[image]> strip;
+    in property <image> strip-wave; // a sound file's waveform, in place of the frames
     // Chapter names (a chip each picks its part); `chapter` is the picked one (-1 none).
     in property <[string]> chapters;
     in-out property <int> chapter: -1;

@@ -507,6 +507,7 @@ export component CompressPage inherits Rectangle {
                     TrimStrip {
                         duration: Compress.duration;
                         frames: Compress.strip;
+                        wave: Compress.strip-wave;
                         start <=> Compress.trim-in;
                         end <=> Compress.trim-out;
                         changed => { Compress.trim-changed(); }

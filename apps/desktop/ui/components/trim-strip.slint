@@ -40,11 +40,13 @@ component TrimEnd inherits Rectangle {
     }
 }
 
-// The Compress page's trim: the video as a filmstrip, the part left out under a veil, two
-// grips for In and Out. Dragging anywhere moves the nearer grip.
+// The Compress page's trim: the video as a filmstrip (a sound file: its waveform), the part
+// left out under a veil, two grips for In and Out. Dragging anywhere moves the nearer grip.
 export component TrimStrip inherits Rectangle {
     in property <float> duration;
     in property <[image]> frames;
+    // The whole file's waveform, drawn across the strip (sound files have no frames).
+    in property <image> wave;
     in-out property <float> start;
     in-out property <float> end;
     callback changed();
@@ -74,6 +76,15 @@ export component TrimStrip inherits Rectangle {
             image-fit: cover;
             horizontal-stretch: 1;
         }
+    }
+    // Lined up with the grips: the waveform spans In's leftmost to Out's rightmost place.
+    Image {
+        x: 6px;
+        y: 4px;
+        width: root.span;
+        height: root.height - 8px;
+        source: root.wave;
+        image-fit: fill;
     }
     Rectangle {
         x: 0;

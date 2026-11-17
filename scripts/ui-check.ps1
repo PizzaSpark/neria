@@ -132,7 +132,8 @@ $states = [ordered]@{
   "cmp-talk-tiny" = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_GOAL = "2" }
   # Parts kept (joined / one file each), Volume evened out, the sample playing in the page.
   "cmp-parts"  = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_PARTS = "20-80,150-200,300-330"; NERIA_COMPRESS_EVEN = "14"; NERIA_COMPRESS_ADVANCED = "1" }
-  "cmp-parts-each" = @{ NERIA_COMPRESS = $film; NERIA_COMPRESS_PARTS = "2-8,20-26"; NERIA_COMPRESS_EACH = "1" }
+  "cmp-trim-song" = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_TRIM = "60,150" }
+  "cmp-parts-each" =@{ NERIA_COMPRESS = $film; NERIA_COMPRESS_PARTS = "2-8,20-26"; NERIA_COMPRESS_EACH = "1" }
   "cmp-play"   = @{ NERIA_COMPRESS = $film; NERIA_COMPRESS_PLAY = "1" }
   "cmp-play-song" = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_PLAY = "1" }
   "cmp-song-mix" = @{ NERIA_COMPRESS = "$video;$song" }
