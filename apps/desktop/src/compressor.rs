@@ -21,6 +21,8 @@ use crate::{AppWindow, CmpFile, CmpGoal, Compress};
 
 const VIDEO_EXTENSIONS: &[&str] =
     &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "mts", "m2ts", "3gp"];
+/// Sound files go through the same goals (AAC or Opus, see `compress::plan`).
+const SOUND_EXTENSIONS: &[&str] = &["mp3", "m4a", "aac", "wav", "flac", "opus", "ogg", "wma", "aiff", "aif"];
 const GOALS: [Goal; 5] = [Goal::Discord, Goal::Email, Goal::WhatsApp, Goal::Sharp, Goal::Tiny];
 
 // File states, as the UI reads them (CmpFile.state).
@@ -97,8 +99,12 @@ fn goal_of(c: &Compress, index: i32) -> Result<Goal> {
     })
 }
 
-fn is_video(p: &Path) -> bool {
-    p.extension().and_then(|e| e.to_str()).is_some_and(|e| VIDEO_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+/// A video or a sound file (by its name: what a folder holds that's worth reading).
+fn is_media(p: &Path) -> bool {
+    p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        let e = e.to_ascii_lowercase();
+        VIDEO_EXTENSIONS.contains(&e.as_str()) || SOUND_EXTENSIONS.contains(&e.as_str())
+    })
 }
 
 /// Where a size goal is going, for sentences: "too long for WhatsApp".
@@ -112,19 +118,58 @@ fn place(goal: Goal) -> String {
     }
 }
 
+/// The goal's name for this file: a sound file is "still clear", not "still sharp".
+fn goal_name(goal: Goal, info: &FileInfo) -> String {
+    match goal {
+        Goal::Sharp if !info.has_video => "Smaller, still clear".into(),
+        g => g.label(),
+    }
+}
+
 /// What a part of the file would weigh as it is: to tell "already fits".
 fn part_bytes(info: &FileInfo, opts: &Options) -> u64 {
     (info.size_bytes as f64 * (opts.length(info) / info.duration.max(0.1)).min(1.0)) as u64
 }
 
 /// The file can be sent as it is: the whole of it (a trimmed part isn't a file yet), already
-/// under `limit`, in a kind of file the apps play (an .mkv or .avi isn't, so it's still made).
+/// under `limit`, in a kind of file the apps play (an .mkv, .avi or .wma isn't, so it's
+/// still made).
 fn fits_as_is(path: &Path, info: &FileInfo, opts: &Options, limit: u64) -> bool {
-    let playable = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| ["mp4", "mov", "m4v", "webm"].contains(&e.to_ascii_lowercase().as_str()));
+    let playable = path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        ["mp4", "mov", "m4v", "webm", "mp3", "m4a", "ogg", "opus", "wav", "flac"]
+            .contains(&e.to_ascii_lowercase().as_str())
+    });
     opts.range.is_none() && playable && info.size_bytes <= limit
+}
+
+/// The file card's line: "1920×1080 · 60 fps · 2:14 · 312 MB · h264", or for a sound file
+/// "30:00 · 317 MB · pcm_s16le · stereo".
+fn info_line(info: &FileInfo) -> String {
+    let mut parts = Vec::new();
+    if info.has_video {
+        parts.push(format!("{}×{}", info.width, info.height));
+        if info.fps > 0.0 {
+            parts.push(format!("{:.0} fps", info.fps));
+        }
+    }
+    parts.push(fmt::duration(info.duration));
+    parts.push(fmt::mb(info.size_bytes as f64));
+    if info.has_video {
+        if !info.video_codec.is_empty() {
+            parts.push(info.video_codec.clone());
+        }
+    } else {
+        if !info.audio_codec.is_empty() {
+            parts.push(info.audio_codec.clone());
+        }
+        match info.audio_channels {
+            1 => parts.push("mono".into()),
+            2 => parts.push("stereo".into()),
+            n if n > 2 => parts.push(format!("{n} channels")),
+            _ => {}
+        }
+    }
+    parts.join(" · ")
 }
 
 fn image(path: &Path) -> Option<Image> {
@@ -179,7 +224,7 @@ impl Compressor {
 
     fn add(&mut self, ui: &AppWindow, paths: Vec<PathBuf>) {
         if self.running.is_some() {
-            crate::show_toast(ui, "Wait for the videos being compressed to finish, then add more.");
+            crate::show_toast(ui, "Wait for the files being compressed to finish, then add more.");
             return;
         }
         let mut found = Vec::new();
@@ -190,11 +235,11 @@ impl Compressor {
                     .flatten()
                     .flatten()
                     .map(|e| e.path())
-                    .filter(|f| f.is_file() && is_video(f))
+                    .filter(|f| f.is_file() && is_media(f))
                     .collect();
                 inside.sort();
                 if inside.is_empty() {
-                    crate::show_toast(ui, "There are no videos in that folder.");
+                    crate::show_toast(ui, "There are no videos or sound files in that folder.");
                 }
                 found.extend(inside);
             } else {
@@ -250,8 +295,8 @@ impl Compressor {
                                 }
                                 if let Some(it) = cmp.items.iter_mut().find(|i| i.path == path) {
                                     match result {
-                                        Ok(info) if !info.has_video => {
-                                            it.error = Some("This file has no video to compress.".into())
+                                        Ok(info) if !info.has_video && !info.has_audio => {
+                                            it.error = Some("This file has no picture or sound to compress.".into())
                                         }
                                         Ok(info) => it.info = Some(info),
                                         Err(e) => it.error = Some(e.to_string()),
@@ -324,18 +369,28 @@ impl Compressor {
         );
 
         let goal = goal_of(&c, c.get_goal());
+        // One sound file: Advanced is only its format.
+        let sound_file = self.items.len() == 1 && self.items[0].info.as_ref().is_some_and(|i| !i.has_video);
+        c.set_sound_file(sound_file);
         let format_names = ["Plays everywhere", "Smaller", "Smallest"];
         let picture_names = ["picture as needed", "picture kept", "1080p at most", "720p at most", "480p at most"];
         let sound_names = ["sound 128 kbps", "sound 96 kbps", "sound 64 kbps", "no sound"];
-        let mut line = vec![
-            format_names[c.get_format().clamp(0, 2) as usize].to_string(),
-            if c.get_use_gpu() && gpu_ok { "graphics card".into() } else { "processor".into() },
-            picture_names[c.get_picture().clamp(0, 4) as usize].into(),
-            sound_names[c.get_sound().clamp(0, 3) as usize].into(),
-        ];
-        if !c.get_keep_tracks() {
-            line.push("first sound track only".into());
-        }
+        let format = format_names[c.get_format().clamp(0, 2) as usize].to_string();
+        let line = if sound_file {
+            let sc = compress::SoundCodec::for_codec(codec);
+            vec![format, format!("{} (.{})", sc.label(), sc.ext())]
+        } else {
+            let mut line = vec![
+                format,
+                if c.get_use_gpu() && gpu_ok { "graphics card".into() } else { "processor".into() },
+                picture_names[c.get_picture().clamp(0, 4) as usize].into(),
+                sound_names[c.get_sound().clamp(0, 3) as usize].into(),
+            ];
+            if !c.get_keep_tracks() {
+                line.push("first sound track only".into());
+            }
+            line
+        };
         c.set_advanced_line(line.join(" · ").into());
         c.set_format_warning(
             match goal.as_ref().ok().and_then(|g| g.must_play_in()) {
@@ -389,7 +444,7 @@ impl Compressor {
         let mut can_start = !running && encoders.is_some() && !self.items.is_empty();
         let mut start_text = match self.items.len() {
             0 | 1 => "Compress".to_string(),
-            n => format!("Compress {n} videos"),
+            n => format!("Compress {n} files"),
         };
 
         match one {
@@ -406,16 +461,7 @@ impl Compressor {
                         can_start = false;
                     }
                     (Some(info), _) => {
-                        let mut parts = vec![format!("{}×{}", info.width, info.height)];
-                        if info.fps > 0.0 {
-                            parts.push(format!("{:.0} fps", info.fps));
-                        }
-                        parts.push(fmt::duration(info.duration));
-                        parts.push(fmt::mb(info.size_bytes as f64));
-                        if !info.video_codec.is_empty() {
-                            parts.push(info.video_codec.clone());
-                        }
-                        c.set_info(parts.join(" · ").into());
+                        c.set_info(info_line(info).into());
                         c.set_duration(info.duration as f32);
 
                         // Every goal, worked out for this file.
@@ -441,14 +487,14 @@ impl Compressor {
                                         }
                                     };
                                     CmpGoal {
-                                        name: g.label().into(),
+                                        name: goal_name(*g, info).into(),
                                         hint: hint.into(),
                                         size: size.into(),
                                         warn: false,
                                     }
                                 }
                                 Err((_, why)) => CmpGoal {
-                                    name: g.label().into(),
+                                    name: goal_name(*g, info).into(),
                                     hint: why.into(),
                                     size: match g.target() {
                                         Target::SizeMb(mb) => format!("{} MB", compress::fmt_mb(mb)).into(),
@@ -518,9 +564,11 @@ impl Compressor {
                                             ));
                                         }
                                         let now = part_bytes(info, &opts);
-                                        let after = match plan.target_bytes {
-                                            Some(t) => Some((t, "up to ")),
-                                            None => self
+                                        let after = match (plan.sound_bytes(length), plan.target_bytes) {
+                                            // Sound: its bitrate says the size, often well under the goal.
+                                            (Some(b), _) => Some((b, "about ")),
+                                            (None, Some(t)) => Some((t, "up to ")),
+                                            (None, None) => self
                                                 .estimates
                                                 .get(&self.preview_key(it, &opts, *g))
                                                 .map(|b| (*b, "about ")),
@@ -535,8 +583,10 @@ impl Compressor {
                                                 };
                                                 // A size goal is the limit's own number ("up to 20 MB").
                                                 let to = match plan.target_bytes {
-                                                    Some(t) => format!("{} MB", compress::fmt_mb(t as f64 / 1e6)),
-                                                    None => fmt::mb(b as f64),
+                                                    Some(t) if plan.sound.is_none() => {
+                                                        format!("{} MB", compress::fmt_mb(t as f64 / 1e6))
+                                                    }
+                                                    _ => fmt::mb(b as f64),
                                                 };
                                                 format!("{} → {how}{to}{tail}", fmt::mb(now as f64))
                                             }
@@ -562,7 +612,7 @@ impl Compressor {
                                                 "Too long for {}: in {} MB it would be {}.",
                                                 place(*g),
                                                 compress::fmt_mb(plan.target_bytes.unwrap_or(0) as f64 / 1e6),
-                                                plan.look.label()
+                                                plan.look_label()
                                             );
                                             fix = format!("Keep the first {}", fmt::duration(s));
                                         } else if let Some(b) = est
@@ -571,12 +621,14 @@ impl Compressor {
                                         {
                                             problem = format!(
                                                 "This one won't get smaller with \"{}\": it's already packed tight. Pick a size, or As small as possible.",
-                                                g.label()
+                                                goal_name(*g, info)
                                             );
                                             can_start = false;
                                             start_text = "Won't get smaller".into();
                                         }
-                                        c.set_after_label(format!("After · {}p", plan.lines).into());
+                                        if plan.sound.is_none() {
+                                            c.set_after_label(format!("After · {}p", plan.lines).into());
+                                        }
                                     }
                                 }
                                 if problem.is_empty()
@@ -660,8 +712,8 @@ impl Compressor {
                 if !self.items.is_empty() && !running {
                     start_text = match todo {
                         0 => "Nothing to compress".into(),
-                        1 => "Compress 1 video".into(),
-                        n => format!("Compress {n} videos"),
+                        1 => "Compress 1 file".into(),
+                        n => format!("Compress {n} files"),
                     };
                     if todo == 0 {
                         can_start = false;
@@ -713,7 +765,11 @@ impl Compressor {
                     ));
                 }
                 if plan.look == Look::Blurry {
-                    return Err(("Blurry".into(), format!("{}: too long to look OK", plan.hint())));
+                    return Err(if plan.sound.is_some() {
+                        ("Poor".into(), format!("{}: too long to sound OK", plan.hint()))
+                    } else {
+                        ("Blurry".into(), format!("{}: too long to look OK", plan.hint()))
+                    });
                 }
                 // A look goal on a file that's already packed tight comes out no smaller.
                 if plan.target_bytes.is_none()
@@ -849,8 +905,9 @@ impl Compressor {
                 }
             }
             let out = neria_core::paths::cache_dir().join(format!(
-                "Neria sample {}.mp4",
-                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+                "Neria sample {}.{}",
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
+                plan.ext()
             ));
             let result = compress::sample(&path, &info, &plan, at, 10.0, &out, &AtomicBool::new(false));
             let _ = weak.upgrade_in_event_loop(move |ui| {
@@ -1084,7 +1141,7 @@ impl Compressor {
                         }
                     } else {
                         crate::background_ui::Note {
-                            title: if saved > 1 { format!("Compressed {saved} videos") } else { "Compressed".into() },
+                            title: if saved > 1 { format!("Compressed {saved} files") } else { "Compressed".into() },
                             body: c.get_status().to_string(),
                             image: None,
                             file: cmp.last_output.clone(),
@@ -1127,7 +1184,9 @@ pub fn install(ui: &AppWindow, file_for_job: impl Fn(u64) -> Option<PathBuf> + '
         let weak = ui.as_weak();
         move || {
             if let Some(paths) = rfd::FileDialog::new()
+                .add_filter("Videos and sound", &[VIDEO_EXTENSIONS, SOUND_EXTENSIONS].concat())
                 .add_filter("Videos", VIDEO_EXTENSIONS)
+                .add_filter("Sound", SOUND_EXTENSIONS)
                 .add_filter("All files", &["*"])
                 .pick_files()
             {

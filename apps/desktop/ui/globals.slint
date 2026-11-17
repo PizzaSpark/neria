@@ -169,6 +169,8 @@ export global ClipSound {
     in-out property <int> save;
     // Sound only as: mp3, m4a, opus, flac, wav
     in-out property <int> save-format;
+    // A sound file (no picture) saved as: 0 the same as the file, then mp3, m4a, opus, flac, wav
+    in-out property <int> file-format;
     // The button on the Clip page ("Sound: as is", "Sound only · mp3").
     in property <string> button-text: "Sound: as is";
     // The same in a word or two, below wide windows ("Sound", "+3 dB", "Muted").
@@ -454,6 +456,8 @@ export global Compress {
     in property <string> info; // "1920×1080 · 60 fps · 2:14 · 312 MB · h264"
     in property <image> thumb;
     in property <bool> reading; // still reading the file (or files)
+    // The one file is sound only: no pictures to compare, no picture options.
+    in property <bool> sound-file;
 
     // ── Goal ──
     // 0 Discord, 1 email, 2 WhatsApp, 3 smaller still sharp, 4 as small as possible, 5 custom

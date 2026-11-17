@@ -145,15 +145,16 @@ Then:
    video is right now), not a marker; only what's between the purple handles is your clip.
    Playing stops at your end handle, and pressing play there replays the clip from the start.
    Turn on **loop** (the ⟳ button or **R**) to hear the clip on repeat.
-2. Choose **Fast · lossless** (instant, original quality) or **Exact · re-encode** (cuts on
-   the exact frame).
+2. Choose **Best quality** (instant and untouched, but the clip can start a moment before
+   your start point) or **Exact cut** (starts on the exact frame; re-encoded, so slower and
+   a little quality is lost).
 3. Press **Export clip** (or **Download clip** for links).
 
 The clip is saved next to the original, e.g. `video (clip 0m12s-0m45s).mp4`.
 
-In Fast mode the cut can only start on a *keyframe*. The white ticks on the timeline show
+With Best quality the cut can only start on a *keyframe*. The white ticks on the timeline show
 where those are. If your start point is between them, the extra part is shaded amber, and
-**Snap to keyframe** moves your start there. Use Exact mode to cut anywhere.
+**Snap to keyframe** moves your start there. Use Exact cut to cut anywhere.
 
 **Keyboard shortcuts**
 

@@ -28,6 +28,15 @@ export component SoundDialog inherits Dialog {
         VerticalLayout {
             spacing: 18px;
             padding-right: Theme.lane;
+            // A sound file: its format first, where it's seen without scrolling.
+            if !root.has-video && !root.is-link: Part {
+                title: "Save as";
+                ChoiceChips {
+                    options: ["Same as the file", "mp3", "m4a", "opus", "flac", "wav"];
+                    current <=> ClipSound.file-format;
+                    changed => { ClipSound.changed(); }
+                }
+            }
             Part {
                 title: "Volume";
                 ChoiceChips {

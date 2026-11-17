@@ -157,7 +157,8 @@ component Result inherits VerticalLayout {
         font-size: 12px;
         wrap: word-wrap;
     }
-    cmp := CompareSlider {
+    // A sound file has no pictures to compare: the sample is how to hear it.
+    if !Compress.sound-file: CompareSlider {
         height: self.width * 9 / 16;
         before: Compress.before;
         after: Compress.after;
@@ -169,7 +170,7 @@ component Result inherits VerticalLayout {
         alignment: start;
         GhostButton {
             compact: true;
-            text: Compress.sample-busy ? "Making a sample…" : "Play a 10 s sample";
+            text: Compress.sample-busy ? "Making a sample…" : Compress.sound-file ? "Listen to a 10 s sample" : "Play a 10 s sample";
             icon: "\u{E768}";
             clicked => {
                 if !Compress.sample-busy {
@@ -237,12 +238,13 @@ component Advanced inherits VerticalLayout {
                 wrap: true;
             }
         }
-        Tick {
+        // A sound file: only the format matters (Plays everywhere is AAC, the others Opus).
+        if !Compress.sound-file: Tick {
             text: Compress.gpu-text;
             checked <=> Compress.use-gpu;
             toggled => { Compress.changed(); }
         }
-        VerticalLayout {
+        if !Compress.sound-file: VerticalLayout {
             spacing: 6px;
             OptionHead { text: "Picture"; }
             ChoiceChips {
@@ -251,7 +253,7 @@ component Advanced inherits VerticalLayout {
                 changed => { Compress.changed(); }
             }
         }
-        VerticalLayout {
+        if !Compress.sound-file: VerticalLayout {
             spacing: 6px;
             OptionHead { text: "Sound"; }
             ChoiceChips {
@@ -260,12 +262,12 @@ component Advanced inherits VerticalLayout {
                 changed => { Compress.changed(); }
             }
         }
-        if Compress.tracks-text != "": Tick {
+        if Compress.tracks-text != "" && !Compress.sound-file: Tick {
             text: "Keep " + Compress.tracks-text;
             checked <=> Compress.keep-tracks;
             toggled => { Compress.changed(); }
         }
-        if Compress.bars-text != "": Tick {
+        if Compress.bars-text != "" && !Compress.sound-file: Tick {
             text: "Cut off the black bars (" + Compress.bars-text + ")";
             checked <=> Compress.cut-bars;
             toggled => { Compress.changed(); }
@@ -307,9 +309,9 @@ export component CompressPage inherits Rectangle {
                 horizontal-stretch: 0;
                 GhostButton {
                     compact: true;
-                    text: Screen.compact ? "" : "Add videos…";
+                    text: Screen.compact ? "" : "Add files…";
                     icon: "\u{E710}";
-                    label: "Add videos";
+                    label: "Add files";
                     clicked => { Compress.open-file(); }
                 }
             }
@@ -324,7 +326,7 @@ export component CompressPage inherits Rectangle {
                 alignment: start;
                 spacing: 10px;
                 PrimaryButton {
-                    text: "Open videos…";
+                    text: "Open files…";
                     icon: "\u{E8E5}";
                     clicked => { Compress.open-file(); }
                 }
@@ -338,7 +340,7 @@ export component CompressPage inherits Rectangle {
             RecentList {
                 items: root.recent;
                 action: "Compress";
-                empty-text: "Open videos or a folder, or drop them here. Finished downloads show up here, ready to shrink for Discord or email.";
+                empty-text: "Open videos, sound files or a folder, or drop them here. Finished downloads show up here, ready to shrink for Discord or email.";
                 open(path) => { Compress.open-path(path); }
             }
         }
@@ -352,6 +354,11 @@ export component CompressPage inherits Rectangle {
                 border-radius: 10px;
                 background: Theme.video;
                 source: Compress.thumb;
+                if Compress.sound-file: Icon {
+                    text: "\u{E8D6}";
+                    font-size: Screen.compact ? 24px : 32px;
+                    color: Theme.border;
+                }
             }
             VerticalLayout {
                 alignment: center;
@@ -396,7 +403,7 @@ export component CompressPage inherits Rectangle {
                     }
                     IconButton {
                         icon: "\u{E711}";
-                        label: "Close this video";
+                        label: Compress.sound-file ? "Close this file" : "Close this video";
                         clicked => { Compress.clear(); }
                     }
                 }
@@ -436,7 +443,7 @@ export component CompressPage inherits Rectangle {
                         }
                         TextLink {
                             horizontal-stretch: 0;
-                            text: "Whole video";
+                            text: Compress.sound-file ? "Whole file" : "Whole video";
                             clicked => { Compress.trim-whole(); }
                         }
                     }

@@ -24,6 +24,9 @@ pub struct FileInfo {
     pub has_audio: bool,
     /// How many sound tracks (films often carry several languages).
     pub audio_tracks: u32,
+    /// The first sound track's codec ("aac", "opus") and channels (2 = stereo; 0 unknown).
+    pub audio_codec: String,
+    pub audio_channels: u32,
     /// Stored as interlaced fields (old camcorders, TV recordings): needs deinterlacing.
     pub interlaced: bool,
     /// One entry per caption track: true for text (goes into an .mp4), false for
@@ -85,6 +88,10 @@ pub fn file_info(path: &Path) -> Result<FileInfo> {
                 info.has_video = true;
             }
             Some("audio") => {
+                if !info.has_audio {
+                    info.audio_codec = s["codec_name"].as_str().unwrap_or("").to_string();
+                    info.audio_channels = s["channels"].as_u64().unwrap_or(0) as u32;
+                }
                 info.has_audio = true;
                 info.audio_tracks += 1;
             }

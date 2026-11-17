@@ -82,6 +82,11 @@ if (-not (Test-Path $long)) {
   & $ff -loglevel error -y -f lavfi -i "testsrc2=size=640x360:rate=25" -f lavfi -i "aevalsrc=sin(440*2*PI*t)*abs(sin(0.7*t))*(0.3+0.7*abs(sin(0.05*t))):s=44100" -t 600 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 50 -c:a aac -shortest $long
 }
 $song = Join-Path $media "song.mp3"
+# Six minutes of stereo WAV (~63 MB): big enough for every Compress goal to make it smaller.
+$talk = Join-Path $media "talk.wav"
+if (-not (Test-Path $talk)) {
+  & $ff -loglevel error -y -f lavfi -i "aevalsrc=sin(220*2*PI*t)*abs(sin(0.9*t))|sin(330*2*PI*t)*abs(sin(0.6*t)):s=44100" -t 360 -c:a pcm_s16le $talk
+}
 # A letterboxed film with two sound tracks, captions and chapters (Compress: black bars, tracks).
 $film = Join-Path $media "film.mkv"
 if (-not (Test-Path $film)) {
@@ -121,6 +126,11 @@ $states = [ordered]@{
   "cmp-trim"   = @{ NERIA_COMPRESS = $film; NERIA_COMPRESS_TRIM = "12,30" }
   "cmp-sharp"  = @{ NERIA_COMPRESS = $long; NERIA_COMPRESS_GOAL = "sharp" }
   "cmp-many"   = @{ NERIA_COMPRESS = "$video;$long;$film;$(Join-Path $media 'timelapse.mp4')" }
+  # A sound file: goals in sound words, no pictures, Advanced is just the format.
+  "cmp-song"   = @{ NERIA_COMPRESS = $song; NERIA_COMPRESS_ADVANCED = "1" }
+  "cmp-talk"   = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_ADVANCED = "1" }
+  "cmp-talk-tiny" = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_GOAL = "2" }
+  "cmp-song-mix" = @{ NERIA_COMPRESS = "$video;$song" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-net"    = @{ NERIA_SETTINGS = "network" }
@@ -161,6 +171,10 @@ $states = [ordered]@{
   "clips"      = @{ NERIA_OPEN = $chaptered; NERIA_DIALOG = "clips" }
   "clips-page" = @{ NERIA_OPEN = $chaptered; NERIA_DIALOG = "clips-page" }
   "sound-only" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-only"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
+  # A sound file: Save as (the same / another format), and the page saying what it'll do.
+  "sound-song" = @{ NERIA_OPEN = $song; NERIA_DIALOG = "sound" }
+  "sound-as"   = @{ NERIA_OPEN = $song; NERIA_DIALOG = "sound-as" }
+  "clip-song"  = @{ NERIA_OPEN = $song; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
   # A link in the clipper: the quality row too (looked up for real, like "bulk").
   "clip-link"  = @{ NERIA_OPEN = "https://www.youtube.com/watch?v=jNQXAC9IVRw" }
   # The same link zoomed in: close-ups from its storyboard.

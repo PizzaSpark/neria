@@ -359,6 +359,8 @@ export component ClipPage inherits FocusScope {
     property <float> effective-in: Fmt.keyframe-before(root.in-time, root.keyframes);
     // Sound only (files) cuts exactly at In, whatever the mode.
     property <bool> sound-only: !root.is-link && root.has-video && ClipSound.save == 1;
+    // A sound file saved as another format: also cut exactly at In.
+    property <bool> converts: !root.is-link && !root.has-video && ClipSound.file-format > 0;
     // A changed picture is always re-encoded (frame-exact), whatever the mode says.
     property <bool> picture-changed: root.has-video && ClipPicture.changed-any && !root.sound-only;
     property <int> clips: ClipList.items.length;
@@ -373,7 +375,7 @@ export component ClipPage inherits FocusScope {
         : root.mode == 0 && root.has-video && !root.picture-changed && !root.sound-only
             ? "one file each, each starts on the keyframe before its In"
         : "one file each";
-    property <bool> early-start: !root.is-link && !root.sound-only && !root.gif-file && !root.picture-changed
+    property <bool> early-start: !root.is-link && !root.sound-only && !root.converts && !root.gif-file && !root.picture-changed
         && root.clips == 0 && root.mode == 0 && root.effective-in < root.in-time - 0.05;
     // What the export will do (or how it went), next to the Export button.
     // While the buffer keeps, its line stays (a save's "Saved · …" goes after it).
@@ -386,11 +388,12 @@ export component ClipPage inherits FocusScope {
         : root.gif-file ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  saved as a GIF again"
         : root.picture-changed && !root.is-link ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  frame-exact, the picture changed"
         : root.is-link ? "Downloads only " + Fmt.time(root.out-time - root.in-time)
-            + (root.mode == 0 ? "  ·  fast, may start a few seconds early" : "  ·  frame-exact (slower)")
+            + (root.mode == 0 ? "  ·  best quality, may start a few seconds early" : "  ·  exact cut, re-encoded (slower)")
         : root.sound-only ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  sound only"
-        : root.mode == 1 ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  frame-exact H.264"
+        : root.converts ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  saved as " + ["mp3", "m4a", "opus", "flac", "wav"][ClipSound.file-format - 1] + ", cut exactly"
+        : root.mode == 1 ? "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  exact cut, re-encoded (slower, a little quality lost)"
         : root.early-start ? "Lossless cut starts earlier, at " + Fmt.time(root.effective-in) + " (keyframe)"
-        : "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  lossless, starts on a keyframe";
+        : "Selection " + Fmt.time(root.out-time - root.in-time) + "  ·  original quality, instant, starts on a keyframe";
     property <bool> status-warn: root.status == "" && root.early-start;
     property <string> export-text: root.clips > 0 ? (root.is-link ? "Download " : "Export ") + root.clips + (root.clips == 1 ? " clip" : " clips")
         : root.is-link ? "Download clip" : root.sound-only ? "Export sound" : "Export clip";
@@ -1104,7 +1107,8 @@ export component ClipPage inherits FocusScope {
                 alignment: root.gif-file ? start : stretch;
                 if ClipLive.on: LiveRow { }
                 if !root.gif-file && !ClipLive.on: ChoiceChips {
-                    options: ["Fast · lossless", "Exact · re-encode"];
+                    // What each gets you: copying keeps the quality, re-encoding cuts exactly.
+                    options: ["Best quality", "Exact cut"];
                     current <=> root.mode;
                 }
                 if root.has-audio && !root.gif: VerticalLayout {
@@ -1228,7 +1232,7 @@ export component ClipPage inherits FocusScope {
                 // Medium: short chip names (the line above says what they mean).
                 if !root.gif-file && !ClipLive.on: ChoiceChips {
                     horizontal-stretch: 0;
-                    options: root.one-bar ? ["Fast · lossless", "Exact · re-encode"] : ["Fast", "Exact"];
+                    options: root.one-bar ? ["Best quality · may start early", "Exact cut · re-encoded"] : ["Best quality", "Exact cut"];
                     current <=> root.mode;
                 }
                 if root.has-audio && !root.gif: GhostButton {

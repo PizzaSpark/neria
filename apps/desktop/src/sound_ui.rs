@@ -22,6 +22,9 @@ pub fn fit_to_clip(ui: &AppWindow) {
     if !video || link {
         g.set_save(0);
     }
+    if video || link {
+        g.set_file_format(0);
+    }
     if !video && g.get_level() == 3 {
         g.set_level(0);
     }
@@ -46,11 +49,19 @@ pub fn edit(ui: &AppWindow) -> AudioEdit {
     }
 }
 
-/// Sound only, in this format (files with a picture only).
+/// Sound only, in this format: a video's sound (Save → Sound only), or a sound file saved as
+/// another format (Save as).
 pub fn audio_only(ui: &AppWindow) -> Option<String> {
     let g = ui.global::<ClipSound>();
-    (g.get_save() == 1 && ui.get_clip_has_video() && !ui.get_clip_is_link())
-        .then(|| FORMATS.get(g.get_save_format().max(0) as usize).unwrap_or(&"mp3").to_string())
+    if ui.get_clip_is_link() {
+        return None;
+    }
+    let pick = |i: i32| FORMATS.get(i.max(0) as usize).unwrap_or(&"mp3").to_string();
+    if ui.get_clip_has_video() {
+        (g.get_save() == 1).then(|| pick(g.get_save_format()))
+    } else {
+        (g.get_file_format() > 0).then(|| pick(g.get_file_format() - 1))
+    }
 }
 
 /// The Clip page's button and the dialog's note line.
@@ -58,13 +69,16 @@ pub fn refresh(ui: &AppWindow) {
     let g = ui.global::<ClipSound>();
     let e = edit(ui);
     let only = audio_only(ui);
+    // A sound file saved as another format says the format, not "Sound only".
+    let lead = if ui.get_clip_has_video() { "Sound only" } else { "Save as" };
     let button = match (&only, e.is_none()) {
-        (Some(f), true) => format!("Sound only · {f}"),
-        (Some(f), false) => format!("Sound only · {f} · {}", e.summary()),
+        (Some(f), true) => format!("{lead} · {f}"),
+        (Some(f), false) => format!("{lead} · {f} · {}", e.summary()),
         (None, _) => format!("Sound: {}", e.summary()),
     };
     g.set_button_text(button.into());
     let short = match (&only, e.level) {
+        (Some(f), _) if !ui.get_clip_has_video() => f.clone(),
         (Some(_), _) => "Sound only".to_string(),
         (None, Level::Mute) => "Muted".into(),
         (None, Level::Gain(db)) if db.abs() >= 0.05 => format!("{}{db:.0} dB", if db > 0.0 { "+" } else { "" }),
@@ -77,12 +91,14 @@ pub fn refresh(ui: &AppWindow) {
     let fast = ui.get_clip_mode() == 0 && ui.get_clip_has_video();
     let note = if ui.get_clip_is_link() && !e.is_none() {
         "Changed after the clip downloads; the picture isn't touched."
+    } else if only.is_some() && !ui.get_clip_has_video() {
+        "Converted to the new format, cut exactly at In and Out."
     } else if only.is_some() {
         "Only the sound is saved, cut exactly at In and Out."
     } else if e.mutes() {
         ""
     } else if e.reencodes() && fast {
-        "Fast · lossless still copies the picture as it is; only the sound is re-encoded."
+        "Best quality still copies the picture as it is; only the sound is re-encoded."
     } else if e.fade_in > 0.0 || e.fade_out > 0.0 {
         "You hear the volume while it plays; fades are added when it's saved."
     } else {
@@ -99,5 +115,6 @@ pub fn reset(ui: &AppWindow) {
     g.set_fade_in(0);
     g.set_fade_out(0);
     g.set_save(0);
+    g.set_file_format(0);
     refresh(ui);
 }

@@ -74,7 +74,7 @@ pub fn refresh(ui: &AppWindow) {
             let mut compress = Vec::new();
             for (r, p) in found {
                 CACHE.with(|c| c.borrow_mut().insert(r.file.clone(), p.clone()));
-                let (video, _) = kind(&r.file);
+                let (video, audio) = kind(&r.file);
                 let title = if r.title.is_empty() {
                     r.file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
                 } else {
@@ -95,7 +95,7 @@ pub fn refresh(ui: &AppWindow) {
                 if clip.len() < SHOWN {
                     clip.push(item.clone());
                 }
-                if video && compress.len() < SHOWN {
+                if (video || audio) && compress.len() < SHOWN {
                     compress.push(item);
                 }
             }

@@ -1040,13 +1040,18 @@ fn demo_dialog(ui: &AppWindow, which: &str) {
             });
         }
         // Clip page → Sound (with NERIA_OPEN for a real clip): evened out with a fade out;
-        // `sound-gain` +4 dB with the slider; `sound-only` saving the sound as mp3.
-        "sound" | "sound-gain" | "sound-only" => {
+        // `sound-gain` +4 dB with the slider; `sound-only` saving the sound as mp3;
+        // `sound-as` (a sound file open) saved as opus, evened out.
+        "sound" | "sound-gain" | "sound-only" | "sound-as" => {
             let s = ui.global::<ClipSound>();
             match which {
                 "sound-gain" => {
                     s.set_level(1);
                     s.set_gain(4.0);
+                }
+                "sound-as" => {
+                    s.set_file_format(3);
+                    s.set_level(2);
                 }
                 "sound-only" => {
                     s.set_save(1);

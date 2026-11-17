@@ -32,10 +32,10 @@ fn name(path: &Path) -> String {
 
 fn file_kind(path: &Path) -> i32 {
     let e = ext(path);
-    if VIDEO.contains(&e.as_str()) {
+    if VIDEO.contains(&e.as_str()) || AUDIO.contains(&e.as_str()) {
         1
-    } else if AUDIO.contains(&e.as_str()) || e == "gif" {
-        // Clip only, like audio: a .gif opens in the clipper (Compress takes videos).
+    } else if e == "gif" {
+        // Clip only: a .gif opens in the clipper (Compress takes videos and sound).
         2
     } else {
         0
@@ -93,9 +93,8 @@ pub fn install(ui: &AppWindow) {
             WindowEvent::HoveredFileCancelled => ui.set_drop_hover(false),
             WindowEvent::DroppedFile(path) => {
                 ui.set_drop_hover(false);
-                // Compress takes several videos (and folders of them) at once.
-                if ui.get_page() == 2 && ui.get_tools_ready() && (path.is_dir() || VIDEO.contains(&ext(path).as_str()))
-                {
+                // Compress takes several files (and folders of them) at once.
+                if ui.get_page() == 2 && ui.get_tools_ready() && (path.is_dir() || compressible(path)) {
                     ui.global::<crate::Compress>().invoke_open_path(path.to_string_lossy().as_ref().into());
                     return EventResult::PreventDefault;
                 }
@@ -127,10 +126,16 @@ pub fn install(ui: &AppWindow) {
     });
 }
 
-/// Several files (or folders) dropped at once: the Compress page takes every video and
-/// folder; anywhere else only the first one opens.
+/// A video or a sound file: what the Compress page takes.
+fn compressible(path: &Path) -> bool {
+    let e = ext(path);
+    VIDEO.contains(&e.as_str()) || AUDIO.contains(&e.as_str())
+}
+
+/// Several files (or folders) dropped at once: the Compress page takes every video, sound
+/// file and folder; anywhere else only the first one opens.
 fn dropped_files(ui: &AppWindow, first: PathBuf, all: Vec<PathBuf>) {
-    let takes = |p: &PathBuf| p.is_dir() || VIDEO.contains(&ext(p).as_str());
+    let takes = |p: &PathBuf| p.is_dir() || compressible(p);
     if ui.get_page() == 2 && ui.get_tools_ready() && all.iter().any(takes) {
         for p in all.into_iter().filter(takes) {
             ui.global::<crate::Compress>().invoke_open_path(p.to_string_lossy().as_ref().into());
@@ -186,10 +191,8 @@ fn dropped(ui: &AppWindow, path: PathBuf) {
     let file = path.to_string_lossy().into_owned();
     match ui.get_page() {
         1 => ui.invoke_clip_open_path(file.into()),
-        2 if video => ui.global::<crate::Compress>().invoke_open_path(file.into()),
-        2 => crate::show_toast(ui, "Compress works on videos. Open audio files on the Clip page."),
-        // Download page (or anywhere else): ask. Audio can only be clipped.
-        _ if audio => ui.invoke_clip_open_path(file.into()),
+        2 => ui.global::<crate::Compress>().invoke_open_path(file.into()),
+        // Download page (or anywhere else): ask.
         _ => {
             ui.set_drop_file(file.into());
             ui.set_drop_name(name(&path).into());

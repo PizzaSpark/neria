@@ -2,7 +2,7 @@ import { Theme } from "../theme.slint";
 import { Icon, Dialog, ChoiceTile, Sticker } from "../widgets.slint";
 
 // A file dragged in from Explorer, or a link from a browser, over the page it would land
-// on (not the nav). kind: 0 not media, 1 video, 2 audio, 3 a link.
+// on (not the nav). kind: 0 not media, 1 video or sound, 2 clip only (a .gif), 3 a link.
 export component DropOverlay inherits Rectangle {
     in property <int> kind;
     in property <string> name;
@@ -43,7 +43,7 @@ export component DropOverlay inherits Rectangle {
             Text {
                 text: root.kind == 0 ? "Neria opens video and audio files"
                     : root.link ? (root.page == 1 ? "Drop to clip it" : "Drop to download it")
-                    : root.page == 2 ? (root.kind == 1 ? "Drop to compress it" : "Compress works on videos")
+                    : root.page == 2 ? (root.kind == 1 ? "Drop to compress it" : "Compress works on videos and sound")
                     : root.page == 1 || root.kind == 2 ? "Drop to clip it"
                     : "Drop to clip or compress it";
                 color: Theme.ink;
@@ -66,7 +66,7 @@ export component DropOverlay inherits Rectangle {
     }
 }
 
-// A video dropped on the Download page: clip it or compress it?
+// A video or sound file dropped on the Download page: clip it or compress it?
 export component DropChoice inherits Dialog {
     in property <string> name;
     callback choose(int); // 1 clip, 2 compress

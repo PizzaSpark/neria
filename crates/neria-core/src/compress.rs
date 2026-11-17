@@ -1,5 +1,6 @@
 //! Video compression: hit a target file size (e.g. Discord's 20 MB) or a quality level,
-//! using a GPU encoder when one works on this machine.
+//! using a GPU encoder when one works on this machine. Sound files (no picture) go through
+//! the same goals: AAC in .m4a, or Opus, at the bitrate the goal leaves (`plan_sound`).
 
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -43,6 +44,86 @@ impl Codec {
             Self::H264 => 0.035,
             Self::Hevc => 0.024,
             Self::Av1 => 0.02,
+        }
+    }
+}
+
+/// A sound file's format. "Plays everywhere" (H.264 for videos) is AAC in .m4a; Smaller and
+/// Smallest are Opus, which sounds as good at about two-thirds of the bitrate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SoundCodec {
+    Aac,
+    Opus,
+}
+
+impl SoundCodec {
+    pub fn for_codec(c: Codec) -> Self {
+        if c == Codec::H264 { Self::Aac } else { Self::Opus }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Aac => "AAC",
+            Self::Opus => "Opus",
+        }
+    }
+
+    pub fn ext(self) -> &'static str {
+        match self {
+            Self::Aac => "m4a",
+            Self::Opus => "opus",
+        }
+    }
+
+    /// More than this sounds no better (stereo).
+    fn max_kbps(self) -> f64 {
+        match self {
+            Self::Aac => 192.0,
+            Self::Opus => 160.0,
+        }
+    }
+
+    /// The least it can be made at all (mono by then).
+    fn min_kbps(self) -> f64 {
+        match self {
+            Self::Aac => 24.0,
+            Self::Opus => 12.0,
+        }
+    }
+
+    /// Below this, stereo costs more than it gives: mono.
+    fn mono_below(self) -> f64 {
+        match self {
+            Self::Aac => 48.0,
+            Self::Opus => 24.0,
+        }
+    }
+
+    /// The least that still sounds OK (stereo); `longest_fit` aims here.
+    fn ok_kbps(self) -> f64 {
+        match self {
+            Self::Aac => 48.0,
+            Self::Opus => 24.0,
+        }
+    }
+
+    /// How it'll sound at `kbps` over `channels` (mono needs about half).
+    fn look(self, kbps: f64, channels: u32) -> Look {
+        let k = if channels == 1 { kbps * 2.0 } else { kbps };
+        let steps = match self {
+            Self::Aac => [160.0, 112.0, 80.0, 48.0],
+            Self::Opus => [128.0, 80.0, 48.0, 24.0],
+        };
+        if k >= steps[0] {
+            Look::Same
+        } else if k >= steps[1] {
+            Look::NearlySame
+        } else if k >= steps[2] {
+            Look::BitSofter
+        } else if k >= steps[3] {
+            Look::Soft
+        } else {
+            Look::Blurry
         }
     }
 }
@@ -242,6 +323,17 @@ impl Look {
         }
     }
 
+    /// The same steps for a sound file.
+    pub fn sound_label(self) -> &'static str {
+        match self {
+            Self::Same => "sounds the same",
+            Self::NearlySame => "sounds nearly the same",
+            Self::BitSofter => "a bit duller",
+            Self::Soft => "muffled",
+            Self::Blurry => "poor",
+        }
+    }
+
     /// The best a picture at `height` can look, coming from `src_height`.
     fn cap_for(height: u32, src_height: u32) -> Self {
         if height + 8 >= src_height {
@@ -350,11 +442,39 @@ pub struct Plan {
     /// The size is tight: spend more time per frame (x264/x265 `slow`, as HandBrake's
     /// small "Social" presets do).
     pub tight: bool,
+    /// A sound file: made in this format, no picture (the fields above about the picture
+    /// are 0 / empty).
+    pub sound: Option<SoundCodec>,
+    /// Sound files: 1 mono, 2 stereo.
+    pub channels: u32,
 }
 
 impl Plan {
+    /// "looks nearly the same" / "sounds nearly the same".
+    pub fn look_label(&self) -> &'static str {
+        if self.sound.is_some() { self.look.sound_label() } else { self.look.label() }
+    }
+
+    /// A sound file's size for `length` seconds: its bitrate (plus ~1% for the container),
+    /// never over a size goal. A size goal often leaves more room than sound needs, so this
+    /// is what to show, not the goal. None for a video.
+    pub fn sound_bytes(&self, length: f64) -> Option<u64> {
+        self.sound?;
+        let b = (self.audio_kbps.unwrap_or(0) as f64 * 1000.0 / 8.0 * length * 1.01) as u64;
+        Some(self.target_bytes.map_or(b, |t| b.min(t)))
+    }
+
+    /// The result's file type.
+    pub fn ext(&self) -> &'static str {
+        self.sound.map_or("mp4", SoundCodec::ext)
+    }
+
     /// One-line technical summary (Advanced).
     pub fn summary(&self) -> String {
+        if let Some(sc) = self.sound {
+            let ch = if self.channels == 1 { "mono" } else { "stereo" };
+            return format!("{} kbps {}  ·  {ch}  ·  .{}", self.audio_kbps.unwrap_or(0), sc.label(), sc.ext());
+        }
         let mut parts = vec![format!("{}×{}", self.width, self.height)];
         if self.fps > 0.0 {
             parts.push(format!("{:.0} fps", self.fps));
@@ -376,6 +496,9 @@ impl Plan {
 
     /// What it'll look like, in plain words: "720p 30 fps, a bit softer".
     pub fn hint(&self) -> String {
+        if let Some(sc) = self.sound {
+            return format!("{} kbps {}, {}", self.audio_kbps.unwrap_or(0), sc.label(), self.look.sound_label());
+        }
         let fps = if self.fps_cut { format!(" {:.0} fps", self.fps) } else { String::new() };
         format!("{}p{fps}, {}", self.lines, self.look.label())
     }
@@ -398,7 +521,10 @@ fn shown_size(info: &FileInfo, crop: Option<Bars>) -> (u32, u32) {
 /// Work out resolution, fps and bitrates for `info` with `opts`.
 pub fn plan(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan> {
     if !info.has_video {
-        bail!("This file has no video to compress.");
+        if info.has_audio {
+            return plan_sound(info, opts);
+        }
+        bail!("This file has no picture or sound to compress.");
     }
     if info.duration <= 0.0 {
         bail!("Can't tell how long this video is.");
@@ -563,6 +689,72 @@ pub fn plan(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan
         fps_cut: fps < src_fps - 0.5,
         filters,
         tight: target_bytes.is_some() && by_quality >= Look::BitSofter,
+        sound: None,
+        channels: 0,
+    })
+}
+
+/// A sound file: the bitrate the goal leaves (a size goal), or one for the look (a keeping
+/// goal), never more than the file carries now. Mono when the bitrate is low.
+fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
+    if info.duration <= 0.0 {
+        bail!("Can't tell how long this file is.");
+    }
+    let length = opts.length(info);
+    if length < 0.1 {
+        bail!("The part to keep is empty: move Out after In.");
+    }
+    let sc = SoundCodec::for_codec(opts.codec);
+    let (kbps, target_bytes) = match opts.target {
+        Target::Quality(level) => {
+            // 0.7 (Smaller, still sharp): AAC 128 / Opus 96; 0.25: AAC 72 / Opus 48.
+            let l = level.clamp(0.0, 1.0) as f64;
+            let k = match sc {
+                SoundCodec::Aac => 40.0 + l * 125.0,
+                SoundCodec::Opus => 24.0 + l * 103.0,
+            };
+            ((k / 8.0).round() * 8.0, None)
+        }
+        Target::SizeMb(mb) => {
+            let target_bytes = (mb * 1_000_000.0) as u64;
+            // ~3% headroom for the container and the encoder's wobble.
+            let budget = target_bytes as f64 * 8.0 / 1000.0 / length * 0.97;
+            if budget < sc.min_kbps() {
+                bail!(
+                    "{} is too long to fit in {} MB. Trim it shorter or pick a bigger size.",
+                    fmt::duration(length),
+                    fmt_mb(mb)
+                );
+            }
+            (budget.floor(), Some(target_bytes))
+        }
+    };
+    // What the file carries now (its whole size over its length): more can't sound better.
+    let now = info.size_bytes as f64 * 8.0 / 1000.0 / info.duration;
+    // Mono sounds the same at half of stereo's bitrate.
+    let max = if info.audio_channels == 1 { sc.max_kbps() / 2.0 } else { sc.max_kbps() };
+    let kbps = kbps.min(max).min(now.floor().max(sc.min_kbps())).max(sc.min_kbps());
+    let channels = if info.audio_channels == 1 || kbps < sc.mono_below() { 1 } else { 2 };
+    Ok(Plan {
+        encoder: Encoder::Cpu(opts.codec),
+        width: 0,
+        height: 0,
+        lines: 0,
+        fps: 0.0,
+        video_kbps: None,
+        audio_kbps: Some(kbps as u32),
+        audio_tracks: 1,
+        captions: Vec::new(),
+        captions_dropped: 0,
+        chapters: opts.keep_tracks && !info.chapters.is_empty(),
+        quality: None,
+        target_bytes,
+        look: sc.look(kbps, channels),
+        fps_cut: false,
+        filters: Vec::new(),
+        tight: false,
+        sound: Some(sc),
+        channels,
     })
 }
 
@@ -574,6 +766,13 @@ pub fn longest_fit(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Opti
         && p.look < Look::Blurry
     {
         return None;
+    }
+    if !info.has_video {
+        // A sound file: as long as just-OK sound (as `plan_sound` counts the room) fits.
+        let sc = SoundCodec::for_codec(opts.codec);
+        let ok = if info.audio_channels == 1 { sc.ok_kbps() / 2.0 } else { sc.ok_kbps() };
+        let secs = (mb * 1e6 * 8.0 / 1000.0 * 0.97 / ok).floor();
+        return (secs >= 1.0 && secs < opts.length(info)).then_some(secs);
     }
     let (sw, sh) = shown_size(info, opts.crop);
     let lines = sw.min(sh).clamp(1, 360) as f64;
@@ -639,14 +838,14 @@ fn bars_worth_cutting(sw: u32, sh: u32, x0: u32, y0: u32, x1: u32, y1: u32) -> O
     (cut && sane).then_some(Bars { w, h, x: x0, y: y0 })
 }
 
-pub fn output_path(input: &Path, opts: &Options) -> PathBuf {
+pub fn output_path(input: &Path, opts: &Options, plan: &Plan) -> PathBuf {
     let dir = input.parent().map(Path::to_path_buf).unwrap_or_default();
     let stem = input.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "video".into());
     let tag = match opts.target {
         Target::SizeMb(mb) => format!("compressed {mb}MB"),
         Target::Quality(_) => "compressed".into(),
     };
-    clip::unique_path(&dir, &format!("{stem} ({tag})"), "mp4")
+    clip::unique_path(&dir, &format!("{stem} ({tag})"), plan.ext())
 }
 
 /// Pass: None = single pass, Some(1) / Some(2) = two-pass stage.
@@ -673,6 +872,25 @@ pub fn build_args(
     }
     a.push("-i".into());
     a.push(input.to_string_lossy().into_owned());
+    if let Some(sc) = plan.sound {
+        // A sound file: its first sound track, re-encoded; no cover art (an .opus can't
+        // hold one), the tags and chapters stay.
+        a.extend(["-map", "0:a:0", "-vn", "-sn", "-dn"].map(String::from));
+        match sc {
+            SoundCodec::Aac => a.extend(["-c:a", "aac"].map(String::from)),
+            SoundCodec::Opus => a.extend(["-c:a", "libopus", "-vbr", "on"].map(String::from)),
+        }
+        a.extend(["-b:a".into(), format!("{}k", plan.audio_kbps.unwrap_or(96))]);
+        a.extend(["-ac".into(), plan.channels.max(1).to_string()]);
+        if !plan.chapters {
+            a.extend(["-map_chapters", "-1"].map(String::from));
+        }
+        if sc == SoundCodec::Aac {
+            a.extend(["-movflags", "+faststart"].map(String::from));
+        }
+        a.push(out.to_string_lossy().into_owned());
+        return a;
+    }
     a.extend(["-map", "0:V:0"].map(String::from));
     if !plan.filters.is_empty() {
         a.extend(["-vf".into(), plan.filters.join(",")]);
@@ -791,7 +1009,7 @@ pub fn run(
     mut on: impl FnMut(Progress),
 ) -> Result<Outcome> {
     let mut plan = plan(info, opts, encoders)?;
-    let out = output_path(input, opts);
+    let out = output_path(input, opts, &plan);
     let work = paths::cache_dir();
     let length = opts.length(info);
     // Room for the result (quality mode: assume up to the original's size for that length).
@@ -828,7 +1046,12 @@ pub fn run(
         match plan.target_bytes {
             Some(target) if bytes > target && attempt < ATTEMPTS => {
                 let over = fmt::mb(bytes as f64);
-                if let Encoder::Gpu(codec, _) = plan.encoder {
+                if plan.sound.is_some() {
+                    // Sound: its bitrate, by how far over, plus a margin.
+                    let factor = target as f64 / bytes as f64 * 0.95;
+                    plan.audio_kbps = plan.audio_kbps.map(|k| ((k as f64 * factor).floor() as u32).max(8));
+                    on(Progress { fraction: 0.0, stage: format!("{over} is a bit over, redoing smaller…") });
+                } else if let Encoder::Gpu(codec, _) = plan.encoder {
                     // Graphics cards keep their own idea of the bitrate (Intel's came out
                     // bigger on every redo); the processor's two passes hit it exactly.
                     plan.encoder = Encoder::Cpu(codec);
@@ -912,6 +1135,11 @@ pub fn preview(
     std::fs::create_dir_all(&dir)?;
     let (from, to) = opts.range.unwrap_or((0.0, info.duration));
     let length = (to - from).max(0.1);
+    if let Some(bytes) = plan.sound_bytes(length) {
+        // A sound file: no pictures, and the size is its bitrate over its length, no
+        // samples needed.
+        return Ok(Preview { bytes, estimated: true, before: PathBuf::new(), after: PathBuf::new() });
+    }
     let spots: &[f64] = if plan.target_bytes.is_some() { &[0.5] } else { &[0.2, 0.5, 0.8] };
     let piece = 2.0_f64.min(length / spots.len() as f64);
     let (mut bytes, mut secs, mut middle) = (0u64, 0.0, None);
@@ -1016,11 +1244,81 @@ mod tests {
             has_video: true,
             has_audio: true,
             audio_tracks: 1,
+            audio_codec: "aac".into(),
+            audio_channels: 2,
             interlaced: false,
             subtitles: Vec::new(),
             chapters: Vec::new(),
             rotation: 0,
         }
+    }
+
+    /// A 30 minute WAV recording (1411 kbps, stereo).
+    fn song() -> FileInfo {
+        FileInfo {
+            duration: 1800.0,
+            width: 0,
+            height: 0,
+            fps: 0.0,
+            video_codec: String::new(),
+            size_bytes: 317_500_000,
+            has_video: false,
+            audio_codec: "pcm_s16le".into(),
+            ..info()
+        }
+    }
+
+    #[test]
+    fn sound_file_fits_a_size() {
+        let p = plan(&song(), &opts(Target::SizeMb(20.0)), &Encoders::default()).unwrap();
+        assert_eq!(p.sound, Some(SoundCodec::Aac));
+        // 20 MB over 30 min: ~86 kbps, kept stereo.
+        let k = p.audio_kbps.unwrap();
+        assert!((80..=90).contains(&k), "{k}");
+        assert_eq!(p.channels, 2);
+        assert_eq!(p.ext(), "m4a");
+        let args = build_args(Path::new("in.wav"), Path::new("out.m4a"), &song(), &p, None, None);
+        assert!(args.windows(2).any(|w| w == ["-c:a", "aac"]));
+        assert!(args.windows(2).any(|w| w == ["-b:a".to_string(), format!("{k}k")]));
+        assert!(!args.iter().any(|a| a == "0:V:0"));
+    }
+
+    #[test]
+    fn sound_file_goes_mono_then_refuses() {
+        let mut o = opts(Target::SizeMb(5.0));
+        o.codec = Codec::Hevc; // "Smaller": Opus
+        let p = plan(&song(), &o, &Encoders::default()).unwrap();
+        assert_eq!(p.sound, Some(SoundCodec::Opus));
+        assert_eq!(p.channels, 1); // ~21 kbps
+        assert_eq!(p.ext(), "opus");
+        assert!(plan(&song(), &opts(Target::SizeMb(2.0)), &Encoders::default()).is_err());
+        // And the part that would fit sounding OK: 2 MB at 48 kbps ≈ 5 min.
+        let fit = longest_fit(&song(), &opts(Target::SizeMb(2.0)), &Encoders::default()).unwrap();
+        assert!((300.0..330.0).contains(&fit), "{fit}");
+    }
+
+    #[test]
+    fn sound_file_never_grows() {
+        // A 64 kbps mp3: "Smaller, still sharp" (AAC 128) stays at what it has.
+        let small = FileInfo { size_bytes: 14_400_000, audio_codec: "mp3".into(), ..song() };
+        let p = plan(&small, &opts(Target::Quality(0.7)), &Encoders::default()).unwrap();
+        assert_eq!(p.audio_kbps, Some(64));
+        let p = plan(&song(), &opts(Target::Quality(0.7)), &Encoders::default()).unwrap();
+        assert_eq!(p.audio_kbps, Some(128));
+        assert_eq!(p.hint(), "128 kbps AAC, sounds nearly the same");
+    }
+
+    #[test]
+    fn mono_sound_needs_half() {
+        // A mono voice recording for Discord: 96 kbps sounds the same, so not 192.
+        let voice = FileInfo { audio_channels: 1, duration: 760.0, ..song() };
+        let p = plan(&voice, &opts(Target::SizeMb(20.0)), &Encoders::default()).unwrap();
+        assert_eq!((p.audio_kbps, p.channels, p.look), (Some(96), 1, Look::Same));
+        assert!(p.sound_bytes(760.0).unwrap() < 9_300_000);
+        // 30 min of it: the 20 MB goal leaves less room (~86 kbps), and that wins.
+        let long = FileInfo { duration: 1800.0, ..voice };
+        let p = plan(&long, &opts(Target::SizeMb(20.0)), &Encoders::default()).unwrap();
+        assert_eq!(p.audio_kbps, Some(86));
     }
 
     fn opts(target: Target) -> Options {
