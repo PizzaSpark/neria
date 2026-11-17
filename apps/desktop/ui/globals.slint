@@ -446,6 +446,13 @@ export struct CmpFile {
     progress: float,
 }
 
+// A part kept (Trim → Add this part).
+export struct CmpPart {
+    start: float,
+    end: float,
+    text: string, // "0:12 → 0:40  ·  0:28"
+}
+
 export global Compress {
     // ── The files ──
     // Nothing open / one file / several.
@@ -476,7 +483,6 @@ export global Compress {
     in property <image> after;
     in property <string> after-label; // "After · 720p"
     in property <bool> preview-busy;
-    in property <bool> sample-busy;
 
     // ── Advanced ──
     in-out property <bool> advanced-open;
@@ -495,6 +501,9 @@ export global Compress {
     in property <string> tracks-text; // "2 sound tracks, captions and chapters" ("" = nothing extra)
     in-out property <bool> cut-bars: true;
     in property <string> bars-text; // "Black bars found (1920×800)" ("" = none)
+    // Volume: 0 as is, 1 even out; even out to 0 online video (-14 LUFS), 1 podcast (-16)
+    in-out property <int> volume;
+    in-out property <int> loudness;
     in property <string> summary; // the technical line
 
     // ── Trim (one file) ──
@@ -507,6 +516,22 @@ export global Compress {
     in property <[string]> chapters;
     in-out property <int> chapter: -1;
     in property <string> trim-text; // "1:12 of 2:14"
+    // Parts kept (Add this part): with any, they're what's saved, the strip picks the next.
+    in property <[CmpPart]> parts;
+    // Two or more parts: 0 joined into one file (the goal is for it), 1 one file each
+    // (each fits the goal on its own).
+    in-out property <int> split;
+    in property <string> parts-text; // "3 parts · 2:10 in all"
+
+    // ── Listening (the 10 s sample, in the page) ──
+    in property <bool> player-on; // a sample is loaded
+    in property <bool> playing;
+    in property <bool> player-busy; // making the sample
+    // 0 the file as it is (now), 1 the result (after): the same moment either way.
+    in-out property <int> side: 1;
+    in property <image> player-frame;
+    in property <float> player-pos; // 0..1 of the sample
+    in property <string> player-time; // "0:03 / 0:10"
 
     // ── Running ──
     in property <bool> running;
@@ -523,10 +548,13 @@ export global Compress {
     callback clear();
     callback changed(); // any option
     callback fix(); // the problem's quick fix
-    callback play-sample();
     callback trim-changed(); // In / Out moved (Rust snaps and says the length)
     callback trim-whole();
     callback trim-chapter(int);
+    callback add-part(); // the strip's In → Out
+    callback remove-part(int);
+    callback play-pause(); // the player: makes the sample first
+    callback hear(); // `side` changed: the other one, at the same moment
     callback start();
     callback cancel();
     callback show(int); // a finished file in Explorer (-1: the one file)

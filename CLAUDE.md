@@ -37,7 +37,7 @@ every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check
   - Pages take plain properties (no `clip-`/`cmp-` prefixes) and are bound in `app.slint`.
 
   Rust: `main.rs` (download page), `clipper.rs` (clip page; mpv renders into a GL texture shown
-    as a Slint image), `compressor.rs` (compress page), `signin.rs` (`neria --sign-in <site>`:
+    as a Slint image), `compressor.rs` (compress page; kept parts, Volume), `cmp_player.rs` (its 10 s sample played in the page, Now / After: its own mpv drawn from the rendering hook in `clipper.rs`), `signin.rs` (`neria --sign-in <site>`:
     the WebView2 sign-in window, its own process) + `signin_ui.rs`, `extras_ui.rs` (captions,
     audio tracks, chapters), `background_ui.rs` (tray, notifications, Download later),
     `names_ui.rs` (filename builder), `sound_ui.rs` (Clip page → Sound), `gif_ui.rs` (Make a GIF), `picture_ui.rs` (Picture mode), `clips_ui.rs` (clip list), `timeline_ui.rs` (the timeline's zoom: view, waveform from peaks, close-up frames), `order_ui.rs` (queue order: the list is the truth, the
@@ -72,7 +72,8 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   (how far back the site keeps it; a rewound part through the queue, `NERIA_WAIT` / `NERIA_NOW`
   to download the same mark later; the replay buffer)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example compress -- <file> <discord|email|whatsapp|sharp|tiny|mb|q0.0-1.0> [h264|hevc|av1] [cpu|gpu]`
-  (`--range <a> <b>`, `--first-only` (else every sound track, captions, chapters), `--bars`,
+  (`--range <a> <b>`, `--parts 10-20,60-75 [--each]` (joined, or a file each), `--even <LUFS>`,
+  `--first-only` (else every sound track, captions, chapters), `--bars`,
   `--preview` (size estimate + before/after frames, no encode), `--sample <at> <secs>`)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example spotify -- <spotify link> <out_dir> [max_tracks] [--match-only] [--rematch]`
   (`--lyrics-only`, `--number`, `--add-lyrics`, `--no-lyrics`, `--no-verify`,
@@ -94,7 +95,7 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
 Dev env hooks for the app: `NERIA_OPEN` (file or URL into the clipper), `NERIA_CLIP_IN` /
 `NERIA_CLIP_OUT`, `NERIA_CLIP_PLAY` (start playing from In), `NERIA_CLIP_VIEW` (`start,span` in seconds: open the timeline zoomed), `NERIA_CLIP_LOOP` (loop on), `NERIA_COMPRESS` (files or folders onto the Compress page, `;` between), `NERIA_COMPRESS_START`
 (auto-start once read), `NERIA_COMPRESS_GOAL` (`discord`, `email`, `whatsapp`, `sharp`, `tiny` or MB),
-`NERIA_COMPRESS_TRIM` (`in,out` seconds: Trim open on that part), `NERIA_COMPRESS_ADVANCED` (the fold open), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
+`NERIA_COMPRESS_TRIM` (`in,out` seconds: Trim open on that part), `NERIA_COMPRESS_PARTS` (`10-20,30-40`: those parts kept; `NERIA_COMPRESS_EACH`: a file each), `NERIA_COMPRESS_EVEN` (`14` / `16`: Volume → Even out), `NERIA_COMPRESS_PLAY` (press the sample player once read), `NERIA_COMPRESS_ADVANCED` (the fold open), `NERIA_URL` (paste a link on the Download page), `NERIA_URL_START` (press
 Download once a preview is ready, unless it's greyed out), `NERIA_REPORT` (copy the report of the first
 failed download), `NERIA_PAGE` (`clip` or `compress`: open that page, empty), `NERIA_FILTER` (queue filter: `active`, `done` or `attention`), `NERIA_LYRICS_SPOTIFY` (tick Spotify's own lyrics, to see its warning and sign-in; `signed-in`: as if signed in), `NERIA_LYRICS_ONLY` (with a Spotify `NERIA_URL`: press "Lyrics only" once it's looked up), `NERIA_ADD_LYRICS` (a folder: "Add lyrics to songs I already have" on it, no picker), `NERIA_SETTINGS` (open the settings drawer; `download`, `following`, `spotify`, `network`, `general` (was `appearance`, still accepted) or `about` picks the section), `NERIA_COPIED` (a link: show the clipboard watcher's "Link copied" strip), `NERIA_WATCH` (a file or link: open it in watch mode), `NERIA_OWN_SOUND` (a `.wav`: pick it as "Your own sound…" for both sound menus, no file picker; `demo` / `missing`: show both menus on it with sample names, file there / gone, nothing saved), `NERIA_UPDATE_URL` (check this "latest
 release" JSON instead of GitHub; test self-update with a local server and a copy of the exe),

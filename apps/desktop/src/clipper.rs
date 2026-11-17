@@ -25,11 +25,11 @@ const MEDIA_EXTENSIONS: &[&str] = &[
     "aac",
 ];
 
-struct Target {
-    tex: glow::Texture,
-    fbo: glow::Framebuffer,
-    w: i32,
-    h: i32,
+pub(crate) struct Target {
+    pub(crate) tex: glow::Texture,
+    pub(crate) fbo: glow::Framebuffer,
+    pub(crate) w: i32,
+    pub(crate) h: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -780,7 +780,7 @@ impl Clipper {
     }
 }
 
-unsafe fn make_target(gl: &glow::Context, w: i32, h: i32) -> Result<Target> {
+pub(crate) unsafe fn make_target(gl: &glow::Context, w: i32, h: i32) -> Result<Target> {
     unsafe {
         let prev_tex = gl.get_parameter_i32(glow::TEXTURE_BINDING_2D);
         let prev_fbo = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING);
@@ -1004,9 +1004,18 @@ pub fn install(
                 RenderingState::BeforeRendering => {
                     if let Some(ui) = weak.upgrade() {
                         clipper.borrow_mut().render(&ui);
+                        // The Compress page's sample player draws with the same GL context.
+                        if let Some(gl) = &clipper.borrow().gl {
+                            crate::cmp_player::render(&ui, gl);
+                        }
                     }
                 }
-                RenderingState::RenderingTeardown => clipper.borrow_mut().teardown(),
+                RenderingState::RenderingTeardown => {
+                    if let Some(gl) = &clipper.borrow().gl {
+                        crate::cmp_player::teardown(gl);
+                    }
+                    clipper.borrow_mut().teardown();
+                }
                 _ => {}
             })
             .map_err(|e| anyhow!("video preview needs the OpenGL renderer: {e:?}"))?;

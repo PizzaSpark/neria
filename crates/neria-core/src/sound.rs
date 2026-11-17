@@ -232,7 +232,7 @@ pub fn measure(
     Ok(parse_loudness(&log))
 }
 
-fn parse_loudness(log: &str) -> Option<Loudness> {
+pub(crate) fn parse_loudness(log: &str) -> Option<Loudness> {
     let start = log.rfind('{')?;
     let end = start + log[start..].find('}')? + 1;
     let v: serde_json::Value = serde_json::from_str(&log[start..end]).ok()?;

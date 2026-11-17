@@ -139,7 +139,47 @@ component Goals inherits VerticalLayout {
     }
 }
 
-// Before / after, the sizes, and a sample to watch.
+// The 10 s sample, played here: Now (the file as it is) or After (compressed, with the
+// volume evened out if asked), switching at the same moment.
+component Player inherits VerticalLayout {
+    spacing: 8px;
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        GhostButton {
+            compact: true;
+            text: Compress.player-busy ? "Making a sample…"
+                : Compress.player-on ? ""
+                : Compress.sound-file ? "Listen to 10 s" : "Play 10 s";
+            icon: Compress.playing ? "\u{E769}" : "\u{E768}";
+            label: Compress.playing ? "Pause" : Compress.sound-file ? "Listen to a 10 s sample" : "Play a 10 s sample";
+            clicked => {
+                if !Compress.player-busy {
+                    Compress.play-pause();
+                }
+            }
+        }
+        ChoiceChips {
+            horizontal-stretch: 0;
+            options: ["Now", "After"];
+            current <=> Compress.side;
+            changed => { Compress.hear(); }
+        }
+        if Compress.player-on: Text {
+            horizontal-stretch: 0;
+            text: Compress.player-time;
+            color: Theme.muted;
+            font-family: Theme.mono;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+    if Compress.player-on: Bar {
+        value: Compress.player-pos;
+    }
+}
+
+// Before / after, the sizes, and the sample to play.
 component Result inherits VerticalLayout {
     spacing: 10px;
     if Compress.verdict != "": Text {
@@ -157,8 +197,9 @@ component Result inherits VerticalLayout {
         font-size: 12px;
         wrap: word-wrap;
     }
-    // A sound file has no pictures to compare: the sample is how to hear it.
-    if !Compress.sound-file: CompareSlider {
+    // A video: before / after pictures, or the sample playing in their place. A sound file
+    // has no pictures: the player is how to hear it.
+    if !Compress.sound-file && !Compress.player-on: CompareSlider {
         height: self.width * 9 / 16;
         before: Compress.before;
         after: Compress.after;
@@ -166,19 +207,19 @@ component Result inherits VerticalLayout {
         after-label: Compress.after-label;
         busy-text: Compress.preview-busy ? "Working it out…" : "";
     }
-    HorizontalLayout {
-        alignment: start;
-        GhostButton {
-            compact: true;
-            text: Compress.sample-busy ? "Making a sample…" : Compress.sound-file ? "Listen to a 10 s sample" : "Play a 10 s sample";
-            icon: "\u{E768}";
-            clicked => {
-                if !Compress.sample-busy {
-                    Compress.play-sample();
-                }
-            }
+    if !Compress.sound-file && Compress.player-on: Rectangle {
+        height: self.width * 9 / 16;
+        border-radius: 10px;
+        clip: true;
+        background: Theme.video;
+        Image {
+            width: parent.width;
+            height: parent.height;
+            source: Compress.player-frame;
+            image-fit: contain;
         }
     }
+    Player { }
 }
 
 component Advanced inherits VerticalLayout {
@@ -259,6 +300,21 @@ component Advanced inherits VerticalLayout {
             ChoiceChips {
                 options: ["128 kbps", "96 kbps", "64 kbps", "No sound"];
                 current <=> Compress.sound;
+                changed => { Compress.changed(); }
+            }
+        }
+        // Even out the sound (as the Clip page's Sound does), unless there's none kept.
+        if Compress.sound-file || Compress.sound != 3: VerticalLayout {
+            spacing: 6px;
+            OptionHead { text: "Volume"; }
+            ChoiceChips {
+                options: ["As is", "Even out"];
+                current <=> Compress.volume;
+                changed => { Compress.changed(); }
+            }
+            if Compress.volume == 1: ChoiceChips {
+                options: ["Online video · -14 LUFS", "Podcast · -16 LUFS"];
+                current <=> Compress.loudness;
                 changed => { Compress.changed(); }
             }
         }
@@ -427,7 +483,8 @@ export component CompressPage inherits Rectangle {
                         spacing: 8px;
                         Text {
                             horizontal-stretch: 0;
-                            text: "Only this part";
+                            // With parts kept, the strip picks the next one to add.
+                            text: Compress.parts.length > 0 ? "Next part" : "Only this part";
                             color: Theme.muted;
                             font-size: 13px;
                             vertical-alignment: center;
@@ -468,6 +525,55 @@ export component CompressPage inherits Rectangle {
                             current <=> Compress.chapter;
                             changed => { Compress.trim-chapter(Compress.chapter); }
                         }
+                    }
+                    // Several parts: keep this one, pick the next on the strip, and so on.
+                    HorizontalLayout {
+                        spacing: 10px;
+                        GhostButton {
+                            horizontal-stretch: 0;
+                            compact: true;
+                            text: Compress.parts.length == 0 ? "Keep this part, add more" : "Add this part";
+                            icon: "\u{E710}";
+                            clicked => { Compress.add-part(); }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: Compress.parts-text;
+                            color: Theme.muted;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                    for p[i] in Compress.parts: HorizontalLayout {
+                        spacing: 10px;
+                        Text {
+                            horizontal-stretch: 0;
+                            min-width: 46px;
+                            text: "Part " + (i + 1);
+                            color: Theme.muted;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: p.text;
+                            color: Theme.ink;
+                            font-family: Theme.mono;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        IconButton {
+                            icon: "\u{E711}";
+                            label: "Take part " + (i + 1) + " off";
+                            clicked => { Compress.remove-part(i); }
+                        }
+                    }
+                    if Compress.parts.length >= 2: ChoiceChips {
+                        options: ["Joined into one file", "One file each"];
+                        current <=> Compress.split;
+                        changed => { Compress.changed(); }
                     }
                 }
 

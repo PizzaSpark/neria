@@ -18,6 +18,7 @@ mod background_ui;
 mod bulk_ui;
 mod clipper;
 mod clips_ui;
+mod cmp_player;
 mod compressor;
 mod drop_ui;
 mod extras_ui;

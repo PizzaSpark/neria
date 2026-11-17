@@ -11,6 +11,7 @@ use std::thread;
 use anyhow::{Context, Result, bail};
 
 use crate::media::FileInfo;
+use crate::sound::{AudioEdit, Level, Loudness};
 use crate::{clip, fmt, paths, proc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -379,6 +380,14 @@ pub struct Options {
     pub audio_kbps: Option<u32>,
     /// Only this part, in seconds (start, end). None = the whole video.
     pub range: Option<(f64, f64)>,
+    /// Several parts joined into one file, in this order (2 or more; `range` is then None).
+    /// The size goal is for the joined file.
+    pub parts: Vec<(f64, f64)>,
+    /// One of several parts saved as files of their own: its number, for the name.
+    pub part_no: Option<usize>,
+    /// Even out the sound to this loudness (LUFS), measured first (two passes, as the Clip
+    /// page's Sound does).
+    pub even: Option<f32>,
     /// Keep every sound track, the text captions and the chapter marks (else: the first
     /// sound track only, no captions, no chapters).
     pub keep_tracks: bool,
@@ -387,12 +396,20 @@ pub struct Options {
 }
 
 impl Options {
-    /// How long the result will be: the trimmed part, or the whole video.
+    /// How long the result will be: the joined parts, the trimmed part, or the whole video.
     pub fn length(&self, info: &FileInfo) -> f64 {
+        if !self.parts.is_empty() {
+            return self.parts.iter().map(|&(a, b)| (b.min(info.duration) - a.max(0.0)).max(0.0)).sum();
+        }
         match self.range {
             Some((a, b)) => (b.min(info.duration) - a.max(0.0)).max(0.0),
             None => info.duration,
         }
+    }
+
+    /// The whole file, untouched: nothing trimmed or joined.
+    pub fn whole(&self) -> bool {
+        self.range.is_none() && self.parts.is_empty()
     }
 
     pub fn for_goal(goal: Goal) -> Self {
@@ -404,6 +421,9 @@ impl Options {
             max_fps: None,
             audio_kbps: Some(96),
             range: None,
+            parts: Vec::new(),
+            part_no: None,
+            even: None,
             keep_tracks: true,
             crop: None,
         }
@@ -447,6 +467,14 @@ pub struct Plan {
     pub sound: Option<SoundCodec>,
     /// Sound files: 1 mono, 2 stereo.
     pub channels: u32,
+    /// Parts joined into one file (from `Options::parts`): no captions or chapters then
+    /// (their times would be wrong), the first sound track only.
+    pub parts: Vec<(f64, f64)>,
+    /// Even out the sound to this loudness (LUFS).
+    pub even: Option<f32>,
+    /// What the loudness pass measured (`run` fills it in); without it evening out is
+    /// one pass, fine for a sample to listen to.
+    pub measured: Option<Loudness>,
 }
 
 impl Plan {
@@ -464,6 +492,14 @@ impl Plan {
         Some(self.target_bytes.map_or(b, |t| b.min(t)))
     }
 
+    /// The `-af` chain for evening out `dur` seconds of sound (None: not asked). With the
+    /// measured loudness it's the second of two passes; without, one pass (samples).
+    /// loudnorm works at 192 kHz inside: back to 48 kHz after.
+    pub fn audio_filter(&self, dur: f64) -> Option<String> {
+        let edit = AudioEdit { level: Level::Normalize(self.even?), ..Default::default() };
+        edit.chain(dur, self.measured.as_ref()).map(|c| format!("{c},aresample=48000"))
+    }
+
     /// The result's file type.
     pub fn ext(&self) -> &'static str {
         self.sound.map_or("mp4", SoundCodec::ext)
@@ -471,9 +507,16 @@ impl Plan {
 
     /// One-line technical summary (Advanced).
     pub fn summary(&self) -> String {
+        let mut extra = String::new();
+        if let Some(t) = self.even {
+            extra.push_str(&format!("  ·  evened out ({t:.0} LUFS)"));
+        }
+        if !self.parts.is_empty() {
+            extra.push_str(&format!("  ·  {} parts joined", self.parts.len()));
+        }
         if let Some(sc) = self.sound {
             let ch = if self.channels == 1 { "mono" } else { "stereo" };
-            return format!("{} kbps {}  ·  {ch}  ·  .{}", self.audio_kbps.unwrap_or(0), sc.label(), sc.ext());
+            return format!("{} kbps {}  ·  {ch}  ·  .{}{extra}", self.audio_kbps.unwrap_or(0), sc.label(), sc.ext());
         }
         let mut parts = vec![format!("{}×{}", self.width, self.height)];
         if self.fps > 0.0 {
@@ -491,7 +534,7 @@ impl Plan {
         if self.encoder.two_pass() && self.video_kbps.is_some() {
             parts.push("two passes".into());
         }
-        parts.join("  ·  ")
+        parts.join("  ·  ") + &extra
     }
 
     /// What it'll look like, in plain words: "720p 30 fps, a bit softer".
@@ -520,6 +563,19 @@ fn shown_size(info: &FileInfo, crop: Option<Bars>) -> (u32, u32) {
 
 /// Work out resolution, fps and bitrates for `info` with `opts`.
 pub fn plan(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan> {
+    let mut p = plan_file(info, opts, encoders)?;
+    if !opts.parts.is_empty() {
+        p.parts = opts.parts.clone();
+        p.captions.clear();
+        p.captions_dropped = 0;
+        p.chapters = false;
+        p.audio_tracks = p.audio_tracks.min(1);
+    }
+    p.even = opts.even.filter(|_| info.has_audio && p.audio_kbps.is_some());
+    Ok(p)
+}
+
+fn plan_file(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan> {
     if !info.has_video {
         if info.has_audio {
             return plan_sound(info, opts);
@@ -691,6 +747,9 @@ pub fn plan(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan
         tight: target_bytes.is_some() && by_quality >= Look::BitSofter,
         sound: None,
         channels: 0,
+        parts: Vec::new(),
+        even: None,
+        measured: None,
     })
 }
 
@@ -755,6 +814,9 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
         tight: false,
         sound: Some(sc),
         channels,
+        parts: Vec::new(),
+        even: None,
+        measured: None,
     })
 }
 
@@ -841,19 +903,26 @@ fn bars_worth_cutting(sw: u32, sh: u32, x0: u32, y0: u32, x1: u32, y1: u32) -> O
 pub fn output_path(input: &Path, opts: &Options, plan: &Plan) -> PathBuf {
     let dir = input.parent().map(Path::to_path_buf).unwrap_or_default();
     let stem = input.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "video".into());
-    let tag = match opts.target {
+    let mut tag = match opts.target {
         Target::SizeMb(mb) => format!("compressed {mb}MB"),
         Target::Quality(_) => "compressed".into(),
     };
+    if let Some(n) = opts.part_no {
+        tag.push_str(&format!(", part {n}"));
+    } else if !opts.parts.is_empty() {
+        tag.push_str(&format!(", {} parts", opts.parts.len()));
+    }
     clip::unique_path(&dir, &format!("{stem} ({tag})"), plan.ext())
 }
 
 /// Pass: None = single pass, Some(1) / Some(2) = two-pass stage.
-/// `range`: only that part (the same seek in both passes, so their stats line up).
+/// `range`: only that part (the same seek in both passes, so their stats line up); a sample
+/// passes its own. Without one, `plan.parts` (2 or more) are trimmed and joined in one
+/// filter graph.
 pub fn build_args(
     input: &Path,
     out: &Path,
-    _info: &FileInfo,
+    info: &FileInfo,
     plan: &Plan,
     range: Option<(f64, f64)>,
     pass: Option<u8>,
@@ -861,6 +930,12 @@ pub fn build_args(
     let enc = plan.encoder;
     let mut a: Vec<String> =
         ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y"].map(String::from).to_vec();
+    let joined = range.is_none() && !plan.parts.is_empty();
+    let dur = match range {
+        Some((start, end)) => (end - start).max(0.0),
+        None if joined => plan.parts.iter().map(|&(s, e)| (e - s).max(0.0)).sum(),
+        None => info.duration,
+    };
     if let Some((start, end)) = range {
         // Before -i: a fast seek, still frame-exact since everything is re-encoded.
         a.extend([
@@ -872,10 +947,56 @@ pub fn build_args(
     }
     a.push("-i".into());
     a.push(input.to_string_lossy().into_owned());
+    let with_video = plan.sound.is_none();
+    let with_audio = plan.audio_kbps.is_some() && info.has_audio && pass != Some(1);
+    let af = if with_audio { plan.audio_filter(dur) } else { None };
+    if joined {
+        // Each part trimmed from the file, then joined; the picture's filters and the
+        // sound's evening out apply to the joined whole.
+        let mut graph = Vec::new();
+        let mut inputs = String::new();
+        for (i, &(s, e)) in plan.parts.iter().enumerate() {
+            if with_video {
+                graph.push(format!("[0:V:0]trim=start={s:.3}:end={e:.3},setpts=PTS-STARTPTS[v{i}]"));
+                inputs.push_str(&format!("[v{i}]"));
+            }
+            if with_audio {
+                graph.push(format!("[0:a:0]atrim=start={s:.3}:end={e:.3},asetpts=PTS-STARTPTS[a{i}]"));
+                inputs.push_str(&format!("[a{i}]"));
+            }
+        }
+        let outs = format!("{}{}", if with_video { "[vj]" } else { "" }, if with_audio { "[aj]" } else { "" });
+        graph.push(format!(
+            "{inputs}concat=n={}:v={}:a={}{outs}",
+            plan.parts.len(),
+            with_video as u8,
+            with_audio as u8
+        ));
+        if with_video {
+            let vf = if plan.filters.is_empty() { "null".to_string() } else { plan.filters.join(",") };
+            graph.push(format!("[vj]{vf}[vo]"));
+        }
+        if with_audio {
+            graph.push(format!("[aj]{}[ao]", af.as_deref().unwrap_or("anull")));
+        }
+        a.extend(["-filter_complex".into(), graph.join(";")]);
+        if with_video {
+            a.extend(["-map", "[vo]"].map(String::from));
+        }
+        if with_audio {
+            a.extend(["-map", "[ao]"].map(String::from));
+        }
+    }
     if let Some(sc) = plan.sound {
         // A sound file: its first sound track, re-encoded; no cover art (an .opus can't
         // hold one), the tags and chapters stay.
-        a.extend(["-map", "0:a:0", "-vn", "-sn", "-dn"].map(String::from));
+        if !joined {
+            a.extend(["-map", "0:a:0"].map(String::from));
+            if let Some(f) = &af {
+                a.extend(["-af".into(), f.clone()]);
+            }
+        }
+        a.extend(["-vn", "-sn", "-dn"].map(String::from));
         match sc {
             SoundCodec::Aac => a.extend(["-c:a", "aac"].map(String::from)),
             SoundCodec::Opus => a.extend(["-c:a", "libopus", "-vbr", "on"].map(String::from)),
@@ -891,9 +1012,11 @@ pub fn build_args(
         a.push(out.to_string_lossy().into_owned());
         return a;
     }
-    a.extend(["-map", "0:V:0"].map(String::from));
-    if !plan.filters.is_empty() {
-        a.extend(["-vf".into(), plan.filters.join(",")]);
+    if !joined {
+        a.extend(["-map", "0:V:0"].map(String::from));
+        if !plan.filters.is_empty() {
+            a.extend(["-vf".into(), plan.filters.join(",")]);
+        }
     }
 
     a.extend(["-c:v".into(), enc.ffmpeg_name()]);
@@ -963,9 +1086,14 @@ pub fn build_args(
 
     match plan.audio_kbps {
         Some(kbps) => {
-            let map = if plan.audio_tracks > 1 { "0:a?" } else { "0:a:0?" };
+            if !joined {
+                let map = if plan.audio_tracks > 1 { "0:a?" } else { "0:a:0?" };
+                a.extend(["-map".into(), map.into()]);
+                if let Some(f) = &af {
+                    a.extend(["-af".into(), f.clone()]);
+                }
+            }
             // Stereo: 5.1 at a small bitrate sounds worse and wastes the budget.
-            a.extend(["-map".into(), map.into()]);
             a.extend(["-c:a", "aac", "-ac", "2", "-b:a"].map(String::from));
             a.push(format!("{kbps}k"));
         }
@@ -1019,6 +1147,17 @@ pub fn run(
     };
     if let Some(dir) = out.parent() {
         crate::disk::check(dir, needed).map_err(|m| anyhow::anyhow!("{m} Free some up and try again."))?;
+    }
+    // Evening out: how loud the part(s) are first, so the encode can set it in one go.
+    if let Some(target) = plan.even {
+        on(Progress { fraction: 0.0, stage: "Measuring the loudness…".into() });
+        plan.measured = measure(input, info, opts, target, cancel, |f| {
+            on(Progress { fraction: f, stage: "Measuring the loudness…".into() })
+        })?;
+        if plan.measured.is_none() {
+            // Only silence: nothing to even out.
+            plan.even = None;
+        }
     }
 
     const ATTEMPTS: usize = 3;
@@ -1083,6 +1222,42 @@ pub fn run(
     unreachable!()
 }
 
+/// How loud what `opts` keeps is (the trimmed part, the joined parts or the whole file):
+/// the first pass of evening out. None for silence.
+fn measure(
+    input: &Path,
+    info: &FileInfo,
+    opts: &Options,
+    target: f32,
+    cancel: &AtomicBool,
+    on: impl FnMut(f32),
+) -> Result<Option<Loudness>> {
+    let mut a: Vec<String> = ["-hide_banner", "-nostats", "-progress", "pipe:1", "-y"].map(String::from).to_vec();
+    if let Some((s, e)) = opts.range {
+        a.extend(["-ss".into(), format!("{:.3}", s.max(0.0)), "-t".into(), format!("{:.3}", (e - s).max(0.0))]);
+    }
+    a.extend(["-i".into(), input.to_string_lossy().into_owned()]);
+    let measure = format!("loudnorm=I={target}:TP=-1.5:LRA=11:print_format=json");
+    if opts.parts.is_empty() {
+        a.extend(["-map", "0:a:0", "-vn", "-sn", "-dn", "-af"].map(String::from));
+        a.push(measure);
+    } else {
+        let mut graph: Vec<String> = opts
+            .parts
+            .iter()
+            .enumerate()
+            .map(|(i, &(s, e))| format!("[0:a:0]atrim=start={s:.3}:end={e:.3},asetpts=PTS-STARTPTS[a{i}]"))
+            .collect();
+        let inputs: String = (0..opts.parts.len()).map(|i| format!("[a{i}]")).collect();
+        graph.push(format!("{inputs}concat=n={}:v=0:a=1,{measure}[m]", opts.parts.len()));
+        a.extend(["-filter_complex".into(), graph.join(";"), "-map".into(), "[m]".into()]);
+    }
+    a.extend(["-f", "null", "-"].map(String::from));
+    let log = crate::sound::run_ffmpeg(&a, opts.length(info), cancel, on)
+        .map_err(|e| anyhow::anyhow!("Couldn't measure the loudness: {e}"))?;
+    Ok(crate::sound::parse_loudness(&log))
+}
+
 /// A short piece encoded with the real settings, to look at or measure.
 pub struct Sample {
     pub path: PathBuf,
@@ -1133,9 +1308,11 @@ pub fn preview(
     let plan = plan(info, opts, encoders)?;
     let dir = paths::cache_dir().join("compress-preview");
     std::fs::create_dir_all(&dir)?;
-    let (from, to) = opts.range.unwrap_or((0.0, info.duration));
+    // Samples come from the part kept (joined parts: the longest); the size is for all of it.
+    let (from, to) = sample_span(info, opts);
     let length = (to - from).max(0.1);
-    if let Some(bytes) = plan.sound_bytes(length) {
+    let total = opts.length(info).max(0.1);
+    if let Some(bytes) = plan.sound_bytes(total) {
         // A sound file: no pictures, and the size is its bitrate over its length, no
         // samples needed.
         return Ok(Preview { bytes, estimated: true, before: PathBuf::new(), after: PathBuf::new() });
@@ -1162,9 +1339,16 @@ pub fn preview(
     let (estimated, total) = match plan.target_bytes {
         // A size goal ends at most there; the encode aims a little under.
         Some(t) => (false, t),
-        None => (true, (bytes as f64 / secs.max(0.1) * length) as u64),
+        None => (true, (bytes as f64 / secs.max(0.1) * total) as u64),
     };
     Ok(Preview { bytes: total, estimated, before, after })
+}
+
+/// Where samples (the preview's, the one you play) come from: the trimmed part, the longest
+/// of joined parts, or the whole file.
+pub fn sample_span(info: &FileInfo, opts: &Options) -> (f64, f64) {
+    let longest = opts.parts.iter().copied().max_by(|a, b| (a.1 - a.0).total_cmp(&(b.1 - b.0)));
+    opts.range.or(longest).unwrap_or((0.0, info.duration))
 }
 
 /// One picture of `path` at `at`, `height` px tall (as shown), cropped first if asked.
@@ -1330,9 +1514,37 @@ mod tests {
             max_fps: None,
             audio_kbps: Some(128),
             range: None,
+            parts: Vec::new(),
+            part_no: None,
+            even: None,
             keep_tracks: false,
             crop: None,
         }
+    }
+
+    #[test]
+    fn joined_parts_one_graph() {
+        let mut o = opts(Target::SizeMb(10.0));
+        o.parts = vec![(10.0, 20.0), (60.0, 75.0)];
+        o.even = Some(-14.0);
+        let p = plan(&info(), &o, &Encoders::default()).unwrap();
+        assert_eq!(o.length(&info()), 25.0);
+        assert_eq!(p.even, Some(-14.0));
+        let args = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &info(), &p, None, None);
+        let graph = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(graph.contains("[0:V:0]trim=start=60.000:end=75.000"), "{graph}");
+        assert!(graph.contains("concat=n=2:v=1:a=1[vj][aj]"), "{graph}");
+        assert!(graph.contains("[aj]loudnorm=I=-14"), "{graph}");
+        assert!(args.windows(2).any(|w| w == ["-map", "[vo]"]));
+        assert!(!args.iter().any(|a| a == "0:V:0"));
+        // The first of two passes: picture only.
+        let p1 = build_args(Path::new("in.mp4"), Path::new("out.mp4"), &info(), &p, None, Some(1));
+        let g1 = &p1[p1.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(g1.contains("concat=n=2:v=1:a=0[vj]") && !g1.contains("atrim"), "{g1}");
+        // A sample of it is a plain range of the file.
+        let s = build_args(Path::new("in.mp4"), Path::new("s.mp4"), &info(), &p, Some((60.0, 62.0)), None);
+        assert!(!s.iter().any(|a| a == "-filter_complex"));
+        assert!(s.iter().any(|a| a.starts_with("loudnorm=I=-14:TP=-1.5:LRA=11,aresample")));
     }
 
     #[test]

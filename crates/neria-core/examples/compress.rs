@@ -4,6 +4,9 @@
 //! `<goal>`: `discord`, `email`, `whatsapp`, `sharp`, `tiny`, a size in MB (`7.5`) or `q0.0-1.0`.
 //! Flags:
 //! - `--range <start> <end>`: only that part (seconds)
+//! - `--parts 10-20,60-75`: those parts joined into one file (the goal is for it); add
+//!   `--each` for one file per part (each fits the goal on its own)
+//! - `--even <LUFS>`: even out the sound (-14 online video, -16 podcast), measured first
 //! - `--first-only`: the first sound track only, no captions, no chapters (default: keep them)
 //! - `--bars`: look for black bars and cut them
 //! - `--preview`: no encode; the size estimate and the before/after frames (paths printed)
@@ -62,6 +65,35 @@ fn main() -> anyhow::Result<()> {
     opts.keep_tracks = flag("--first-only").is_none();
     if let Some(i) = flag("--range") {
         opts.range = Some((num(i + 1)?, num(i + 2)?));
+    }
+    if let Some(i) = flag("--even") {
+        opts.even = Some(num(i + 1)? as f32);
+    }
+    // `--parts 10-20,60-75`: joined into one file, or with `--each` one file per part.
+    let mut each = Vec::new();
+    if let Some(i) = flag("--parts") {
+        let parts: Vec<(f64, f64)> = args
+            .get(i + 1)
+            .map(String::as_str)
+            .unwrap_or("")
+            .split(',')
+            .filter_map(|p| p.split_once('-'))
+            .filter_map(|(a, b)| Some((a.trim().parse().ok()?, b.trim().parse().ok()?)))
+            .collect();
+        if flag("--each").is_some() {
+            each = parts;
+        } else {
+            opts.parts = parts;
+        }
+    }
+    if !each.is_empty() {
+        let cancel = AtomicBool::new(false);
+        for (n, part) in each.into_iter().enumerate() {
+            let o = Options { range: Some(part), part_no: Some(n + 1), ..opts.clone() };
+            let out = compress::run(&input, &info, &o, &encoders, &cancel, |_| {})?;
+            println!("part {}: {} ({}) · {}", n + 1, out.path.display(), fmt::mb(out.bytes as f64), out.plan.summary());
+        }
+        return Ok(());
     }
     if flag("--bars").is_some() {
         let t = Instant::now();

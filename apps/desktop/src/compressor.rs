@@ -17,7 +17,7 @@ use neria_core::fmt;
 use neria_core::media::{self, FileInfo};
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
 
-use crate::{AppWindow, CmpFile, CmpGoal, Compress};
+use crate::{AppWindow, CmpFile, CmpGoal, CmpPart, Compress};
 
 const VIDEO_EXTENSIONS: &[&str] =
     &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "flv", "wmv", "mts", "m2ts", "3gp"];
@@ -66,6 +66,8 @@ pub struct Compressor {
     no_estimate: std::collections::HashSet<String>,
     /// Trim strip frames made for this file.
     strip_for: Option<PathBuf>,
+    /// Parts kept on the one file (Trim → Add this part), in time order.
+    parts: Vec<(f64, f64)>,
     running: Option<Arc<AtomicBool>>,
     last_output: Option<PathBuf>,
     autostarted: bool,
@@ -133,13 +135,16 @@ fn part_bytes(info: &FileInfo, opts: &Options) -> u64 {
 
 /// The file can be sent as it is: the whole of it (a trimmed part isn't a file yet), already
 /// under `limit`, in a kind of file the apps play (an .mkv, .avi or .wma isn't, so it's
-/// still made).
+/// still made), and nothing else asked of it (evening out the sound).
 fn fits_as_is(path: &Path, info: &FileInfo, opts: &Options, limit: u64) -> bool {
+    if opts.even.is_some() {
+        return false;
+    }
     let playable = path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
         ["mp4", "mov", "m4v", "webm", "mp3", "m4a", "ogg", "opus", "wav", "flac"]
             .contains(&e.to_ascii_lowercase().as_str())
     });
-    opts.range.is_none() && playable && info.size_bytes <= limit
+    opts.whole() && playable && info.size_bytes <= limit
 }
 
 /// The file card's line: "1920×1080 · 60 fps · 2:14 · 312 MB · h264", or for a sound file
@@ -205,6 +210,19 @@ impl Compressor {
         };
         o.keep_tracks = c.get_keep_tracks();
         o.crop = if c.get_cut_bars() { item.bars } else { None };
+        if c.get_volume() == 1 {
+            o.even = Some(if c.get_loudness() == 1 { -16.0 } else { -14.0 });
+        }
+        if self.items.len() == 1 && c.get_trim_open() && !self.parts.is_empty() {
+            // Parts kept: one is a plain trim; joined, they're one file; one file each,
+            // the longest stands for them in the hints (each file is planned at Start).
+            match self.parts.len() {
+                1 => o.range = Some(self.parts[0]),
+                _ if c.get_split() == 0 => o.parts = self.parts.clone(),
+                _ => o.range = self.parts.iter().copied().max_by(|a, b| (a.1 - a.0).total_cmp(&(b.1 - b.0))),
+            }
+            return o;
+        }
         if self.items.len() == 1 && c.get_trim_open() {
             let (a, b) = (c.get_trim_in() as f64, c.get_trim_out() as f64);
             if let Some(info) = &item.info
@@ -214,6 +232,35 @@ impl Compressor {
             }
         }
         o
+    }
+
+    /// Two or more parts kept, saved as a file each.
+    fn each_part(&self, c: &Compress) -> bool {
+        self.items.len() == 1 && c.get_trim_open() && self.parts.len() > 1 && c.get_split() == 1
+    }
+
+    /// The parts list on the page, and what they add up to.
+    fn show_parts(&self, ui: &AppWindow) {
+        let c = ui.global::<Compress>();
+        let rows: Vec<CmpPart> = self
+            .parts
+            .iter()
+            .map(|&(a, b)| CmpPart {
+                start: a as f32,
+                end: b as f32,
+                text: format!("{} → {}  ·  {}", fmt::duration(a), fmt::duration(b), fmt::duration(b - a)).into(),
+            })
+            .collect();
+        c.set_parts(ModelRc::from(Rc::new(VecModel::from(rows))));
+        let total: f64 = self.parts.iter().map(|(a, b)| b - a).sum();
+        c.set_parts_text(
+            match self.parts.len() {
+                0 => String::new(),
+                1 => format!("1 part · {}", fmt::duration(total)),
+                n => format!("{n} parts · {} in all", fmt::duration(total)),
+            }
+            .into(),
+        );
     }
 
     fn preview_key(&self, item: &Item, opts: &Options, goal: Goal) -> String {
@@ -249,6 +296,11 @@ impl Compressor {
         // Finished files go when new ones come: the list is what's about to be done.
         if self.items.iter().all(|i| i.state != WAITING) && !self.items.is_empty() && !found.is_empty() {
             self.items.retain(|i| i.state == WAITING);
+        }
+        // Parts belong to the file they were picked on.
+        if !found.is_empty() {
+            self.parts.clear();
+            self.show_parts(ui);
         }
         let c = ui.global::<Compress>();
         for path in found {
@@ -333,6 +385,9 @@ impl Compressor {
         self.list_gen += 1;
         self.strip_for = None;
         self.preview_key.clear();
+        self.parts.clear();
+        self.show_parts(ui);
+        crate::cmp_player::stop(ui);
         let c = ui.global::<Compress>();
         c.set_trim_open(false);
         c.set_status("".into());
@@ -545,7 +600,9 @@ impl Compressor {
                             Ok(g) => {
                                 let opts = self.options(&c, *g, it);
                                 let length = opts.length(info);
-                                if opts.range.is_some() {
+                                if self.each_part(&c) {
+                                    start_text = format!("Compress {} parts", self.parts.len());
+                                } else if !opts.whole() {
                                     start_text = format!("Compress {}", fmt::duration(length));
                                 }
                                 match compress::plan(info, &opts, &enc) {
@@ -617,6 +674,7 @@ impl Compressor {
                                             fix = format!("Keep the first {}", fmt::duration(s));
                                         } else if let Some(b) = est
                                             && plan.target_bytes.is_none()
+                                            && opts.even.is_none()
                                             && b as f64 >= now as f64 * 0.95
                                         {
                                             problem = format!(
@@ -772,7 +830,9 @@ impl Compressor {
                     });
                 }
                 // A look goal on a file that's already packed tight comes out no smaller.
+                // (Evening out the sound is worth doing even then.)
                 if plan.target_bytes.is_none()
+                    && opts.even.is_none()
                     && let Some(b) = self.estimates.get(&self.preview_key(it, &opts, goal))
                     && *b as f64 >= now as f64 * 0.95
                 {
@@ -800,6 +860,8 @@ impl Compressor {
             return;
         }
         self.preview_key = key.clone();
+        // A sample made for other choices isn't this one any more.
+        crate::cmp_player::stop_unless(ui, &key);
         if let Some(old) = self.preview_cancel.take() {
             old.store(true, Ordering::SeqCst);
         }
@@ -885,18 +947,25 @@ impl Compressor {
         });
     }
 
-    fn play_sample(&mut self, ui: &AppWindow) {
+    /// The player's button: play or pause the sample made for the page as it is now, or make
+    /// it first (10 s from the middle of the part kept, like the before / after frames).
+    fn play_pause(&mut self, ui: &AppWindow) {
         let c = ui.global::<Compress>();
         let Some(it) = (self.items.len() == 1).then(|| &self.items[0]) else { return };
         let (Some(info), Ok(goal)) = (it.info.clone(), goal_of(&c, c.get_goal())) else { return };
         let opts = self.options(&c, goal, it);
+        let key = self.preview_key(it, &opts, goal);
+        if crate::cmp_player::toggle(ui, &key) {
+            return;
+        }
         let enc = self.encoders();
         let Ok(plan) = compress::plan(&info, &opts, &enc) else { return };
-        let (from, to) = opts.range.unwrap_or((0.0, info.duration));
-        // From the middle of the part, like the before / after frames.
+        let (from, to) = compress::sample_span(&info, &opts);
         let at = from + ((to - from) - 10.0).max(0.0) / 2.0;
-        c.set_sample_busy(true);
+        let len = (to - from).min(10.0);
+        c.set_player_busy(true);
         let (path, weak) = (it.path.clone(), ui.as_weak());
+        let has_video = info.has_video;
         std::thread::spawn(move || {
             // Earlier samples go (one still open in a player stays until the next time).
             for f in std::fs::read_dir(neria_core::paths::cache_dir()).into_iter().flatten().flatten() {
@@ -909,13 +978,14 @@ impl Compressor {
                 std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
                 plan.ext()
             ));
-            let result = compress::sample(&path, &info, &plan, at, 10.0, &out, &AtomicBool::new(false));
+            let result = compress::sample(&path, &info, &plan, at, len, &out, &AtomicBool::new(false));
             let _ = weak.upgrade_in_event_loop(move |ui| {
-                ui.global::<Compress>().set_sample_busy(false);
+                ui.global::<Compress>().set_player_busy(false);
                 match result {
-                    Ok(s) => {
-                        let _ = open::that(&s.path);
-                    }
+                    Ok(s) => crate::cmp_player::ready(
+                        &ui,
+                        crate::cmp_player::Sample { key, file: path, at, len: s.secs, after: s.path, has_video },
+                    ),
                     Err(e) => crate::show_toast(&ui, &format!("Couldn't make a sample: {e}")),
                 }
             });
@@ -978,6 +1048,8 @@ impl Compressor {
         }
         // Work out each file's options now; files that can't or needn't go say why.
         let mut plan = Vec::new();
+        let each = self.each_part(&c);
+        let parts = self.parts.clone();
         for i in 0..self.items.len() {
             let it = &self.items[i];
             if it.state != WAITING {
@@ -1000,9 +1072,17 @@ impl Compressor {
                     it.tag = tag;
                     it.detail = why;
                 }
+                // One file each: a job per part, each fitting the goal on its own.
+                _ if each => {
+                    for (n, &part) in parts.iter().enumerate() {
+                        let o = Options { range: Some(part), part_no: Some(n + 1), ..opts.clone() };
+                        plan.push((i, path.clone(), info.clone(), o));
+                    }
+                }
                 _ => plan.push((i, path, info, opts)),
             }
         }
+        crate::cmp_player::stop(ui);
         if plan.is_empty() {
             self.refresh(ui);
             return;
@@ -1095,7 +1175,14 @@ impl Compressor {
                     cmp.running = None;
                     let c = ui.global::<Compress>();
                     let one = cmp.items.len() == 1;
-                    let status = if one {
+                    let status = if one && saved > 1 {
+                        // One file, its parts saved a file each (next to it).
+                        let mut s = format!("{saved} parts saved");
+                        if failed > 0 {
+                            s.push_str(&format!(" · {failed} failed"));
+                        }
+                        format!("{s} · {secs:.0}s")
+                    } else if one {
                         match cmp.items.first() {
                             Some(it) if it.state == SAVED => format!(
                                 "Saved · {} ({}) in {secs:.0}s",
@@ -1228,6 +1315,9 @@ pub fn install(ui: &AppWindow, file_for_job: impl Fn(u64) -> Option<PathBuf> + '
                 if (i as usize) < c.items.len() {
                     c.items.remove(i as usize);
                     c.preview_key.clear();
+                    c.parts.clear();
+                    c.show_parts(&ui);
+                    crate::cmp_player::stop(&ui);
                 }
                 c.refresh(&ui);
             });
@@ -1281,11 +1371,51 @@ pub fn install(ui: &AppWindow, file_for_job: impl Fn(u64) -> Option<PathBuf> + '
             });
         }
     });
-    c.on_play_sample({
+    c.on_play_pause({
         let weak = ui.as_weak();
         move || {
             let ui = weak.unwrap();
-            with(|c| c.play_sample(&ui));
+            with(|c| c.play_pause(&ui));
+        }
+    });
+    c.on_hear({
+        let weak = ui.as_weak();
+        move || crate::cmp_player::switch(&weak.unwrap())
+    });
+    c.on_add_part({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            with(|c| {
+                let g = ui.global::<Compress>();
+                let (a, b) = (g.get_trim_in() as f64, g.get_trim_out() as f64);
+                if b - a < 0.5 {
+                    crate::show_toast(&ui, "That part is too short: move Out further from In.");
+                    return;
+                }
+                if c.parts.iter().any(|&(x, y)| a < y - 0.05 && b > x + 0.05) {
+                    crate::show_toast(&ui, "That part overlaps one you kept. Move it, or take the other one off.");
+                    return;
+                }
+                // Kept in time order (joined that way too).
+                c.parts.push((a, b));
+                c.parts.sort_by(|x, y| x.0.total_cmp(&y.0));
+                c.show_parts(&ui);
+                c.refresh(&ui);
+            });
+        }
+    });
+    c.on_remove_part({
+        let weak = ui.as_weak();
+        move |i| {
+            let ui = weak.unwrap();
+            with(|c| {
+                if (i as usize) < c.parts.len() {
+                    c.parts.remove(i as usize);
+                }
+                c.show_parts(&ui);
+                c.refresh(&ui);
+            });
         }
     });
     c.on_trim_changed({
@@ -1380,15 +1510,33 @@ pub fn dev_hooks(ui: &AppWindow) {
     if std::env::var_os("NERIA_COMPRESS_ADVANCED").is_some() {
         c.set_advanced_open(true);
     }
+    if let Ok(v) = std::env::var("NERIA_COMPRESS_EVEN") {
+        c.set_volume(1);
+        c.set_loudness(if v.trim() == "16" || v.trim() == "-16" { 1 } else { 0 });
+    }
+    if std::env::var_os("NERIA_COMPRESS_EACH").is_some() {
+        c.set_split(1);
+    }
     if let Some(v) = std::env::var_os("NERIA_COMPRESS") {
         let paths: Vec<PathBuf> =
             v.to_string_lossy().split(';').filter(|s| !s.trim().is_empty()).map(PathBuf::from).collect();
         with(|cmp| cmp.add(ui, paths));
     }
-    if let Ok(t) = std::env::var("NERIA_COMPRESS_TRIM")
-        && let Some((a, b)) = t.split_once(',')
-        && let (Ok(a), Ok(b)) = (a.trim().parse::<f32>(), b.trim().parse::<f32>())
-    {
+    // `NERIA_COMPRESS_PARTS=10-20,30-40`: those parts kept (Trim open on the last).
+    let parts: Vec<(f64, f64)> = std::env::var("NERIA_COMPRESS_PARTS")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|p| p.split_once('-'))
+        .filter_map(|(a, b)| Some((a.trim().parse().ok()?, b.trim().parse().ok()?)))
+        .collect();
+    let trim = std::env::var("NERIA_COMPRESS_TRIM")
+        .ok()
+        .and_then(|t| t.split_once(',').map(|(a, b)| (a.trim().parse::<f32>(), b.trim().parse::<f32>())))
+        .and_then(|(a, b)| Some((a.ok()?, b.ok()?)))
+        .or_else(|| parts.last().map(|&(a, b)| (a as f32, b as f32)));
+    let play = std::env::var_os("NERIA_COMPRESS_PLAY").is_some();
+    if trim.is_some() || play {
+        let (a, b) = trim.unwrap_or((-1.0, -1.0));
         // Once the file is read (its length), so the strip and the hints use it.
         let weak = ui.as_weak();
         std::thread::spawn(move || {
@@ -1396,16 +1544,27 @@ pub fn dev_hooks(ui: &AppWindow) {
                 std::thread::sleep(Duration::from_millis(200));
                 let done = Arc::new(AtomicBool::new(false));
                 let d = done.clone();
+                let parts = parts.clone();
                 let _ = weak.upgrade_in_event_loop(move |ui| {
                     with(|cmp| {
                         if cmp.items.first().is_some_and(|i| i.info.is_some()) {
                             let c = ui.global::<Compress>();
-                            c.set_trim_open(true);
-                            cmp.trim_opened(&ui);
-                            c.set_trim_in(a);
-                            c.set_trim_out(b);
-                            cmp.trim_text(&ui);
+                            if a >= 0.0 {
+                                c.set_trim_open(true);
+                                cmp.trim_opened(&ui);
+                                c.set_trim_in(a);
+                                c.set_trim_out(b);
+                                cmp.trim_text(&ui);
+                            }
+                            if !parts.is_empty() {
+                                cmp.parts = parts;
+                                cmp.show_parts(&ui);
+                            }
                             cmp.refresh(&ui);
+                            // NERIA_COMPRESS_PLAY: press the player's button (makes the sample).
+                            if play {
+                                cmp.play_pause(&ui);
+                            }
                             d.store(true, Ordering::SeqCst);
                         }
                     })
