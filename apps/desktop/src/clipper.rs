@@ -193,6 +193,11 @@ impl Clipper {
             Source::Link(url) => crate::extras_ui::chapters_for(url),
             _ => Vec::new(),
         };
+        // Its chat: a file's saved one; a link's once it plays (live, or a past stream).
+        match &source {
+            Source::File(p) => crate::chat_ui::opened_file(ui, p),
+            Source::Link(u) => crate::chat_ui::opened_link(ui, u),
+        }
         set_chapters(ui, &chapters);
         ui.set_clip_frame(slint::Image::default());
         ui.set_page(1);
@@ -356,6 +361,7 @@ impl Clipper {
                 }
                 self.source = None;
                 self.load_gen.fetch_add(1, Ordering::SeqCst);
+                crate::chat_ui::closed(ui);
                 ui.set_clip_loaded(false);
                 ui.set_clip_is_link(false);
                 ui.set_clip_frame(slint::Image::default());
@@ -618,6 +624,7 @@ impl Clipper {
                     }
                 }
                 crate::timeline_ui::length_known(ui, live);
+                crate::chat_ui::length_known(ui, live, LIVE_ANCHOR.with(|a| a.get()));
             }
         }
         let paused = mpv.get_flag("pause").unwrap_or(true);
@@ -649,6 +656,7 @@ impl Clipper {
         let paused = mpv.get_flag("pause").unwrap_or(true);
         ui.set_clip_playing(!paused && !ended);
         crate::timeline_ui::tick(ui, ui.get_clip_position() as f64);
+        crate::chat_ui::tick(ui, ui.get_clip_position() as f64);
 
         if matches!(self.source, Some(Source::Link(_))) {
             let waiting = !self.duration_applied || mpv.get_flag("paused-for-cache").unwrap_or(false);
@@ -862,6 +870,8 @@ fn link_request(ui: &AppWindow, url: String) -> Option<DownloadRequest> {
         return None;
     }
     req.audio_edit = (!sound.is_none()).then_some(sound);
+    // Chat in this clip (timed on the player's timeline, like the section itself).
+    req.chat = crate::chat_ui::job_for(ui, &[(ui.get_clip_in() as f64, ui.get_clip_out() as f64)]);
     let picture = crate::picture_ui::picture(ui);
     req.picture = (!picture.is_none() && quality != Quality::Audio).then_some(picture);
     // A live stream: the part is pinned to the clock and found in the site's window when the
@@ -896,6 +906,7 @@ fn link_requests(ui: &AppWindow, url: String, clips: &[crate::clips_ui::Clip]) -
             }
         }
         let mut req = base;
+        req.chat = crate::chat_ui::job_for(ui, &merged);
         if merged.len() == 1 {
             req.section = Some(merged[0]);
         } else {
@@ -911,6 +922,7 @@ fn link_requests(ui: &AppWindow, url: String, clips: &[crate::clips_ui::Clip]) -
             .map(|c| {
                 let mut req = base.clone();
                 req.section = Some((c.start, c.end));
+                req.chat = crate::chat_ui::job_for(ui, &[(c.start, c.end)]);
                 req.name_tag = Some(format!(" - {}", neria_core::music::sanitize(&c.name)));
                 req
             })
@@ -1168,16 +1180,52 @@ pub fn install(
                 req.name = name;
                 req
             };
+            // Chat in this clip: put in once the clip is saved (timed to where it really starts).
+            let chat_spec = crate::chat_ui::spec(&ui);
             if clips.is_empty() {
                 let req = make(start, end, None);
-                start_export(&ui, &mut c, "Clip saved", move |cancel, progress| clip::export(&req, cancel, progress));
+                let msgs = crate::chat_ui::messages_for(&ui, start, end);
+                start_export(&ui, &mut c, "Clip saved", move |cancel, progress| {
+                    if chat_spec.is_none() {
+                        return clip::export(&req, cancel, progress);
+                    }
+                    let path = clip::export(&req, cancel, |p| progress(p * 0.5))?;
+                    crate::chat_ui::put_into_export(&path, &msgs, &chat_spec, end - start, cancel, &mut |p| progress(0.5 + p * 0.5))
+                });
                 return;
             }
             let reqs: Vec<ClipRequest> = clips.iter().map(|k| make(k.start, k.end, Some(k.name.clone()))).collect();
             let join = ui.global::<ClipList>().get_join() && reqs.len() > 1;
             let title = if join { "Clips joined".to_string() } else { format!("{} clips saved", reqs.len()) };
+            let ranges: Vec<(f64, f64)> = clips.iter().map(|k| (k.start, k.end)).collect();
+            let chats: Vec<Vec<neria_core::chat::Message>> =
+                ranges.iter().map(|(a, b)| crate::chat_ui::messages_for(&ui, *a, *b)).collect();
             start_export(&ui, &mut c, &title, move |cancel, progress| {
-                let made = clip::export_many(&reqs, join, cancel, progress)?;
+                let share = if chat_spec.is_none() { 1.0 } else { 0.5 };
+                let made = clip::export_many(&reqs, join, cancel, |p| progress(p * share))?;
+                if !chat_spec.is_none() {
+                    let mut out = Vec::new();
+                    if join {
+                        // One file: each clip's chat after the ones before it.
+                        let mut all = Vec::new();
+                        let mut offset = 0.0;
+                        for (msgs, (a, b)) in chats.iter().zip(&ranges) {
+                            all.extend(msgs.iter().map(|m| neria_core::chat::Message { t: m.t + offset, ..m.clone() }));
+                            offset += b - a;
+                        }
+                        if let Some(f) = made.last() {
+                            out.push(crate::chat_ui::put_into_export(f, &all, &chat_spec, offset, cancel, &mut |p| progress(0.5 + p * 0.5))?);
+                        }
+                    } else {
+                        let n = made.len().max(1) as f32;
+                        for (i, (f, (msgs, (a, b)))) in made.iter().zip(chats.iter().zip(&ranges)).enumerate() {
+                            out.push(crate::chat_ui::put_into_export(f, msgs, &chat_spec, b - a, cancel, &mut |p| {
+                                progress(0.5 + (i as f32 + p) / n * 0.5)
+                            })?);
+                        }
+                    }
+                    return out.last().cloned().ok_or_else(|| anyhow!("nothing was saved"));
+                }
                 // The last one is the one "Show file" opens (they're side by side).
                 made.last().cloned().ok_or_else(|| anyhow!("nothing was saved"))
             });
@@ -1214,6 +1262,10 @@ pub fn install(
         }
     });
     crate::clips_ui::install(ui);
+    crate::chat_ui::install(ui, {
+        let clipper = clipper.clone();
+        move |t| clipper.borrow_mut().seek(t as f32)
+    });
 
     // A live stream: save the last bit, go back to live, keep the last few minutes.
     let live = ui.global::<ClipLive>();

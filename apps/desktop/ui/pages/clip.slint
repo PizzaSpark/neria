@@ -5,7 +5,8 @@ import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions, Transcribe } from "../globals.slint";
+import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions, Transcribe, ClipChat } from "../globals.slint";
+import { ChatPanel } from "../components/chat-panel.slint";
 import { Menu, MenuItem, TextLink } from "../widgets.slint";
 
 // The timeline's zoom: out, in, fit the clip, the whole video, and how much is on screen.
@@ -371,7 +372,7 @@ export component ClipPage inherits FocusScope {
     property <int> clips: ClipList.items.length;
     // The bottom bar fits on one line (chips, Sound, Picture, status, Export) only from here;
     // narrower, the status gets its own line above.
-    property <bool> one-bar: Screen.width >= 1200px;
+    property <bool> one-bar: Screen.width - (root.chat-tall ? 356px : 0px) >= 1200px;
     // The clip list: how it'll be saved, from the choices as they are now.
     property <string> clips-how: ClipList.join && root.clips > 1
         ? (root.is-link ? "joined into one file, in time order" : "joined into one file (cut frame-exact)")
@@ -426,7 +427,14 @@ export component ClipPage inherits FocusScope {
 
     init => { self.focus(); }
     // A dialog or the crop frame took the keyboard; give it back when it closes (Space, I/O…).
-    property <bool> sound-open: ClipSound.open || ClipGif.open || ClipList.open || ClipPicture.editing;
+    property <bool> sound-open: ClipSound.open || ClipGif.open || ClipList.open || ClipPicture.editing || ClipChat.open || ClipChat.sheet;
+    // Compact: the chat is a sheet over the page, opened from the player's Chat button.
+    // (ClipChat.sheet: compact, the chat as a sheet over the page.)
+    // Wide and medium: the panel beside the player (it can be hidden, and shown again).
+    property <bool> chat-beside: root.loaded && ClipChat.available && ClipChat.shown && !Screen.compact && !root.chat-tall;
+    // 1200 px and up: the chat is a full-height column on the right (like the sites' own),
+    // beside the player, the timeline and the bars. Narrower it sits beside the player only.
+    property <bool> chat-tall: root.loaded && ClipChat.available && ClipChat.shown && Screen.width >= 1200px;
     changed sound-open => {
         if !self.sound-open {
             self.focus();
@@ -508,9 +516,14 @@ export component ClipPage inherits FocusScope {
     }
 
     // Compact: everything stacks, the player gives up height first, and the Export bar
-    // stays pinned at the bottom.
+    // stays pinned at the bottom. Wide: the chat column on the right, the full height.
+    HorizontalLayout {
+      padding-right: root.chat-tall ? 28px : 0px;
+      spacing: 0px;
     VerticalLayout {
+        horizontal-stretch: 1;
         padding: Screen.compact ? Screen.pad : 28px;
+        padding-right: root.chat-tall ? 20px : (Screen.compact ? Screen.pad : 28px);
         padding-bottom: Screen.compact ? 12px : 28px;
         spacing: Screen.compact ? 8px : 14px;
 
@@ -531,6 +544,18 @@ export component ClipPage inherits FocusScope {
                     text: "Back";
                     icon: "\u{E72B}";
                     clicked => { Watch.back(); }
+                }
+            }
+            // Compact: the chat opens as a sheet over the page.
+            if root.loaded && Screen.compact && ClipChat.available: VerticalLayout {
+                alignment: start;
+                horizontal-stretch: 0;
+                GhostButton {
+                    compact: true;
+                    text: "";
+                    icon: "\u{E8BD}";
+                    label: "Show the chat";
+                    clicked => { ClipChat.sheet = true; }
                 }
             }
             // Once something is open; compact: icons only, level with the headline.
@@ -595,9 +620,14 @@ export component ClipPage inherits FocusScope {
         }
 
         // The black box hugs the video's own shape (no side bars in a wide
-        // window); 16:9 until the first frame arrives or for audio files.
-        if root.loaded: Rectangle {
+        // window); 16:9 until the first frame arrives or for audio files. Live chat (or a
+        // stream's saved chat) sits beside it.
+        if root.loaded: HorizontalLayout {
+          vertical-stretch: 1;
+          spacing: 16px;
+          Rectangle {
             vertical-stretch: 1;
+            horizontal-stretch: 1;
             min-height: Screen.compact ? 64px : Screen.wide ? 180px : 120px;
             // Fixed hints so the inner box (sized from this one) can't feed its
             // size back into the page layout.
@@ -684,6 +714,13 @@ export component ClipPage inherits FocusScope {
                     kind: 4;
                 }
             }
+          }
+          if root.chat-beside: ChatPanel {
+            width: Screen.wide ? 320px : 260px;
+            horizontal-stretch: 0;
+            roomy: root.height >= 700px;
+            very-roomy: root.height >= 780px;
+          }
         }
 
         if root.loaded: HorizontalLayout {
@@ -772,6 +809,17 @@ export component ClipPage inherits FocusScope {
                     clicked => { ClipView.zoom(1 / 1.6, -1); }
                 }
             }
+            // The chat panel, hidden: show it again (compact: the header's button opens it).
+            if ClipChat.available && !Screen.compact && !ClipChat.shown: VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                IconButton {
+                    icon: "\u{E8BD}";
+                    label: "Show the chat";
+                    tint: Theme.text;
+                    clicked => { ClipChat.shown = true; }
+                }
+            }
             // Listening volume: the player's own, never what gets saved.
             VerticalLayout {
                 alignment: center;
@@ -858,6 +906,12 @@ export component ClipPage inherits FocusScope {
             }
         }
 
+        // How busy chat is along the timeline: the busy spikes are the moments to clip.
+        if root.loaded && (ClipChat.state == 3 || ClipChat.state == 4) && !Screen.compact: Image {
+            height: 18px;
+            source: ClipChat.activity;
+            image-fit: fill;
+        }
         if root.loaded: Timeline {
             duration: root.duration;
             position: root.position;
@@ -1141,6 +1195,17 @@ export component ClipPage inherits FocusScope {
                         }
                     }
                 }
+                if ClipChat.available && !root.gif: VerticalLayout {
+                    alignment: start;
+                    horizontal-stretch: 0;
+                    GhostButton {
+                        compact: true;
+                        icon: "\u{E8BD}";
+                        label: ClipChat.button-text;
+                        on: ClipChat.set;
+                        clicked => { ClipChat.open = true; }
+                    }
+                }
             }
             HorizontalLayout {
                 spacing: 6px;
@@ -1259,6 +1324,16 @@ export component ClipPage inherits FocusScope {
                         ClipPicture.changed();
                     }
                 }
+                // Below 760 px the bar is full: the chat panel's own button opens the dialog.
+                if ClipChat.available && !root.gif && Screen.width >= 760px: GhostButton {
+                    horizontal-stretch: 0;
+                    // Narrow medium windows: an icon (the line above says what's set).
+                    text: root.one-bar ? ClipChat.button-text : Screen.width >= 840px ? ClipChat.short-text : "";
+                    label: ClipChat.button-text;
+                    icon: "\u{E8BD}";
+                    on: ClipChat.set;
+                    clicked => { ClipChat.open = true; }
+                }
                 Text {
                     horizontal-stretch: 1;
                     text: root.one-bar ? root.status-text : "";
@@ -1304,6 +1379,38 @@ export component ClipPage inherits FocusScope {
                     }
                 }
             }
+        }
+    }
+    if root.chat-tall: VerticalLayout {
+        horizontal-stretch: 0;
+        padding-top: 28px;
+        padding-bottom: 28px;
+        ChatPanel {
+            width: 336px;
+            roomy: true;
+            very-roomy: true;
+        }
+    }
+    }
+
+    // Compact: the chat over the lower part of the page (closed with its ×).
+    if ClipChat.sheet && root.loaded && ClipChat.available: Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: Theme.scrim;
+        // keyboard: the sheet's own × closes it.
+        TouchArea {
+            clicked => { ClipChat.sheet = false; }
+        }
+        ChatPanel {
+            x: 0;
+            y: parent.height * 0.25;
+            width: parent.width;
+            height: parent.height * 0.75;
+            sheet: true;
+            closed => { ClipChat.sheet = false; }
         }
     }
 }

@@ -1,0 +1,288 @@
+import { LineEdit } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { ClipChat, ChatRow, Watch } from "../globals.slint";
+import { GhostButton, IconButton, ChoiceChips, KeyPress, Icon } from "../widgets.slint";
+
+// A message's small tick: picks it for "The ones I picked" (Chat in this clip).
+component PickBox inherits Rectangle {
+    in property <bool> checked;
+    in property <string> label;
+    callback toggled();
+    width: 16px;
+    height: 16px;
+    accessible-role: checkbox;
+    accessible-label: root.label;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => { root.toggled(); }
+    KeyPress {
+        radius: 5px;
+        activated => { root.toggled(); }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+    Rectangle {
+        border-radius: 5px;
+        border-width: 2px;
+        border-color: root.checked ? Theme.ink : ta.has-hover ? Theme.muted : Theme.edge;
+        background: root.checked ? Theme.ink : transparent;
+        if root.checked: Icon {
+            text: "\u{E73E}";
+            font-size: 9px;
+            color: Theme.bg;
+        }
+    }
+}
+
+// One message: its tick, then the message as drawn (time, name, text, emotes). Clicking the
+// message jumps the player to it.
+component Row inherits Rectangle {
+    in property <ChatRow> item;
+    min-height: root.item.h;
+    accessible-role: button;
+    accessible-label: root.item.text;
+    accessible-action-default => { ClipChat.jump(root.item.id); }
+    background: ta.has-hover ? Theme.raised : transparent;
+    border-radius: 6px;
+    KeyPress {
+        radius: 6px;
+        activated => { ClipChat.jump(root.item.id); }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { ClipChat.jump(root.item.id); }
+    }
+    HorizontalLayout {
+        spacing: 6px;
+        VerticalLayout {
+            alignment: start;
+            padding-top: 4px;
+            PickBox {
+                checked: root.item.picked;
+                label: "Pick this message";
+                toggled => { ClipChat.pick(root.item.id, !root.item.picked); }
+            }
+        }
+        Image {
+            source: root.item.image;
+            height: root.item.h;
+            horizontal-stretch: 1;
+            image-fit: contain;
+            horizontal-alignment: left;
+            vertical-alignment: top;
+        }
+    }
+}
+
+// The chat beside the player: it follows the player (live: the newest), jumps when you
+// seek, and its ticks pick messages for a clip. The list is a window Rust fills to fit
+// (newest at the bottom); the wheel and Page Up / Down move it back in time.
+export component ChatPanel inherits Rectangle {
+    // Compact: a sheet with a close button (else the page's Chat button hides it).
+    in property <bool> sheet;
+    callback closed();
+    // A short panel (a medium window's player is short) keeps its room for messages: the
+    // view chips and the search box only show when there's height for them (the page says,
+    // from the window's height: the panel's own would loop).
+    in property <bool> roomy: true;
+    in property <bool> very-roomy: true;
+    background: root.sheet ? Theme.panel : transparent;
+    VerticalLayout {
+        padding: root.sheet ? 16px : 0;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: "Chat";
+                color: Theme.ink;
+                font-family: Theme.display;
+                font-size: 14px;
+                font-weight: 700;
+                vertical-alignment: center;
+                horizontal-stretch: 0;
+            }
+            Text {
+                text: ClipChat.sites;
+                color: Theme.muted;
+                font-family: Theme.body;
+                font-size: 12px;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: ClipChat.count;
+                color: Theme.muted;
+                font-family: Theme.mono;
+                font-size: 11.5px;
+                vertical-alignment: center;
+                horizontal-stretch: 0;
+            }
+            // Chat in this clip (also the bottom bar's Chat button, where there's room).
+            if !Watch.on: IconButton {
+                icon: "\u{E713}";
+                label: "Chat in this clip";
+                tint: ClipChat.set ? Theme.accent-hi : Theme.muted;
+                clicked => { ClipChat.open = true; }
+            }
+            if ClipChat.can-add: IconButton {
+                icon: "\u{E710}";
+                label: "Add another stream's chat";
+                clicked => { ClipChat.adding = !ClipChat.adding; }
+            }
+            IconButton {
+                icon: "\u{E711}";
+                label: "Hide the chat";
+                clicked => {
+                    if root.sheet {
+                        root.closed();
+                    } else {
+                        ClipChat.shown = false;
+                    }
+                }
+            }
+        }
+        // Another stream's chat alongside (the same channel on YouTube and Twitch).
+        if ClipChat.adding: VerticalLayout {
+            spacing: 6px;
+            add := LineEdit {
+                placeholder-text: "Its link (twitch.tv/… or youtube.com/…)";
+                accepted => {
+                    ClipChat.add-chat(self.text);
+                    self.text = "";
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                GhostButton {
+                    compact: true;
+                    text: "Add chat";
+                    icon: "\u{E710}";
+                    clicked => {
+                        ClipChat.add-chat(add.text);
+                        add.text = "";
+                    }
+                }
+                if ClipChat.sites != "": GhostButton {
+                    compact: true;
+                    text: "Just this one";
+                    clicked => { ClipChat.remove-chats(); }
+                }
+            }
+        }
+        if (ClipChat.state == 3 || ClipChat.state == 4) && (root.roomy || ClipChat.view != 0): ChoiceChips {
+            options: ClipChat.picked-count > 0 ? ["All", "Highlights", "Picked · " + ClipChat.picked-count] : ["All", "Highlights", "Picked"];
+            current <=> ClipChat.view;
+            changed => { ClipChat.view-changed(); }
+        }
+        if (ClipChat.state == 3 || ClipChat.state == 4) && (root.very-roomy || ClipChat.find != ""): LineEdit {
+            placeholder-text: "Find a word or name";
+            text <=> ClipChat.find;
+            edited => { ClipChat.find-changed(); }
+        }
+        // The messages: a window of them, newest at the bottom.
+        list := Rectangle {
+            vertical-stretch: 1;
+            // Its messages never make it (or the player beside it) taller: Rust sends only
+            // as many as fit.
+            min-height: 0px;
+            preferred-height: 0px;
+            clip: true;
+            changed width => {
+                ClipChat.width-px = self.width - 22px;
+                ClipChat.resized();
+            }
+            changed height => {
+                ClipChat.height-px = self.height;
+                ClipChat.resized();
+            }
+            init => {
+                ClipChat.width-px = self.width - 22px;
+                ClipChat.height-px = self.height;
+                ClipChat.resized();
+            }
+            keys := FocusScope {
+                focus-on-click: false;
+                key-pressed(event) => {
+                    if event.text == Key.PageUp || event.text == Key.UpArrow {
+                        ClipChat.scroll(event.text == Key.PageUp ? 8 : 1);
+                        return accept;
+                    }
+                    if event.text == Key.PageDown || event.text == Key.DownArrow {
+                        ClipChat.scroll(event.text == Key.PageDown ? -8 : -1);
+                        return accept;
+                    }
+                    if event.text == Key.End {
+                        ClipChat.latest();
+                        return accept;
+                    }
+                    reject
+                }
+            }
+            // The wheel moves the window of messages (rows' own clicks still land).
+            TouchArea {
+                scroll-event(e) => {
+                    ClipChat.scroll(e.delta-y / 40px);
+                    accept
+                }
+                VerticalLayout {
+                    alignment: end;
+                    spacing: 2px;
+                    for r in ClipChat.rows: Row {
+                        item: r;
+                    }
+                }
+            }
+            if (ClipChat.state != 3 && ClipChat.state != 4) || ClipChat.rows.length == 0: VerticalLayout {
+                alignment: center;
+                spacing: 10px;
+                padding: 8px;
+                Text {
+                    text: ClipChat.state == 0 ? "No chat for this." : ClipChat.state == 1 ? "This past stream kept its chat."
+                        : ClipChat.state == 2 ? "Loading the chat…" : ClipChat.state == 5 ? ClipChat.line
+                        : ClipChat.view == 2 ? "Tick messages to pick them for a clip." : ClipChat.find != "" ? "Nothing matches." : ClipChat.state == 4 ? "Waiting for messages…" : "Nothing said yet at this point.";
+                    color: ClipChat.state == 5 ? Theme.warn : Theme.muted;
+                    font-family: Theme.body;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+                if ClipChat.state == 1: HorizontalLayout {
+                    alignment: center;
+                    GhostButton {
+                        text: "Load chat";
+                        icon: "\u{E896}";
+                        clicked => { ClipChat.load(); }
+                    }
+                }
+                if ClipChat.state == 2: Text {
+                    text: ClipChat.line;
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 11.5px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        // Scrolled back: to the newest (live: what's being said now).
+        if ClipChat.scrolled: HorizontalLayout {
+            alignment: center;
+            GhostButton {
+                compact: true;
+                text: ClipChat.state == 4 ? "Jump to live" : "Back to now";
+                icon: "\u{E74B}";
+                clicked => { ClipChat.latest(); }
+            }
+        }
+        if !ClipChat.scrolled && (ClipChat.state == 3 || ClipChat.state == 4) && ClipChat.line != "": Text {
+            text: ClipChat.line;
+            color: Theme.muted;
+            font-family: Theme.body;
+            font-size: 11px;
+            overflow: elide;
+        }
+    }
+}

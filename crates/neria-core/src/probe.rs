@@ -34,6 +34,9 @@ pub struct MediaInfo {
     pub followable: bool,
     /// A live stream (on now, or not yet): it's recorded, not downloaded.
     pub live: Option<LiveInfo>,
+    /// A past live stream whose chat was kept (YouTube's chat replay, a Twitch past
+    /// broadcast): it can be saved with it and shown on the Clip page.
+    pub has_chat: bool,
 }
 
 /// What the preview knows about a live stream.
@@ -262,10 +265,18 @@ pub fn probe(url: &str, settings: &Settings) -> Result<MediaInfo> {
         chapters: if is_playlist { Vec::new() } else { crate::tracks::chapters(&v) },
         // Channels and playlists (their items have titles); not a post's photos.
         followable: is_playlist && crate::post::is_playlist(&items),
+        has_chat: !is_playlist && past_chat(&v, url),
         items,
         note: None,
         live,
     })
+}
+
+/// Whether a (past) stream kept its chat: YouTube lists it as the `live_chat` captions;
+/// a Twitch past broadcast always has one.
+fn past_chat(v: &Value, url: &str) -> bool {
+    let yt = v.get("subtitles").and_then(|s| s.get("live_chat")).is_some();
+    yt || crate::chat::twitch_video_id(url).is_some()
 }
 
 /// What a followed channel or playlist holds now, for its check: the newest `newest`

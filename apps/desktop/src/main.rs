@@ -16,6 +16,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod background_ui;
 mod bulk_ui;
+mod chat_ui;
 mod clipper;
 mod clips_ui;
 mod cmp_player;
@@ -68,6 +69,7 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_sort_folders(s.sort_folders);
     ui.set_number_items(s.number_items);
     ui.set_save_thumbnail(s.save_thumbnail);
+    ui.global::<ClipChat>().set_save(s.chat_save);
     ui.set_quality(s.quality.index().min(3));
     ui.global::<Presets>().set_preset(s.preset.index());
     ui.set_container_index(index_of(&CONTAINERS, &s.container));
@@ -103,6 +105,7 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.sort_folders = ui.get_sort_folders();
     s.number_items = ui.get_number_items();
     s.save_thumbnail = ui.get_save_thumbnail();
+    s.chat_save = ui.global::<ClipChat>().get_save();
     s.quality = Quality::from_index(ui.get_quality().min(3));
     s.preset = neria_core::settings::Preset::from_index(ui.global::<Presets>().get_preset());
     s.container = pick(&CONTAINERS, ui.get_container_index());
@@ -1484,6 +1487,7 @@ fn trigger_probe(ui: &AppWindow, state: &ProbeState, settings: &Arc<Mutex<Settin
                     ui.global::<Presets>().set_top(info.max_height.map(|h| format!("{h}p")).unwrap_or_default().into());
                     ui.set_probe_is_gif(info.gif || is_single_gif(&info));
                     live_ui::set_info(&ui, info.live.as_ref(), info.thumbnail_url.clone());
+                    chat_ui::set_preview_has_chat(info.has_chat);
                     extras_ui::set_info(&ui, &info, &settings);
                     follow_ui::set_preview(&ui, &url, &info);
                     if info.items.len() > 1
@@ -1839,6 +1843,8 @@ fn main() -> anyhow::Result<()> {
                         });
                     }
                 } else {
+                    // A past stream: its chat is saved next to it (Settings → Download).
+                    chat_ui::add_to_download(&mut req, &settings.lock().unwrap());
                     // Captions, audio tracks and chapters picked on the preview.
                     let reqs = extras_ui::requests(&ui, req, &settings.lock().unwrap().clone());
                     extras_ui::remember(&ui, &settings);
@@ -1861,6 +1867,7 @@ fn main() -> anyhow::Result<()> {
             clear_link_notes(&ui, &probe_state);
             extras_ui::clear(&ui);
             live_ui::clear(&ui);
+            chat_ui::set_preview_has_chat(false);
         }
     });
 

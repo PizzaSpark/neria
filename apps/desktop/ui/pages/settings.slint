@@ -1,7 +1,7 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe } from "../globals.slint";
+import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe, ClipChat } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider, Notice } from "../widgets.slint";
 
 // One group of settings under a small heading.
@@ -467,6 +467,11 @@ export component SettingsDrawer inherits Rectangle {
                                 Tick {
                                     text: "Embed title, artist and other metadata";
                                     checked <=> root.embed-metadata;
+                                    toggled => { root.settings-changed(); }
+                                }
+                                Tick {
+                                    text: "Save live chat with recordings and past streams";
+                                    checked <=> ClipChat.save;
                                     toggled => { root.settings-changed(); }
                                 }
                                 Tick {

@@ -873,10 +873,41 @@ see `docs/UPSTREAM.md`). Ticked only where a real stream covered it; the rest is
    that keep nothing. Not yet checked: the background pass in the app (only the last pass). Not yet:
    the queue row's own "get the part before", and a crash while it's fetched (the earlier part
    is dropped, the recording is kept).
+11. **Live chat** (asked for 2026-11-18, mock in the chat of that day): read-only, never
+   signed in (`chat.rs`). Twitch live: its chat server anonymously; YouTube live: its own chat
+   feed ("Live chat", not "Top chat"); past streams: YouTube's chat replay through yt-dlp
+   (2 h, 43,740 messages in 1:52), Twitch's saved chat paged by second, 8 stretches side by
+   side (its page cursors need a browser check; 3.3 h, 37,920 messages in 1:46). 7TV,
+   BetterTTV and FrankerFaceZ emotes (their public lists, fetched beside the reading), emoji as
+   Noto's pictures, bans and deletions taken out.
+   **Saved with it**: a recording reads its chat all along (into its folder line by line, so a
+   crash keeps it) and saves `Video.chat.json` timed to the file (checked: 42 s of Twitch,
+   354 messages); a past stream downloaded whole gets its chat after the video ("Saving the
+   chat…", a note if it can't). Settings → Download → "Save live chat with recordings and past
+   streams" (on).
+   **On the Clip page**: the chat beside the player, a full-height column from 1200 px,
+   beside the player below that, a sheet on compact. It follows the player (live and a stream
+   that can't be rewound: the newest), All / Highlights / Picked, find, the wheel and Page Up
+   / Down go back, "Jump to live"; click a message to jump there (3 s before). Rows are drawn
+   by `chat_draw` (the same drawing a burned-in clip gets). An activity strip over the
+   timeline shows where chat got busy (yellow inside In–Out). A past stream's link offers
+   "Load chat" (a quick look at its page says whether it kept one); a file opens with its
+   `.chat.json`. "+" reads another stream's chat alongside (YouTube and Twitch together, a
+   YT / TW mark on each).
+   **Into the clip** (Chat in this clip): left out, as a track (styled in .mkv, plain lines in
+   .mp4), or burned in beside the picture (under an upright one) or over it (the last lines,
+   fading), dark or light; everything in the clip, highlights (Super Chats, subs, mods, your
+   words) or the ones ticked; leave out bots and !commands; emotes as pictures. Files, link
+   clips (through the queue, moved by however early a lossless cut starts) and clip lists
+   (each its own, or joined in order). Checked: all three from the app (`NERIA_CHAT_EXPORT`)
+   on a recording, and headless on a test video. Not yet: chat for "Save the last" / "Clip
+   the last" while live; a from-the-start recording's chat before you pressed Record (load it
+   from the past stream once it ends); Kick.
 Dev hooks: `NERIA_TTV_ORDER` (the relay's players, in order), `NERIA_TTV_OFF` (no relay), `NERIA_DIALOG=live` / `live-upcoming` / `live-long` / `close-rec`, recording rows in
 `NERIA_DEMO`, `NERIA_REC_STOP`, `NERIA_REC_DEBUG`; headless `--example record` (also
 `--queue`, `--kill-at`, `--crash-at` + `--save`); ui-check `live`, `live-soon`, `live-long`,
-`close-rec`.
+`close-rec`, `chat`, `chat-dialog`, `chat-sheet`, `chat-file`, `watch-live-chat`; chat:
+`NERIA_CHAT_DEMO`, `NERIA_CHAT_EXPORT`, `NERIA_CHAT_DEBUG`, `NERIA_CHAT_OFF`, `--example chat`.
 
 ## Later: bigger ideas (keep UX simple)
 - **Browser extension (Chrome, Edge, Firefox)**: a Neria button on video pages and posts, and

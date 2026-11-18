@@ -1606,6 +1606,56 @@ impl Queue {
             }
         }
 
+        // Live chat: chat put into a link clip (Clip page → Chat), and a past stream's whole
+        // chat saved next to it. Either failing leaves the download saved, with a note.
+        let mut chat_note = None;
+        if let (Some(job), Ok(true), false) = (&req.chat, &result, cancelled) {
+            let file = {
+                let entries = self.inner.entries.lock().unwrap();
+                entries.iter().find(|e| e.snap.id == id).and_then(|e| e.snap.file.clone())
+            };
+            if let Some(mut file) = file.filter(|f| f.is_file()) {
+                if !job.spec.is_none() {
+                    self.update(id, true, |s| {
+                        s.state = JobState::Processing;
+                        s.postprocessor = Some("Chat".into());
+                    });
+                    // A cut that starts on the keyframe before In: its chat moves by as much.
+                    let early = match (job.clip_len, crate::media::duration(&file)) {
+                        (Some(want), Some(got)) => (got - want).max(0.0),
+                        _ => 0.0,
+                    };
+                    let msgs: Vec<_> =
+                        job.messages.iter().map(|m| crate::chat::Message { t: m.t + early, ..m.clone() }).collect();
+                    match crate::chat_out::put_in_place(&file, &msgs, &job.spec, &cancel, &mut |_| {}) {
+                        Ok(out) => {
+                            file = out.clone();
+                            self.update(id, true, |s| s.file = Some(out));
+                        }
+                        Err(_) if cancel.load(Ordering::SeqCst) => cancelled = true,
+                        Err(e) => chat_note = Some(format!("Saved, but without the chat: {e}")),
+                    }
+                }
+                // The whole stream's chat, for a whole video (not a part of one).
+                if job.save && !cancelled && req.section.is_none() && req.sections.is_empty() {
+                    self.update(id, true, |s| {
+                        s.state = JobState::Processing;
+                        s.postprocessor = Some("SavingChat".into());
+                    });
+                    let len = crate::media::duration(&file);
+                    match crate::chat::fetch_replay(&req.url, len, &cancel, &mut |_, _| {}) {
+                        Ok(chat) => {
+                            if let Err(e) = chat.save(&crate::chat::sidecar_of(&file)) {
+                                chat_note = Some(format!("Saved, but its chat couldn't be: {e}"));
+                            }
+                        }
+                        Err(_) if cancel.load(Ordering::SeqCst) => cancelled = true,
+                        Err(e) => chat_note = Some(format!("Saved, but not its chat: {e}")),
+                    }
+                }
+            }
+        }
+
         // Extras → Transcript: speech to text on what was saved. A transcript that fails
         // leaves the download saved, with a note on its row.
         let mut transcript_note = None;
@@ -1657,7 +1707,7 @@ impl Queue {
             if lyrics_status.is_some() {
                 s.lyrics = lyrics_status.clone();
             }
-            if let Some(e) = gif_error.as_ref().or(transcript_note.as_ref()) {
+            if let Some(e) = gif_error.as_ref().or(transcript_note.as_ref()).or(chat_note.as_ref()) {
                 s.note = Some(e.clone());
                 s.note_strong = false;
             }

@@ -71,6 +71,8 @@ pub fn postprocessor(name: &str) -> &'static str {
         "Picture" => "Cropping and turning the picture…",
         "Joining" => "Joining the chapters…",
         "Transcribing" => "Writing the transcript…",
+        "SavingChat" => "Saving the chat…",
+        "Chat" => "Putting the chat in…",
         "UpdatingYtdlp" => "The site changed. Updating the downloader, then trying again…",
         _ => "Processing…",
     }

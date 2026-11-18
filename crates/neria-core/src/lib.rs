@@ -3,6 +3,9 @@
 //! Kept free of any UI toolkit so the desktop (Slint) and a future Android
 //! front-end can share it.
 
+pub mod chat;
+pub mod chat_draw;
+pub mod chat_out;
 pub mod clip;
 pub mod compress;
 pub mod cookies;

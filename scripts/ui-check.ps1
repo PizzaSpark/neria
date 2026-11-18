@@ -182,6 +182,15 @@ $states = [ordered]@{
   "clip-zoom"  = @{ NERIA_OPEN = $long; NERIA_CLIP_IN = "212"; NERIA_CLIP_OUT = "230"; NERIA_CLIP_VIEW = "200,40" }
   "clip-zoom-ch" = @{ NERIA_OPEN = $chaptered; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "10"; NERIA_CLIP_VIEW = "3,8" }
   "clip-zoom-song" = @{ NERIA_OPEN = $song; NERIA_CLIP_IN = "8"; NERIA_CLIP_OUT = "12"; NERIA_CLIP_VIEW = "5,10" }
+  # Live chat: the panel beside the player on sample messages (both sites, a Super Chat,
+  # picks), the activity strip over the timeline, and Chat in this clip.
+  "chat"       = @{ NERIA_OPEN = $video; NERIA_CHAT_DEMO = "1"; NERIA_CLIP_IN = "6"; NERIA_CLIP_OUT = "12" }
+  "chat-dialog" = @{ NERIA_OPEN = $video; NERIA_CHAT_DEMO = "dialog"; NERIA_CLIP_IN = "6"; NERIA_CLIP_OUT = "12" }
+  # A recording opened with its saved chat (copy one to target\ui-check\media\recording.mp4 + .chat.json).
+  "chat-file"  = @{ NERIA_OPEN = (Join-Path $media "recording.mp4"); NERIA_CLIP_IN = "20"; NERIA_CLIP_OUT = "30" }
+  "chat-sheet" = @{ NERIA_OPEN = $video; NERIA_CHAT_DEMO = "sheet"; NERIA_CLIP_IN = "6"; NERIA_CLIP_OUT = "12" }
+  # Watching a live stream with its chat (needs the internet and a long -Wait).
+  "watch-live-chat" = @{ NERIA_WATCH = "https://www.twitch.tv/lofigirl" }
   "picture"    = @{ NERIA_OPEN = $video; NERIA_DIALOG = "picture" }
   "picture-result" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "picture-result" }
   "clips"      = @{ NERIA_OPEN = $chaptered; NERIA_DIALOG = "clips" }

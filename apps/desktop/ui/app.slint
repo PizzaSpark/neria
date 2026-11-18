@@ -5,9 +5,10 @@ import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, LiveRow, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe, ClipChat, ChatRow } from "globals.slint";
 import { ClipsDialog } from "dialogs/clips.slint";
 import { GifDialog } from "dialogs/gif.slint";
+import { ChatDialog } from "dialogs/chat.slint";
 import { TranscribeDialog } from "dialogs/transcribe.slint";
 import { SoundDialog } from "dialogs/sound.slint";
 import { NamesDialog } from "dialogs/names.slint";
@@ -24,7 +25,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe, ClipChat, ChatRow }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -587,6 +588,13 @@ export component AppWindow inherits Window {
         width: root.width;
         height: root.height;
         is-link: root.clip-is-link;
+    }
+
+    if ClipChat.open: ChatDialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
     }
 
     if Background.later-open: LaterDialog {

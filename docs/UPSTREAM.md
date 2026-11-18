@@ -157,6 +157,31 @@ through yt-dlp, so these are references for behaviour, not code.
   streamlink's Twitch ad detection (`EXT-X-DATERANGE` `CLASS="twitch-stitched-ad"`), to label
   ad breaks instead of counting them missed.
 
+### Live chat (`chat.rs`, `chat_draw.rs`, `chat_out.rs`)
+
+Built 2026-11-18 from what the sites themselves answer (checked by hand that day), not from
+another project's code:
+- **Twitch live**: `irc.chat.twitch.tv:6667`, `PASS SCHMOOPIIE` / `NICK justinfan<n>` (the
+  anonymous login Twitch's own logged-out chat uses), `CAP REQ :twitch.tv/tags
+  twitch.tv/commands`; emote places in the `emotes` tag are characters, not bytes.
+- **YouTube live**: `youtube.com/live_chat?is_popout=1&v=<id>` gives `ytInitialData` with the
+  view menu (its second item is "Live chat", everything) and the key and client version; then
+  `youtubei/v1/live_chat/get_live_chat` with the continuation, waiting `timeoutMs`. Whether a
+  past video kept its chat: `liveChatRenderer` on its watch page. New item kinds show up
+  (`giftMessageViewModel` that day).
+- **Twitch past broadcasts**: GraphQL `video.comments(contentOffsetSeconds:)` with the web
+  client id; asking by cursor fails ("failed integrity check") and so does the persisted
+  query, by second works.
+- **YouTube replay**: yt-dlp's `--sub-langs live_chat` (`.live_chat.json`, one action a line,
+  `videoOffsetTimeMsec`).
+- **Emotes**: 7TV `7tv.io/v3/users/twitch/<id>` + `emote-sets/global`, BetterTTV
+  `api.betterttv.net/3/cached/…`, FrankerFaceZ `api.frankerfacez.com/v1/room/id/<id>`; emoji
+  as `fonts.gstatic.com/s/e/notoemoji/15.1/<codepoints>/72.png` (what YouTube's chat uses).
+
+Worth reading when it breaks or for more: chat-downloader (xenova, MIT: YouTube and Twitch
+item kinds), TwitchDownloader (lay295, MIT: its chat renderer, for animated emotes and badge
+pictures), yt-dlp's `youtube` live chat code. Not read yet.
+
 ### TTV-AB (MIT with attribution)
 | Feature in Neria | Upstream files to watch |
 |---|---|

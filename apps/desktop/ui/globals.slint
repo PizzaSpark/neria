@@ -249,6 +249,92 @@ export global ClipLive {
     callback buffer-stop();
 }
 
+// One message in the Clip page's chat panel, drawn by Rust (core `chat_draw.rs`: the same
+// drawing a burned-in clip gets) at the panel's width.
+export struct ChatRow {
+    id: string,
+    image: image,
+    // Its height on screen (logical px).
+    h: length,
+    picked: bool,
+    // "Kaiyo: that was clean": what a screen reader says.
+    text: string,
+}
+
+// Live chat (Livestreams track): the panel beside the player on the Clip page (live, a
+// recording, a past stream, a file with its `.chat.json`), and Chat in this clip (the
+// dialog: left out, as a track, or burned in; which messages). Rust owns it (`chat_ui.rs`).
+export global ClipChat {
+    // Settings → Download: save live chat with recordings and past streams (`.chat.json`).
+    in-out property <bool> save: true;
+    // There's chat for what's open (or it can be loaded): the panel shows.
+    in property <bool> available;
+    // The panel is open (it can be hidden; compact: a sheet over the page).
+    in-out property <bool> shown: true;
+    // Compact: the chat as a sheet over the page (opened from the header's Chat button).
+    in-out property <bool> sheet;
+    // 0 nothing, 1 can be loaded (a past stream: "Load chat"), 2 loading, 3 there, 4 live,
+    // 5 a problem (`line` says what).
+    in property <int> state;
+    // "Loading chat · 34%", "Chat is off for this stream", "Live · reconnecting…".
+    in property <string> line;
+    // How many ("12,480"), for the header.
+    in property <string> count;
+    in property <[ChatRow]> rows;
+    // What the panel lists: 0 everything, 1 highlights, 2 the picked ones.
+    in-out property <int> view;
+    in-out property <string> find;
+    in property <int> picked-count;
+    // Scrolled back from the newest: "Jump to live" / "Back to now" shows.
+    in property <bool> scrolled;
+    // YouTube and Twitch together (a second chat added): the panel says both.
+    in property <string> sites;
+    // The panel tells Rust its width (rows are drawn at it) and height (how many fit).
+    in-out property <length> width-px: 300px;
+    in-out property <length> height-px: 400px;
+    // How busy chat is along the timeline (drawn by Rust at the timeline's width).
+    in property <image> activity;
+    callback load();
+    callback pick(string, bool);
+    callback view-changed();
+    callback find-changed();
+    // Click a message: the player jumps to it.
+    callback jump(string);
+    // Wheel / keys: positive goes back in time (older), in rows.
+    callback scroll(float);
+    callback latest();
+    callback resized();
+    // Read another stream's chat alongside (a channel streaming to YouTube and Twitch).
+    callback add-chat(string);
+    callback remove-chats();
+    in property <bool> can-add;
+    in-out property <bool> adding;
+
+    // Chat in this clip (the dialog).
+    in-out property <bool> open;
+    // 0 leave it out, 1 as a track, 2 burned in.
+    in-out property <int> how;
+    // Burned in: 0 beside the picture (below an upright one), 1 over it (lower left).
+    in-out property <int> place;
+    in-out property <bool> light;
+    // 0 everything in the clip, 1 highlights, 2 the ones picked.
+    in-out property <int> which;
+    in-out property <bool> no-bots: true;
+    in-out property <bool> pictures: true;
+    // Highlights also take messages with these words ("clip, gg").
+    in-out property <string> words;
+    // "186 messages fall inside 1:38:10 – 1:43:55", and how many each choice keeps.
+    in property <string> range-text;
+    in property <string> all-count;
+    in property <string> highlight-count;
+    in property <string> picked-in-clip;
+    // The bottom bar's button: "Chat: left out" / "Chat · burned in" (and short forms).
+    in property <string> button-text: "Chat";
+    in property <string> short-text: "Chat";
+    in property <bool> set;
+    callback changed();
+}
+
 // Clip page → the timeline when zoomed (Clip track 9). Rust owns the view (core
 // `timeline.rs`: clamping, zoom maths, the live edge); the timeline maps it to pixels and
 // sends the gestures here.

@@ -1,0 +1,146 @@
+import { ScrollView, LineEdit } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { ClipChat } from "../globals.slint";
+import { PrimaryButton, GhostButton, SectionTitle, Hint, Dialog, ChoiceChips, ChoiceRow, Tick } from "../widgets.slint";
+
+// Clip page → Chat: whether the clip gets its chat, how (a track you turn on, or drawn onto
+// the picture), and which messages (everything in the clip, highlights, the ones picked).
+export component ChatDialog inherits Dialog {
+    title: "Chat in this clip";
+    subtitle: ClipChat.range-text;
+    card-width: 580px;
+    card-height: 700px;
+    close => { ClipChat.open = false; }
+
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            spacing: 6px;
+            padding-right: Theme.lane;
+            SectionTitle { text: "How"; }
+            ChoiceRow {
+                title: "Leave it out";
+                hint: "a clean picture";
+                selected: ClipChat.how == 0;
+                clicked => {
+                    ClipChat.how = 0;
+                    ClipChat.changed();
+                }
+            }
+            ChoiceRow {
+                title: "As a track";
+                hint: "turn it on in the player, like captions";
+                selected: ClipChat.how == 1;
+                clicked => {
+                    ClipChat.how = 1;
+                    ClipChat.changed();
+                }
+            }
+            ChoiceRow {
+                title: "Burned in";
+                hint: "drawn onto the picture, for TikTok, Shorts, Discord";
+                selected: ClipChat.how == 2;
+                clicked => {
+                    ClipChat.how = 2;
+                    ClipChat.changed();
+                }
+            }
+            if ClipChat.how == 2: VerticalLayout {
+                padding-left: Screen.compact ? 0 : 30px;
+                padding-top: 8px;
+                padding-bottom: 4px;
+                spacing: 8px;
+                ChoiceChips {
+                    options: ["Beside the picture", "Over the picture"];
+                    current <=> ClipChat.place;
+                    changed => { ClipChat.changed(); }
+                }
+                Hint {
+                    text: ClipChat.place == 0
+                        ? "A column next to it (under an upright video), so chat never covers it. The video is re-encoded."
+                        : "The last few lines in the lower left, each fading after a while. The video is re-encoded.";
+                }
+                light := ChoiceChips {
+                    options: ["Dark", "Light"];
+                    current: ClipChat.light ? 1 : 0;
+                    changed => {
+                        ClipChat.light = light.current == 1;
+                        ClipChat.changed();
+                    }
+                }
+            }
+            if ClipChat.how == 1: Hint {
+                text: "An .mkv keeps names in their colours; an .mp4 holds plain lines (name: message).";
+            }
+
+            if ClipChat.how != 0: VerticalLayout {
+                padding-top: 12px;
+                spacing: 6px;
+                SectionTitle { text: "Which messages"; }
+                ChoiceRow {
+                    title: "Everything in the clip";
+                    value: ClipChat.all-count;
+                    selected: ClipChat.which == 0;
+                    clicked => {
+                        ClipChat.which = 0;
+                        ClipChat.changed();
+                    }
+                }
+                ChoiceRow {
+                    title: "Highlights only";
+                    hint: "Super Chats, subs, mods, your words";
+                    value: ClipChat.highlight-count;
+                    selected: ClipChat.which == 1;
+                    clicked => {
+                        ClipChat.which = 1;
+                        ClipChat.changed();
+                    }
+                }
+                ChoiceRow {
+                    title: "The ones I picked";
+                    hint: ClipChat.picked-in-clip == "0" ? "tick them in the chat panel" : "";
+                    warn: ClipChat.which == 2 && ClipChat.picked-in-clip == "0";
+                    value: ClipChat.picked-in-clip;
+                    selected: ClipChat.which == 2;
+                    clicked => {
+                        ClipChat.which = 2;
+                        ClipChat.changed();
+                    }
+                }
+                if ClipChat.which == 1: VerticalLayout {
+                    padding-left: Screen.compact ? 0 : 30px;
+                    padding-top: 6px;
+                    spacing: 4px;
+                    LineEdit {
+                        placeholder-text: "Your words, commas between (clip, gg)";
+                        text <=> ClipChat.words;
+                        edited => { ClipChat.changed(); }
+                    }
+                }
+                VerticalLayout {
+                    padding-top: 10px;
+                    spacing: 2px;
+                    Tick {
+                        text: "Leave out bots and !commands";
+                        checked <=> ClipChat.no-bots;
+                        toggled => { ClipChat.changed(); }
+                    }
+                    if ClipChat.how == 2: Tick {
+                        text: "Show emotes and emoji as pictures";
+                        checked <=> ClipChat.pictures;
+                        toggled => { ClipChat.changed(); }
+                    }
+                }
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: end;
+        PrimaryButton {
+            text: "Done";
+            clicked => { ClipChat.open = false; }
+        }
+    }
+}

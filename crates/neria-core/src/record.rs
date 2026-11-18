@@ -275,6 +275,43 @@ struct Part {
     skip: f64,
 }
 
+/// The live chat read while recording, one message a line (`chat::LiveChat`'s log).
+fn chat_log(work: &Path) -> PathBuf {
+    work.join("chat.jsonl")
+}
+
+/// The chat read while recording, next to each saved file, timed to it: a file's second 0 is
+/// `zero` on the clock (the stream's start plus where the file begins in it).
+fn save_chat(work: &Path, m: &Manifest, files: &[(PathBuf, f64)]) {
+    let log = chat_log(work);
+    if !log.is_file() {
+        return;
+    }
+    let all = crate::chat::read_log(&log);
+    if all.is_empty() {
+        return;
+    }
+    let sites: Vec<crate::chat::Site> = crate::chat::Site::of(&m.url).into_iter().collect();
+    for (file, starts) in files {
+        // Where the file's second 0 was on the clock: from the stream's start when it's
+        // known, else from when its first part began (a few pieces behind live).
+        let zero = match m.started_at {
+            Some(s) => s + starts,
+            None => m.parts.first().map_or(0.0, |p| p.began - LIVE_LAG + p.skip) + (starts - m.parts.first().map_or(0.0, |p| p.offset + p.skip)),
+        };
+        let len = crate::media::duration(file).unwrap_or(f64::MAX);
+        let msgs: Vec<_> = all.iter().filter(|x| x.t >= zero - 5.0 && x.t <= zero + len + 5.0).cloned().collect();
+        if msgs.is_empty() {
+            continue;
+        }
+        let chat = crate::chat::to_file(msgs, zero, sites.clone(), vec![m.title.clone()]);
+        let _ = chat.save(&crate::chat::sidecar_of(file));
+    }
+}
+
+/// How far behind live a from-now recording runs (the pieces the site holds back).
+const LIVE_LAG: f64 = 15.0;
+
 fn manifest_path(work: &Path) -> PathBuf {
     work.join("parts.json")
 }
@@ -566,6 +603,11 @@ pub fn record(
     let mut failures = 0u32;
     let mut note = String::new();
     let mut ended = false;
+    // Its chat, all along (into the recording's folder line by line, so a crash keeps it):
+    // saved next to the file as `.chat.json`.
+    let _chat = (rec.settings.chat_save && crate::chat::supported(rec.url))
+        .then(|| crate::chat::LiveChat::start(rec.url, Some(chat_log(&rec.work))))
+        .flatten();
 
     while !stop.load(Ordering::SeqCst) && !cancel.load(Ordering::SeqCst) {
         // The first part goes from the start when asked; a from-start part that broke is
@@ -1650,6 +1692,14 @@ pub fn save(work: &Path, out_dir: &Path) -> Result<Saved> {
     // What the file really holds (the count while recording is an estimate).
     let recorded = files.iter().filter_map(|f| crate::media::duration(f)).sum::<f64>();
     let recorded = if recorded > 0.0 { recorded } else { m.parts.iter().map(|p| p.recorded).sum() };
+    // Its chat, timed to each file: where in the stream each one begins.
+    let file_starts: Vec<f64> = if files.len() == 1 {
+        vec![if early.as_ref().is_some_and(|e| e.until >= 1.0) { 0.0 } else { m.parts.first().map_or(0.0, |p| p.offset + p.skip) }]
+    } else {
+        early.iter().map(|_| 0.0).chain(m.parts.iter().map(|p| p.offset + p.skip)).collect()
+    };
+    let pairs: Vec<(PathBuf, f64)> = files.iter().cloned().zip(file_starts).collect();
+    save_chat(work, &m, &pairs);
     discard(work);
     let note =
         if got_back > 0.0 { format!("got back {} missed", crate::fmt::duration(got_back)) } else { String::new() };

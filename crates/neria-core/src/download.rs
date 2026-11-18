@@ -81,6 +81,10 @@ pub struct DownloadRequest {
     /// Write a transcript of it after the download (Extras → Transcript; speech to text).
     #[serde(default)]
     pub transcribe: Option<crate::transcribe::Spec>,
+    /// Live chat: save a past stream's whole chat next to it, and/or put chat into it (a
+    /// link clip with Chat set on the Clip page).
+    #[serde(default)]
+    pub chat: Option<crate::chat_out::ChatJob>,
 }
 
 impl Default for DownloadRequest {
@@ -121,6 +125,7 @@ impl DownloadRequest {
             picture: None,
             gif_spec: None,
             transcribe: None,
+            chat: None,
             live_window: None,
             live: None,
         }
