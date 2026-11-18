@@ -3,6 +3,8 @@
 //! Kept free of any UI toolkit so the desktop (Slint) and a future Android
 //! front-end can share it.
 
+pub mod capture;
+pub mod capture_sound;
 pub mod chat;
 pub mod chat_draw;
 pub mod chat_out;
@@ -17,6 +19,7 @@ pub mod folders;
 pub mod follow;
 pub mod gif;
 pub mod history;
+pub mod hotkey;
 pub mod live;
 pub mod lyrics;
 pub mod media;
