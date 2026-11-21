@@ -32,6 +32,29 @@ impl Monitor {
     }
 }
 
+/// Who made a graphics chip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Vendor {
+    Nvidia,
+    Amd,
+    Intel,
+    Other,
+}
+
+/// A graphics chip (`-init_hw_device d3d11va:N`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Chip {
+    pub index: u32,
+    pub vendor: Vendor,
+    /// "NVIDIA GeForce RTX 3060 Laptop GPU".
+    pub name: String,
+}
+
+/// The real graphics chips, in Windows' order (Windows' own software one left out).
+pub fn chips() -> Vec<Chip> {
+    imp::chips()
+}
+
 /// A program with a window open now.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Program {
@@ -332,6 +355,30 @@ mod imp {
         }
     }
 
+    pub fn chips() -> Vec<Chip> {
+        let mut out = Vec::new();
+        unsafe {
+            let Ok(factory) = CreateDXGIFactory1::<IDXGIFactory1>() else { return out };
+            let mut a = 0u32;
+            while let Ok(adapter) = factory.EnumAdapters1(a) {
+                if let Ok(d) = adapter.GetDesc1() {
+                    let vendor = match d.VendorId {
+                        0x10DE => Vendor::Nvidia,
+                        0x1002 | 0x1022 => Vendor::Amd,
+                        0x8086 => Vendor::Intel,
+                        _ => Vendor::Other,
+                    };
+                    // 0x1414: Microsoft's Basic Render Driver (no chip).
+                    if d.VendorId != 0x1414 {
+                        out.push(Chip { index: a, vendor, name: wide(&d.Description) });
+                    }
+                }
+                a += 1;
+            }
+        }
+        out
+    }
+
     pub fn monitors() -> Vec<Monitor> {
         let _real = RealPixels::new();
         let names = friendly_names();
@@ -393,6 +440,9 @@ mod imp {
     }
     pub fn front() -> Front {
         Front::default()
+    }
+    pub fn chips() -> Vec<Chip> {
+        Vec::new()
     }
 }
 

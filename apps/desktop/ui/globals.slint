@@ -954,6 +954,10 @@ export global Capture {
     in property <bool> picking-key;
     in property <string> key-problem;
     in-out property <bool> at-start;
+    // Which encoder records: "Automatic (NVIDIA)", then this PC's chips, "CPU".
+    in property <[string]> encoders;
+    in-out property <int> encoder;
+    in property <string> encoder-hint;
     // Said by voice too: 'say "clip that"' when voice is on.
     in property <string> voice-hint;
     in property <[CaptureSaved]> saved;

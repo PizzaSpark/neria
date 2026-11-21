@@ -45,19 +45,18 @@ pub enum Source {
 }
 
 impl Source {
-    /// Before the input: a monitor on another graphics chip is recorded on that chip.
-    fn device_args(&self) -> Vec<String> {
-        match self {
-            Source::Monitor(i) => match crate::capture_pick::monitors().into_iter().find(|m| m.index == *i) {
-                Some(m) if m.adapter != 0 => vec![
-                    "-init_hw_device".into(),
-                    format!("d3d11va=grab:{}", m.adapter),
-                    "-filter_hw_device".into(),
-                    "grab".into(),
-                ],
-                _ => Vec::new(),
-            },
-            Source::Window(_) => Vec::new(),
+    /// Before the input: a monitor is recorded on the graphics chip it's on; a window on
+    /// `chip` (the one whose encoder is used, so the frames needn't cross over).
+    fn device_args(&self, chip: Option<u32>) -> Vec<String> {
+        let on = match self {
+            Source::Monitor(i) => crate::capture_pick::monitors().into_iter().find(|m| m.index == *i).map(|m| m.adapter),
+            Source::Window(_) => chip,
+        };
+        match on {
+            Some(n) if n != 0 => {
+                vec!["-init_hw_device".into(), format!("d3d11va=grab:{n}"), "-filter_hw_device".into(), "grab".into()]
+            }
+            _ => Vec::new(),
         }
     }
 
@@ -142,25 +141,135 @@ impl Route {
 
     /// The first route that gets frames from `source` into an encoder on this machine.
     pub fn pick(source: &Source, fps: u32) -> Result<Route> {
-        let mut last = String::new();
-        for r in Route::ALL {
-            match r.check(source, fps) {
-                Ok(()) => return Ok(r),
-                Err(e) => last = e,
-            }
-        }
-        bail!("Couldn't record this: {last}")
+        Ok(pick_way(source, fps, Encoder::Auto)?.0)
     }
 
     /// Half a second through this route into nothing; why not, if it fails.
     pub fn check(self, source: &Source, fps: u32) -> std::result::Result<(), String> {
-        try_route(source, fps, self)
+        try_route(source, fps, self, None)
+    }
+
+    /// Whose encoder it is.
+    pub fn vendor(self) -> Encoder {
+        match self {
+            Route::Nvenc | Route::NvencCopy => Encoder::Nvidia,
+            Route::Amf => Encoder::Amd,
+            Route::Qsv => Encoder::Intel,
+            Route::Cpu => Encoder::Cpu,
+        }
     }
 }
 
-fn try_route(source: &Source, fps: u32, route: Route) -> std::result::Result<(), String> {
+/// Which encoder records (the Capture page's choice).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Encoder {
+    /// The fastest there is: a dedicated chip's (NVIDIA, AMD) before the one built into the CPU
+    /// (Intel), the CPU itself last.
+    #[default]
+    Auto,
+    Nvidia,
+    Amd,
+    Intel,
+    Cpu,
+}
+
+impl Encoder {
+    pub fn from_name(s: &str) -> Encoder {
+        match s {
+            "nvidia" => Encoder::Nvidia,
+            "amd" => Encoder::Amd,
+            "intel" => Encoder::Intel,
+            "cpu" => Encoder::Cpu,
+            _ => Encoder::Auto,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Encoder::Auto => "auto",
+            Encoder::Nvidia => "nvidia",
+            Encoder::Amd => "amd",
+            Encoder::Intel => "intel",
+            Encoder::Cpu => "cpu",
+        }
+    }
+
+    /// "NVIDIA", "Intel", "the CPU".
+    pub fn label(self) -> &'static str {
+        match self {
+            Encoder::Auto => "Automatic",
+            Encoder::Nvidia => "NVIDIA",
+            Encoder::Amd => "AMD",
+            Encoder::Intel => "Intel",
+            Encoder::Cpu => "CPU",
+        }
+    }
+}
+
+/// The encoders this PC has, for the Capture page (the CPU always).
+pub fn encoders() -> Vec<Encoder> {
+    let chips = crate::capture_pick::chips();
+    let has = |v: crate::capture_pick::Vendor| chips.iter().any(|c| c.vendor == v);
+    let mut out = Vec::new();
+    use crate::capture_pick::Vendor;
+    for (v, e) in [(Vendor::Nvidia, Encoder::Nvidia), (Vendor::Amd, Encoder::Amd), (Vendor::Intel, Encoder::Intel)] {
+        if has(v) {
+            out.push(e);
+        }
+    }
+    out.push(Encoder::Cpu);
+    out
+}
+
+/// What to try, in order, for an encoder: each route with the chip to grab a window on
+/// (`None`: Windows' default chip).
+fn ways(encoder: Encoder) -> Vec<(Route, Option<u32>)> {
+    use crate::capture_pick::Vendor;
+    let chips = crate::capture_pick::chips();
+    let chip = |v: Vendor| chips.iter().find(|c| c.vendor == v).map(|c| c.index);
+    let nvidia = || match chip(Vendor::Nvidia) {
+        Some(n) => vec![(Route::Nvenc, Some(n)), (Route::Nvenc, None), (Route::NvencCopy, None)],
+        None => Vec::new(),
+    };
+    let amd = || match chip(Vendor::Amd) {
+        Some(n) => vec![(Route::Amf, Some(n)), (Route::Amf, None)],
+        None => Vec::new(),
+    };
+    let intel = || match chip(Vendor::Intel) {
+        Some(n) => vec![(Route::Qsv, Some(n)), (Route::Qsv, None)],
+        None => Vec::new(),
+    };
+    let cpu = || vec![(Route::Cpu, None)];
+    let mut v = match encoder {
+        Encoder::Nvidia => nvidia(),
+        Encoder::Amd => amd(),
+        Encoder::Intel => intel(),
+        Encoder::Cpu => cpu(),
+        Encoder::Auto => [nvidia(), amd(), intel(), cpu()].concat(),
+    };
+    v.dedup();
+    v
+}
+
+/// The first way `encoder` gets frames from `source` here: the route and the chip a window
+/// is grabbed on. One picked by name that doesn't work here says why.
+pub fn pick_way(source: &Source, fps: u32, encoder: Encoder) -> Result<(Route, Option<u32>)> {
+    let mut last = String::new();
+    for (r, chip) in ways(encoder) {
+        match try_route(source, fps, r, chip) {
+            Ok(()) => return Ok((r, chip)),
+            Err(e) => last = e,
+        }
+    }
+    if encoder == Encoder::Auto || encoder == Encoder::Cpu {
+        bail!("Couldn't record this: {last}")
+    }
+    bail!("{}'s encoder couldn't record this ({last}). Pick Automatic.", encoder.label())
+}
+
+fn try_route(source: &Source, fps: u32, route: Route, chip: Option<u32>) -> std::result::Result<(), String> {
     let graph = format!("{}{}", source.filter(fps), route.chain());
-    let dev = source.device_args();
+    let dev = source.device_args(chip);
     // A screen on another graphics chip: ddagrab only takes that chip inside -filter_complex.
     let input: Vec<String> = if dev.is_empty() {
         vec!["-f".into(), "lavfi".into(), "-i".into(), graph]
@@ -201,8 +310,11 @@ pub struct Options {
     pub keep: u32,
     /// Video bitrate in Mbit/s.
     pub mbps: u32,
-    /// `None`: tried at start (`Route::pick`).
+    /// `None`: tried at start (`pick_way` with `encoder`).
     pub route: Option<Route>,
+    /// The chip a window is grabbed on (with `route`; `None`: Windows' default).
+    pub chip: Option<u32>,
+    pub encoder: Encoder,
     /// Sound recorded, in order (AAC, named after each: "Game & PC (no Discord)", "Discord", "Mic").
     pub sounds: Vec<Sound>,
     /// What each of `sounds` is for (in the "Everything" mix, a track of its own, both) and
@@ -218,6 +330,8 @@ impl Default for Options {
             keep: 60,
             mbps: 16,
             route: None,
+            chip: None,
+            encoder: Encoder::Auto,
             sounds: default_sounds(None),
             tracks: Vec::new(),
         }
@@ -291,6 +405,8 @@ pub struct Prefs {
     pub mic_name: String,
     /// The save key (`hotkey::Hotkey::parse`).
     pub key: String,
+    /// Which encoder records: "auto", "nvidia", "amd", "intel", "cpu" (`Encoder`).
+    pub encoder: String,
     pub fps: u32,
     pub mbps: u32,
     /// The clips saved, newest first (up to `SAVED_MAX`).
@@ -319,6 +435,7 @@ impl Default for Prefs {
             mic: true,
             mic_name: String::new(),
             key: crate::hotkey::DEFAULT.into(),
+            encoder: "auto".into(),
             fps: 60,
             mbps: 16,
             saved: Vec::new(),
@@ -457,11 +574,16 @@ pub struct ScreenBuffer {
 }
 
 impl ScreenBuffer {
-    pub fn start(options: Options) -> Result<ScreenBuffer> {
+    pub fn start(mut options: Options) -> Result<ScreenBuffer> {
         let route = match options.route {
             Some(r) => r,
-            None => Route::pick(&options.source, options.fps)?,
+            None => {
+                let (r, chip) = pick_way(&options.source, options.fps, options.encoder)?;
+                options.chip = chip;
+                r
+            }
         };
+        options.route = Some(route);
         let dir = paths::app_dir().join("capture");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir)?;
@@ -645,7 +767,7 @@ fn record(
     let graph = format!("{}{}", o.source.filter(o.fps), route.chain());
     let mut cmd = proc::command(paths::tool("ffmpeg"));
     cmd.args(["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y"]);
-    let dev = o.source.device_args();
+    let dev = o.source.device_args(o.chip);
     // A screen on another graphics chip: ddagrab only takes that chip inside -filter_complex,
     // so the picture is made there instead of as input 0.
     let in_graph = !dev.is_empty();

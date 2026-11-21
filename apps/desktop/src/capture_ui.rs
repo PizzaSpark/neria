@@ -54,8 +54,11 @@ struct State {
     hotkey: Option<hotkey::Listener>,
     /// Bumped by each start, so an older start that finishes late is dropped.
     started_n: u64,
-    /// The route that worked for a source ("m:0" / "w:game.exe"), so a restart is quick.
-    route: Option<(String, Route)>,
+    /// The route (and chip) that worked for a source and encoder ("m:0 auto"), so a restart
+    /// is quick.
+    route: Option<(String, Route, Option<u32>)>,
+    /// The Encoder chips, in order (Automatic first).
+    encoders: Vec<capture::Encoder>,
     monitors: Vec<Monitor>,
     programs: Vec<Program>,
     saving: bool,
@@ -384,11 +387,11 @@ fn begin(ui: &AppWindow) {
     }
     set_phase(Phase::Starting);
     show(ui);
-    let key = source_key(&source);
-    let (started_n, route) = ST.with(|s| {
+    let key = format!("{} {}", source_key(&source), p.encoder);
+    let (started_n, cached) = ST.with(|s| {
         let mut s = s.borrow_mut();
         s.started_n += 1;
-        (s.started_n, s.route.as_ref().filter(|(k, _)| *k == key).map(|(_, r)| *r))
+        (s.started_n, s.route.as_ref().filter(|(k, _, _)| *k == key).map(|(_, r, c)| (*r, *c)))
     });
     let weak = ui.as_weak();
     std::thread::spawn(move || {
@@ -399,7 +402,9 @@ fn begin(ui: &AppWindow) {
             fps: p.fps,
             keep: p.keep,
             mbps: p.mbps,
-            route,
+            route: cached.map(|c| c.0),
+            chip: cached.and_then(|c| c.1),
+            encoder: capture::Encoder::from_name(&p.encoder),
             sounds: plan.sounds,
             tracks: plan.tracks,
         };
@@ -410,7 +415,7 @@ fn begin(ui: &AppWindow) {
                 Ok(b) if current => {
                     ST.with(|s| {
                         let mut s = s.borrow_mut();
-                        s.route = Some((key, b.route));
+                        s.route = Some((key, b.route, b.options.chip));
                         s.buffer = Some(Arc::new(b));
                         s.by_app = by_app;
                         s.since = Some(Instant::now());
@@ -581,6 +586,32 @@ fn show_prefs(ui: &AppWindow) {
     let c = ui.global::<Capture>();
     c.set_keep(KEEPS.iter().position(|k| *k == p.keep).unwrap_or(1) as i32);
     c.set_per_app(p.per_app);
+    // Encoder: Automatic (saying which it is here), then this PC's chips, the CPU.
+    let list = capture::encoders();
+    let auto = list.first().copied().unwrap_or(capture::Encoder::Cpu);
+    let mut all = vec![capture::Encoder::Auto];
+    all.extend(list);
+    let names: Vec<SharedString> = all
+        .iter()
+        .map(|e| if *e == capture::Encoder::Auto { format!("Automatic ({})", auto.label()).into() } else { e.label().into() })
+        .collect();
+    c.set_encoders(ModelRc::new(VecModel::from(names)));
+    let picked = capture::Encoder::from_name(&p.encoder);
+    c.set_encoder(all.iter().position(|e| *e == picked).unwrap_or(0) as i32);
+    c.set_encoder_hint(
+        match picked {
+            capture::Encoder::Auto | capture::Encoder::Nvidia if auto == capture::Encoder::Nvidia => {
+                "NVIDIA's encoder is the sharpest here, and it leaves the processor's power to the game."
+            }
+            capture::Encoder::Intel => {
+                "Leaves the NVIDIA chip alone, but shares the processor's power and heat (games that lean on the processor may lose a little), and looks a little softer in fast motion."
+            }
+            capture::Encoder::Cpu => "Works everywhere, and costs the game the most. For when no other one works.",
+            _ => "The fastest encoder this PC has.",
+        }
+        .into(),
+    );
+    ST.with(|s| s.borrow_mut().encoders = all);
     c.set_mic(p.mic);
     show_never(ui);
     c.set_key(p.key.clone().into());
@@ -622,6 +653,9 @@ fn changed(ui: &AppWindow) {
     save_prefs(|p| {
         p.keep = KEEPS[c.get_keep().clamp(0, 3) as usize];
         p.per_app = c.get_per_app();
+        if let Some(e) = ST.with(|s| s.borrow().encoders.get(c.get_encoder().max(0) as usize).copied()) {
+            p.encoder = e.name().into();
+        }
         p.mic = c.get_mic();
         p.mic_name = mic_name;
         p.on_at_start = c.get_at_start();
@@ -630,11 +664,15 @@ fn changed(ui: &AppWindow) {
     // How much and which tracks are fixed while it runs: start again with them.
     let restart = after.keep != before.keep
         || after.per_app != before.per_app
+        || after.encoder != before.encoder
         || after.mic != before.mic
         || after.mic_name != before.mic_name;
     if restart && on() && phase() != Phase::Waiting {
         halt();
         begin(ui);
+    }
+    if after.encoder != before.encoder {
+        show_prefs(ui);
     }
     show(ui);
 }
@@ -1256,6 +1294,13 @@ fn show_demo(ui: &AppWindow, what: &str) {
     ])));
     c.set_mic_index(1);
     c.set_key("F8".into());
+    c.set_encoders(ModelRc::new(VecModel::from(vec![
+        SharedString::from("Automatic (NVIDIA)"),
+        "NVIDIA".into(),
+        "Intel".into(),
+        "CPU".into(),
+    ])));
+    c.set_encoder_hint("NVIDIA's encoder is the sharpest here, and it leaves the processor's power to the game.".into());
     let tr = |n: i32, name: &str, kind: i32, note: &str, level: f32, exe: &str| CaptureTrack {
         n,
         name: name.into(),

@@ -9,6 +9,8 @@
 //! - `--keep <s>` (60), `--fps <n>` (60), `--mbps <n>` (16).
 //! - `--route nvenc|amf|qsv|nvenc-copy|cpu`: force a route instead of trying them.
 //! - `--routes`: only say which routes work here, then stop.
+//! - `--encoder auto|nvidia|amd|intel|cpu`: as the Capture page's Encoder (a window is grabbed
+//!   on that chip); `--chip <n>` with `--route` grabs a window on chip n.
 //! - `--run <s>`: stop after that long and save the last `--keep` seconds. Without it:
 //!   Enter saves the last `--keep` seconds, `q` + Enter stops.
 //! - `--hotkey <key>` (F8; e.g. `Alt+F10`): saves the last `--keep` seconds from anywhere,
@@ -48,6 +50,7 @@ fn main() -> anyhow::Result<()> {
         o.mbps = v.parse()?;
     }
     if let Some(r) = val("--route") {
+        o.chip = val("--chip").map(|c| c.parse()).transpose()?;
         o.route = Some(match r.as_str() {
             "nvenc" => Route::Nvenc,
             "amf" => Route::Amf,
@@ -57,6 +60,9 @@ fn main() -> anyhow::Result<()> {
             _ => anyhow::bail!("unknown route {r}"),
         });
     }
+    if let Some(e) = val("--encoder") {
+        o.encoder = neria_core::capture::Encoder::from_name(&e);
+    }
     let out: PathBuf = val("--out").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     if args.iter().any(|a| a == "--list") {
         for m in neria_core::capture_pick::monitors() {
@@ -64,6 +70,9 @@ fn main() -> anyhow::Result<()> {
         }
         for p in neria_core::capture_pick::programs() {
             println!("{} {} ({})", if p.game { "game  " } else { "window" }, p.name, p.exe);
+        }
+        for c in neria_core::capture_pick::chips() {
+            println!("chip {}: {} ({:?})", c.index, c.name, c.vendor);
         }
         let f = neria_core::capture_pick::front();
         println!("in front: game {:?}, monitor {:?}", f.game.map(|g| g.name), f.monitor);
@@ -124,7 +133,7 @@ fn main() -> anyhow::Result<()> {
 
     let t = Instant::now();
     let buffer = ScreenBuffer::start(o.clone())?;
-    println!("recording {:?} through {} (picked in {:.1}s), keeping {} s", o.source, buffer.route.label(), t.elapsed().as_secs_f64(), o.keep);
+    println!("recording {:?} through {} on chip {:?} (picked in {:.1}s), keeping {} s", o.source, buffer.route.label(), buffer.options.chip, t.elapsed().as_secs_f64(), o.keep);
     let titles = o.titles();
     println!("sound tracks: {}", if titles.is_empty() { "none".into() } else { titles.join(" · ") });
 

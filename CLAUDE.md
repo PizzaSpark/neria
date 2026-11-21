@@ -76,7 +76,7 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   `--first-only` (else every sound track, captions, chapters), `--bars`,
   `--preview` (size estimate + before/after frames, no encode), `--sample <at> <secs>`)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example capture -- [--window game.exe | --monitor 0] [--keep 60] [--run <s>] [--out dir]`
-  (instant replay; prints fps / dropped frames every 2 s; Enter saves, `q` stops; `--list` monitors, programs, what's in front, apps playing sound; `--tracks [--never a.exe,b.exe]` sound as the Capture page plans it; `--routes`
+  (instant replay; prints fps / dropped frames every 2 s; Enter saves, `q` stops; `--list` monitors, programs, what's in front, apps playing sound; `--tracks [--never a.exe,b.exe]` sound as the Capture page plans it; `--encoder auto|nvidia|amd|intel|cpu` as the page's Encoder (a window grabbed on that chip); `--routes`
   says which capture→encoder routes work here, `--route qsv|nvenc|amf|nvenc-copy|cpu` forces one;
   sound by default: "Game & PC (no Discord)", "Discord" (when it runs), "Mic" (Windows' default,
   or `--mic <part of its name>`; `--mics` lists them); `--no-sound`; `--sound pc,mic,app:X.exe,except:X.exe`;

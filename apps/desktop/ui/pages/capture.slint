@@ -565,6 +565,16 @@ component Choices inherits VerticalLayout {
         text: "Works inside games." + (Capture.voice-hint != "" ? " " + Capture.voice-hint : " Saying \"clip that\" can save too: Settings → Voice.");
     }
     Rectangle { height: 8px; }
+    Head { text: "Encoder"; }
+    ChoiceChips {
+        options: Capture.encoders;
+        current <=> Capture.encoder;
+        changed => { Capture.changed(); }
+    }
+    if Capture.encoder-hint != "": Hint {
+        text: Capture.encoder-hint;
+    }
+    Rectangle { height: 8px; }
     Tick {
         text: "Turn on when Neria starts";
         checked <=> Capture.at-start;
