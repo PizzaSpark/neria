@@ -717,7 +717,7 @@ impl Options {
             // Android counts this in frames at an assumed 60 fps: 1 s is a key frame every 60
             // frames, every second while things move and a few seconds on a quiet screen (it
             // sends 10 or so a second then). Asking for one ("reset video") restarts the
-            // encoder, which players can stall on, so that's only done when a reader joins.
+            // encoder, which on some phones stops the capture, so it's never done.
             a.push("video_codec_options=i-frame-interval:float=1".into());
         }
         if self.audio {
@@ -1007,11 +1007,6 @@ impl Feed {
         self.0.lock().unwrap().clients.clear();
     }
 
-    /// (readers, readers still waiting for a key frame)
-    fn readers(&self) -> (usize, bool) {
-        let f = self.0.lock().unwrap();
-        (f.clients.len(), f.clients.iter().any(|c| c.need_key))
-    }
 }
 
 /// Milliseconds since the stream's first time.
@@ -1582,37 +1577,9 @@ impl Session {
             if options.screen_off {
                 session.send(Control::ScreenPower(false));
             }
-            // Key frames on demand. Android counts the key frame interval in frames at an
-            // assumed 60 fps, so a quiet screen (3–10 fps) sends one every 20 s or so: too few
-            // for 2 s pieces, and whoever joins (a recording, a screenshot) would wait. Ask
-            // for one ("reset video") when a reader waits, or when none came for 3 s.
-            if has_v {
-                let feeds: Vec<Feed> = [&session.video, &session.mkv, &session.mkv_turn].into_iter().flatten().map(|f| f.feed()).collect();
-                let (ctl, l, st) = (session.control.clone(), live.clone(), stop.clone());
-                std::thread::spawn(move || {
-                    let mut asked = Instant::now();
-                    while !st.load(Ordering::SeqCst) {
-                        std::thread::sleep(Duration::from_millis(250));
-                        let (mut readers, mut waiting) = (0, false);
-                        for f in &feeds {
-                            let (n, w) = f.readers();
-                            readers += n;
-                            waiting |= w;
-                        }
-                        // Only for a reader that joined, and only when no key frame is due soon.
-                        let recent = l.lock().unwrap().last_key.is_some_and(|t| t.elapsed() < Duration::from_millis(700));
-                        if readers > 0 && waiting && !recent && asked.elapsed() > Duration::from_secs(3) {
-                            asked = Instant::now();
-                            let mut g = ctl.lock().unwrap();
-                            if let Some(s) = g.as_mut() {
-                                if s.write_all(&Control::ResetVideo.bytes()).is_err() {
-                                    *g = None;
-                                }
-                            }
-                        }
-                    }
-                });
-            }
+            // No "reset video" to get key frames sooner: it restarts the phone's encoder, and
+            // on some phones (a POCO X7 Pro, Android 16) the capture then stops while the screen
+            // goes on. Key frames come from the phone's own schedule (`server_args`).
         }
         session.sockets = sockets;
         Ok(session)
