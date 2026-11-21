@@ -5,7 +5,7 @@ import { Palette } from "std-widgets.slint";
 import { Theme, Screen } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, LiveRow, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved } from "globals.slint";
 import { ClipsDialog } from "dialogs/clips.slint";
 import { GifDialog } from "dialogs/gif.slint";
 import { ChatDialog } from "dialogs/chat.slint";
@@ -18,6 +18,7 @@ import { Sidebar, TabBar } from "components/sidebar.slint";
 import { DownloadPage } from "pages/download.slint";
 import { ClipPage } from "pages/clip.slint";
 import { CompressPage } from "pages/compress.slint";
+import { CapturePage, CaptureToast } from "pages/capture.slint";
 import { SettingsDrawer } from "pages/settings.slint";
 import { SetupScreen } from "pages/setup.slint";
 import { MatchDialog } from "dialogs/match.slint";
@@ -25,7 +26,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet }
+export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -458,6 +459,8 @@ export component AppWindow inherits Window {
                 if root.page == 2: CompressPage {
                     recent: root.recent-compress;
                 }
+
+                if root.page == 3: CapturePage { }
             }
 
             if Screen.compact: TabBar {
@@ -520,6 +523,12 @@ export component AppWindow inherits Window {
         update-check => { root.update-check(); }
         tools-update => { root.tools-update(); }
         copy-report => { root.copy-report(); }
+    }
+
+    if Capture.toast-text != "": CaptureToast {
+        x: (root.width - self.width) / 2;
+        y: root.height - self.height - (Screen.compact ? 66px + 14px : 26px) - (root.toast != "" ? 56px : 0px);
+        widest: root.width - (Screen.compact ? 32px : 80px);
     }
 
     if root.toast != "": Toast {

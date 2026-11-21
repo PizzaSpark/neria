@@ -139,6 +139,13 @@ $states = [ordered]@{
   "cmp-play"   = @{ NERIA_COMPRESS = $film; NERIA_COMPRESS_PLAY = "1" }
   "cmp-play-song" = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_PLAY = "1" }
   "cmp-song-mix" = @{ NERIA_COMPRESS = "$video;$song" }
+  "cap"        = @{ NERIA_PAGE = "capture" }
+  "cap-off"    = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "off" }
+  "cap-on"     = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "on"; NERIA_VOICE_DEMO = "listening" }
+  "cap-wait"   = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "waiting" }
+  "cap-stop"   = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "stopped" }
+  "cap-toast"  = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "toast"; NERIA_VOICE_DEMO = "listening" }
+  "cap-key"    = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "key" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-voice-off" = @{ NERIA_SETTINGS = "voice" }

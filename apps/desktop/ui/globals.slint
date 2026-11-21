@@ -857,3 +857,81 @@ export global Voice {
     callback undo();
     callback show();
 }
+
+// Something instant replay can record: a game or another program's window, or a monitor.
+export struct CaptureSource {
+    // "w:VALORANT-Win64-Shipping.exe" or "m:DELL U2720Q".
+    id: string,
+    // 0 a game, 1 another window, 2 a monitor.
+    kind: int,
+    name: string,
+    // "VALORANT-Win64-Shipping.exe", "Main screen · 2560 × 1440", "Not open now".
+    hint: string,
+}
+
+// A clip instant replay saved.
+export struct CaptureSaved {
+    path: string,
+    title: string,
+    // "1:00 · 118 MB · 2 min ago".
+    detail: string,
+    thumb: image,
+}
+
+// The Capture page: instant replay of a game, a window or a monitor (`capture_ui.rs`).
+export global Capture {
+    // 0 off, 1 starting, 2 on (keeping), 3 waiting for the game to open, 4 stopped (a problem).
+    in property <int> state;
+    // "Keeping the last 1 min of VALORANT", "Instant replay is off"…
+    in property <string> status;
+    // Under it: "Press F8 or say "clip that" to save it", the problem, "Will keep…".
+    in property <string> detail;
+    // Mono, while on: "60 fps · NVIDIA · 3 sound tracks".
+    in property <string> tech;
+    // What can be recorded; the picked one by id.
+    in property <[CaptureSource]> sources;
+    in property <string> picked;
+    // Other windows (not games) are listed too.
+    in-out property <bool> show-all;
+    // How much to keep: 0 30 s, 1 1 min, 2 2 min, 3 5 min.
+    in-out property <int> keep: 1;
+    // Sound tracks.
+    in-out property <bool> pc: true;
+    in-out property <bool> chat-apart: true;
+    in-out property <bool> mic: true;
+    // "Windows' default", then the mics by name.
+    in property <[string]> mics;
+    in-out property <int> mic-index;
+    // The save key ("F8"), being picked (the next key pressed), and why a key can't be used.
+    in property <string> key: "F8";
+    in property <bool> picking-key;
+    in property <string> key-problem;
+    in-out property <bool> at-start;
+    // Said by voice too: 'say "clip that"' when voice is on.
+    in property <string> voice-hint;
+    in property <[CaptureSaved]> saved;
+    // The toast after a save: 'Saved' / 'Heard "clip that"', the text, Undo, the file.
+    in property <string> toast-tag;
+    in property <string> toast-text;
+    in property <bool> toast-undo;
+    in property <string> toast-file;
+    callback turn-on();
+    callback turn-off();
+    callback save-now();
+    callback try-again();
+    callback pick(string);
+    // Keep, the sound tracks, the mic, Turn on at start.
+    callback changed();
+    callback show-all-changed();
+    callback key-pick-start();
+    // The key pressed (Slint's text for it) with Ctrl, Alt, Shift, Win.
+    callback key-picked(string, bool, bool, bool, bool);
+    callback key-pick-cancel();
+    callback open-clip(string);
+    callback show-file(string);
+    callback forget(string);
+    callback undo();
+    callback toast-closed();
+    // The page is showing (the list of windows refreshes while it does).
+    callback page-shown(bool);
+}

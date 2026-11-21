@@ -303,11 +303,13 @@ export component NavItem inherits Rectangle {
     in property <string> icon;
     in property <string> label;
     in property <bool> active;
+    // A small red dot: something of this page's is running (instant replay on).
+    in property <bool> dot;
     callback clicked();
     height: 56px;
     border-radius: 12px;
     accessible-role: tab;
-    accessible-label: root.label;
+    accessible-label: root.label + (root.dot ? ", on" : "");
     accessible-item-selected: root.active;
     accessible-action-default => { root.clicked(); }
     KeyPress {
@@ -337,6 +339,14 @@ export component NavItem inherits Rectangle {
             color: root.active ? Theme.ink : Theme.muted;
             horizontal-alignment: center;
         }
+    }
+    if root.dot: Rectangle {
+        x: root.width / 2 + 6px;
+        y: 9px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.live;
     }
 }
 

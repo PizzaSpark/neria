@@ -16,6 +16,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 mod background_ui;
 mod bulk_ui;
+mod capture_ui;
 mod chat_ui;
 mod clipper;
 mod clips_ui;
@@ -1186,8 +1187,9 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                 ui.invoke_clip_open_path(path.to_string_lossy().as_ref().into());
             }
             compressor::dev_hooks(&ui);
+            capture_ui::after_tools(&ui);
             if let Ok(page) = std::env::var("NERIA_PAGE") {
-                let names = ["download", "clip", "compress"];
+                let names = ["download", "clip", "compress", "capture"];
                 if let Some(i) = names.iter().position(|n| page.eq_ignore_ascii_case(n)) {
                     ui.set_page(i as i32);
                 }
@@ -2072,6 +2074,7 @@ fn main() -> anyhow::Result<()> {
     transcribe_ui::install(&ui, settings.clone());
     live_ui::install(&ui, &queue);
     voice_ui::install(&ui, settings.clone(), queue.clone());
+    capture_ui::install(&ui, settings.clone());
     let _gone_timer = watch_gone(&ui);
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());

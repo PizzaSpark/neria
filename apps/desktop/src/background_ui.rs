@@ -482,6 +482,34 @@ pub fn notify(ui: &AppWindow, note: Note) {
     });
 }
 
+/// Instant replay saved a clip while Neria's window isn't in front (a game is): a Windows
+/// notification with Open in clipper and Show. No chime: the "saved" sound has played.
+pub fn notify_saved(ui: &AppWindow, text: &str, file: &std::path::Path) {
+    if !ui.global::<Background>().get_notify() || window_focused(ui) {
+        return;
+    }
+    let (weak, text, file) = (ui.as_weak(), text.to_string(), file.to_path_buf());
+    std::thread::spawn(move || {
+        use tauri_winrt_notification::Toast;
+        let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let toast = Toast::new(APP_ID)
+            .title(&text)
+            .text1(&name)
+            .sound(None)
+            .add_button("Open in clipper", "clip")
+            .add_button("Show in folder", "show");
+        let toast = toast.on_activated(move |action| {
+            let file = file.clone();
+            let _ = weak.upgrade_in_event_loop(move |ui| match action.as_deref() {
+                Some("show") => crate::reveal(&file),
+                _ => crate::capture_ui::open_in_clipper(&ui, &file),
+            });
+            Ok(())
+        });
+        let _ = toast.show();
+    });
+}
+
 /// After the queue's updates are in the rows: a notification for each download that just
 /// finished, or one for a whole group once all of it has.
 pub fn after_updates(ui: &AppWindow, snaps: &[JobSnapshot]) {
@@ -554,6 +582,11 @@ fn group_finished(ui: &AppWindow, group: i32) {
 fn tray_menu(paused: bool) -> tray_icon::menu::Menu {
     use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem};
     let menu = Menu::new();
+    // Instant replay first: its status, Save the last, Turn on / off.
+    for (id, text, enabled) in crate::capture_ui::tray_items() {
+        let _ = menu.append(&MenuItem::with_id(id, text, enabled, None));
+    }
+    let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id("show", "Show Neria", true, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
     if paused {
@@ -567,6 +600,9 @@ fn tray_menu(paused: bool) -> tray_icon::menu::Menu {
 }
 
 fn tooltip(ui: &AppWindow) -> String {
+    if let Some(status) = crate::capture_ui::status_line() {
+        return format!("Neria · {status}");
+    }
     match ui.get_active_count() {
         0 => "Neria".into(),
         1 => "Neria · 1 download going".into(),
@@ -614,7 +650,9 @@ pub fn go_to_tray(ui: &AppWindow) {
                 title: "Neria keeps going in the tray".into(),
                 body: format!(
                     "{} Click the Neria icon next to the clock to bring it back.",
-                    if going == 1 {
+                    if crate::capture_ui::on() {
+                        "Instant replay is still on.".to_string()
+                    } else if going == 1 {
                         "1 download is going.".to_string()
                     } else {
                         format!("{going} downloads are going.")
@@ -644,15 +682,18 @@ fn poll_tray(ui: &AppWindow) {
             "pause" => ui.invoke_pause_all(),
             "resume" => ui.invoke_resume_all(),
             "quit" => quit(ui),
+            id if id.starts_with("cap-") => crate::capture_ui::tray_action(ui, id),
             _ => {}
         }
     }
     // Pause all / Resume all follows the queue; the menu is only rebuilt when that flips.
     thread_local! {
-        static MENU_PAUSED: Cell<Option<bool>> = const { Cell::new(None) };
+        static MENU_PAUSED: Cell<Option<(bool, (bool, bool))>> = const { Cell::new(None) };
     }
     let paused = ui.get_paused_count() > 0 && ui.get_running_count() == 0;
-    let flipped = MENU_PAUSED.with(|m| m.replace(Some(paused))) != Some(paused);
+    // …and instant replay turning on, off, or starting to keep.
+    let key = (paused, crate::capture_ui::tray_key());
+    let flipped = MENU_PAUSED.with(|m| m.replace(Some(key))) != Some(key);
     TRAY.with(|t| {
         if let Some(t) = t.borrow().as_ref() {
             let _ = t.set_tooltip(Some(tooltip(ui)));
@@ -682,6 +723,11 @@ pub fn quit(ui: &AppWindow) {
 }
 
 fn close_requested(ui: &AppWindow) -> CloseRequestResponse {
+    // Instant replay on: a recorder that quits when its window closes would surprise you.
+    if crate::capture_ui::on() {
+        go_to_tray(ui);
+        return CloseRequestResponse::KeepWindowShown;
+    }
     let going = ui.get_active_count();
     if going == 0 {
         quit(ui);

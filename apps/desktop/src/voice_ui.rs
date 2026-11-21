@@ -1,7 +1,8 @@
-//! "Clip that" (Settings → Voice, and the live player): a phrase you say presses Clip the last
-//! while recording, Save the last while watching. Listens only while the live player is open
-//! (and while Settings → Voice shows, for its meter and Test it), never otherwise; the mic is
-//! read here and thrown away (`neria_core::voice`).
+//! "Clip that" (Settings → Voice, the live player and instant replay): a phrase you say presses
+//! Clip the last while recording, Save the last while watching, instant replay's save (like
+//! its key) while that runs. Listens only while the live player is open or instant replay
+//! keeps the screen (and while Settings → Voice shows, for its meter and Test it), never
+//! otherwise; the mic is read here and thrown away (`neria_core::voice`).
 //!
 //! One mic thread at a time, in one of three modes: listening for the phrases (the player),
 //! the meter (Settings), or Test it (three sayings, then spellings that sound the same tried on
@@ -516,9 +517,12 @@ fn reconcile(ui: &AppWindow) {
     if !player && muted {
         ST.with(|s| s.borrow_mut().muted_here = false);
     }
+    // Instant replay keeping the screen: "clip that" saves like its key (wherever Neria is,
+    // also in the tray). The live player's "Stop listening" is for its stream only.
+    let capture = crate::capture_ui::running();
     let settings_open = ui.get_drawer_open() && ui.get_settings_section() == 5;
     let ready = p.on && voice::ready();
-    let want = if ready && player && !muted && !p.phrases().is_empty() {
+    let want = if ready && ((player && !muted) || capture) && !p.phrases().is_empty() {
         let mut listen = p.phrases();
         listen.extend(p.undo());
         Some(Mode::Listen(listen, p.mic(), p.sensitivity, ST.with(|s| s.borrow().samples_gen)))
@@ -531,9 +535,9 @@ fn reconcile(ui: &AppWindow) {
     // The mark shows whenever voice could listen here, also once stopped ("Not listening"),
     // so it can be turned back on from the same place.
     let phrases = p.phrases();
-    let mark = ready && player && !phrases.is_empty();
+    let mark = ready && (player || capture) && !phrases.is_empty();
     v.set_listening(mark);
-    v.set_paused(mark && muted);
+    v.set_paused(mark && player && muted && !capture);
     if mark {
         let more = if phrases.len() > 1 { format!(" +{}", phrases.len() - 1) } else { String::new() };
         v.set_listen_text(format!("Listening for \"{}\"{more}", phrases[0]).into());
@@ -930,6 +934,10 @@ fn heard(ui: &AppWindow, phrase: &str) {
         live.invoke_last(secs as f32);
         toast(ui, &said, &format!("Saving the last {len} to your Videos"), 1, true);
         ui.global::<Voice>().set_heard_show(true);
+    } else if crate::capture_ui::running() {
+        // Instant replay: the same save as its key, with its own toast and notification.
+        crate::capture_ui::save(ui, crate::capture_ui::By::Voice(phrase.to_string(), p.sound));
+        return;
     } else {
         toast(ui, &said, "Nothing kept to clip from yet", 2, false);
         return;
@@ -983,6 +991,10 @@ fn flash(ui: &AppWindow) {
 /// couple of minutes after it).
 fn undo_by_voice(ui: &AppWindow, phrase: &str) {
     let said = format!("Heard \"{}\"", phrase.to_lowercase());
+    // Instant replay's last save, when that's the newest thing said.
+    if crate::capture_ui::can_undo() && crate::capture_ui::undo(ui, Some(&said)) {
+        return;
+    }
     let something = ST.with(|s| {
         let s = s.borrow();
         s.last_clip.is_some() || s.saved_since.is_some_and(|t| t.elapsed().is_ok_and(|e| e < Duration::from_secs(180)))

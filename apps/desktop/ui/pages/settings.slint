@@ -248,8 +248,8 @@ component SayBox inherits Rectangle {
     }
 }
 
-// Settings → Voice: "clip that" said while the live player is open does what its button
-// does. Off until ticked (which fetches the 5 MB model, then starts Test it); the phrase,
+// Settings → Voice: "clip that" said while the live player is open or instant replay runs
+// does what its button (or key) does. Off until ticked (which fetches the 5 MB model, then starts Test it); the phrase,
 // the mic with its meter, Test it (three sayings; spellings that sound the same offered for a
 // word it doesn't know), how much to keep and the sound.
 component VoiceSection inherits VerticalLayout {
@@ -260,12 +260,12 @@ component VoiceSection inherits VerticalLayout {
     Group {
         title: "Clip with your voice";
         Tick {
-            text: "Listen for a phrase while the live player is open";
+            text: "Listen for a phrase while the live player is open or instant replay runs";
             checked <=> Voice.on;
             toggled(on) => { Voice.toggled(on); }
         }
         Hint {
-            text: "Saying it does what the button does: Clip the last while recording, Save the last while watching. The mic is only listened to on this PC, never recorded or sent anywhere.";
+            text: "Saying it does what the button does: Clip the last while recording a stream, Save the last while watching one, and instant replay's save (like its key) while that runs. The mic is only listened to on this PC, never recorded or sent anywhere.";
         }
         if Voice.getting: VerticalLayout {
             spacing: 6px;
@@ -499,6 +499,9 @@ component VoiceSection inherits VerticalLayout {
             options: ["15 s", "30 s", "1 min", "2 min"];
             current <=> Voice.keep;
             changed => { Voice.changed(); }
+        }
+        Hint {
+            text: "For live streams. Instant replay saves what it keeps (the Capture page).";
         }
         Tick {
             text: "Play the \"saved\" sound";
