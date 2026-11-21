@@ -187,24 +187,26 @@ so they get built together.
 2. **Real-link checks left**: an Instagram carousel all the way through with cookies; whether
    Brave's cookies are read once Brave is fully closed; a scheduled stream / premiere recorded
    from its first second (Livestreams 2)
-3. **"Hey Neria, clip that"** (moved up, user's call 2026-11-21; Capture 5). The listener on
-   its own first, like Capture's engine: an always-on wake word on the mic, a headless
-   example, checked against loud game sound and friends on Discord. First real use: the live
-   player's "Clip the last" / "Save the last" (their UI is there already); Capture's F8 save
-   listens for it too and gets its settings with Capture's UI
-4. **Phone track**: connecting by QR first, then the quick mirror, then the mirror in Neria's
-   own page with its own replay buffer and "Clip the last" (Capture shares it later)
-5. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
+3. ✅ **"Clip that" by voice** (built 2026-11-21, Capture 5): in the live player, with Test it,
+   voice samples in named sets, "undo that", the mark's menu. Left: the friend's accent
+   re-tested with his own set
+4. **Capture track's UI** (moved up, user's call 2026-11-21; Capture 4, its own session): turn
+   instant replay on and off, pick a game, a window or a monitor (which one, by name), how
+   much to keep, the sound tracks and the key; a plain status and the tray; a saved clip as a
+   toast with Open in clipper. Voice comes with it: "clip that" while gaming saves like F8
+   (the same listener, sets and Settings → Voice)
+5. **Phone track**: connecting by QR first, then the quick mirror, then the mirror in Neria's
+   own page with its own replay buffer and "Clip the last" (shared with Capture), Sound only,
+   Present the phone
+6. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
    (starts ~1 s faster on every download and every Spotify candidate check, Music 4)
-6. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
+7. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
    live and Kick's chat (Livestreams 11); **both chats of a multi-stream by themselves**
    (asked for 2026-11-21): a streamer live on YouTube and Twitch at once is spotted (links in
    the stream's description or the channel's, the same name live elsewhere with a matching
    title) and the other chat is offered with one click ("Also live on Twitch · Add its
    chat"), using the "+" that reads a second chat today; Speech to text extras (burned-in captions,
    translate); Spotify's own-key path and playlists over 100 songs (Music 4)
-7. **Capture track's UI** (later, user's call 2026-11-21; Capture 4). The engine, sound,
-   hotkey and voice trigger are built by then
 8. **Bigger ideas** (section "Later"), in this order: browser extension, Library page,
    command palette, Audio tools page, saved workflows, external tools
 9. **Before the mobile build**, once everything above is done:
