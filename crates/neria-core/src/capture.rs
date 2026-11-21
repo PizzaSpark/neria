@@ -14,8 +14,9 @@
 //! last resort copies frames to memory and encodes on the CPU (the costly way OBS often ends
 //! up in).
 //!
-//! Not yet: sound (ffmpeg on Windows can't record what the PC plays: needs our own WASAPI),
-//! a hotkey, voice ("clip that"), resizing (1440p is kept as 1440p).
+//! Sound comes from our own WASAPI (`capture_sound`: ffmpeg on Windows can't record what the
+//! PC plays), the save key from `hotkey`. Not yet: a UI, voice ("Hey Neria, clip that"),
+//! resizing (1440p is kept as 1440p).
 
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
