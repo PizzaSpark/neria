@@ -268,6 +268,18 @@ export component Timeline inherits Rectangle {
         }
     }
 
+    // A recording being watched: what it has, a red band along the foot (the part before
+    // fainter while it's still coming in).
+    for r in ClipLive.recorded: Rectangle {
+        visible: r.end > root.vs && r.start < root.vs + root.vspan;
+        x: root.cx(r.start);
+        y: root.height - 5px;
+        width: max(2px, root.cx(r.end) - root.cx(r.start));
+        height: 5px;
+        border-radius: 2px;
+        background: Theme.live.with-alpha(r.coming ? 0.4 : 0.9);
+    }
+
     // Saved clips: a band each along the top, numbered like the list.
     for m[i] in root.marks: Rectangle {
         visible: m.end > root.vs && m.start < root.vs + root.vspan;

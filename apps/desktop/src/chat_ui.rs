@@ -490,9 +490,11 @@ fn rows(ui: &AppWindow, position: f64) {
     let dark = ui.global::<crate::Theme>().get_dark();
     let view = g.get_view();
     let find = g.get_find().to_lowercase();
-    // Live at the edge, or a stream that can't be rewound (Twitch): the newest chat.
+    // Live at the edge (as the player's "Live" says), or a stream that can't be rewound
+    // (Twitch): the newest chat. Gone back further: the chat of that moment.
+    let cl = ui.global::<crate::ClipLive>();
     let live_edge = g.get_state() == 4
-        && (!ui.global::<crate::ClipLive>().get_can_rewind() || (ui.get_clip_duration() as f64 - position) < 15.0);
+        && (!cl.get_can_rewind() || (ui.get_clip_duration() as f64 - position) < cl.get_live_slack() as f64);
     let now = if live_edge { f64::MAX } else { position + 0.5 };
     let key_pos = if live_edge { i64::MAX } else { (position * 4.0) as i64 };
     let built = STATE.with(|s| {
@@ -550,8 +552,9 @@ fn rows(ui: &AppWindow, position: f64) {
                     (img, h)
                 }
             };
-            // Only whole rows that fit (the newest always).
-            if !out.is_empty() && used + h > height {
+            // Rows until the panel is full: the last one may be cut off at the top (the panel
+            // clips it), so a long message doesn't leave a gap above the newer ones.
+            if used >= height {
                 break;
             }
             used += h + 2.0;

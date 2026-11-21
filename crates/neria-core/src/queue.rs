@@ -1847,8 +1847,13 @@ impl Queue {
                     }
                 });
             }
+            // From the start on a stream already live: the part before is fetched as soon as
+            // the recording has begun (where it began is known then).
+            let mut earlier_asked = !live.with_earlier;
             crate::record::record(&rec, &child, &stop, &cancel, |ev| match ev {
-                RecEvent::Stats(st) => self.update(id, true, |s| {
+                RecEvent::Stats(st) => {
+                    let ask = !earlier_asked && st.phase == Phase::Recording && st.recorded > 0.0;
+                    self.update(id, true, |s| {
                     let saving = st.phase == Phase::Saving;
                     s.state = if saving { JobState::Processing } else { JobState::Downloading };
                     s.postprocessor = saving.then(|| "Saving".into());
@@ -1861,7 +1866,13 @@ impl Queue {
                         st.earlier_failed = old.earlier_failed.clone();
                     }
                     s.live = Some(st);
-                }),
+                    });
+                    if ask {
+                        earlier_asked = true;
+                        self.push_log(id, "From the start: getting the part before next to it".into());
+                        self.get_earlier(id);
+                    }
+                }
                 RecEvent::Log(line) => self.push_log(id, line),
             })
         };

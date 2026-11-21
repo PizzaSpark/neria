@@ -62,13 +62,11 @@ fn live_info(v: &Value, url: &str) -> Option<LiveInfo> {
     let t = |k: &str| v.get(k).and_then(Value::as_f64).filter(|t| *t > 0.0);
     // YouTube says when it started in `release_timestamp`; Twitch in `timestamp`.
     let when = t("release_timestamp").or_else(|| t("timestamp"));
-    let youtube = v.get("extractor_key").and_then(Value::as_str).is_some_and(|e| e.starts_with("Youtube"));
-    // YouTube: rewinding on shows in the stream's address ("playlist_type/DVR"); not known
-    // before it starts, when the stream itself decides.
-    let dvr = v.get("formats").and_then(Value::as_array).is_some_and(|fs| {
-        fs.iter().any(|f| f.get("url").and_then(Value::as_str).is_some_and(|u| u.contains("/playlist_type/DVR")))
-    });
-    let can_rewind = crate::record::can_record_from_start(url) && (!youtube || dvr || upcoming);
+    // YouTube's addresses used to say when rewinding was on ("playlist_type/DVR"); with the
+    // players yt-dlp asks now they say "LIVE" even for a stream that keeps its start (checked
+    // on a real one, Nov 2026), so trust the site: where it doesn't keep it after all, the
+    // recording goes on from now and says so.
+    let can_rewind = crate::record::can_record_from_start(url);
     Some(LiveInfo {
         upcoming,
         started_at: if upcoming { None } else { when },

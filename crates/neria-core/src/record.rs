@@ -40,6 +40,10 @@ use crate::{paths, proc};
 pub struct LiveJob {
     /// Record from the first second the site keeps (else from now).
     pub from_start: bool,
+    /// From the start, for a stream already live: record from now (clipping works at once)
+    /// and fetch the part before next to it straight away (`Queue::get_earlier`), joined in
+    /// front when saved. Both come in together, instead of catching up first.
+    pub with_earlier: bool,
     /// When the stream went live (Unix seconds), if the site says.
     pub started_at: Option<f64>,
     /// When a stream that isn't on yet is due to start.
@@ -1061,19 +1065,22 @@ fn run_part(
             proc::kill_tree(c);
         }
     }
+    let mut killed = false;
     loop {
         match rx.recv_timeout(Duration::from_millis(500)) {
             Ok(line) => on(&line),
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                // Keep the numbers moving even when nothing prints (and see a Stop).
-                on("");
-                if (stop.load(Ordering::SeqCst) || cancel.load(Ordering::SeqCst))
-                    && let Some(c) = slot.lock().unwrap().as_mut()
-                {
-                    proc::kill_tree(c);
-                }
-            }
+            // Keep the numbers moving even when nothing prints.
+            Err(mpsc::RecvTimeoutError::Timeout) => on(""),
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        // See a Stop after every line too: a run that prints all the time (the part before,
+        // fetched faster than real time) never goes quiet, and Stop went unseen until it ended.
+        if !killed
+            && (stop.load(Ordering::SeqCst) || cancel.load(Ordering::SeqCst))
+            && let Some(c) = slot.lock().unwrap().as_mut()
+        {
+            proc::kill_tree(c);
+            killed = true;
         }
     }
     let child = slot.lock().unwrap().take();

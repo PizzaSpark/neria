@@ -65,8 +65,8 @@ Headless checks (tools must exist in `target/debug/bin`, i.e. run the app once):
   `--gif gif|webp|mp4 [--width] [--fps] [--once]` prints the size estimate, then makes it;
   picture: `--turn <1-3>`, `--flip-h`, `--flip-v`, `--aspect 9:16`, `--crop x,y,w,h`;
   `--clips a-b,c-d [--names A,B] [--join]` for the clip list)
-- `NERIA_HOME=target/debug cargo run -p neria-core --example record -- <live link> <now|start> <seconds> [out]`
-  (records then stops and saves; `--clip <s>@<t>`, `--kill-at <t>` a dropped connection,
+- `NERIA_HOME=target/debug cargo run -p neria-core --example record -- <live link> <now|start|both> <seconds> [out]`
+  (records then stops and saves; `both`: from now with the part before fetched next to it, as the app's From the start, `--started <unix>` with it; `--clip <s>@<t>`, `--kill-at <t>` a dropped connection,
   `--crash-at <t>` then `--save <work dir>`, `--queue` through the download queue)
 - `NERIA_HOME=target/debug cargo run -p neria-core --example live -- <live link> window|rewind <s ago> <len>|buffer <min> <run s> <clip s> [out]`
   (how far back the site keeps it; a rewound part through the queue, `NERIA_WAIT` / `NERIA_NOW`

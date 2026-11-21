@@ -1,7 +1,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { JobItem, PickItem, SyncItem } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, Notice, Divider, Thumb, Menu, MenuItem, PlayMark } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, ChoiceChips, Notice, Divider, Thumb, Menu, MenuItem, PlayMark } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
@@ -60,6 +60,8 @@ component TipStep inherits VerticalLayout {
 // Paste a link, see what it is, pick the quality (or the items of a post/playlist), and
 // follow the queue.
 export component DownloadPage inherits Rectangle {
+    // The previewed link is a live stream (its ▾ offers where the recording starts).
+    property <bool> live-link: Live.on && root.probe-state == 2;
     // The window's size: chips go inline and the preview grows on big windows.
     in property <length> window-width;
     in property <length> window-height;
@@ -320,7 +322,36 @@ export component DownloadPage inherits Rectangle {
             y: link.y + link.height + (Screen.compact ? 12px + 44px : 0px) + 6px;
             Menu {
                 width: 260px;
-                MenuItem {
+                // A live stream: where the recording starts, or watch it first.
+                if root.live-link && !Live.upcoming: MenuItem {
+                    icon: "\u{E7C8}";
+                    text: "Record from now";
+                    clicked => {
+                        Live.start = 0;
+                        Live.flip();
+                        root.start-download();
+                    }
+                }
+                if root.live-link && !Live.upcoming && Live.switch != "": MenuItem {
+                    icon: "\u{E892}";
+                    text: "Record from the start";
+                    clicked => {
+                        Live.start = 1;
+                        Live.flip();
+                        root.start-download();
+                    }
+                }
+                if root.live-link && Live.upcoming: MenuItem {
+                    icon: "\u{E7C8}";
+                    text: "Record when it starts";
+                    clicked => { root.start-download(); }
+                }
+                if root.live-link && !Live.upcoming: MenuItem {
+                    icon: "\u{E768}";
+                    text: "Watch first";
+                    clicked => { Watch.start(); }
+                }
+                if !root.live-link: MenuItem {
                     icon: "\u{E896}";
                     text: "Download now";
                     clicked => { root.start-download(); }
@@ -337,20 +368,13 @@ export component DownloadPage inherits Rectangle {
                     shortcut: "Ctrl+Shift+V";
                     clicked => { Bulk.paste-download(); }
                 }
-                MenuItem {
+                // Later: not for a live stream (it's on now, or Record waits for it already).
+                if !root.live-link: MenuItem {
                     icon: "\u{E823}";
                     text: "Download later…";
                     clicked => {
                         Background.later-open = true;
                         Background.later-changed();
-                    }
-                }
-                MenuItem {
-                    icon: "\u{E708}";
-                    text: "Tonight, at 02:00";
-                    clicked => {
-                        Background.later-choice = 1;
-                        Background.later-confirm();
                     }
                 }
             }
@@ -436,18 +460,6 @@ export component DownloadPage inherits Rectangle {
                         overflow: elide;
                     }
                     if Live.hint == "": Rectangle { horizontal-stretch: 1; }
-                    // Just watch it: the player, with Record and "Save the last" there.
-                    if !Live.upcoming: VerticalLayout {
-                        alignment: center;
-                        horizontal-stretch: 0;
-                        GhostButton {
-                            compact: true;
-                            text: "Watch";
-                            icon: "\u{E768}";
-                            label: "Watch it live";
-                            clicked => { Watch.start(); }
-                        }
-                    }
                 }
                 // Compact: the same on three short lines (the column next to the picture is
                 // narrow).
@@ -479,9 +491,40 @@ export component DownloadPage inherits Rectangle {
                         font-size: 12px;
                         overflow: elide;
                     }
-                    if !Live.upcoming: HorizontalLayout {
+                }
+                // Where it starts, as a choice you can see (when there is one), and Watch.
+                if root.probe-state == 2 && Live.on && !Live.upcoming && !Screen.compact: HorizontalLayout {
+                    padding-top: 4px;
+                    spacing: 10px;
+                    alignment: start;
+                    if Live.switch != "": ChoiceChips {
+                        options: ["From now", "From the start"];
+                        current <=> Live.start;
+                        changed => { Live.flip(); }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        GhostButton {
+                            compact: true;
+                            text: "Watch";
+                            icon: "\u{E768}";
+                            label: "Watch it live";
+                            clicked => { Watch.start(); }
+                        }
+                    }
+                }
+                // Compact: Watch under it (the column beside the picture is narrow).
+                if root.probe-state == 2 && Live.on && !Live.upcoming && Screen.compact: VerticalLayout {
+                    padding-top: 4px;
+                    spacing: 8px;
+                    alignment: start;
+                    if Live.switch != "": ChoiceChips {
+                        options: ["From now", "From the start"];
+                        current <=> Live.start;
+                        changed => { Live.flip(); }
+                    }
+                    HorizontalLayout {
                         alignment: start;
-                        padding-top: 4px;
                         GhostButton {
                             compact: true;
                             text: "Watch";

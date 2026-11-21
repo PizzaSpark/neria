@@ -145,8 +145,10 @@ export global Watch {
     in property <string> rec-earlier;
     in property <bool> rec-earlier-link;
     callback earlier();
-    // Watching a live stream, not recording it: Record starts a recording right here.
+    // Watching a live stream, not recording it: Record starts a recording right here, from
+    // now or (`record-from-start`) from the stream's first second.
     callback record();
+    callback record-from-start();
     callback show-file();
     callback trim();
     callback back(); // to the Download page (a file open before comes back)
@@ -234,13 +236,29 @@ export global ClipPicture {
 // Clip page with a live stream open (Clip track 8). Sites that keep the last part of the
 // stream (YouTube: an hour) can be rewound: marks are pinned to the clock and found again
 // when the download starts. Others get the replay buffer: "Keep the last 10 min".
+// A recorded stretch of the stream on the player's timeline (seconds on it): what's in, or
+// (`coming`) the part before while it's still being fetched.
+export struct RecSpan {
+    start: float,
+    end: float,
+    coming: bool,
+}
+
 export global ClipLive {
     in property <bool> on;
     // The site keeps a part to rewind in (more than a minute and a half).
     in property <bool> can-rewind;
+    // Within this many seconds of the end counts as live (the "Live" label, the newest chat):
+    // the player starts ~15 s back and the end moves in jumps as the stream's pieces come in.
+    out property <float> live-slack: 30;
     // Replay buffer: how much to keep, 0 5 min, 1 10 min, 2 30 min, 3 60 min.
     in-out property <int> keep: 1;
     in property <bool> buffering;
+    // Record can start from the stream's first second too: what that costs ("~22 min to
+    // catch up"); empty: only from now.
+    in property <string> from-start;
+    // Watching a recording: what of the stream it has, drawn along the timeline's foot.
+    in property <[RecSpan]> recorded;
     // "3:12 kept · 48 MB", or why it stopped.
     in property <string> buffer-text;
     callback last(float); // save the last N seconds (rewind, or from the buffer)
@@ -433,6 +451,8 @@ export global Live {
     in property <string> hint-short;
     in property <string> switch;
     in property <string> switch-short;
+    // Where it starts, as the From now / From the start choice shows it (0 / 1).
+    in-out property <int> start;
     callback flip();
 }
 

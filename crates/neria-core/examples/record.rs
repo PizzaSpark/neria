@@ -1,5 +1,5 @@
 //! Recording a live stream without the UI (Livestreams milestone):
-//! `NERIA_HOME=target/debug cargo run -p neria-core --example record -- <live link> <now|start> <seconds> [out_dir]`
+//! `NERIA_HOME=target/debug cargo run -p neria-core --example record -- <live link> <now|start|both> <seconds> [out_dir]`
 //!
 //! Records for `seconds`, printing the row's numbers every few seconds, then stops (as the
 //! Stop button does) and saves. Options:
@@ -52,7 +52,15 @@ fn through_queue(url: &str, args: &[String]) -> anyhow::Result<()> {
         l.push(s);
     });
     let mut req = DownloadRequest::new(url, Quality::P480, "queue record test");
-    req.live = Some(LiveJob { from_start: args.get(1).is_some_and(|m| m == "start"), ..Default::default() });
+    // `both`: from now with the part before fetched next to it at once (the app's "From the
+    // start" on a stream already live).
+    req.live = Some(LiveJob {
+        from_start: args.get(1).is_some_and(|m| m == "start"),
+        with_earlier: args.get(1).is_some_and(|m| m == "both"),
+        // As the app passes it from the link's preview.
+        started_at: opt(&args, "--started").and_then(|v| v.parse().ok()),
+        ..Default::default()
+    });
     let id = queue.add(req);
     let t0 = Instant::now();
     let mut clipped = false;
@@ -62,6 +70,10 @@ fn through_queue(url: &str, args: &[String]) -> anyhow::Result<()> {
             clipped = true;
             queue.clip_last(id, s);
         }
+    }
+    if let Some(r) = queue.report(id) {
+        println!("-- log
+{r}");
     }
     println!("-- Stop (recordings running: {})", queue.recording_count());
     queue.stop(id);
@@ -112,7 +124,7 @@ fn main() -> anyhow::Result<()> {
             from_start,
             started_at: opt(&args, "--started").and_then(|v| v.parse().ok()),
             starts_at: opt(&args, "--starts").and_then(|v| v.parse().ok()),
-            work: None,
+            ..Default::default()
         },
         title: &title,
         out_dir: &out_dir,

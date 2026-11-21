@@ -111,6 +111,40 @@ component LastMenu inherits VerticalLayout {
     }
 }
 
+// Record a live stream: from now (one press), and when the site keeps it from its start, its
+// ▾ offers that too, with what it costs.
+component RecordMenu inherits VerticalLayout {
+    in property <bool> enabled;
+    alignment: center;
+    horizontal-stretch: Screen.compact ? 1 : 0;
+    PrimaryButton {
+        text: "Record";
+        icon: "\u{E7C8}";
+        has-menu: ClipLive.from-start != "";
+        enabled: root.enabled;
+        clicked => { Watch.record(); }
+        menu-clicked => { menu.show(); }
+    }
+    menu := PopupWindow {
+        // Under the right edge of the button, opening upwards (the bar is at the bottom).
+        x: root.width - 320px;
+        y: -98px;
+        Menu {
+            width: 320px;
+            MenuItem {
+                icon: "\u{E7C8}";
+                text: "From now";
+                clicked => { Watch.record(); }
+            }
+            MenuItem {
+                icon: "\u{E72C}";
+                text: "From the start · " + ClipLive.from-start;
+                clicked => { Watch.record-from-start(); }
+            }
+        }
+    }
+}
+
 component LiveRow inherits FlexboxLayout {
     spacing: 8px;
     horizontal-stretch: 1;
@@ -766,7 +800,7 @@ export component ClipPage inherits FocusScope {
                 }
             }
             Text {
-                text: ClipLive.on ? (!ClipLive.can-rewind || root.duration - root.position < 15 ? "Live" : Fmt.time(root.duration - root.position) + " behind live") : Fmt.time(root.position) + "  /  " + Fmt.time(root.duration);
+                text: ClipLive.on ? (!ClipLive.can-rewind || root.duration - root.position < ClipLive.live-slack ? "Live" : Fmt.time(root.duration - root.position) + " behind live") : Fmt.time(root.position) + "  /  " + Fmt.time(root.duration);
                 color: Theme.text;
                 font-family: Theme.mono;
                 font-size: 13px;
@@ -1121,12 +1155,8 @@ export component ClipPage inherits FocusScope {
                 note: ClipLive.can-rewind || ClipLive.buffering ? "" : "Nothing kept to clip from yet";
                 picked(secs) => { ClipLive.last(secs); }
             }
-            PrimaryButton {
-                horizontal-stretch: Screen.compact ? 1 : 0;
-                text: "Record";
-                icon: "\u{E7C8}";
+            RecordMenu {
                 enabled: root.tools-ready;
-                clicked => { Watch.record(); }
             }
         }
         // Watching: download the whole thing, or start clipping it.

@@ -1241,7 +1241,12 @@ fn youtube_live(url: &str, stop: &AtomicBool, sink: &mut Sink) -> Result<()> {
                 sink.state(LiveState::On);
             }
             continuation = next["continuation"].as_str().unwrap_or_default().to_string();
-            let wait = next["timeoutMs"].as_u64().unwrap_or(5000).clamp(1000, 10_000);
+            // How soon to ask again. An "invalidation" feed's 10 s is only the page's fallback:
+            // YouTube's page is told the moment there's more (a push Neria doesn't have) and asks
+            // at once, so chat there runs ~12 s ahead of a 10 s poll (measured). Ask every 2 s
+            // instead; a "timed" feed's own wait, at most 5 s.
+            let invalidation = c["continuations"][0].get("invalidationContinuationData").is_some();
+            let wait = if invalidation { 2000 } else { next["timeoutMs"].as_u64().unwrap_or(3000).clamp(1000, 5000) };
             sleep_unless(stop, Duration::from_millis(wait));
         }
     }

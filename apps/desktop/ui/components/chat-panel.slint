@@ -228,8 +228,12 @@ export component ChatPanel inherits Rectangle {
                     ClipChat.scroll(e.delta-y / 40px);
                     accept
                 }
+                // Pinned to the bottom: the oldest row shown may run off the top (cut by the
+                // panel's clip), so a long message never leaves a gap above the newer ones.
                 VerticalLayout {
-                    alignment: end;
+                    width: parent.width;
+                    height: self.preferred-height;
+                    y: parent.height - self.height;
                     spacing: 2px;
                     for r in ClipChat.rows: Row {
                         item: r;

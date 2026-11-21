@@ -60,24 +60,50 @@ fn show(ui: &AppWindow) {
     let g = ui.global::<Live>();
     PREVIEW.with(|p| match p.borrow().as_ref() {
         Some((info, want)) => {
-            let c = record::start_choice(info, *want, live::now());
+            let c = record::start_choice(info, pick(info, *want), live::now());
             g.set_on(true);
             g.set_upcoming(info.upcoming);
-            if info.upcoming {
-                g.set_line(c.line.into());
-                g.set_hint(c.hint.into());
-                g.set_hint_short(c.hint_short.into());
-            } else {
+            g.set_line(c.line.into());
+            if !info.upcoming && !c.from_start {
                 // Record opens the player on it (from now: clipping works at once).
-                g.set_line("Records from now".into());
                 g.set_hint("the player opens, so you can clip as it happens".into());
                 g.set_hint_short("clip as it happens".into());
+            } else if !info.upcoming {
+                // From the start, live now: recorded from now with the part before fetched
+                // next to it, so nothing waits to catch up.
+                let before = record::age_words(info.started_at.map_or(0.0, |s| live::now() - s));
+                g.set_hint(format!("the {before} before comes in alongside; clip as it happens").into());
+                g.set_hint_short(format!("+ the {before} before").into());
+            } else {
+                g.set_hint(c.hint.into());
+                g.set_hint_short(c.hint_short.into());
             }
-            g.set_switch("".into());
-            g.set_switch_short("".into());
+            g.set_start(i32::from(c.from_start));
+            g.set_switch(c.switch.into());
+            g.set_switch_short(c.switch_short.into());
         }
         None => g.set_on(false),
     });
+}
+
+/// The start picked for a stream: one that's live now records from now unless "from the
+/// start" was picked (the player opens on it and clipping works at once).
+fn pick(info: &LiveInfo, want: Option<bool>) -> Option<bool> {
+    if info.upcoming { want } else { Some(want.unwrap_or(false)) }
+}
+
+/// Watching a live stream before recording it: what recording it from the start costs
+/// ("~22 min to catch up"), or empty when it can't be (the site doesn't keep it, too old).
+pub fn from_start_offer(url: &str) -> String {
+    LAST.with(|l| match l.borrow().as_ref() {
+        Some((u, info, _)) if u == url && !info.upcoming => {
+            // "the 52 min before too" (fetched next to the recording from now).
+            let c = record::start_choice(info, Some(true), live::now());
+            let before = record::age_words(info.started_at.map_or(0.0, |s| live::now() - s));
+            if c.from_start { format!("the {before} before too") } else { String::new() }
+        }
+        _ => String::new(),
+    })
 }
 
 /// The previewed link is a live stream: make `req` a recording of it (from the start or
@@ -86,11 +112,12 @@ pub fn make_recording(req: &mut DownloadRequest) -> bool {
     PREVIEW.with(|p| {
         let p = p.borrow();
         let Some((info, want)) = p.as_ref() else { return false };
-        let c = record::start_choice(info, *want, live::now());
+        let c = record::start_choice(info, pick(info, *want), live::now());
         req.live = Some(LiveJob {
-            // Live now: from now (the player opens on it, so clips can start at once). Not on
-            // yet: from its first second where the site keeps it.
+            // Not on yet: from its first second where the site keeps it. Live now, from the
+            // start picked: from now (clip at once) with the part before fetched next to it.
             from_start: info.upcoming && c.from_start,
+            with_earlier: !info.upcoming && c.from_start,
             started_at: info.started_at,
             starts_at: info.starts_at,
             work: None,
@@ -118,8 +145,9 @@ pub fn note_title(id: u64, title: &str) {
     });
 }
 
-/// Record the stream the player shows, from now (the player's Record / Record again).
-pub fn record_now(ui: &AppWindow, url: &str, title: &str) -> Option<u64> {
+/// Record the stream the player shows, from now or from its start (the player's Record /
+/// Record again).
+pub fn record_now(ui: &AppWindow, url: &str, title: &str, from_start: bool) -> Option<u64> {
     let queue = crate::QUEUE.get()?;
     let (quality, preset) = crate::chosen_quality(ui);
     let mut req = DownloadRequest::new(url.to_string(), quality, title.to_string());
@@ -128,7 +156,9 @@ pub fn record_now(ui: &AppWindow, url: &str, title: &str) -> Option<u64> {
         Some((u, info, thumb)) if u == url => (info.started_at, thumb.clone()),
         _ => (None, None),
     });
-    req.live = Some(LiveJob { from_start: false, started_at, starts_at: None, work: None });
+    let from_start = from_start && !from_start_offer(url).is_empty();
+    // From the start: from now (clip at once), with the part before fetched next to it.
+    req.live = Some(LiveJob { with_earlier: from_start, started_at, ..Default::default() });
     req.thumbnail = thumb;
     let id = queue.add(req);
     note_title(id, title);
@@ -175,14 +205,16 @@ pub fn row(s: &JobSnapshot) -> Option<LiveRow> {
 pub fn install(ui: &AppWindow, queue: &Queue) {
     ui.global::<Live>().on_flip({
         let weak = ui.as_weak();
+        // The From now / From the start choice was clicked: it says which.
         move || {
+            let ui = weak.unwrap();
+            let start = ui.global::<Live>().get_start() == 1;
             PREVIEW.with(|p| {
-                if let Some((info, want)) = p.borrow_mut().as_mut() {
-                    let now_from_start = record::start_choice(info, *want, live::now()).from_start;
-                    *want = Some(!now_from_start);
+                if let Some((_, want)) = p.borrow_mut().as_mut() {
+                    *want = Some(start);
                 }
             });
-            show(&weak.unwrap());
+            show(&ui);
         }
     });
     // Dev hook for scripted checks: press Stop on every recording after this many seconds.
@@ -287,6 +319,7 @@ pub fn sync_watch(ui: &AppWindow, s: &JobSnapshot) {
     let running = s.state == JobState::Downloading;
     let done = matches!(s.state, JobState::Done | JobState::Failed | JobState::Cancelled);
     w.set_rec_done(done);
+    recorded_spans(ui, &s.live.clone().unwrap_or_default(), !done);
     if done {
         let ended = s.note.as_deref() == Some("the stream ended");
         w.set_rec_saved(s.state == JobState::Done);
@@ -318,7 +351,12 @@ pub fn sync_watch(ui: &AppWindow, s: &JobSnapshot) {
         (format!("The {} before is in: it goes in front when saved", record::age_words(before)), false)
     } else if let Some(e) = &st.earlier_failed {
         (format!("Couldn't get the part before: {e}"), false)
-    } else if running && before > 60.0 && record::can_record_from_start(&url) && !st.rewind_failed {
+    } else if running
+        && before > 60.0
+        && before <= record::KEPT_AT_MOST
+        && record::can_record_from_start(&url)
+        && !st.rewind_failed
+    {
         (format!("Also get the {} before", record::age_words(before)), true)
     } else {
         (String::new(), false)
@@ -326,17 +364,48 @@ pub fn sync_watch(ui: &AppWindow, s: &JobSnapshot) {
     w.set_rec_earlier(earlier.into());
     w.set_rec_earlier_link(link);
     w.set_rec_clipping(running && s.clip_from.is_some());
+    // How much is in so far, on every line (as the queue row says it).
+    let size = if st.bytes > 0 { format!(" · {}", fmt::bytes(st.bytes as f64)) } else { String::new() };
     let text = match s.clip_from {
         Some(from) if running => {
-            format!("Clipping from {} · {} so far", fmt::duration(from), fmt::duration((st.recorded - from).max(0.0)))
+            format!("Clipping from {} · {} so far{size}", fmt::duration(from), fmt::duration((st.recorded - from).max(0.0)))
         }
-        _ if running && st.phase == Phase::CatchingUp => {
-            "Catching up with the live stream: you can clip once it has.".to_string()
+        _ if running && st.phase == Phase::CatchingUp => format!(
+            "Catching up · {} of {}{size} · you can clip once it has",
+            fmt::duration(st.position),
+            fmt::duration(st.stream_len(live::now()))
+        ),
+        // From the start was picked but the site won't give it (Twitch with past broadcasts
+        // off): say so where it was picked, not only in the queue.
+        _ if running && st.rewind_failed => {
+            format!("Couldn't go back to the start, so it records from now · {}{size}", fmt::duration(st.recorded))
         }
-        _ if running => format!("Recording · {} so far", fmt::duration(st.recorded)),
+        _ if running => format!("Recording · {} so far{size}", fmt::duration(st.recorded)),
         _ => "Starting the recording…".to_string(),
     };
     w.set_rec_text(text.into());
+}
+
+/// What the recording has, on the player's timeline: stream seconds (from when it went live)
+/// are put on it by the clock, as the player's own timeline is.
+fn recorded_spans(ui: &AppWindow, st: &record::LiveStats, running: bool) {
+    let g = ui.global::<crate::ClipLive>();
+    let (Some(went_live), Some(anchor), true) = (st.started_at, crate::clipper::live_anchor(), running) else {
+        g.set_recorded(Default::default());
+        return;
+    };
+    let on = |t: f64| (went_live + t - anchor) as f32;
+    let mut spans = Vec::new();
+    let joined = st.joined.unwrap_or(0.0);
+    if st.recorded > 0.0 {
+        spans.push(crate::RecSpan { start: on(joined), end: on(st.position), coming: false });
+    }
+    if let Some((got, _)) = st.earlier {
+        spans.push(crate::RecSpan { start: on(0.0), end: on(got), coming: true });
+    } else if st.earlier_done {
+        spans.push(crate::RecSpan { start: on(0.0), end: on(joined), coming: false });
+    }
+    g.set_recorded(ModelRc::new(VecModel::from(spans)));
 }
 
 /// A recording's link and title (for watching it from its row).

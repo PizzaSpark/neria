@@ -150,6 +150,8 @@ impl Clipper {
         let live = ui.global::<ClipLive>();
         live.set_on(false);
         live.set_can_rewind(false);
+        live.set_from_start("".into());
+        live.set_recorded(Default::default());
         live.set_buffering(false);
         live.set_buffer_text("".into());
         self.last_pos = 0.0;
@@ -613,6 +615,12 @@ impl Clipper {
                     let g = ui.global::<ClipLive>();
                     g.set_on(true);
                     g.set_can_rewind(d > 90.0);
+                    // Record's ▾: from the start too, where the site keeps it.
+                    let offer = match &self.source {
+                        Some(Source::Link(url)) => crate::live_ui::from_start_offer(url),
+                        _ => String::new(),
+                    };
+                    g.set_from_start(offer.into());
                     // Can't rewind (Twitch): keep the last 10 minutes from the start, so a
                     // moment you want to clip is already there. Not while it's recorded.
                     if d <= 90.0 && self.buffer.is_none() && ui.global::<Watch>().get_recording_id() == 0 {
@@ -843,6 +851,12 @@ fn format_time(t: f32) -> String {
     let cs = ((t - t.floor()) * 100.0).floor() as u64;
     let (h, m, s) = (whole / 3600, (whole % 3600) / 60, whole % 60);
     if h > 0 { format!("{h}:{m:02}:{s:02}.{cs:02}") } else { format!("{m}:{s:02}.{cs:02}") }
+}
+
+/// A live stream's timeline pinned to the clock: the Unix time of its second 0 (None: not
+/// live, or not known yet).
+pub fn live_anchor() -> Option<f64> {
+    LIVE_ANCHOR.with(|a| a.get())
 }
 
 thread_local! {
@@ -1467,15 +1481,16 @@ pub fn install(
             ui.set_page(0);
         }
     });
-    // Watching a live stream: record it from now, right here (the bar follows the recording).
-    watch.on_record({
+    // Watching a live stream: record it right here, from now or from its start (the bar
+    // follows the recording).
+    let record = {
         let (clipper, weak) = (clipper.clone(), ui.as_weak());
-        move || {
+        move |from_start: bool| {
             let ui = weak.unwrap();
             let mut c = clipper.borrow_mut();
             let Some(Source::Link(url)) = c.source.clone() else { return };
             let title = ui.get_clip_name().to_string();
-            let Some(id) = crate::live_ui::record_now(&ui, &url, &title) else { return };
+            let Some(id) = crate::live_ui::record_now(&ui, &url, &title, from_start) else { return };
             // The recording takes over from the replay buffer (it has the same, and more).
             c.buffer = None;
             ui.global::<ClipLive>().set_buffering(false);
@@ -1485,7 +1500,12 @@ pub fn install(
             w.set_rec_text("Starting the recording…".into());
             w.set_recording_id(id as i32);
         }
+    };
+    watch.on_record({
+        let record = record.clone();
+        move || record(false)
     });
+    watch.on_record_from_start(move || record(true));
     watch.on_show_file({
         let weak = ui.as_weak();
         move || {
