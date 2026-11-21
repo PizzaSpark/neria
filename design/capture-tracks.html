@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capture Sound Tracks</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --live:#ff6b6f; --livebg:#3d1719;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; position: relative; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25 } }
+  .ghost { height: 34px; padding: 0 12px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; flex: none; background: none; }
+  .ghost.sm { height: 30px; padding: 0 10px; }
+  .btn { height: 38px; padding: 0 16px; border-radius: 9px; background: var(--pop); color: var(--onpop); font: 700 14px "Space Grotesk", sans-serif;
+         border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; flex: none; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  svg.i { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; flex: none; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 4px 0 10px; }
+  .tick { display: flex; gap: 10px; align-items: center; font-size: 13px; margin: 8px 0; }
+  .box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--edge); flex: none; display: grid; place-items: center; }
+  .box.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-size: 13px; font-weight: 700; }
+  .select { background: var(--panel); border: 2px solid var(--ls); border-radius: 9px; height: 34px; display: flex; align-items: center; padding: 0 10px; gap: 8px; font-size: 12.5px; min-width: 0; }
+  .setrow { display: flex; align-items: center; gap: 12px; margin: 10px 0; font-size: 13px; }
+  .setrow > span:first-child { width: 110px; flex: none; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .key { font: 500 11px "JetBrains Mono", monospace; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--ink); }
+  .h5 { font: 700 14px "Space Grotesk", sans-serif; margin: 18px 0 8px; }
+  .h5:first-child { margin-top: 0; }
+  .hl { font: 700 30px/1.1 "Space Grotesk", sans-serif; }
+
+  /* app frame */
+  .app { display: flex; }
+  .rail { width: 80px; border-right: 1px solid var(--line); padding: 18px 10px; flex: none; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+  .rail .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--pop); border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); margin: 0 auto 14px; }
+  .rail .n { height: 54px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--dim); border: 2px solid transparent; }
+  .rail .n.on { color: var(--ink); border-color: var(--ls); background: var(--panel); }
+  .main { flex: 1; min-width: 0; padding: 24px 26px; }
+  .tabbar { display: flex; border-top: 1px solid var(--line); padding: 6px 5px 5px; }
+  .tabbar .n { flex: 1; height: 54px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--dim); border: 2px solid transparent; }
+  .tabbar .n.on { color: var(--ink); border-color: var(--ls); background: var(--panel); }
+
+  /* capture page */
+  .state { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 0; margin: 18px 0 6px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .state .big { font: 600 17px "Inter Tight", sans-serif; }
+  .src { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .src .rad { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--edge); flex: none; }
+  .src .rad.on { border: 6px solid var(--ink); }
+  .src .ic { width: 28px; height: 28px; border-radius: 6px; background: var(--raised); flex: none; display: grid; place-items: center; color: var(--dim); }
+  .saved { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .thumb { width: 64px; height: 36px; border-radius: 6px; background: linear-gradient(140deg, #3a1f4a, #c44569 60%, #f8b500); flex: none; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .listen { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border-radius: 9px; border: 2px solid var(--ls); font-size: 12px; color: var(--ink); white-space: nowrap; }
+
+  .toast { background: var(--panel); border: 1px solid var(--ls); border-radius: 12px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; font-size: 12.5px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.7); }
+  .wtoast { width: 364px; background: #202020; color: #fff; border-radius: 8px; padding: 14px 16px; font-family: "Segoe UI", sans-serif; font-size: 13px; box-shadow: 0 20px 40px -10px rgba(0,0,0,.6); }
+  .wtoast .btns { display: flex; gap: 8px; margin-top: 12px; }
+  .wtoast .btns span { flex: 1; background: #2d2d2d; border-radius: 4px; padding: 7px; text-align: center; }
+  .menu { width: 250px; background: #2b2b2b; color: #fff; border-radius: 8px; padding: 4px; font-family: "Segoe UI", sans-serif; font-size: 13px; }
+  .menu div { padding: 7px 12px; border-radius: 4px; }
+  .menu hr { border: 0; border-top: 1px solid #444; margin: 4px 0; }
+  .menu .dis { color: #999; }
+
+  .w1000 { width: 1000px; } .w400 { width: 400px; } .w760 { width: 760px; }
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 880px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="mic" viewBox="0 0 16 16"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2.5M5.5 15h5"/></symbol>
+  <symbol id="game" viewBox="0 0 16 16"><path d="M4 5h8a3 3 0 0 1 3 3v1.5a2 2 0 0 1-3.6 1.2L10.5 9.5h-5L4.6 10.7A2 2 0 0 1 1 9.5V8a3 3 0 0 1 3-3z"/><path d="M4.5 7v2M3.5 8h2"/></symbol>
+  <symbol id="mon" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M6 14h4M8 11v3"/></symbol>
+  <symbol id="win" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M1.5 5.5h13"/></symbol>
+  <symbol id="rec" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.5"/></symbol>
+</svg>
+<style>
+  .trk { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .trk .n { font: 500 11px "JetBrains Mono", monospace; color: var(--muted); width: 22px; flex: none; }
+  .trk .ic { width: 26px; height: 26px; border-radius: 6px; background: var(--raised); flex: none; display: grid; place-items: center; color: var(--dim); font-size: 12px; }
+  .lvl { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; }
+  .lvl i { width: 3px; background: var(--ok); border-radius: 1px; }
+  .x { color: var(--muted); font-size: 14px; padding: 0 4px; }
+  .never { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .pill { height: 28px; padding: 0 6px 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+  .w560 { width: 560px; }
+  .wave { height: 22px; flex: 1; border-radius: 4px; background: repeating-linear-gradient(90deg, var(--ls) 0 2px, transparent 2px 5px); opacity: .9; }
+</style>
+<div class="page">
+  <h1>Capture, round two: Automatic, and a track per app</h1>
+  <p class="lead">Two asks: <b>an "Automatic" pick</b> that records whatever game is fullscreen in front at that moment, and
+  <b>sound as separate tracks</b> (track 1 everything, then each app on its own, to fix in your video editor or in Neria),
+  with a list of apps that are <b>never recorded, ever</b>. Below: the options side by side, and the one Windows limit that
+  shapes the sound part.</p>
+
+  <section>
+    <div class="label"><span>The limit</span><h2>What Windows lets us do with app sound</h2></div>
+    <ul class="why">
+      <li><b>One app's sound on its own: yes</b>, for as many apps as we like (each is its own WASAPI capture, as Discord is today).</li>
+      <li><b>"Everything but one app": yes</b>, in one go (today's "Game &amp; PC (no Discord)").</li>
+      <li><b>"Everything but two or more apps": not in one go.</b> Windows' capture can leave out one app only. With two or more in
+        "Never record", Neria builds "everything" from <b>each other app on its own</b>, which means an app that starts playing after
+        recording started isn't in it until Neria notices and restarts the tracks (every few seconds it checks; a restart drops
+        what was kept before it, so it waits for a quiet moment: no save in the last 10 s).</li>
+      <li><b>Tracks are fixed while recording</b> (a file can't grow a track halfway): a new app gets its own track at that restart
+        too. Until then its sound is still in "Everything else".</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="label"><span>1 · Automatic</span><h2>Recording whatever game is in front</h2></div>
+    <div class="opt">
+      <h3>1A · "Automatic" is the first row of What to record <span class="rec">PICK</span></h3>
+      <p>It records the <b>game that's fullscreen (or borderless) in front</b>; with no game in front, the screen you're
+      using. The row says what it's on right now. Switching to another game moves to it (what was kept of the old game is
+      dropped: one buffer at a time keeps the GPU cost tiny). Alt-Tabbing to the desktop or Discord <b>doesn't</b> switch: it
+      only follows games, and stays on the last one until another game comes to the front.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">What to record · Automatic picked</div>
+          <div class="q w560" style="padding:16px 18px">
+            <div class="h5">What to record</div>
+            <div class="src"><span class="rad on"></span><span class="ic">✦</span><span class="grow"><b style="font-weight:600">Automatic</b><div class="mut" style="font-size:12px">The game in front · now: VALORANT</div></span><span class="tag ok">Following</span></div>
+            <div class="src"><span class="rad"></span><span class="ic"><svg class="i"><use href="#game"/></svg></span><span class="grow">VALORANT<div class="mut" style="font-size:12px">Only this game</div></span><span class="tag">Game</span></div>
+            <div class="src"><span class="rad"></span><span class="ic"><svg class="i"><use href="#mon"/></svg></span><span class="grow">Built-in screen<div class="mut" style="font-size:12px">Main screen · 2560 × 1440</div></span></div>
+            <div class="src"><span class="rad"></span><span class="ic"><svg class="i"><use href="#mon"/></svg></span><span class="grow">20M35<div class="mut" style="font-size:12px">Another screen · 1600 × 900</div></span></div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Status while Automatic</div>
+          <div class="q w560" style="padding:6px 18px">
+            <div class="state" style="border-top:0">
+              <span class="tag live"><span class="dot pulse"></span>ON</span>
+              <div class="grow"><div class="big">Keeping the last 1 min of VALORANT</div><div class="mut" style="margin-top:3px">Automatic · moves to the next game you open</div></div>
+            </div>
+            <div class="state" style="border-bottom:0">
+              <span class="tag live"><span class="dot pulse"></span>ON</span>
+              <div class="grow"><div class="big">Keeping the last 1 min of Built-in screen</div><div class="mut" style="margin-top:3px">Automatic · no game in front yet</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>1B · A tick under the list: "Follow the game in front"</h3>
+      <p>Same behaviour, but a tick on top of a radio list is two controls for one choice, and it's unclear what the picked row
+      means while it's ticked. Not mocked further.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>2 · Sound</span><h2>Track 1 everything, then a track per app</h2></div>
+    <div class="opt">
+      <h3>2A · Each app on its own, automatically, with a "Never record" list <span class="rec">PICK</span></h3>
+      <p>No ticking per app: <b>every app playing sound when it starts</b> gets a track, named after it. Track 1 is always
+      everything mixed (what any player plays), then the game, the others, "Everything else" (system sounds, apps that
+      started later), and the mic last. <b>Never record</b> is a list you add apps to (from what's playing now, or any program);
+      they're left out of every track, everything included, forever, and Settings keeps them. The list below the tracks
+      shows what the next save will hold, with each one's level moving.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Sound · wide</div>
+          <div class="q w560" style="padding:16px 18px">
+            <div class="h5">Sound</div>
+            <div class="tick"><span class="box on">✓</span><span class="grow">A track for each app playing sound</span></div>
+            <div class="tick"><span class="box on">✓</span><span class="grow">Mic</span><div class="select" style="width:220px"><span class="grow">Microphone (fifine)</span><span class="mut">▾</span></div></div>
+            <div class="hint" style="margin-top:12px">The next save holds:</div>
+            <div class="trk"><span class="n">1</span><span class="ic">∑</span><span class="grow"><b style="font-weight:600">Everything</b> <span class="mut">mixed, what players play</span></span><span class="lvl"><i style="height:8px"></i><i style="height:12px"></i><i style="height:6px"></i></span></div>
+            <div class="trk"><span class="n">2</span><span class="ic"><svg class="i"><use href="#game"/></svg></span><span class="grow">VALORANT</span><span class="lvl"><i style="height:10px"></i><i style="height:7px"></i><i style="height:11px"></i></span><span class="lnk">Never record</span></div>
+            <div class="trk"><span class="n">3</span><span class="ic">D</span><span class="grow">Discord</span><span class="lvl"><i style="height:4px"></i><i style="height:9px"></i><i style="height:5px"></i></span><span class="lnk">Never record</span></div>
+            <div class="trk"><span class="n">4</span><span class="ic">B</span><span class="grow">Brave</span><span class="lvl"><i style="height:3px"></i><i style="height:3px"></i><i style="height:3px"></i></span><span class="lnk">Never record</span></div>
+            <div class="trk"><span class="n">5</span><span class="ic">…</span><span class="grow">Everything else <span class="mut">system sounds, apps opened later</span></span></div>
+            <div class="trk" style="border-bottom:0"><span class="n">6</span><span class="ic"><svg class="i"><use href="#mic"/></svg></span><span class="grow">Mic</span><span class="lvl"><i style="height:6px"></i><i style="height:3px"></i><i style="height:8px"></i></span></div>
+            <div class="h5">Never record</div>
+            <div class="never"><span class="pill">Spotify <span class="x">×</span></span><span class="pill">Windows notifications <span class="x">×</span></span><button class="ghost sm">+ Add an app</button></div>
+            <div class="hint">Left out of every track, also Everything, every time. With two or more here, an app that starts playing
+            after instant replay is on joins at Neria's next quiet restart (a few seconds).</div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Compact · 400</div>
+          <div class="q w400" style="padding:16px">
+            <div class="h5">Sound</div>
+            <div class="tick"><span class="box on">✓</span><span class="grow">A track for each app playing sound</span></div>
+            <div class="tick"><span class="box on">✓</span><span>Mic</span></div>
+            <div class="select"><span class="grow">Microphone (fifine)</span><span class="mut">▾</span></div>
+            <div class="hint" style="margin-top:12px">The next save holds 6 tracks:</div>
+            <div class="trk"><span class="n">1</span><span class="grow"><b style="font-weight:600">Everything</b></span></div>
+            <div class="trk"><span class="n">2</span><span class="grow">VALORANT</span><span class="lnk">Never</span></div>
+            <div class="trk"><span class="n">3</span><span class="grow">Discord</span><span class="lnk">Never</span></div>
+            <div class="trk"><span class="n">4</span><span class="grow">Brave</span><span class="lnk">Never</span></div>
+            <div class="trk"><span class="n">5</span><span class="grow">Everything else</span></div>
+            <div class="trk" style="border-bottom:0"><span class="n">6</span><span class="grow">Mic</span></div>
+            <div class="h5">Never record</div>
+            <div class="never"><span class="pill">Spotify <span class="x">×</span></span><button class="ghost sm">+ Add</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>2B · You pick which apps get a track (a tick each), the rest stay in "Everything else"</h3>
+      <p>Fewer tracks in the file and you choose, but a list of ticks for apps that come and go, and the app you forgot to tick
+      is the one you needed apart. Could be added to 2A later as "Only these apps apart". Not mocked further.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>3 · Using the tracks</span><h2>In your editor, and in Neria</h2></div>
+    <div class="opt">
+      <h3>3A · Named tracks in the file, and a Tracks row in the clipper's Sound <span class="rec">PICK</span></h3>
+      <p><b>Your editor</b> (Premiere, DaVinci, CapCut): each track arrives named ("VALORANT", "Discord", "Mic") because the
+      names are written into the MP4. <b>In Neria</b>: opening a replay in the clipper shows its tracks in Clip → Sound, each with
+      a mute and a volume, and the export mixes them as set (track 1 is rebuilt from the others). Same dialog as today's Sound,
+      one more group.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Clip → Sound · a replay with tracks</div>
+          <div class="q w560" style="padding:16px 18px">
+            <div class="h5">Tracks</div>
+            <div class="trk"><span class="ic"><svg class="i"><use href="#game"/></svg></span><span style="width:110px">VALORANT</span><span class="wave"></span><span class="mono mut" style="width:52px;text-align:right">100%</span><span class="box on">✓</span></div>
+            <div class="trk"><span class="ic">D</span><span style="width:110px">Discord</span><span class="wave"></span><span class="mono mut" style="width:52px;text-align:right">60%</span><span class="box on">✓</span></div>
+            <div class="trk"><span class="ic">B</span><span style="width:110px" class="mut">Brave</span><span class="wave" style="opacity:.3"></span><span class="mono mut" style="width:52px;text-align:right">muted</span><span class="box"></span></div>
+            <div class="trk" style="border-bottom:0"><span class="ic"><svg class="i"><use href="#mic"/></svg></span><span style="width:110px">Mic</span><span class="wave"></span><span class="mono mut" style="width:52px;text-align:right">130%</span><span class="box on">✓</span></div>
+            <div class="tick" style="margin-top:12px"><span class="box"></span><span>Keep the tracks apart in the export too</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Summary</span><h2>The picks</h2></div>
+    <table class="cmp">
+      <tr><th>Part</th><th>Pick</th><th>Cost</th></tr>
+      <tr><td>Automatic</td><td>1A · first row; follows games only, the screen when none</td><td>Switching games drops the old game's kept minute</td></tr>
+      <tr><td>Sound</td><td>2A · Everything, then a track per app, Everything else, Mic</td><td>Apps that start later get a track at a quiet restart</td></tr>
+      <tr><td>Never record</td><td>A list, left out of every track forever</td><td>Two or more: "Everything" built app by app</td></tr>
+      <tr><td>Using them</td><td>3A · named tracks; clipper's Sound gets a Tracks group</td><td>Clipper export mixes them (or keeps them apart)</td></tr>
+    </table>
+  </section>
+</div>
+</body>
+</html>
