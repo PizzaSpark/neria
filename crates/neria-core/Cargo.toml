@@ -23,6 +23,8 @@ image = { version = "0.25", default-features = false, features = ["png", "gif", 
 sherpa-onnx = "=2.0.2"
 bzip2 = "0.6"
 tar = "0.4"
+# Phone (phone.rs): the QR code that pairs a phone.
+qrcode = { version = "0.14", default-features = false }
 
 # Instant replay's sound (capture_sound.rs): what the PC plays, one app's sound, the mic (WASAPI).
 [target.'cfg(windows)'.dependencies]

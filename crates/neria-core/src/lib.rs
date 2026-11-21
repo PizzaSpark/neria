@@ -27,6 +27,7 @@ pub mod media;
 pub mod music;
 pub mod names;
 pub mod paths;
+pub mod phone;
 pub mod picture;
 pub mod post;
 pub mod probe;
