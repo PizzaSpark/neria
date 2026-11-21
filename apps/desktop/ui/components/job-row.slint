@@ -28,6 +28,8 @@ export component JobRow inherits Rectangle {
 
     property <bool> active: root.job.state <= 2;
     property <bool> done: root.job.state == 3;
+    // Saved and still there: what Show, Clip and Compress need.
+    property <bool> kept: root.done && !root.job.gone;
     property <bool> failed: root.job.state == 4;
     property <bool> paused: root.job.state == 6;
     // A live stream being recorded: the tape instead of a bar, Stop instead of Pause.
@@ -41,13 +43,15 @@ export component JobRow inherits Rectangle {
         : root.job.state == 0 && root.job.scheduled ? "Later"
         : root.job.state == 0 ? "Waiting"
         : root.flagged ? (root.job.flag == 2 ? "Sounds different" : "Unsure")
+        : root.done && root.job.gone && !root.job.header ? "Gone"
         : root.done ? (root.job.warn ? "Check" : "Saved") : root.failed ? "Failed" : root.job.state == 5 ? "Cancelled" : root.paused ? "Paused" : "";
     property <int> tag-kind: root.live && root.job.live.tag != "" ? root.job.live.tag-kind
-        : root.flagged && root.job.flag == 2 ? 3 : root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
+        : root.flagged && root.job.flag == 2 ? 3 : root.done && root.job.gone && !root.job.header ? 0
+        : root.done ? (root.job.warn ? 2 : 1) : root.failed ? 3 : 0;
 
     // What the row offers (the same on every width; compact folds most into the menu).
-    property <bool> can-show: root.done || (root.job.header && root.job.state != 0);
-    property <bool> can-clip: root.done && !root.job.header && !root.job.still;
+    property <bool> can-show: root.kept || (root.job.header && root.job.state != 0);
+    property <bool> can-clip: root.kept && !root.job.header && !root.job.still;
     // Songs are already small; compressing is for videos.
     property <bool> can-compress: root.can-clip && !root.job.music;
     property <bool> can-match: root.job.music && !root.job.header && (root.done || root.failed);
@@ -383,29 +387,29 @@ export component JobRow inherits Rectangle {
                 clicked => { root.accept(); }
             }
             // A card's "Show" opens its folder.
-            if !root.flagged && (root.done || (root.job.header && root.job.state != 0)): GhostButton {
+            if !root.flagged && (root.kept || (root.job.header && root.job.state != 0)): GhostButton {
                 compact: true;
                 text: "Show";
                 clicked => { root.open(); }
             }
-            if root.done && !root.flagged && !root.job.header && !root.job.still && !root.narrow: GhostButton {
+            if root.kept && !root.flagged && !root.job.header && !root.job.still && !root.narrow: GhostButton {
                 compact: true;
                 text: "Clip";
                 clicked => { root.open-clipper(); }
             }
-            if root.done && !root.flagged && !root.job.header && !root.job.still && root.narrow: GhostButton {
+            if root.kept && !root.flagged && !root.job.header && !root.job.still && root.narrow: GhostButton {
                 compact: true;
                 icon: "\u{E8C6}";
                 label: "Clip";
                 clicked => { root.open-clipper(); }
             }
             // Songs are already small; compressing is for videos.
-            if root.done && !root.job.header && !root.job.music && !root.job.still && !root.narrow: GhostButton {
+            if root.kept && !root.job.header && !root.job.music && !root.job.still && !root.narrow: GhostButton {
                 compact: true;
                 text: "Compress";
                 clicked => { root.open-compressor(); }
             }
-            if root.done && !root.job.header && !root.job.music && !root.job.still && root.narrow: GhostButton {
+            if root.kept && !root.job.header && !root.job.music && !root.job.still && root.narrow: GhostButton {
                 compact: true;
                 icon: "\u{E73F}";
                 label: "Compress";

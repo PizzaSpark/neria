@@ -32,6 +32,8 @@ const FILES: [&str; 5] = [ENCODER, DECODER, JOINER, "tokens.txt", "bpe.model"];
 
 /// The phrase when nobody picked one.
 pub const DEFAULT_PHRASE: &str = "clip that";
+/// What undoes the last clip, said.
+pub const DEFAULT_UNDO: &str = "undo that";
 
 pub fn dir() -> PathBuf {
     paths::bin_dir().join("voice")
@@ -237,6 +239,15 @@ impl Default for Tuning {
     }
 }
 
+/// Settings → Voice → Sensitivity: Normal, High, Highest (accents, quiet voices, a far mic).
+pub const SENSITIVITY: [f32; 3] = [0.25, 0.15, 0.08];
+
+impl Tuning {
+    pub fn sensitivity(level: u8) -> Tuning {
+        Tuning { threshold: SENSITIVITY[(level as usize).min(2)], ..Tuning::default() }
+    }
+}
+
 /// sherpa's keyword lines: pieces, `:boost`, `#threshold`, `@phrase` (spaces as `_`).
 pub fn keyword_lines(pieces: &Pieces, phrases: &[String], tune: Tuning) -> Result<String> {
     let mut lines = Vec::new();
@@ -392,6 +403,10 @@ pub struct Prefs {
     /// The last Test it: the phrase tested and how many of the sayings were heard (of 3).
     pub tested: String,
     pub tested_heard: u8,
+    /// Said after a clip: undoes it ("undo that"). Empty: off.
+    pub undo: String,
+    /// 0 Normal, 1 High, 2 Highest (`SENSITIVITY`); Test it raises it when it misses you.
+    pub sensitivity: u8,
 }
 
 impl Default for Prefs {
@@ -404,6 +419,8 @@ impl Default for Prefs {
             sound: true,
             tested: String::new(),
             tested_heard: 0,
+            undo: DEFAULT_UNDO.into(),
+            sensitivity: 0,
         }
     }
 }
@@ -412,6 +429,16 @@ impl Prefs {
     /// The phrases worth listening for (typed, with words in them).
     pub fn phrases(&self) -> Vec<String> {
         self.phrases.iter().map(|p| p.trim().to_string()).filter(|p| !words(p).is_empty()).collect()
+    }
+
+    /// The undo phrase, if it has words in it.
+    pub fn undo(&self) -> Option<String> {
+        let u = self.undo.trim();
+        (!words(u).is_empty()).then(|| u.to_string())
+    }
+
+    pub fn tuning(&self) -> Tuning {
+        Tuning::sensitivity(self.sensitivity)
     }
 
     /// The mic to open: `None` is Windows' default.

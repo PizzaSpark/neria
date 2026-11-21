@@ -783,6 +783,11 @@ export global Voice {
     // Keep the last: 0 15 s, 1 30 s, 2 1 min, 3 2 min.
     in-out property <int> keep: 1;
     in-out property <bool> sound: true;
+    // Said after a clip, undoes it ("undo that").
+    in-out property <string> undo-phrase: "undo that";
+    // 0 Normal, 1 High, 2 Highest: higher hears accents and quiet voices, and is fooled more.
+    in-out property <int> sensitivity;
+    callback undo-edited(string);
     // The voice model: on the drive, being fetched ("2.1 / 5.3 MB"), or what went wrong.
     in property <bool> ready;
     in property <bool> getting;

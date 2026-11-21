@@ -25,12 +25,13 @@ const KEEPS: [u32; 4] = [15, 30, 60, 120];
 
 #[derive(Clone, PartialEq, Debug)]
 enum Mode {
-    /// The live player: act on what's heard.
-    Listen(Vec<String>, Option<String>),
+    /// The live player: act on what's heard (the phrases, then the undo phrase), at a
+    /// sensitivity.
+    Listen(Vec<String>, Option<String>, u8),
     /// Settings → Voice: only the meter.
     Meter(Option<String>),
     /// Test it on one phrase.
-    Test(String, Option<String>),
+    Test(String, Option<String>, u8),
 }
 
 struct MicThread {
@@ -85,10 +86,6 @@ fn save(f: impl FnOnce(&mut Prefs)) {
             let _ = st.save();
         }
     });
-}
-
-fn tune() -> Tuning {
-    Tuning::default()
 }
 
 pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
@@ -175,13 +172,16 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             };
             let keep = KEEPS[v.get_keep().clamp(0, 3) as usize];
             let sound = v.get_sound();
+            let level = v.get_sensitivity().clamp(0, 2) as u8;
             save(|p| {
                 p.mic = name;
                 p.keep = keep;
                 p.sound = sound;
+                p.sensitivity = level;
             });
         }
     });
+    v.on_undo_edited(|text| save(|p| p.undo = text.to_string()));
     v.on_test_start({
         let weak = ui.as_weak();
         move || start_test(&weak.unwrap())
@@ -343,6 +343,8 @@ fn show_prefs(ui: &AppWindow) {
     });
     v.set_keep(KEEPS.iter().position(|k| *k == p.keep).unwrap_or(1) as i32);
     v.set_sound(p.sound);
+    v.set_undo_phrase(p.undo.clone().into());
+    v.set_sensitivity(p.sensitivity.min(2) as i32);
     let bytes: u64 = std::fs::read_dir(voice::dir())
         .into_iter()
         .flatten()
@@ -435,7 +437,7 @@ fn start_test(ui: &AppWindow) {
         s.testing = true;
         s.mic = None;
     });
-    let mode = Mode::Test(phrase, p.mic());
+    let mode = Mode::Test(phrase, p.mic(), p.sensitivity);
     start_mic(ui, mode);
 }
 
@@ -456,7 +458,9 @@ fn reconcile(ui: &AppWindow) {
     let settings_open = ui.get_drawer_open() && ui.get_settings_section() == 5;
     let ready = p.on && voice::ready();
     let want = if ready && player && !muted && !p.phrases().is_empty() {
-        Some(Mode::Listen(p.phrases(), p.mic()))
+        let mut listen = p.phrases();
+        listen.extend(p.undo());
+        Some(Mode::Listen(listen, p.mic(), p.sensitivity))
     } else if ready && settings_open {
         Some(Mode::Meter(p.mic()))
     } else {
@@ -519,14 +523,18 @@ fn start_mic(ui: &AppWindow, mode: Mode) {
 
 fn run_mic(mode: &Mode, stop: &AtomicBool, send: &dyn Fn(Msg)) -> Result<(), (String, bool)> {
     let (phrases, mic) = match mode {
-        Mode::Listen(p, m) => (p.clone(), m.clone()),
+        Mode::Listen(p, m, _) => (p.clone(), m.clone()),
         Mode::Meter(m) => (Vec::new(), m.clone()),
-        Mode::Test(p, m) => (vec![p.clone()], m.clone()),
+        Mode::Test(p, m, _) => (vec![p.clone()], m.clone()),
+    };
+    let tune = match mode {
+        Mode::Listen(_, _, level) | Mode::Test(_, _, level) => Tuning::sensitivity(*level),
+        Mode::Meter(_) => Tuning::default(),
     };
     let mut spotter = if phrases.is_empty() {
         None
     } else {
-        Some(Spotter::new(&phrases, tune()).map_err(|e| (format!("{e:#}"), false))?)
+        Some(Spotter::new(&phrases, tune).map_err(|e| (format!("{e:#}"), false))?)
     };
     let mut reader = capture_sound::Reader::open(&Sound::Mic(mic)).map_err(|e| (format!("{e:#}"), true))?;
     let test = matches!(mode, Mode::Test(..));
@@ -660,27 +668,66 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
         v.set_test_note("Heard you every time. You're set.".into());
         return;
     }
-    let alternatives = Pieces::load().map(|p| voice::spellings(&p, &phrase)).unwrap_or_default();
-    if alternatives.is_empty() || heard == said {
+    if heard == said {
         v.set_test(0);
-        v.set_test_note(
-            if heard == said {
-                "Heard every one you said. Say it three times for a full test."
-            } else {
-                "It missed some. Say it a little louder or closer, or pick other words."
-            }
-            .into(),
-        );
+        v.set_test_note("Heard every one you said. Say it three times for a full test.".into());
         return;
     }
     v.set_test(2);
-    v.set_test_note("It missed some. Trying spellings that sound the same…".into());
+    v.set_test_note("It missed some. Tuning it to your voice…".into());
+    let level = prefs().sensitivity;
+    let alternatives = Pieces::load().map(|p| voice::spellings(&p, &phrase)).unwrap_or_default();
     let weak = ui.as_weak();
     std::thread::spawn(move || {
-        let found = voice::try_spellings(&audio, &sayings, &alternatives, tune());
+        // First: listen harder (accents, quiet voices), as little as it takes, on what was
+        // just said. Then: spellings that sound the same, at that sensitivity.
+        let mut best = (level, heard);
+        for l in level + 1..=2 {
+            let n = voice::try_spellings(&audio, &sayings, std::slice::from_ref(&phrase), Tuning::sensitivity(l))
+                .first()
+                .map_or(0, |(_, n)| *n);
+            if n > best.1 {
+                best = (l, n);
+            }
+            if n == said {
+                break;
+            }
+        }
+        let found = if best.1 < said && !alternatives.is_empty() {
+            voice::try_spellings(&audio, &sayings, &alternatives, Tuning::sensitivity(best.0))
+        } else {
+            Vec::new()
+        };
         let _ = weak.upgrade_in_event_loop(move |ui| {
             let v = ui.global::<Voice>();
             v.set_test(0);
+            let (tuned, tuned_heard) = best;
+            if tuned != level {
+                save(|p| {
+                    p.sensitivity = tuned;
+                    p.tested_heard = tuned_heard as u8;
+                });
+                show_prefs(&ui);
+                if tuned_heard == said {
+                    let word = if tuned == 1 { "High" } else { "Highest" };
+                    v.set_test_note(
+                        format!("Tuned to your voice: Sensitivity is now {word}, and it heard all {said}.").into(),
+                    );
+                    return;
+                }
+            }
+            if alternatives.is_empty() {
+                v.set_test_note(
+                    if tuned != level {
+                        format!("Tuned to your voice: it heard {tuned_heard} of {said} now. Say it a little louder or closer, or pick other words.")
+                    } else {
+                        "It missed some. Say it a little louder or closer, or pick other words.".to_string()
+                    }
+                    .into(),
+                );
+                return;
+            }
+            let heard = tuned_heard;
             let better: Vec<_> = found.into_iter().filter(|(_, n)| *n > heard).take(3).collect();
             if better.is_empty() {
                 v.set_test_note(
@@ -711,6 +758,10 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
 /// The phrase was heard in the live player: do what its button does.
 fn heard(ui: &AppWindow, phrase: &str) {
     let p = prefs();
+    if p.undo().is_some_and(|u| voice::words(&u).join(" ") == phrase) {
+        undo_by_voice(ui, phrase);
+        return;
+    }
     let secs = p.keep as f64;
     let w = ui.global::<Watch>();
     let live = ui.global::<ClipLive>();
@@ -790,6 +841,23 @@ fn flash(ui: &AppWindow) {
             ui.global::<Voice>().set_flash(false);
         }
     });
+}
+
+/// "Undo that": the last clip made by voice goes, as if Undo on its toast was pressed (for a
+/// couple of minutes after it).
+fn undo_by_voice(ui: &AppWindow, phrase: &str) {
+    let said = format!("Heard \"{}\"", phrase.to_lowercase());
+    let something = ST.with(|s| {
+        let s = s.borrow();
+        s.last_clip.is_some() || s.saved_since.is_some_and(|t| t.elapsed().is_ok_and(|e| e < Duration::from_secs(180)))
+    });
+    if !something {
+        toast(ui, &said, "Nothing to undo", 2, false);
+        return;
+    }
+    ST.with(|s| s.borrow_mut().undo_wanted = Some(Instant::now()));
+    toast(ui, &said, "Undoing the last clip", 1, false);
+    finish_undo(ui);
 }
 
 /// Show: the clip just made, in Explorer (from its queue row while recording; while watching,

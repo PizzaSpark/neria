@@ -140,6 +140,8 @@ export struct JobItem {
     can-move: bool,
     // A live stream being recorded (or saved from one).
     live: LiveRow,
+    // Saved, but the file isn't there any more (deleted or moved): "Gone".
+    gone: bool,
 }
 
 // Formatting helpers implemented in Rust.

@@ -372,6 +372,31 @@ component VoiceSection inherits VerticalLayout {
             checked <=> Voice.sound;
             toggled => { Voice.changed(); }
         }
+        Text {
+            text: "To undo the last clip, say";
+            color: Theme.ink;
+            font-size: 13px;
+        }
+        LineEdit {
+            text: Voice.undo-phrase;
+            placeholder-text: "undo that (leave empty for none)";
+            edited(t) => { Voice.undo-edited(t); }
+        }
+        Hint {
+            text: "Works for a few minutes after a clip, like Undo on its message.";
+        }
+    }
+
+    if Voice.on && Voice.ready: Group {
+        title: "Sensitivity";
+        ChoiceChips {
+            options: ["Normal", "High", "Highest"];
+            current <=> Voice.sensitivity;
+            changed => { Voice.changed(); }
+        }
+        Hint {
+            text: "Higher hears accents, quiet voices and a far-off mic better, and goes off by mistake a little more. Test it raises it by itself when it misses you.";
+        }
     }
 
     if Voice.ready && !Voice.getting: HorizontalLayout {

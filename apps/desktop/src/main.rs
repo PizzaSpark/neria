@@ -186,8 +186,36 @@ fn job_item(s: &JobSnapshot) -> JobItem {
         can_remove: (3..=5).contains(&state),
         scheduled: state == 0 && !s.starts.is_empty(),
         live: live.unwrap_or_default(),
+        gone: state == 3 && s.file.as_ref().is_some_and(|f| !f.exists()),
         ..Default::default()
     }
+}
+
+/// Saved rows whose file was deleted or moved since say "Gone" (looked at every few seconds,
+/// only while the Download page shows).
+fn watch_gone(ui: &AppWindow) -> slint::Timer {
+    let timer = slint::Timer::default();
+    let weak = ui.as_weak();
+    timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(4), move || {
+        let Some(ui) = weak.upgrade() else { return };
+        if ui.get_page() != 0 || !ui.window().is_visible() {
+            return;
+        }
+        let Some(queue) = QUEUE.get() else { return };
+        let rows = rows();
+        for i in 0..rows.row_count() {
+            let Some(mut j) = rows.row_data(i) else { continue };
+            if j.state != 3 || j.header || j.id < 0 {
+                continue;
+            }
+            let gone = queue.file_of(j.id as u64).is_some_and(|f| !f.exists());
+            if gone != j.gone {
+                j.gone = gone;
+                rows.set_row_data(i, j);
+            }
+        }
+    });
+    timer
 }
 
 /// The queue, for code that only has a job id (notifications' "Open").
@@ -2044,6 +2072,7 @@ fn main() -> anyhow::Result<()> {
     transcribe_ui::install(&ui, settings.clone());
     live_ui::install(&ui, &queue);
     voice_ui::install(&ui, settings.clone(), queue.clone());
+    let _gone_timer = watch_gone(&ui);
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());
         move || start_setup(&weak.unwrap(), settings.clone(), queue.clone())

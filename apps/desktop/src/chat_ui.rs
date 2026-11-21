@@ -310,10 +310,12 @@ pub fn refresh_dialog(ui: &AppWindow) {
     let g = ui.global::<ClipChat>();
     let (a, b) = (ui.get_clip_in() as f64, ui.get_clip_out() as f64);
     let clips = crate::clips_ui::clips();
-    let ranges: Vec<(f64, f64)> = if clips.is_empty() { vec![(a, b)] } else { clips.iter().map(|c| (c.start, c.end)).collect() };
+    let ranges: Vec<(f64, f64)> =
+        if clips.is_empty() { vec![(a, b)] } else { clips.iter().map(|c| (c.start, c.end)).collect() };
     let (all, high, picked) = STATE.with(|s| {
         let s = s.borrow();
-        let words: Vec<String> = g.get_words().split(',').map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect();
+        let words: Vec<String> =
+            g.get_words().split(',').map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect();
         let no_bots = g.get_no_bots();
         let inside = |m: &&Message| ranges.iter().any(|(x, y)| m.t >= *x && m.t <= *y) && !(no_bots && chat::is_bot(m));
         let all = s.msgs.iter().filter(inside).count();
@@ -327,7 +329,12 @@ pub fn refresh_dialog(ui: &AppWindow) {
         format!("the {} clips", clips.len())
     };
     g.set_range_text(
-        if all == 1 { format!("1 message falls inside {range}") } else { format!("{} messages fall inside {range}", number(all)) }.into(),
+        if all == 1 {
+            format!("1 message falls inside {range}")
+        } else {
+            format!("{} messages fall inside {range}", number(all))
+        }
+        .into(),
     );
     g.set_all_count(number(all).into());
     g.set_highlight_count(number(high).into());
@@ -347,9 +354,11 @@ pub fn refresh_dialog(ui: &AppWindow) {
 /// stream, else into the video.
 fn fmt_t(ui: &AppWindow, t: f64) -> String {
     match STATE.with(|s| s.borrow().anchor) {
-        Some(anchor) if ui.global::<ClipChat>().get_state() == 4 => chrono::DateTime::from_timestamp((anchor + t) as i64, 0)
-            .map(|d| d.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
-            .unwrap_or_default(),
+        Some(anchor) if ui.global::<ClipChat>().get_state() == 4 => {
+            chrono::DateTime::from_timestamp((anchor + t) as i64, 0)
+                .map(|d| d.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
+                .unwrap_or_default()
+        }
         _ => neria_core::fmt::duration(t.max(0.0)),
     }
 }
@@ -361,7 +370,11 @@ fn row_time(live_anchor: Option<f64>, t: f64) -> String {
             .unwrap_or_default(),
         None => {
             let s = t.max(0.0) as u64;
-            if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
+            if s >= 3600 {
+                format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+            } else {
+                format!("{}:{:02}", s / 60, s % 60)
+            }
         }
     }
 }
@@ -545,7 +558,8 @@ fn rows(ui: &AppWindow, position: f64) {
                     if s.pics.wanted.len() > before {
                         s.unfinished.insert(m.id.clone());
                     }
-                    let buf = SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(px.data(), px.width(), px.height());
+                    let buf =
+                        SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(px.data(), px.width(), px.height());
                     let img = slint::Image::from_rgba8_premultiplied(buf);
                     let h = px.height() as f32 / scale;
                     s.cache.insert(ck, (img.clone(), h));
@@ -633,7 +647,11 @@ fn activity(ui: &AppWindow) {
     let counts = STATE.with(|s| chat::activity(&s.borrow().msgs, start, span, buckets));
     let max = counts.iter().copied().max().unwrap_or(0).max(1) as f32;
     let dark = ui.global::<crate::Theme>().get_dark();
-    let (bar, hot) = if dark { ([0x46, 0x46, 0x4c, 255], [0xff, 0xd2, 0x3f, 255]) } else { ([0xcf, 0xc7, 0xb4, 255], [0xc9, 0x9a, 0x00, 255]) };
+    let (bar, hot) = if dark {
+        ([0x46, 0x46, 0x4c, 255], [0xff, 0xd2, 0x3f, 255])
+    } else {
+        ([0xcf, 0xc7, 0xb4, 255], [0xc9, 0x9a, 0x00, 255])
+    };
     let mut buf = SharedPixelBuffer::<slint::Rgba8Pixel>::new(w, h);
     let px = buf.make_mut_slice();
     let bw = w as f32 / buckets as f32;
@@ -645,7 +663,8 @@ fn activity(ui: &AppWindow) {
         let col = if t >= a && t <= b { hot } else { bar };
         let bh = ((*c as f32 / max).sqrt() * h as f32).round().max(1.0) as u32;
         let x0 = (i as f32 * bw).round() as u32;
-        let x1 = (((i + 1) as f32 * bw).round() as u32).saturating_sub((scale.round() as u32).max(1)).max(x0 + 1).min(w);
+        let x1 =
+            (((i + 1) as f32 * bw).round() as u32).saturating_sub((scale.round() as u32).max(1)).max(x0 + 1).min(w);
         for y in h - bh.min(h)..h {
             for x in x0..x1 {
                 let p = &mut px[(y * w + x) as usize];
@@ -794,9 +813,20 @@ pub fn demo(ui: &AppWindow) {
     use chat::{Kind, Part, Site};
     let t = |s: &str| Part::Text { s: s.into() };
     let names = ["kaiyo", "mossbyte", "nullpointer", "tarte", "lumen", "Rin", "Ann", "Nightbot", "orbit", "pixelfox"];
-    let colors = ["#FF9F43", "#5FD4FF", "#7DFF9B", "#FF7BD5", "#C4A8FF", "#F5B14A", "#1E90FF", "#8E8C88", "#FF6B6F", "#9ACD32"];
-    let lines = ["that was CLEAN", "clip it clip it", "no way he hit that", "GG", "how did that work lol", "best play all week, keep going",
-        "hype", "!socials → follow on all platforms", "again again", "chat is this real"];
+    let colors =
+        ["#FF9F43", "#5FD4FF", "#7DFF9B", "#FF7BD5", "#C4A8FF", "#F5B14A", "#1E90FF", "#8E8C88", "#FF6B6F", "#9ACD32"];
+    let lines = [
+        "that was CLEAN",
+        "clip it clip it",
+        "no way he hit that",
+        "GG",
+        "how did that work lol",
+        "best play all week, keep going",
+        "hype",
+        "!socials → follow on all platforms",
+        "again again",
+        "chat is this real",
+    ];
     let len = ui.get_clip_duration().max(60.0) as f64;
     let mut msgs = Vec::new();
     for i in 0..400 {

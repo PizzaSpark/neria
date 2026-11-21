@@ -968,8 +968,14 @@ last minute is always kept, and saving turns it into a file that opens in the cl
    mark that stops it for this stream, a yellow flash, a "Heard" toast; Clip the last while
    recording with Undo, Save the last while watching). The phrase splitting was wrong until
    then (its check was skipped): fixed, and "neria clip that" is now heard as typed. Checked:
-   screenshots at every width with sample data. Not yet: a live end-to-end check in the
-   app on a real stream; Undo for Save the last; Capture's save.
+   screenshots at every width with sample data. Then, from the user's first real tries
+   (2026-11-21): heard 3 of 3 in Test it and on a live stream; clips end where the player
+   is (it runs behind the live edge), the full length rewound from the site when it keeps
+   it, else what's kept; saving doesn't pause a live stream; Undo and Show while watching
+   too; the mark's menu (Keep the last, Stop / Listen again, "Not listening"); "undo that"
+   said; Sensitivity (Normal / High / Highest) that Test it raises when it misses someone (a
+   friend's accent wasn't heard at Normal). Not yet: Capture's save; the friend's accent
+   re-tested.
    Off until turned on; the mic is only listened to on the PC,
    nothing is sent anywhere. A small always-on wake-word listener (around 1% CPU, never the
    large whisper model) that presses the same save as the hotkey, with the same "saved"
