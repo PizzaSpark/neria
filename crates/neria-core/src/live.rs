@@ -314,9 +314,145 @@ fn record(
     }
 }
 
+/// The watch screen's tape for a live stream (it takes the timeline's place there): the
+/// stream from its start, or from a little before what matters on a long one, to now; what
+/// the player can go back to; where it is; what a recording of it has. Positions are 0..1
+/// along the tape.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Tape {
+    /// Stream seconds at its left and right ends (the right is now).
+    pub from: f64,
+    pub to: f64,
+    /// What the player can go back to (`seek_to <= seek_from`: nothing), and where it is
+    /// (`None`: not on the tape).
+    pub seek_from: f32,
+    pub seek_to: f32,
+    pub play: Option<f32>,
+    /// A recording: before it began (`joined`), recorded up to `done`, the part before in up
+    /// to `early` (all of it: `early_in`), missed bits.
+    pub recording: bool,
+    pub joined: f32,
+    pub done: f32,
+    pub early: f32,
+    pub early_in: bool,
+    pub holes: Vec<f32>,
+    pub catching_up: bool,
+    /// Under it: "started 1:06:25 ago" (or how far back it goes) · "now".
+    pub left: String,
+    pub right: String,
+}
+
+/// What the tape is drawn from, in seconds of the stream (from when it went live; when
+/// that isn't known, from when the player opened it: `origin_known` false).
+#[derive(Clone, Debug, Default)]
+pub struct TapeInput<'a> {
+    pub now: f64,
+    pub went_live: f64,
+    pub origin_known: bool,
+    pub seek: Option<(f64, f64)>,
+    pub play: Option<f64>,
+    pub rec: Option<&'a crate::record::LiveStats>,
+}
+
+impl Tape {
+    pub fn new(i: &TapeInput) -> Tape {
+        let to = (i.now - i.went_live).max(1.0);
+        // What matters on it: where the player can go back to, where a recording began, the
+        // start itself when the part before is being got.
+        let mut lo = to - 60.0;
+        if let Some((a, _)) = i.seek {
+            lo = lo.min(a);
+        }
+        if let Some(r) = i.rec {
+            let joined = r.joined.unwrap_or(0.0);
+            lo = lo.min(if r.earlier.is_some() || r.earlier_done { 0.0 } else { joined });
+        }
+        let lo = lo.max(0.0);
+        // All of it, unless it's been on for long and what matters is only lately: then a
+        // little before that (11 days of a 24/7 channel would leave an hour a sliver).
+        let from = if to > 8.0 * 3600.0 && lo > (to - lo) * 2.0 { (lo - (to - lo) * 0.25).max(0.0) } else { 0.0 };
+        let f = |s: f64| (((s - from) / (to - from)).clamp(0.0, 1.0)) as f32;
+        let mut t = Tape { from, to, ..Default::default() };
+        if let Some((a, b)) = i.seek {
+            (t.seek_from, t.seek_to) = (f(a), f(b));
+        }
+        t.play = i.play.filter(|p| *p >= from - 1.0).map(f);
+        if let Some(r) = i.rec {
+            let joined = r.joined.unwrap_or(0.0);
+            t.recording = true;
+            t.joined = f(joined);
+            t.done = f(r.position.max(joined));
+            if let Some((got, _)) = r.earlier {
+                t.early = f(from.max(got.min(joined)));
+            } else if r.earlier_done {
+                (t.early, t.early_in) = (t.joined, true);
+            }
+            t.holes = r.holes.iter().map(|h| f(h.at)).collect();
+            t.catching_up = r.phase == crate::record::Phase::CatchingUp;
+        }
+        let ago = crate::fmt::duration((to - from).max(0.0));
+        t.left = match (from < 1.0, i.origin_known) {
+            (true, true) => format!("started {ago} ago"),
+            (true, false) => format!("opened {ago} ago"),
+            (false, _) => format!("{ago} ago"),
+        };
+        t.right = "now".into();
+        t
+    }
+
+    /// Stream seconds at a point along it (0..1).
+    pub fn at(&self, x: f64) -> f64 {
+        self.from + x.clamp(0.0, 1.0) * (self.to - self.from)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tape_shows_what_matters() {
+        use crate::record::{LiveStats, Phase};
+        let now = 100_000.0;
+        // On for an hour, the player keeps the last 10 min, nothing recorded: the whole hour.
+        let t = Tape::new(&TapeInput {
+            now,
+            went_live: now - 3600.0,
+            origin_known: true,
+            seek: Some((3000.0, 3590.0)),
+            play: Some(3500.0),
+            rec: None,
+        });
+        assert_eq!(t.from, 0.0);
+        assert!((t.seek_from - 3000.0 / 3600.0).abs() < 1e-4);
+        assert!((t.play.unwrap() - 3500.0 / 3600.0).abs() < 1e-4);
+        assert_eq!(t.left, "started 1:00:00 ago");
+        // On for 11 days, the player keeps an hour: a little before that hour, not 11 days.
+        let t = Tape::new(&TapeInput {
+            now,
+            went_live: now - 950_400.0,
+            origin_known: true,
+            seek: Some((946_800.0, 950_390.0)),
+            ..Default::default()
+        });
+        assert!((t.from - (946_800.0 - 900.0)).abs() < 1.0, "{}", t.from);
+        assert!(t.seek_from > 0.15 && t.seek_from < 0.25, "{}", t.seek_from);
+        assert_eq!(t.left, "1:15:00 ago");
+        // Recording from now with the part before coming: from the very start.
+        let st = LiveStats {
+            phase: Phase::Recording,
+            joined: Some(3230.0),
+            position: 3285.0,
+            earlier: Some((720.0, 3230.0)),
+            ..LiveStats::default()
+        };
+        let t = Tape::new(&TapeInput { now, went_live: now - 3300.0, origin_known: true, rec: Some(&st), ..Default::default() });
+        assert_eq!(t.from, 0.0);
+        assert!(t.recording && !t.early_in);
+        assert!((t.early - 720.0 / 3300.0).abs() < 1e-4);
+        assert!((t.joined - 3230.0 / 3300.0).abs() < 1e-4);
+        assert!((t.at(0.5) - 1650.0).abs() < 1e-6);
+    }
 
     #[test]
     fn reads_the_window() {

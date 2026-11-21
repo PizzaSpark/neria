@@ -156,10 +156,10 @@ fn main() -> anyhow::Result<()> {
             let started = Instant::now();
             let mut printed = Instant::now();
             let never = AtomicBool::new(false);
-            let result = record::fetch_earlier(&rec, &slot, &stop, &never, |got, of| {
+            let result = record::fetch_earlier(&rec, &slot, &stop, &never, |got, of, bytes| {
                 if printed.elapsed() >= Duration::from_secs(10) {
                     printed = Instant::now();
-                    println!("earlier: {} of {}", fmt::duration(got), fmt::duration(of));
+                    println!("earlier: {} of {} · {}", fmt::duration(got), fmt::duration(of), fmt::bytes(bytes as f64));
                 }
             });
             println!("earlier done in {:.0} s: {result:?}", started.elapsed().as_secs_f64());

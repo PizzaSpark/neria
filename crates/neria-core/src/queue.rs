@@ -941,13 +941,31 @@ impl Queue {
                 out_dir: &dir,
             };
             let slot = Mutex::new(None);
-            let result = crate::record::fetch_earlier(&rec, &slot, &stop, &cancel, |got, of| {
-                queue.update(id, true, |s| {
-                    if let Some(l) = s.live.as_mut() {
-                        l.earlier = Some((got, of));
+            // The site sometimes turns it away once (seen on YouTube, a minute after it gave
+            // the same stream): two more tries, 20 s apart, while the recording runs.
+            let mut tries = 0;
+            let result = loop {
+                tries += 1;
+                let r = crate::record::fetch_earlier(&rec, &slot, &stop, &cancel, |got, of, bytes| {
+                    queue.update(id, true, |s| {
+                        if let Some(l) = s.live.as_mut() {
+                            l.earlier = Some((got, of));
+                            l.earlier_bytes = bytes;
+                        }
+                    })
+                });
+                let refused = r.as_ref().is_err_and(|e| e.to_string().contains("wouldn't give"));
+                if !refused || tries >= 3 || stop.load(Ordering::SeqCst) || cancel.load(Ordering::SeqCst) {
+                    break r;
+                }
+                queue.push_log(id, format!("Earlier part: {r:?}; trying again in 20 s"));
+                for _ in 0..200 {
+                    if stop.load(Ordering::SeqCst) || cancel.load(Ordering::SeqCst) {
+                        break;
                     }
-                })
-            });
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            };
             queue.push_log(id, format!("Earlier part: {result:?}"));
             queue.update(id, true, |s| {
                 if let Some(l) = s.live.as_mut() {
@@ -1862,6 +1880,7 @@ impl Queue {
                     let mut st = st;
                     if let Some(old) = s.live.as_ref() {
                         st.earlier = old.earlier;
+                        st.earlier_bytes = old.earlier_bytes;
                         st.earlier_done = old.earlier_done;
                         st.earlier_failed = old.earlier_failed.clone();
                     }

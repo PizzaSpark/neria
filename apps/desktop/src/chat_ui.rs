@@ -603,10 +603,21 @@ fn rows(ui: &AppWindow, position: f64) {
     }
 }
 
+thread_local! {
+    /// Watching a live stream: the tape's stretch of the player's timeline (start, span),
+    /// which the activity strip follows instead of the timeline's view.
+    static TAPE_RANGE: std::cell::Cell<Option<(f64, f64)>> = const { std::cell::Cell::new(None) };
+}
+
+/// The live tape shows (its stretch of the player's timeline), or not.
+pub fn set_tape_range(range: Option<(f64, f64)>) {
+    TAPE_RANGE.with(|r| r.set(range));
+}
+
 /// The strip over the timeline: how much is said along what's on screen.
 fn activity(ui: &AppWindow) {
     let v = ui.global::<ClipView>();
-    let (start, span) = (v.get_start() as f64, v.get_span() as f64);
+    let (start, span) = TAPE_RANGE.with(|r| r.get()).unwrap_or((v.get_start() as f64, v.get_span() as f64));
     let span = if span > 0.0 { span } else { ui.get_clip_duration() as f64 };
     let scale = ui.window().scale_factor();
     let w = ((v.get_width_px() * scale) as u32).clamp(16, 8192);

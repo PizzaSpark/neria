@@ -472,6 +472,9 @@ export component LiveTape inherits Rectangle {
     in property <float> done;
     in property <[float]> holes;
     in property <bool> catching-up;
+    // The part before, fetched next to it: in up to `early` (fainter while it comes).
+    in property <float> early;
+    in property <bool> early-in;
     // The compact row's thinner tape.
     in property <bool> slim;
     accessible-role: progress-indicator;
@@ -493,6 +496,14 @@ export component LiveTape inherits Rectangle {
             height: parent.height;
             background: Theme.line-strong;
         }
+    }
+    // The part before, as it comes in (over the stripes).
+    if root.early > 0: Rectangle {
+        x: 0;
+        width: parent.width * max(0, min(1, root.early));
+        height: parent.height;
+        border-radius: 3px;
+        background: root.early-in ? Theme.pop : Theme.pop.with-alpha(0.45);
     }
     // Recorded.
     Rectangle {

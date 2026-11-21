@@ -2,6 +2,8 @@
 // them directly instead of threading every property through app.slint; app.slint
 // re-exports them, so Rust still sees one API (`ui.global::<Accounts>()`).
 
+import { LiveRow } from "types.slint";
+
 // One signed-in site in Settings → Network.
 export struct SiteItem {
     site: string, // "youtube.com"
@@ -144,6 +146,8 @@ export global Watch {
     // going ("Getting the part before · 12:00 of 2:19:00"); empty: nothing to say.
     in property <string> rec-earlier;
     in property <bool> rec-earlier-link;
+    // That recording's tape (the queue row's): the stream from its start to now, what's in.
+    in property <LiveRow> rec-row;
     callback earlier();
     // Watching a live stream, not recording it: Record starts a recording right here, from
     // now or (`record-from-start`) from the stream's first second.
@@ -236,12 +240,25 @@ export global ClipPicture {
 // Clip page with a live stream open (Clip track 8). Sites that keep the last part of the
 // stream (YouTube: an hour) can be rewound: marks are pinned to the clock and found again
 // when the download starts. Others get the replay buffer: "Keep the last 10 min".
-// A recorded stretch of the stream on the player's timeline (seconds on it): what's in, or
-// (`coming`) the part before while it's still being fetched.
-export struct RecSpan {
-    start: float,
-    end: float,
-    coming: bool,
+// The watch screen's tape for a live stream (in the timeline's place): positions 0..1 along
+// it, the stream seconds at its ends, and what's under it. Rust fills it (core `live::Tape`).
+export struct LiveTapeView {
+    on: bool,
+    from: float,
+    to: float,
+    // What the player can go back to (none: `seek-to <= seek-from`), and where it is (< 0: off).
+    seek-from: float,
+    seek-to: float,
+    play: float,
+    recording: bool,
+    joined: float,
+    done: float,
+    early: float,
+    early-in: bool,
+    holes: [float],
+    catching-up: bool,
+    left: string,
+    right: string,
 }
 
 export global ClipLive {
@@ -257,8 +274,9 @@ export global ClipLive {
     // Record can start from the stream's first second too: what that costs ("~22 min to
     // catch up"); empty: only from now.
     in property <string> from-start;
-    // Watching a recording: what of the stream it has, drawn along the timeline's foot.
-    in property <[RecSpan]> recorded;
+    // Watching it: the tape in the timeline's place; a click on it goes there (0..1).
+    in property <LiveTapeView> tape;
+    callback tape-seek(float);
     // "3:12 kept · 48 MB", or why it stopped.
     in property <string> buffer-text;
     callback last(float); // save the last N seconds (rewind, or from the buffer)

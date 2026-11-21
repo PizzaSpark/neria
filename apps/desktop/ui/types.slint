@@ -73,6 +73,9 @@ export struct LiveRow {
     // Hatched up to `joined` (before you joined), recorded up to `done`, both 0..1.
     joined: float,
     done: float,
+    // The part before (fetched next to it): in up to here, 0..1; all in (`early-in`).
+    early: float,
+    early-in: bool,
     holes: [float],
     catching-up: bool,
     // The line under the tape.

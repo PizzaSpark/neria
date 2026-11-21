@@ -151,7 +151,6 @@ impl Clipper {
         live.set_on(false);
         live.set_can_rewind(false);
         live.set_from_start("".into());
-        live.set_recorded(Default::default());
         live.set_buffering(false);
         live.set_buffer_text("".into());
         self.last_pos = 0.0;
@@ -664,6 +663,11 @@ impl Clipper {
         let paused = mpv.get_flag("pause").unwrap_or(true);
         ui.set_clip_playing(!paused && !ended);
         crate::timeline_ui::tick(ui, ui.get_clip_position() as f64);
+        let link = match &self.source {
+            Some(Source::Link(url)) => Some(url.as_str()),
+            _ => None,
+        };
+        crate::live_ui::tape_tick(ui, link, LIVE_ANCHOR.with(|a| a.get()));
         crate::chat_ui::tick(ui, ui.get_clip_position() as f64);
 
         if matches!(self.source, Some(Source::Link(_))) {
@@ -851,12 +855,6 @@ fn format_time(t: f32) -> String {
     let cs = ((t - t.floor()) * 100.0).floor() as u64;
     let (h, m, s) = (whole / 3600, (whole % 3600) / 60, whole % 60);
     if h > 0 { format!("{h}:{m:02}:{s:02}.{cs:02}") } else { format!("{m}:{s:02}.{cs:02}") }
-}
-
-/// A live stream's timeline pinned to the clock: the Unix time of its second 0 (None: not
-/// live, or not known yet).
-pub fn live_anchor() -> Option<f64> {
-    LIVE_ANCHOR.with(|a| a.get())
 }
 
 thread_local! {

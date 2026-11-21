@@ -199,6 +199,8 @@ pub struct LiveStats {
     pub rewind_failed: bool,
     /// "Also get the part before": stream seconds fetched, of how many (while it runs).
     pub earlier: Option<(f64, f64)>,
+    /// And how big it is on disk so far.
+    pub earlier_bytes: u64,
     /// It's fetched and will be joined in front; or why it couldn't be.
     pub earlier_done: bool,
     pub earlier_failed: Option<String>,
@@ -1119,6 +1121,11 @@ fn early_busy(work: &Path) -> PathBuf {
     work.join("early.busy")
 }
 
+/// How much of the part before is on disk so far.
+fn early_bytes(work: &Path) -> u64 {
+    files_of(work, "early").iter().filter_map(|f| std::fs::metadata(f).ok()).map(|m| m.len()).sum()
+}
+
 /// The earlier part of a recording, once fetched.
 pub fn early_of(work: &Path) -> Option<Early> {
     serde_json::from_str(&std::fs::read_to_string(early_path(work)).ok()?).ok()
@@ -1132,7 +1139,7 @@ pub fn fetch_earlier(
     slot: &Mutex<Option<Child>>,
     stop: &AtomicBool,
     cancel: &AtomicBool,
-    mut on: impl FnMut(f64, f64),
+    mut on: impl FnMut(f64, f64, u64),
 ) -> Result<Early> {
     let m = read_manifest(&rec.work).context("Nothing recorded yet")?;
     let first = m.parts.first().cloned().context("Nothing recorded yet")?;
@@ -1159,7 +1166,7 @@ fn fetch_earlier_inner(
     slot: &Mutex<Option<Child>>,
     stop: &AtomicBool,
     cancel: &AtomicBool,
-    on: &mut impl FnMut(f64, f64),
+    on: &mut impl FnMut(f64, f64, u64),
 ) -> Result<Early> {
     // A minute and a half past where the recording began: room for the sound to match,
     // even after Twitch's ad at its start.
@@ -1197,7 +1204,7 @@ fn fetch_earlier_inner(
             let t = part_time(m, &run);
             if last.elapsed() >= Duration::from_millis(500) {
                 last = Instant::now();
-                on(t.min(first.offset), first.offset);
+                on(t.min(first.offset), first.offset, early_bytes(&rec.work));
                 // Still moving: saving waits for it.
                 let _ = std::fs::write(early_busy(&rec.work), "");
             }
@@ -1228,7 +1235,7 @@ fn fetch_earlier_inner(
         target = estimate + (want - got) + 15.0;
     }
     let file = file.context("The earlier part came out empty")?;
-    on(got.min(first.offset), first.offset);
+    on(got.min(first.offset), first.offset, early_bytes(&rec.work));
     if got < first.offset - 2.0 {
         // Stopped short (Stop, or the site): keep what there is; the rest is a hole.
         return Ok(Early { whole: false, until: got, skip: 0.0, by_clock: true, got });

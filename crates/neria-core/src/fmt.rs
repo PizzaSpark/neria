@@ -93,6 +93,10 @@ pub struct LiveRow {
     /// The tape: before you joined (hatched) up to `joined`, recorded up to `done`.
     pub joined: f32,
     pub done: f32,
+    /// The part before (fetched next to it): in from the start up to here, 0..1; solid
+    /// once all of it is in (`early_in`), fainter while it comes.
+    pub early: f32,
+    pub early_in: bool,
     pub holes: Vec<f32>,
     pub catching_up: bool,
     /// Shows the tape (running, not waiting or saving).
@@ -171,14 +175,25 @@ pub fn live_row(s: &JobSnapshot, now: f64, compact: bool) -> Option<LiveRow> {
     // join instead (else it'd be all hatching and a sliver).
     let len = st.stream_len(now).max(st.position).max(1.0);
     let span = (st.position - joined).max(1.0);
-    let from = if joined > span * 2.0 { (joined - span * 0.25).max(0.0) } else { 0.0 };
+    // Getting the part before: all of it, from the stream's start.
+    let earlier = st.earlier.is_some() || st.earlier_done;
+    let from = if joined > span * 2.0 && !earlier { (joined - span * 0.25).max(0.0) } else { 0.0 };
     let frac = |t: f64| (((t - from) / (len - from)).clamp(0.0, 1.0)) as f32;
     r.tape = true;
     r.joined = frac(joined);
     r.done = frac(st.position);
+    if let Some((got, _)) = st.earlier {
+        r.early = frac(got.min(joined));
+    } else if st.earlier_done {
+        (r.early, r.early_in) = (r.joined, true);
+    }
     r.holes = st.holes.iter().map(|h| frac(h.at)).collect();
     let ago = |t: f64| duration((len - t).max(0.0));
-    r.left = if joined < 1.0 { format!("started {} ago", ago(0.0)) } else { format!("you joined {} ago", ago(joined)) };
+    r.left = if joined < 1.0 || earlier {
+        format!("started {} ago", ago(0.0))
+    } else {
+        format!("you joined {} ago", ago(joined))
+    };
     match st.phase {
         Phase::CatchingUp => {
             r.catching_up = true;
@@ -310,6 +325,31 @@ mod tests {
         s.recording = true;
         s.live = Some(st);
         s
+    }
+
+    #[test]
+    fn the_tape_shows_the_part_before_coming_in() {
+        let now = 100_000.0;
+        // On for 54 min, recorded from now for a minute, 12 min of the start in so far.
+        let st = LiveStats {
+            phase: Phase::Recording,
+            started_at: Some(now - 3300.0),
+            recorded: 60.0,
+            position: 3290.0,
+            joined: Some(3230.0),
+            earlier: Some((720.0, 3230.0)),
+            ..LiveStats::default()
+        };
+        let r = live_row(&rec(JobState::Downloading, st.clone()), now, false).unwrap();
+        // The whole stream from its start, not a little before the join.
+        assert!((r.joined - 3230.0 / 3300.0).abs() < 0.01, "{}", r.joined);
+        assert!((r.early - 720.0 / 3300.0).abs() < 0.01, "{}", r.early);
+        assert!(!r.early_in);
+        assert!(r.left.starts_with("started"), "{}", r.left);
+        // All in: solid up to the join.
+        let done = LiveStats { earlier: None, earlier_done: true, ..st };
+        let r = live_row(&rec(JobState::Downloading, done), now, false).unwrap();
+        assert!(r.early_in && (r.early - r.joined).abs() < 1e-6);
     }
 
     #[test]

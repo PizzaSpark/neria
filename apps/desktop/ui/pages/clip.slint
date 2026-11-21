@@ -7,7 +7,8 @@ import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
 import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions, Transcribe, ClipChat } from "../globals.slint";
 import { ChatPanel } from "../components/chat-panel.slint";
-import { Menu, MenuItem, TextLink } from "../widgets.slint";
+import { LiveTimeline } from "../components/live-timeline.slint";
+import { Menu, MenuItem, TextLink, LiveTape } from "../widgets.slint";
 
 // The timeline's zoom: out, in, fit the clip, the whole video, and how much is on screen.
 // Ctrl+scroll on the timeline (or a touchpad pinch) and + / − do the same.
@@ -442,6 +443,8 @@ export component ClipPage inherits FocusScope {
 
     // In / Out make sense: not on a live stream the site can't rewind (the buffer saves it).
     property <bool> marks: !ClipLive.on || ClipLive.can-rewind;
+    // Watching a live stream: the tape takes the timeline's place.
+    property <bool> live-watch: root.loaded && Watch.on && ClipLive.on;
     // A mark on a live stream reads as time behind live ("−4:30").
     function mark(t: float) -> string {
         ClipLive.on ? "−" + Fmt.time(max(0, root.duration - t)) : Fmt.time(t)
@@ -823,7 +826,7 @@ export component ClipPage inherits FocusScope {
                 }
             }
             // Compact while watching: zoom out / in here (no In / Out row then).
-            if Screen.compact && Watch.on && (!ClipLive.on || ClipLive.can-rewind): VerticalLayout {
+            if Screen.compact && Watch.on && !ClipLive.on: VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
                 IconButton {
@@ -833,7 +836,7 @@ export component ClipPage inherits FocusScope {
                     clicked => { ClipView.zoom(1.6, -1); }
                 }
             }
-            if Screen.compact && Watch.on && (!ClipLive.on || ClipLive.can-rewind): VerticalLayout {
+            if Screen.compact && Watch.on && !ClipLive.on: VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 0;
                 IconButton {
@@ -941,12 +944,14 @@ export component ClipPage inherits FocusScope {
         }
 
         // How busy chat is along the timeline: the busy spikes are the moments to clip.
-        if root.loaded && (ClipChat.state == 3 || ClipChat.state == 4) && !Screen.compact: Image {
+        if root.loaded && !root.live-watch && (ClipChat.state == 3 || ClipChat.state == 4) && !Screen.compact: Image {
             height: 18px;
             source: ClipChat.activity;
             image-fit: fill;
         }
-        if root.loaded: Timeline {
+        // Watching a live stream: its tape instead (the stream to now, what you have of it).
+        if root.live-watch: LiveTimeline { }
+        if root.loaded && !root.live-watch: Timeline {
             duration: root.duration;
             position: root.position;
             in-time <=> root.in-time;
@@ -987,13 +992,14 @@ export component ClipPage inherits FocusScope {
             spacing: 8px;
             Text {
                 horizontal-stretch: 1;
-                text: Watch.on ? "Space play / pause  ·  ← → 5s (Shift 1s)  ·  M mute  ·  + − zoom  ·  Home / End start / end" : "Space play clip  ·  I / O set in / out  ·  A add to clips  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  + − zoom  ·  Home / End jump to in / out";
+                text: root.live-watch ? "Space play / pause  ·  M mute" + (ClipLive.tape.seek-to > ClipLive.tape.seek-from ? "  ·  click the bar to go back" : "")
+                    : Watch.on ? "Space play / pause  ·  ← → 5s (Shift 1s)  ·  M mute  ·  + − zoom  ·  Home / End start / end" : "Space play clip  ·  I / O set in / out  ·  A add to clips  ·  R loop " + (root.loop ? "on" : "off") + "  ·  ← → 5s (Shift 1s)  ·  , . frame  ·  + − zoom  ·  Home / End jump to in / out";
                 color: Theme.muted;
                 font-size: 11px;
                 overflow: elide;
                 vertical-alignment: center;
             }
-            ZoomButtons { }
+            if !root.live-watch: ZoomButtons { }
             if !Watch.on && !root.gif && !ClipLive.on: GhostButton {
                 horizontal-stretch: 0;
                 compact: true;

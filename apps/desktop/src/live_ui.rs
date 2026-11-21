@@ -24,6 +24,11 @@ thread_local! {
     /// The last live link looked up (link, what the site said, its picture), so the player
     /// can record it after the preview has gone.
     static LAST: RefCell<Option<(String, LiveInfo, Option<String>)>> = const { RefCell::new(None) };
+    /// The recording being watched, as last heard (for the tape).
+    static WATCHED: RefCell<Option<(u64, record::LiveStats)>> = const { RefCell::new(None) };
+    /// The tape as last drawn, and what puts it on the player's timeline (`went_live`,
+    /// the player's anchor, its length): for a click on it.
+    static TAPE: RefCell<Option<(live::Tape, f64, f64, f64)>> = const { RefCell::new(None) };
     /// Titles of recordings started just now, before their row exists (for watching them).
     static TITLES: RefCell<Vec<(u64, String)>> = const { RefCell::new(Vec::new()) };
 }
@@ -183,6 +188,8 @@ pub fn row(s: &JobSnapshot) -> Option<LiveRow> {
         tape: running && wide.tape,
         joined: wide.joined,
         done: wide.done,
+        early: wide.early,
+        early_in: wide.early_in,
         holes: ModelRc::new(VecModel::from(wide.holes.clone())),
         catching_up: wide.catching_up,
         left: wide.left.into(),
@@ -203,6 +210,10 @@ pub fn row(s: &JobSnapshot) -> Option<LiveRow> {
 }
 
 pub fn install(ui: &AppWindow, queue: &Queue) {
+    ui.global::<crate::ClipLive>().on_tape_seek({
+        let weak = ui.as_weak();
+        move |x| tape_seek(&weak.unwrap(), x as f64)
+    });
     ui.global::<Live>().on_flip({
         let weak = ui.as_weak();
         // The From now / From the start choice was clicked: it says which.
@@ -319,7 +330,8 @@ pub fn sync_watch(ui: &AppWindow, s: &JobSnapshot) {
     let running = s.state == JobState::Downloading;
     let done = matches!(s.state, JobState::Done | JobState::Failed | JobState::Cancelled);
     w.set_rec_done(done);
-    recorded_spans(ui, &s.live.clone().unwrap_or_default(), !done);
+    w.set_rec_row(row(s).unwrap_or_default());
+    WATCHED.with(|r| *r.borrow_mut() = (!done).then(|| (s.id, s.live.clone().unwrap_or_default())));
     if done {
         let ended = s.note.as_deref() == Some("the stream ended");
         w.set_rec_saved(s.state == JobState::Done);
@@ -346,7 +358,8 @@ pub fn sync_watch(ui: &AppWindow, s: &JobSnapshot) {
     let url = crate::QUEUE.get().and_then(|q| q.url_of(s.id)).unwrap_or_default();
     let before = st.joined.unwrap_or(0.0);
     let (earlier, link) = if let Some((got, of)) = st.earlier {
-        (format!("Getting the part before · {} of {}", fmt::duration(got), fmt::duration(of)), false)
+        let size = if st.earlier_bytes > 0 { format!(" · {}", fmt::bytes(st.earlier_bytes as f64)) } else { String::new() };
+        (format!("Getting the part before · {} of {}{size}", fmt::duration(got), fmt::duration(of)), false)
     } else if st.earlier_done {
         (format!("The {} before is in: it goes in front when saved", record::age_words(before)), false)
     } else if let Some(e) = &st.earlier_failed {
@@ -386,26 +399,69 @@ pub fn sync_watch(ui: &AppWindow, s: &JobSnapshot) {
     w.set_rec_text(text.into());
 }
 
-/// What the recording has, on the player's timeline: stream seconds (from when it went live)
-/// are put on it by the clock, as the player's own timeline is.
-fn recorded_spans(ui: &AppWindow, st: &record::LiveStats, running: bool) {
+/// Every player tick while watching a live stream: its tape (the timeline's place there),
+/// from when it went live (the preview's or the recording's word; else from when the player
+/// opened it) to now, with what the player can go back to and what the recording has.
+pub fn tape_tick(ui: &AppWindow, url: Option<&str>, anchor: Option<f64>) {
     let g = ui.global::<crate::ClipLive>();
-    let (Some(went_live), Some(anchor), true) = (st.started_at, crate::clipper::live_anchor(), running) else {
-        g.set_recorded(Default::default());
+    let watching = ui.global::<crate::Watch>().get_on() && g.get_on();
+    let (Some(anchor), true) = (anchor, watching) else {
+        if g.get_tape().on {
+            g.set_tape(Default::default());
+            crate::chat_ui::set_tape_range(None);
+        }
+        TAPE.with(|t| *t.borrow_mut() = None);
         return;
     };
-    let on = |t: f64| (went_live + t - anchor) as f32;
-    let mut spans = Vec::new();
-    let joined = st.joined.unwrap_or(0.0);
-    if st.recorded > 0.0 {
-        spans.push(crate::RecSpan { start: on(joined), end: on(st.position), coming: false });
-    }
-    if let Some((got, _)) = st.earlier {
-        spans.push(crate::RecSpan { start: on(0.0), end: on(got), coming: true });
-    } else if st.earlier_done {
-        spans.push(crate::RecSpan { start: on(0.0), end: on(joined), coming: false });
-    }
-    g.set_recorded(ModelRc::new(VecModel::from(spans)));
+    let id = ui.global::<crate::Watch>().get_recording_id() as u64;
+    let rec = WATCHED.with(|r| r.borrow().as_ref().filter(|(i, _)| *i == id && id != 0).map(|(_, st)| st.clone()));
+    let known = rec.as_ref().and_then(|r| r.started_at).or_else(|| {
+        LAST.with(|l| match (l.borrow().as_ref(), url) {
+            (Some((u, info, _)), Some(url)) if u == url => info.started_at,
+            _ => None,
+        })
+    });
+    let went_live = known.unwrap_or(anchor);
+    let d = ui.get_clip_duration() as f64;
+    let pos = ui.get_clip_position() as f64;
+    let on_stream = |t: f64| anchor + t - went_live;
+    // The player goes back only where the site keeps more than a moment (not Twitch).
+    let seek = g.get_can_rewind().then(|| (on_stream(0.0), on_stream(d)));
+    let t = live::Tape::new(&live::TapeInput {
+        now: live::now(),
+        went_live,
+        origin_known: known.is_some(),
+        seek,
+        play: Some(on_stream(pos)),
+        rec: rec.as_ref(),
+    });
+    let span = t.to - t.from;
+    crate::chat_ui::set_tape_range(Some((went_live + t.from - anchor, span)));
+    g.set_tape(crate::LiveTapeView {
+        on: true,
+        from: t.from as f32,
+        to: t.to as f32,
+        seek_from: t.seek_from,
+        seek_to: t.seek_to,
+        play: t.play.unwrap_or(-1.0),
+        recording: t.recording,
+        joined: t.joined,
+        done: t.done,
+        early: t.early,
+        early_in: t.early_in,
+        holes: ModelRc::new(VecModel::from(t.holes.clone())),
+        catching_up: t.catching_up,
+        left: t.left.clone().into(),
+        right: t.right.clone().into(),
+    });
+    TAPE.with(|x| *x.borrow_mut() = Some((t, went_live, anchor, d)));
+}
+
+/// A click on the tape (0..1 along it): the player goes there, inside what it can go back to.
+fn tape_seek(ui: &AppWindow, x: f64) {
+    let Some((t, went_live, anchor, d)) = TAPE.with(|x| x.borrow().clone()) else { return };
+    let at = (went_live + t.at(x) - anchor).clamp(0.0, d);
+    ui.invoke_clip_seek(at as f32);
 }
 
 /// A recording's link and title (for watching it from its row).

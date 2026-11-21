@@ -1,0 +1,149 @@
+// A live stream on the watch screen: the tape in the timeline's place (a timeline of the
+// player's few seconds or hour says little about a stream). The stream from its start (or a
+// little before what matters on a long one) to now: what the player can go back to (a click
+// there goes there), where it is, and what a recording of it has (the queue row's tape,
+// larger). How busy chat is runs along its top.
+import { Theme, Screen } from "../theme.slint";
+import { Fmt } from "../types.slint";
+import { ClipLive, ClipChat, LiveTapeView } from "../globals.slint";
+
+export component LiveTimeline inherits VerticalLayout {
+    property <LiveTapeView> t: ClipLive.tape;
+    property <bool> can-seek: t.seek-to > t.seek-from;
+    property <length> tape-h: Screen.compact ? 22px : 32px;
+    spacing: 4px;
+
+    // How busy chat is along it (the busy spikes are the moments to clip).
+    if (ClipChat.state == 3 || ClipChat.state == 4) && !Screen.compact: Image {
+        height: 16px;
+        source: ClipChat.activity;
+        image-fit: fill;
+    }
+
+    tape := Rectangle {
+        height: root.tape-h;
+        border-radius: 6px;
+        background: Theme.line;
+        clip: true;
+        accessible-role: slider;
+        accessible-label: "Live stream: " + t.left + " to now";
+
+        // What the player can go back to.
+        if root.can-seek: Rectangle {
+            x: parent.width * t.seek-from;
+            width: parent.width * (t.seek-to - t.seek-from);
+            background: Theme.line-strong;
+        }
+        // A recording: before it began, thin stripes (unless the part before fills it).
+        if t.recording: Rectangle {
+            x: 0;
+            width: parent.width * t.joined;
+            clip: true;
+            for i in Math.ceil(self.width / 6px): Rectangle {
+                x: i * 6px;
+                width: 2px;
+                background: Theme.dim.with-alpha(0.5);
+            }
+        }
+        // The part before, as it comes in (fainter until all of it is in).
+        if t.recording && t.early > 0: Rectangle {
+            x: 0;
+            width: parent.width * t.early;
+            background: t.early-in ? Theme.pop : Theme.pop.with-alpha(0.45);
+        }
+        // Recorded.
+        if t.recording: Rectangle {
+            x: parent.width * t.joined;
+            width: parent.width * max(0, t.done - t.joined);
+            background: Theme.pop;
+            clip: true;
+            if t.catching-up: Rectangle {
+                for i in Math.ceil(parent.width / 8px): Rectangle {
+                    x: i * 8px + 6px;
+                    width: 2px;
+                    background: Theme.on-pop.with-alpha(0.22);
+                }
+            }
+        }
+        for h in t.holes: Rectangle {
+            x: parent.width * h - 2px;
+            width: 4px;
+            background: Theme.bad;
+        }
+        // Now: the live edge.
+        Rectangle {
+            x: parent.width - 3px;
+            width: 3px;
+            background: Theme.live;
+        }
+        // Where the player is.
+        if t.play >= 0: Rectangle {
+            x: parent.width * t.play - 1px;
+            width: 2px;
+            background: Theme.ink;
+        }
+        // Hovering where it can go: the time there.
+        if ta.has-hover && root.can-seek && root.over-seek: Rectangle {
+            x: ta.mouse-x - 0.5px;
+            width: 1px;
+            background: Theme.ink.with-alpha(0.5);
+        }
+
+        // The time there, on a small label of fixed size (kept out of any layout, which would
+        // measure it, and loop through the hover).
+        if ta.has-hover && root.over-seek: Rectangle {
+            x: max(2px, min(parent.width - self.width - 2px, ta.mouse-x - self.width / 2));
+            y: (parent.height - self.height) / 2;
+            width: 76px;
+            height: min(parent.height - 4px, 16px);
+            border-radius: 4px;
+            background: Theme.panel;
+            Text {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                text: Fmt.tick(Math.round((t.to - t.from) * (1 - root.hover-at)), 1) + " ago";
+                color: Theme.ink;
+                font-family: Theme.mono;
+                font-size: 10px;
+            }
+        }
+
+        ta := TouchArea {
+            mouse-cursor: root.can-seek && root.over-seek ? pointer : default;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left && root.over-seek {
+                    ClipLive.tape-seek(self.mouse-x / self.width);
+                }
+            }
+            moved => {
+                if self.pressed && root.over-seek {
+                    ClipLive.tape-seek(self.mouse-x / self.width);
+                }
+            }
+        }
+    }
+    property <float> hover-at: ta.mouse-x / max(1px, tape.width);
+    property <bool> over-seek: root.can-seek && root.hover-at >= t.seek-from && root.hover-at <= t.seek-to;
+
+    // Under it: how far back it goes · now.
+    HorizontalLayout {
+        Text {
+            text: t.left;
+            color: Theme.muted;
+            font-family: Theme.mono;
+            font-size: 11px;
+            overflow: elide;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        Text {
+            text: t.right;
+            color: Theme.live;
+            font-family: Theme.mono;
+            font-size: 11px;
+        }
+    }
+}

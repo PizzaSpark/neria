@@ -193,6 +193,8 @@ export component JobRow inherits Rectangle {
             if root.taped: LiveTape {
                 joined: root.job.live.joined;
                 done: root.job.live.done;
+                early: root.job.live.early;
+                early-in: root.job.live.early-in;
                 holes: root.job.live.holes;
                 catching-up: root.job.live.catching-up;
                 slim: root.compact;
