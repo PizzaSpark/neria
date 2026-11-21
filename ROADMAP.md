@@ -196,7 +196,7 @@ so they get built together.
    checked headlessly and with sample screens)
 5. **Phone track** (built 2026-11-22, mock `design/phone.html`): the Capture page's Phone tab:
    connecting by QR, the mirror in the page with its own replay buffer and "Clip the last 30 s",
-   Record, Screenshot, Sound only, Present (scrcpy's bare window). Checked headlessly and with a
+   Record, Screenshot, Sound only, Present (scrcpy's own window, named "Phone screen · …"; a plain frame, since a borderless one can't be moved). Checked headlessly and with a
    fake phone (`--example phone -- mirror fake`, `NERIA_PHONE_FAKE`). Left: a real phone end to
    end (QR scan, taps, sound, turning it, Present); Extras (camera, APK, files, clipboard)
 6. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
@@ -1040,7 +1040,7 @@ one pinned scrcpy version (its server and client protocol must match), updated o
    (music, a call, a game's sound while the screen stays off): scrcpy's sound forwarding
    (Android 11+) without its video, a small "Playing from Pixel 7" strip with its volume and
    Stop; Record saves it as a sound file
-5. [x] **Present the phone** (built: scrcpy's borderless window "Phone screen · Pixel 7", on top, show taps) (asked for 2026-11-21): a window of its own with only the phone's
+5. [x] **Present the phone** (built: scrcpy's own window "Phone screen · Pixel 7", on top, show taps; with a frame, since scrcpy's borderless window can't be dragged) (asked for 2026-11-21): a window of its own with only the phone's
    screen in it (no Neria around it, no bars), named "Phone screen · Pixel 7" so it's easy to
    pick when sharing a window in Discord, Teams, Meet or OBS, or to put on a projector for a
    class. Keeps the phone's shape as it's resized, turns when the phone turns, can stay on

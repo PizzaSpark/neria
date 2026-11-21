@@ -73,6 +73,8 @@ struct Ui {
     renderer: Option<GlRenderer>,
     target: Option<Target>,
     pending: Option<String>,
+    /// The texture is in the page (`Phone.frame`); cleared when mirroring stops.
+    shown_frame: bool,
 }
 
 thread_local! {
@@ -963,7 +965,9 @@ fn present(ui: &AppWindow) {
     let pr = prefs();
     let o = phone::WindowOptions {
         title: phone::present_title(&s.name),
-        borderless: true,
+        // A plain window: borderless can't be moved (scrcpy draws no grip). Its name is what
+        // the share pickers show.
+        borderless: false,
         on_top: pr.on_top,
         show_touches: pr.show_taps,
         stay_awake: pr.awake,
@@ -1097,7 +1101,11 @@ fn stop_picture(ui: &AppWindow) {
             let _ = m.command(&["stop"]);
         }
     });
-    UI.with(|u| u.borrow_mut().pending = None);
+    UI.with(|u| {
+        let mut u = u.borrow_mut();
+        u.pending = None;
+        u.shown_frame = false;
+    });
     ui.global::<Phone>().set_frame(slint::Image::default());
 }
 
@@ -1154,10 +1162,22 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
                         p.set_frame_w(dw as i32);
                         p.set_frame_h(dh as i32);
                         u.target = Some(t);
+                        u.shown_frame = true;
                         ui.window().request_redraw();
                     }
                     Err(_) => return,
                 }
+            }
+            // Mirroring again at the same size: the texture is kept, but the page let go of it.
+            if !u.shown_frame {
+                let t = u.target.as_ref().unwrap();
+                let image = slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(t.tex.0, [w as u32, h as u32].into()).build();
+                let p = ui.global::<Phone>();
+                p.set_frame(image);
+                p.set_frame_w(dw as i32);
+                p.set_frame_h(dh as i32);
+                u.shown_frame = true;
+                ui.window().request_redraw();
             }
             let target = u.target.as_ref().unwrap();
             let prev_fbo = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING);
