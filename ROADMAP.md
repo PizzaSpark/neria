@@ -184,27 +184,27 @@ so they get built together.
    release what's on `main` since v0.8.0: Compress for sound files (MP3 too, waveform trim),
    several kept parts and Even out, Speech to text, Live chat. The Capture engine can ride
    along hidden (no UI yet)
-2. **Trust before more features.** These have waited since v0.3:
-   - **Code signing**: SignPath Foundation signs open-source projects for free; apply and sign
-     in the release workflow, so friends stop seeing SmartScreen's warning
-   - **Friends test round two** on the signed v0.9.0; what they hit goes ahead of item 3
-   - **Code review** of the Clip track and the code from before the Download track (only the
-     Download track has had one)
-   - **Real-link checks left**: an Instagram carousel all the way through with cookies;
-     whether Brave's cookies are read once Brave is fully closed; a scheduled stream /
-     premiere recorded from its first second (Livestreams 2)
-3. **Capture track**: its UI (item 4), then "Hey Neria, clip that" (item 5). The engine,
-   sound and hotkey are built; this makes them something people can use
-4. **Phone track**: connecting by QR first, then the quick mirror, then the mirror in Neria's
-   own page, sharing Capture's replay buffer and "Clip the last"
-5. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
+2. **Real-link checks left**: an Instagram carousel all the way through with cookies; whether
+   Brave's cookies are read once Brave is fully closed; a scheduled stream / premiere recorded
+   from its first second (Livestreams 2)
+3. **Phone track**: connecting by QR first, then the quick mirror, then the mirror in Neria's
+   own page with its own replay buffer and "Clip the last" (Capture shares it later)
+4. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
    (starts ~1 s faster on every download and every Spotify candidate check, Music 4)
-6. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
+5. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
    live and Kick's chat (Livestreams 11); Speech to text extras (burned-in captions,
    translate); Spotify's own-key path and playlists over 100 songs (Music 4)
+6. **Capture track** (later, user's call 2026-11-21): its UI (item 4), then "Hey Neria, clip
+   that" (item 5). The engine, sound and hotkey are built
 7. **Bigger ideas** (section "Later"), in this order: browser extension, Library page,
    command palette, Audio tools page, saved workflows, external tools
-8. **Android**, still on hold until the desktop app has every feature we want
+8. **Before the mobile build**, once everything above is done:
+   - **Code review** of the Clip track and the code from before the Download track (only the
+     Download track has had one)
+   - **Friends test round two** (they'll test then)
+9. **Android**, on hold until then
+Parked: **code signing** (SignPath Foundation, free for open source; SmartScreen's warning is
+fine for now, user's call 2026-11-21).
 Waiting on someone who can test it: YouTube Music Premium quality (Music 5).
 
 ## UI foundation ✅ (v0.3.0)
@@ -960,7 +960,7 @@ Planned 2026-11-21. scrcpy's video is excellent, but getting it running (develop
 adb, IPs and ports for wireless) is the hard part, and it stops at a plain window. Neria's
 version: the phone as a **capture source**, feeding the clipper and Compress, like the
 instant replay prototype (`capture.rs`). Not a general phone manager. A desktop feature, so
-the Android hold doesn't apply. Comes after Capture has its UI, or as part of that track.
+the Android hold doesn't apply. Comes before Capture's UI (user's call, 2026-11-21).
 Tools: `adb` (platform-tools) and scrcpy (Apache 2.0) fetched into `bin/` like the others,
 one pinned scrcpy version (its server and client protocol must match), updated on purpose.
 1. [ ] **Connecting, the real fix.** Wireless first: Neria shows a QR code, the phone scans it
