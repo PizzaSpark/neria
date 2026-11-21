@@ -25,6 +25,8 @@ const RENDER_PARAM_API_TYPE: c_int = 1;
 const RENDER_PARAM_OPENGL_INIT_PARAMS: c_int = 2;
 const RENDER_PARAM_OPENGL_FBO: c_int = 3;
 const RENDER_PARAM_FLIP_Y: c_int = 4;
+// mpv's render.h: MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME (default 1: wait for the frame's time).
+const RENDER_PARAM_BLOCK_FOR_TARGET_TIME: c_int = 12;
 
 #[repr(C)]
 struct MpvEvent {
@@ -276,11 +278,20 @@ impl GlRenderer {
     /// Draw the current video frame into framebuffer `fbo` of size `w`x`h`.
     /// With `flip_y == false` the image is stored bottom-up (GL convention).
     pub fn render(&self, fbo: i32, w: i32, h: i32, flip_y: bool) {
+        self.render_with(fbo, w, h, flip_y, true)
+    }
+
+    /// [`render`](Self::render) that never waits for the frame's display time (`block:
+    /// false`): for live streams with no real timestamps (a phone's raw H.264), where mpv's
+    /// guessed times run ahead of the clock and each draw would hold up the UI thread.
+    pub fn render_with(&self, fbo: i32, w: i32, h: i32, flip_y: bool, block: bool) {
         let mut target = OpenGlFbo { fbo, w, h, internal_format: 0 };
         let mut flip: c_int = flip_y as c_int;
+        let mut wait: c_int = block as c_int;
         let mut params = [
             RenderParam { kind: RENDER_PARAM_OPENGL_FBO, data: &mut target as *mut _ as *mut c_void },
             RenderParam { kind: RENDER_PARAM_FLIP_Y, data: &mut flip as *mut _ as *mut c_void },
+            RenderParam { kind: RENDER_PARAM_BLOCK_FOR_TARGET_TIME, data: &mut wait as *mut _ as *mut c_void },
             RenderParam { kind: RENDER_PARAM_INVALID, data: null_mut() },
         ];
         unsafe {

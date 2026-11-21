@@ -315,6 +315,17 @@ fn changed(ui: &AppWindow) {
     if UI.with(|u| u.borrow().demo) {
         return;
     }
+    // Show taps: on the phone now (it stays as set until changed; scrcpy's own restore only
+    // runs when the window it started closes).
+    let taps = p.get_show_taps();
+    if taps != old.show_taps {
+        let serial = UI.with(|u| u.borrow().serial.clone());
+        if !serial.is_empty() {
+            std::thread::spawn(move || {
+                let _ = phone::set_show_touches(&serial, taps);
+            });
+        }
+    }
     // Now, while mirroring: the screen off / on, the sound on / off.
     if off != old.screen_off {
         with_session(|s| s.send(Control::ScreenPower(!off)));
@@ -1236,7 +1247,9 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
             let mut viewport = [0i32; 4];
             gl.get_parameter_i32_slice(glow::VIEWPORT, &mut viewport);
             if let Some(r) = &u.renderer {
-                r.render(target.fbo.0.get() as i32, w, h, false);
+                // Never wait for a frame's time: the raw stream's times are guesses (25 fps),
+                // ahead of the clock whenever the phone sends faster, and this is the UI thread.
+                r.render_with(target.fbo.0.get() as i32, w, h, false, false);
             }
             gl.bind_framebuffer(glow::FRAMEBUFFER, NonZeroU32::new(prev_fbo as u32).map(glow::NativeFramebuffer));
             gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);

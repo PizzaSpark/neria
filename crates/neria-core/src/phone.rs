@@ -640,6 +640,12 @@ pub fn open_window(serial: &str, o: &WindowOptions) -> Result<Child> {
     Ok(child)
 }
 
+/// Show taps on the phone now (Android's "Show taps"), not only the next time something starts.
+pub fn set_show_touches(serial: &str, on: bool) -> Result<()> {
+    adb_out(&["-s", serial, "shell", "settings", "put", "system", "show_touches", if on { "1" } else { "0" }], Duration::from_secs(5))?;
+    Ok(())
+}
+
 /// "Phone screen · Pixel 7": easy to pick when sharing a window.
 pub fn present_title(name: &str) -> String {
     format!("Phone screen · {name}")
