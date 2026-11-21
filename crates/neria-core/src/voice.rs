@@ -403,6 +403,8 @@ pub struct Prefs {
     /// The last Test it: the phrase tested and how many of the sayings were heard (of 3).
     pub tested: String,
     pub tested_heard: u8,
+    /// Test it's result for every phrase tested: its words and how many sayings were heard.
+    pub results: Vec<(String, u8)>,
     /// Said after a clip: undoes it ("undo that"). Empty: off.
     pub undo: String,
     /// 0 Normal, 1 High, 2 Highest (`SENSITIVITY`); Test it raises it when it misses you.
@@ -419,6 +421,7 @@ impl Default for Prefs {
             sound: true,
             tested: String::new(),
             tested_heard: 0,
+            results: Vec::new(),
             undo: DEFAULT_UNDO.into(),
             sensitivity: 0,
         }
@@ -429,6 +432,33 @@ impl Prefs {
     /// The phrases worth listening for (typed, with words in them).
     pub fn phrases(&self) -> Vec<String> {
         self.phrases.iter().map(|p| p.trim().to_string()).filter(|p| !words(p).is_empty()).collect()
+    }
+
+    /// How many of 3 sayings Test it heard for this phrase, if it was tested as it is now.
+    pub fn heard(&self, phrase: &str) -> Option<u8> {
+        let key = words(phrase).join(" ");
+        if key.is_empty() {
+            return None;
+        }
+        self.results
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, n)| *n)
+            .or_else(|| (words(&self.tested).join(" ") == key).then_some(self.tested_heard))
+    }
+
+    /// Remember Test it's result for a phrase (the last one tested is also `tested`).
+    pub fn set_heard(&mut self, phrase: &str, heard: u8) {
+        let key = words(phrase).join(" ");
+        self.results.retain(|(k, _)| *k != key);
+        self.results.push((key, heard));
+        self.tested = phrase.to_string();
+        self.tested_heard = heard;
+    }
+
+    /// Any phrase was tested.
+    pub fn any_tested(&self) -> bool {
+        !self.tested.is_empty() || !self.results.is_empty()
     }
 
     /// The undo phrase, if it has words in it.

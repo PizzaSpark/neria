@@ -160,6 +160,7 @@ $states = [ordered]@{
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-voice-off" = @{ NERIA_SETTINGS = "voice" }
   "set-voice"  = @{ NERIA_SETTINGS = "voice"; NERIA_VOICE_DEMO = "on" }
+  "set-voice-saved" = @{ NERIA_SETTINGS = "voice"; NERIA_VOICE_DEMO = "saved" }
   "set-voice-get" = @{ NERIA_SETTINGS = "voice"; NERIA_VOICE_DEMO = "getting" }
   "set-voice-test" = @{ NERIA_SETTINGS = "voice"; NERIA_VOICE_DEMO = "test" }
   "set-voice-miss" = @{ NERIA_SETTINGS = "voice"; NERIA_VOICE_DEMO = "test-miss" }

@@ -71,6 +71,8 @@ struct State {
     samples_gen: u64,
     /// Bumped by each rename (the "Saved" mark goes after the last one).
     saved_gen: u64,
+    /// The phrase Test it is on (its place in the list).
+    test_index: usize,
     /// Sample screens for design checks (`NERIA_VOICE_DEMO`): nothing listens.
     demo: bool,
     _timer: Option<Timer>,
@@ -111,7 +113,7 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             ui.global::<Voice>().set_error("".into());
             if on && !voice::ready() {
                 get_model(&ui);
-            } else if on && prefs().tested.is_empty() {
+            } else if on && !prefs().any_tested() {
                 start_test(&ui);
             }
             show_prefs(&ui);
@@ -134,16 +136,20 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                     *slot = text.to_string();
                 }
             });
-            // A changed phrase hasn't been tested: its tag goes (the field keeps its text).
+            // The row keeps what was typed (the section is made again from it when it reopens),
+            // and a changed phrase hasn't been tested: its tag goes.
             let v = ui.global::<Voice>();
             let rows = v.get_phrases();
             if let Some(mut row) = slint::Model::row_data(&rows, i) {
-                if !row.tag.is_empty() && row.text != text {
+                if row.text != text {
+                    let heard = prefs().heard(&text);
+                    row.tag = heard.map(|n| format!("Heard {n} of 3")).unwrap_or_default().into();
+                    row.kind = if heard.is_some_and(|n| n >= 3) { 1 } else { 2 };
                     row.text = text.clone();
-                    row.tag = "".into();
                     slint::Model::set_row_data(&rows, i, row);
                 }
             }
+            saved_mark(&ui, i as i32);
             check_phrase(&ui, &text);
         }
     });
@@ -232,7 +238,24 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
     });
     v.on_test_start({
         let weak = ui.as_weak();
-        move || start_test(&weak.unwrap())
+        move || {
+            // The first phrase not tested yet, else the one tested last.
+            let p = prefs();
+            let i = p
+                .phrases
+                .iter()
+                .position(|t| !voice::words(t).is_empty() && p.heard(t).is_none())
+                .unwrap_or(ST.with(|s| s.borrow().test_index));
+            ST.with(|s| s.borrow_mut().test_index = i);
+            start_test(&weak.unwrap())
+        }
+    });
+    v.on_test_phrase({
+        let weak = ui.as_weak();
+        move |i| {
+            ST.with(|s| s.borrow_mut().test_index = i.max(0) as usize);
+            start_test(&weak.unwrap())
+        }
     });
     v.on_test_stop(|| {
         // The mic thread sees the stop and reports what it has.
@@ -253,14 +276,13 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                 .find(|s| s.text.as_str() == text)
                 .and_then(|s| s.heard.split(' ').next().and_then(|n| n.parse::<u8>().ok()))
                 .unwrap_or(0);
+            let i = ST.with(|s| s.borrow().test_index);
             save(|p| {
-                if p.phrases.is_empty() {
-                    p.phrases.push(text.clone());
-                } else {
-                    p.phrases[0] = text.clone();
+                match p.phrases.get_mut(i) {
+                    Some(slot) => *slot = text.clone(),
+                    None => p.phrases.push(text.clone()),
                 }
-                p.tested = text.clone();
-                p.tested_heard = heard;
+                p.set_heard(&text, heard);
             });
             let v = ui.global::<Voice>();
             v.set_spellings(ModelRc::default());
@@ -362,11 +384,11 @@ fn show_prefs(ui: &AppWindow) {
         phrases
             .iter()
             .map(|t| {
-                let tested = !p.tested.is_empty() && t.trim().eq_ignore_ascii_case(p.tested.trim());
+                let heard = p.heard(t);
                 VoicePhrase {
                     text: t.into(),
-                    tag: if tested { format!("Heard {} of 3", p.tested_heard).into() } else { "".into() },
-                    kind: if p.tested_heard >= 3 { 1 } else { 2 },
+                    tag: heard.map(|n| format!("Heard {n} of 3")).unwrap_or_default().into(),
+                    kind: if heard.is_some_and(|n| n >= 3) { 1 } else { 2 },
                 }
             })
             .collect::<Vec<_>>(),
@@ -482,12 +504,42 @@ fn get_model(ui: &AppWindow) {
     });
 }
 
+/// The phrase Test it is on: the row picked, else the first with words in it.
+fn test_phrase() -> Option<(usize, String)> {
+    let p = prefs();
+    let i = ST.with(|s| s.borrow().test_index);
+    match p.phrases.get(i).map(|t| t.trim().to_string()).filter(|t| !voice::words(t).is_empty()) {
+        Some(t) => Some((i, t)),
+        None => p.phrases.iter().enumerate().find(|(_, t)| !voice::words(t).is_empty()).map(|(i, t)| (i, t.trim().to_string())),
+    }
+}
+
+/// "Saved" on a phrase's row for a moment after the last key.
+fn saved_mark(ui: &AppWindow, i: i32) {
+    ui.global::<Voice>().set_saved_phrase(i);
+    let n = ST.with(|s| {
+        let mut s = s.borrow_mut();
+        s.saved_gen += 1;
+        s.saved_gen
+    });
+    let weak = ui.as_weak();
+    Timer::single_shot(Duration::from_millis(1500), move || {
+        if ST.with(|s| s.borrow().saved_gen) == n {
+            if let Some(ui) = weak.upgrade() {
+                ui.global::<Voice>().set_saved_phrase(-1);
+            }
+        }
+    });
+}
+
 fn start_test(ui: &AppWindow) {
     let p = prefs();
-    let Some(phrase) = p.phrases().into_iter().next() else {
+    let Some((index, phrase)) = test_phrase() else {
         ui.global::<Voice>().set_error("Type a phrase first.".into());
         return;
     };
+    ST.with(|s| s.borrow_mut().test_index = index);
+    ui.global::<Voice>().set_test_index(index as i32);
     let v = ui.global::<Voice>();
     v.set_test(1);
     v.set_boxes(ModelRc::new(VecModel::from(vec![1, 0, 0])));
@@ -808,7 +860,7 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
     show_sets(ui);
     let heard = boxes.iter().filter(|b| **b == 2).count();
     let said = boxes.iter().filter(|b| **b >= 2).count();
-    let Some(phrase) = prefs().phrases().into_iter().next() else {
+    let Some((_, phrase)) = test_phrase() else {
         v.set_test(0);
         return;
     };
@@ -824,10 +876,7 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
         );
         return;
     }
-    save(|p| {
-        p.tested = phrase.clone();
-        p.tested_heard = heard as u8;
-    });
+    save(|p| p.set_heard(&phrase, heard as u8));
     show_prefs(ui);
     if heard == said && said == 3 {
         v.set_test(0);
@@ -1128,7 +1177,8 @@ fn show_demo(ui: &AppWindow, what: &str) {
     ])));
     v.set_mic(1);
     v.set_model_text("Voice model · 5.3 MB".into());
-    v.set_phrases(ModelRc::new(VecModel::from(vec![row("clip that", "Heard 3 of 3", 1)])));
+    v.set_phrases(ModelRc::new(VecModel::from(vec![row("clip that", "Heard 3 of 3", 1), row("hi hello", "", 2)])));
+    v.set_saved_phrase(if what == "saved" { 1 } else { -1 });
     v.set_boxes(ModelRc::new(VecModel::from(vec![2, 2, 2])));
     v.set_test_note("Heard you every time. These three are saved as a new voice below: give it a name (Me, Jake…).".into());
     v.set_samples(6);

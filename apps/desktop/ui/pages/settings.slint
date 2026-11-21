@@ -260,12 +260,12 @@ component VoiceSection inherits VerticalLayout {
     Group {
         title: "Clip with your voice";
         Tick {
-            text: "Listen for a phrase while the live player is open or instant replay runs";
+            text: "Listen for a phrase";
             checked <=> Voice.on;
             toggled(on) => { Voice.toggled(on); }
         }
         Hint {
-            text: "Saying it does what the button does: Clip the last while recording a stream, Save the last while watching one, and instant replay's save (like its key) while that runs. The mic is only listened to on this PC, never recorded or sent anywhere.";
+            text: "While the live player is open or instant replay runs, saying it does what the button does: Clip the last while recording a stream, Save the last while watching one, and instant replay's save (like its key) while that runs. The mic is only listened to on this PC, never recorded or sent anywhere.";
         }
         if Voice.getting: VerticalLayout {
             spacing: 6px;
@@ -309,11 +309,34 @@ component VoiceSection inherits VerticalLayout {
                 placeholder-text: "clip that";
                 edited(t) => { Voice.phrase-edited(i, t); }
             }
-            if p.tag != "": VerticalLayout {
+            // Phrases save as you type: says so for a moment.
+            if Voice.saved-phrase == i: HorizontalLayout {
+                spacing: 5px;
+                Icon {
+                    text: "\u{E73E}";
+                    font-size: 11px;
+                    color: Theme.ok;
+                }
+                Text {
+                    text: "Saved";
+                    color: Theme.ok;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+            if Voice.saved-phrase != i && p.tag != "": VerticalLayout {
                 alignment: center;
                 Tag {
                     text: p.tag;
                     kind: p.kind;
+                }
+            }
+            // Each phrase can be tested on its own.
+            if Voice.saved-phrase != i && Voice.test == 0 && p.text != "": VerticalLayout {
+                alignment: center;
+                TextLink {
+                    text: p.tag == "" ? "Test" : "Again";
+                    clicked => { Voice.test-phrase(i); }
                 }
             }
             if Voice.phrases.length > 1: IconButton {
@@ -365,7 +388,7 @@ component VoiceSection inherits VerticalLayout {
                 alignment: center;
                 spacing: 2px;
                 Text {
-                    text: Voice.test == 1 ? "Say \"" + (Voice.phrases.length > 0 ? Voice.phrases[0].text : "") + "\"" : "Test it";
+                    text: Voice.test == 1 ? "Say \"" + (Voice.phrases.length > Voice.test-index ? Voice.phrases[Voice.test-index].text : "") + "\"" : "Test it";
                     color: Theme.ink;
                     font-size: 13px;
                     font-weight: 600;

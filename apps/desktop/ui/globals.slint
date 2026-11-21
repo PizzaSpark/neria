@@ -816,6 +816,11 @@ export global Voice {
     in property <string> error;
     // Test it: 0 not running, 1 listening, 2 trying other spellings.
     in property <int> test;
+    // The phrase Test it is on (its row), and a Test on each phrase's row.
+    in property <int> test-index;
+    callback test-phrase(int);
+    // A phrase just typed: its row says "Saved" for a moment (-1 none).
+    in property <int> saved-phrase: -1;
     // The three turns: 0 waiting, 1 "Say it now", 2 heard, 3 missed.
     in property <[int]> boxes: [0, 0, 0];
     // What's left of the turn under way, 1 → 0 (the bar in its box).
