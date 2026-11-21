@@ -16,6 +16,7 @@ use neria_core::capture_sound::{self, Sound};
 use neria_core::queue::Queue;
 use neria_core::settings::Settings;
 use neria_core::voice::{self, Pieces, Prefs, Sayings, Spotter, Tuning};
+use neria_core::voice_match;
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 
 use crate::{AppWindow, ClipLive, Voice, VoicePhrase, VoiceSpelling, Watch};
@@ -27,7 +28,7 @@ const KEEPS: [u32; 4] = [15, 30, 60, 120];
 enum Mode {
     /// The live player: act on what's heard (the phrases, then the undo phrase), at a
     /// sensitivity.
-    Listen(Vec<String>, Option<String>, u8),
+    Listen(Vec<String>, Option<String>, u8, u64),
     /// Settings → Voice: only the meter.
     Meter(Option<String>),
     /// Test it on one phrase.
@@ -65,6 +66,8 @@ struct State {
     saved_secs: f64,
     /// Bumped by each toast and flash, so an older one's timer doesn't hide a newer one.
     toast_gen: u64,
+    /// Bumped when the voice samples change (the listener reloads them).
+    samples_gen: u64,
     /// Sample screens for design checks (`NERIA_VOICE_DEMO`): nothing listens.
     demo: bool,
     _timer: Option<Timer>,
@@ -182,6 +185,16 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
         }
     });
     v.on_undo_edited(|text| save(|p| p.undo = text.to_string()));
+    v.on_forget_samples({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            let _ = voice_match::forget();
+            ST.with(|s| s.borrow_mut().samples_gen += 1);
+            ui.global::<Voice>().set_samples(0);
+            crate::show_toast(&ui, "Forgot your voice samples. Test it again to make new ones.");
+        }
+    });
     v.on_test_start({
         let weak = ui.as_weak();
         move || start_test(&weak.unwrap())
@@ -344,6 +357,7 @@ fn show_prefs(ui: &AppWindow) {
     v.set_keep(KEEPS.iter().position(|k| *k == p.keep).unwrap_or(1) as i32);
     v.set_sound(p.sound);
     v.set_undo_phrase(p.undo.clone().into());
+    v.set_samples(voice_match::count() as i32);
     v.set_sensitivity(p.sensitivity.min(2) as i32);
     let bytes: u64 = std::fs::read_dir(voice::dir())
         .into_iter()
@@ -431,7 +445,8 @@ fn start_test(ui: &AppWindow) {
     v.set_test(1);
     v.set_boxes(ModelRc::new(VecModel::from(vec![1, 0, 0])));
     v.set_spellings(ModelRc::default());
-    v.set_test_note("Say it three times, the way you would mid-game.".into());
+    v.set_test_note("Say it once each time a box says \"Say it now\", the way you would mid-game.".into());
+    v.set_turn_left(1.0);
     ST.with(|s| {
         let mut s = s.borrow_mut();
         s.testing = true;
@@ -460,7 +475,7 @@ fn reconcile(ui: &AppWindow) {
     let want = if ready && player && !muted && !p.phrases().is_empty() {
         let mut listen = p.phrases();
         listen.extend(p.undo());
-        Some(Mode::Listen(listen, p.mic(), p.sensitivity))
+        Some(Mode::Listen(listen, p.mic(), p.sensitivity, ST.with(|s| s.borrow().samples_gen)))
     } else if ready && settings_open {
         Some(Mode::Meter(p.mic()))
     } else {
@@ -501,8 +516,13 @@ enum Msg {
     Level(f32),
     Heard(String),
     Boxes(Vec<i32>),
-    /// Test it ended: the boxes, the sound at 16 kHz and where each saying was.
-    TestDone(Vec<i32>, Vec<f32>, Vec<(f64, f64)>),
+    /// Test it: how much of this turn is left (1 → 0), for the bar in its box.
+    TurnLeft(f32),
+    /// Test it: nothing at all from the mic for a whole turn.
+    Quiet,
+    /// Test it ended: the boxes, the sound at 16 kHz, each turn's stretch of it, and whether
+    /// the mic sent any sound at all.
+    TestDone(Vec<i32>, Vec<f32>, Vec<(f64, f64)>, bool),
     /// The mic or the model couldn't be opened.
     Failed(String, bool),
 }
@@ -523,12 +543,12 @@ fn start_mic(ui: &AppWindow, mode: Mode) {
 
 fn run_mic(mode: &Mode, stop: &AtomicBool, send: &dyn Fn(Msg)) -> Result<(), (String, bool)> {
     let (phrases, mic) = match mode {
-        Mode::Listen(p, m, _) => (p.clone(), m.clone()),
+        Mode::Listen(p, m, _, _) => (p.clone(), m.clone()),
         Mode::Meter(m) => (Vec::new(), m.clone()),
         Mode::Test(p, m, _) => (vec![p.clone()], m.clone()),
     };
     let tune = match mode {
-        Mode::Listen(_, _, level) | Mode::Test(_, _, level) => Tuning::sensitivity(*level),
+        Mode::Listen(_, _, level, _) | Mode::Test(_, _, level) => Tuning::sensitivity(*level),
         Mode::Meter(_) => Tuning::default(),
     };
     let mut spotter = if phrases.is_empty() {
@@ -538,14 +558,35 @@ fn run_mic(mode: &Mode, stop: &AtomicBool, send: &dyn Fn(Msg)) -> Result<(), (St
     };
     let mut reader = capture_sound::Reader::open(&Sound::Mic(mic)).map_err(|e| (format!("{e:#}"), true))?;
     let test = matches!(mode, Mode::Test(..));
+    // Your voice samples (from Test it): a saying that sounds like them counts too. Sayings
+    // are found by loudness; the last few seconds are kept at 16 kHz to compare.
+    let voice_samples = if matches!(mode, Mode::Listen(..)) { voice_match::load() } else { None };
     let mut sayings = Sayings::new(capture_sound::RATE);
-    let mut heard_in: Vec<usize> = Vec::new();
+    let mut recent: Vec<f32> = Vec::new();
+    let mut recent_from = 0.0f64; // seconds since start of recent[0]
+    let mut fed = 0.0f64;
+    let mut words_at = f64::NEG_INFINITY; // when the words were last heard
+    // Test it: three turns, one box each. "Say it now" for TURN seconds (a moment more for
+    // the spotter, which fires just after you finish), Heard as soon as it hears you, else
+    // Missed, then the next. No guessing when you spoke.
+    const TURN: f64 = 4.0;
+    const GRACE: f64 = 0.8;
+    let mut turn = 0usize;
+    let mut turn_start = 0.0f64;
+    let mut turns: Vec<(f64, f64)> = Vec::new();
     let mut kept: Vec<f32> = Vec::new();
     let mut boxes = vec![1, 0, 0];
-    let started = Instant::now();
+    let mut turn_peak = 0f32;
+    let mut loudest = 0f32;
+    let mut said_quiet = false;
+    let mut left_at = Instant::now() - Duration::from_secs(1);
     let mut level_at = Instant::now() - Duration::from_secs(1);
     let mut peak = 0f32;
     let mut buf = Vec::new();
+    if test {
+        send(Msg::Boxes(boxes.clone()));
+        send(Msg::TurnLeft(1.0));
+    }
     loop {
         if stop.load(Ordering::Relaxed) {
             break;
@@ -556,7 +597,8 @@ fn run_mic(mode: &Mode, stop: &AtomicBool, send: &dyn Fn(Msg)) -> Result<(), (St
             continue;
         }
         let samples = voice::mono(&buf);
-        peak = samples.iter().fold(peak, |m, s| m.max(s.abs()));
+        let p = samples.iter().fold(0f32, |m, s| m.max(s.abs()));
+        peak = peak.max(p);
         if level_at.elapsed() >= Duration::from_millis(90) {
             send(Msg::Level(peak.min(1.0)));
             peak = 0.0;
@@ -564,49 +606,81 @@ fn run_mic(mode: &Mode, stop: &AtomicBool, send: &dyn Fn(Msg)) -> Result<(), (St
         }
         let heard = spotter.as_mut().map(|s| s.feed(capture_sound::RATE, &samples)).unwrap_or_default();
         if !test {
+            fed += samples.len() as f64 / capture_sound::RATE as f64;
             for h in heard {
+                words_at = fed;
                 send(Msg::Heard(h.phrase));
+            }
+            if let Some(mine) = &voice_samples {
+                recent.extend(voice::to_16k(&samples));
+                let keep = 16_000 * 5;
+                if recent.len() > keep {
+                    let cut = recent.len() - keep;
+                    recent.drain(..cut);
+                    recent_from += cut as f64 / 16_000.0;
+                }
+                if sayings.feed(&samples) {
+                    if let Some(&(a, b)) = sayings.done.last() {
+                        // Not one the words already caught, and short enough to be the phrase.
+                        if b - a <= 3.0 && fed - words_at > 2.5 {
+                            let s = ((a - 0.15 - recent_from).max(0.0) * 16_000.0) as usize;
+                            let e = (((b + 0.15 - recent_from) * 16_000.0) as usize).min(recent.len());
+                            if s < e && mine.matches(&recent[s..e]).0 {
+                                if let Some(first) = phrases.first() {
+                                    send(Msg::Heard(voice::words(first).join(" ")));
+                                }
+                            }
+                        }
+                    }
+                    if sayings.done.len() > 50 {
+                        sayings.done.drain(..40);
+                    }
+                }
             }
             continue;
         }
         kept.extend(voice::to_16k(&samples));
-        sayings.feed(&samples);
-        for h in &heard {
-            if let Some(i) = sayings.which(h.at) {
-                if !heard_in.contains(&i) {
-                    heard_in.push(i);
+        turn_peak = turn_peak.max(p);
+        loudest = loudest.max(p);
+        let now = kept.len() as f64 / 16_000.0;
+        let elapsed = now - turn_start;
+        if left_at.elapsed() >= Duration::from_millis(100) {
+            send(Msg::TurnLeft((1.0 - elapsed / TURN).clamp(0.0, 1.0) as f32));
+            left_at = Instant::now();
+        }
+        let got = !heard.is_empty();
+        if got || elapsed >= TURN + GRACE {
+            boxes[turn] = if got { 2 } else { 3 };
+            turns.push((turn_start, now));
+            // A whole turn of nothing (not even breathing): the mic isn't sending sound.
+            if !got && turn_peak < 0.01 && !said_quiet {
+                said_quiet = true;
+                send(Msg::Quiet);
+            }
+            turn += 1;
+            if turn >= 3 {
+                send(Msg::Boxes(boxes.clone()));
+                break;
+            }
+            boxes[turn] = 1;
+            send(Msg::Boxes(boxes.clone()));
+            // A short breath before the next turn, so one saying can't count twice.
+            if got {
+                if let Some(sp) = spotter.as_mut() {
+                    let pause = vec![0f32; (capture_sound::RATE as f64 * 0.4) as usize];
+                    sp.feed(capture_sound::RATE, &pause);
+                    kept.extend(voice::to_16k(&pause));
                 }
             }
-        }
-        // The boxes: heard, missed (ended a moment ago and nothing heard), listening, waiting.
-        let now = kept.len() as f64 / 16_000.0;
-        let done = sayings.done.len();
-        let new: Vec<i32> = (0..3)
-            .map(|i| {
-                if heard_in.contains(&i) {
-                    2
-                } else if i < done && now > sayings.done[i].1 + 1.3 {
-                    3
-                } else if i <= done {
-                    1
-                } else {
-                    0
-                }
-            })
-            .collect();
-        if new != boxes {
-            boxes = new;
-            send(Msg::Boxes(boxes.clone()));
-        }
-        let all_in = boxes.iter().all(|b| *b >= 2);
-        if all_in || started.elapsed() > Duration::from_secs(30) {
-            break;
+            turn_start = kept.len() as f64 / 16_000.0;
+            turn_peak = 0.0;
+            send(Msg::TurnLeft(1.0));
         }
     }
     if test {
-        // Stopped early: what wasn't said stays empty; one being said counts as missed.
-        let boxes: Vec<i32> = boxes.iter().map(|b| if *b == 1 && !sayings.done.is_empty() { 0 } else { *b }).collect();
-        send(Msg::TestDone(boxes, kept, sayings.done.clone()));
+        // Stopped early: the turn under way and the ones after stay empty.
+        let boxes: Vec<i32> = boxes.iter().map(|b| if *b == 1 { 0 } else { *b }).collect();
+        send(Msg::TestDone(boxes, kept, turns, loudest >= 0.01));
     }
     Ok(())
 }
@@ -617,6 +691,11 @@ fn on_msg(ui: &AppWindow, m: Msg) {
         Msg::Level(l) => v.set_level(l),
         Msg::Heard(phrase) => heard(ui, &phrase),
         Msg::Boxes(b) => v.set_boxes(ModelRc::new(VecModel::from(b))),
+        Msg::TurnLeft(f) => v.set_turn_left(f),
+        Msg::Quiet => v.set_test_note(
+            "Neria isn't getting any sound from this mic. Pick the one you talk into above, or check it isn't muted."
+                .into(),
+        ),
         Msg::Failed(e, mic) => {
             let testing = ST.with(|s| {
                 let mut s = s.borrow_mut();
@@ -634,11 +713,11 @@ fn on_msg(ui: &AppWindow, m: Msg) {
                 v.set_test(0);
             }
         }
-        Msg::TestDone(boxes, audio, sayings) => test_done(ui, boxes, audio, sayings),
+        Msg::TestDone(boxes, audio, turns, sound) => test_done(ui, boxes, audio, turns, sound),
     }
 }
 
-fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64, f64)>) {
+fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64, f64)>, sound: bool) {
     ST.with(|s| {
         let mut s = s.borrow_mut();
         s.testing = false;
@@ -646,7 +725,36 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
         s.retry_at = None;
     });
     let v = ui.global::<Voice>();
+    // Each finished turn's sound becomes one of your voice samples (when it holds speech), and
+    // a turn the words missed counts if it sounds like your other turns.
+    let mut boxes = boxes;
+    let mut learned = 0;
+    if sound {
+        let turn_sound: Vec<(usize, Vec<f32>)> = sayings
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &(a, b))| {
+                let s = ((a * 16_000.0) as usize).min(audio.len());
+                let e = ((b * 16_000.0) as usize).min(audio.len());
+                let part = audio[s..e].to_vec();
+                (part.iter().fold(0f32, |m, x| m.max(x.abs())) > 0.02).then_some((i, part))
+            })
+            .collect();
+        let parts: Vec<Vec<f32>> = turn_sound.iter().map(|(_, p)| p.clone()).collect();
+        if let Some(mine) = voice_match::Samples::from_sound(&parts) {
+            if voice_match::save(&parts).is_ok() {
+                learned = mine.len();
+                ST.with(|s| s.borrow_mut().samples_gen += 1);
+                for ((i, _), ok) in turn_sound.iter().zip(mine.self_check()) {
+                    if ok && boxes[*i] == 3 {
+                        boxes[*i] = 2;
+                    }
+                }
+            }
+        }
+    }
     v.set_boxes(ModelRc::new(VecModel::from(boxes.clone())));
+    v.set_samples(voice_match::count() as i32);
     let heard = boxes.iter().filter(|b| **b == 2).count();
     let said = boxes.iter().filter(|b| **b >= 2).count();
     let Some(phrase) = prefs().phrases().into_iter().next() else {
@@ -655,7 +763,14 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
     };
     if said == 0 {
         v.set_test(0);
-        v.set_test_note("Didn't hear you say anything. Check the mic and its meter, then try again.".into());
+        v.set_test_note("Stopped before the first turn ended. Press Test it to try again.".into());
+        return;
+    }
+    if !sound {
+        v.set_test(0);
+        v.set_test_note(
+            "Neria got no sound from this mic. Pick the one you talk into above, or check it isn't muted, then Test it again.".into(),
+        );
         return;
     }
     save(|p| {
@@ -665,7 +780,14 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
     show_prefs(ui);
     if heard == said && said == 3 {
         v.set_test(0);
-        v.set_test_note("Heard you every time. You're set.".into());
+        v.set_test_note(
+            if learned > 0 {
+                "Heard you every time, and it learned your voice from these three. You're set."
+            } else {
+                "Heard you every time. You're set."
+            }
+            .into(),
+        );
         return;
     }
     if heard == said {
@@ -982,7 +1104,8 @@ fn show_demo(ui: &AppWindow, what: &str) {
     v.set_model_text("Voice model · 5.3 MB".into());
     v.set_phrases(ModelRc::new(VecModel::from(vec![row("clip that", "Heard 3 of 3", 1)])));
     v.set_boxes(ModelRc::new(VecModel::from(vec![2, 2, 2])));
-    v.set_test_note("Heard you every time. You're set.".into());
+    v.set_test_note("Heard you every time, and it learned your voice from these three. You're set.".into());
+    v.set_samples(3);
     v.set_listen_text("Listening for \"clip that\"".into());
     match what {
         "getting" => {
@@ -996,7 +1119,7 @@ fn show_demo(ui: &AppWindow, what: &str) {
             v.set_test(1);
             v.set_boxes(ModelRc::new(VecModel::from(vec![2, 1, 0])));
             v.set_level(0.62);
-            v.set_test_note("Say it three times, the way you would mid-game.".into());
+            v.set_test_note("Say it once each time a box says \"Say it now\", the way you would mid-game.".into());
         }
         "test-miss" => {
             v.set_phrases(ModelRc::new(VecModel::from(vec![row("neria clip that", "Heard 0 of 3", 2)])));

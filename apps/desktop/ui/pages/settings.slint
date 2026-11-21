@@ -131,28 +131,42 @@ component OwnSound inherits VerticalLayout {
     }
 }
 
-// One of Test it's three boxes: waiting, listening now, heard, missed.
+// One of Test it's three turns: waiting, "Say it now" (with the time left running down and the
+// mic's level, so you see it hears you), heard, missed.
 component SayBox inherits Rectangle {
     in property <int> state;
     in property <int> n;
-    height: 38px;
+    height: 44px;
+    clip: true;
     border-radius: 9px;
     border-width: root.state >= 2 ? 0 : 2px;
     border-color: root.state == 1 ? Theme.pop : Theme.line-strong;
     background: root.state == 2 ? Theme.ok-bg : root.state == 3 ? Theme.warn-bg : transparent;
     accessible-role: text;
-    accessible-label: "Saying " + root.n + ": " + (root.state == 2 ? "heard" : root.state == 3 ? "missed" : root.state == 1 ? "listening" : "waiting");
+    accessible-label: "Turn " + root.n + ": " + (root.state == 2 ? "heard" : root.state == 3 ? "missed" : root.state == 1 ? "say it now" : "waiting");
+    // The time left in this turn, along the bottom.
+    if root.state == 1: Rectangle {
+        x: 0;
+        y: parent.height - 4px;
+        width: parent.width * Voice.turn-left;
+        height: 4px;
+        background: Theme.pop;
+        animate width { duration: 100ms; }
+    }
     HorizontalLayout {
         alignment: center;
         spacing: 6px;
-        if root.state == 1: VerticalLayout {
+        if root.state == 1: HorizontalLayout {
+            spacing: 2px;
             alignment: center;
-            Rectangle {
-                width: 7px;
-                height: 7px;
-                border-radius: 3.5px;
-                background: Theme.pop;
-                opacity: 0.55 + 0.45 * Math.sin(animation-tick() / 260ms * 1rad);
+            for k in [0.55, 1.0, 0.7]: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 3px;
+                    height: 3px + 9px * min(1, Voice.level * 2.2 * k);
+                    border-radius: 1px;
+                    background: Theme.ok;
+                }
             }
         }
         if root.state == 2: Icon {
@@ -161,7 +175,7 @@ component SayBox inherits Rectangle {
             color: Theme.ok;
         }
         Text {
-            text: root.state == 2 ? "Heard" : root.state == 3 ? "Missed" : root.state == 1 ? "Listening…" : root.n;
+            text: root.state == 2 ? "Heard" : root.state == 3 ? "Missed" : root.state == 1 ? "Say it now" : root.n;
             color: root.state == 2 ? Theme.ok : root.state == 3 ? Theme.warn : root.state == 1 ? Theme.ink : Theme.dim;
             font-family: Theme.body;
             font-size: 12px;
@@ -320,6 +334,21 @@ component VoiceSection inherits VerticalLayout {
                 horizontal-stretch: 1;
                 state: b;
                 n: i + 1;
+            }
+        }
+        if Voice.samples > 0 && Voice.test == 0: HorizontalLayout {
+            spacing: 8px;
+            Hint {
+                horizontal-stretch: 1;
+                text: "Your voice: " + Voice.samples + " samples from Test it. A saying that sounds like them counts too, even when the words don't match. Kept on this PC.";
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                TextLink {
+                    text: "Forget them";
+                    clicked => { Voice.forget-samples(); }
+                }
             }
         }
         for sp in Voice.spellings: VerticalLayout {

@@ -974,8 +974,13 @@ last minute is always kept, and saving turns it into a file that opens in the cl
    it, else what's kept; saving doesn't pause a live stream; Undo and Show while watching
    too; the mark's menu (Keep the last, Stop / Listen again, "Not listening"); "undo that"
    said; Sensitivity (Normal / High / Highest) that Test it raises when it misses someone (a
-   friend's accent wasn't heard at Normal). Not yet: Capture's save; the friend's accent
-   re-tested.
+   friend's accent wasn't heard at Normal). Test it redone as guided turns ("Say it now",
+   4 s each with a countdown and the mic's level; "no sound from this mic" said at once), and
+   **voice samples** (`voice_match.rs`): the three turns are kept and a saying that sounds like
+   them counts too, either one is enough. Checked on recorded voices: the phrase matched at
+   0.8–7, every other line at 11+, and another voice saying "clip that" matched none. Only
+   works for the phrase said with a short pause around it (the words model covers the rest).
+   Not yet: Capture's save; the friend's accent re-tested with samples.
    Off until turned on; the mic is only listened to on the PC,
    nothing is sent anywhere. A small always-on wake-word listener (around 1% CPU, never the
    large whisper model) that presses the same save as the hotkey, with the same "saved"

@@ -74,6 +74,36 @@ fn main() -> anyhow::Result<()> {
     }
     println!("threshold {} · boost {}", tune.threshold, tune.boost);
 
+    // Voice samples: every saying in the file (found by loudness) compared with them.
+    if let (Some(list), Some(f)) = (val("--samples"), val("--file")) {
+        let sound: Vec<Vec<f32>> =
+            list.split(',').map(|p| voice::read_file(&PathBuf::from(p))).collect::<anyhow::Result<_>>()?;
+        let samples =
+            neria_core::voice_match::Samples::from_sound(&sound).ok_or_else(|| anyhow::anyhow!("need 2+ samples"))?;
+        println!("{} samples · limit {:.2} · self-check {:?}", samples.len(), samples.limit, samples.self_check());
+        let audio = voice::read_file(&PathBuf::from(f))?;
+        let mut say = voice::Sayings::new(16_000);
+        for c in audio.chunks(1600) {
+            say.feed(c);
+        }
+        let mut n = 0;
+        for (a, b) in &say.done {
+            let s = (((a - 0.15).max(0.0) * 16_000.0) as usize).min(audio.len());
+            let e = (((b + 0.15) * 16_000.0) as usize).min(audio.len());
+            let (hit, d) = samples.matches(&audio[s..e]);
+            n += hit as usize;
+            println!(
+                "{:>8}–{:<8} {:>6.2}  {}",
+                neria_core::transcribe::clock(*a),
+                neria_core::transcribe::clock(*b),
+                d,
+                if hit { "MATCH" } else { "" }
+            );
+        }
+        println!("{n} matched of {} sayings", say.done.len());
+        return Ok(());
+    }
+
     if let Some(f) = val("--file") {
         let samples = voice::read_file(&PathBuf::from(f))?;
         let mut s = Spotter::new(&phrases, tune)?;

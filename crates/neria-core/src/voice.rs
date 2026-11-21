@@ -497,7 +497,7 @@ impl Sayings {
             self.t += SAY_FRAME;
             // The floor follows quiet quickly and loud slowly.
             self.floor = if rms < self.floor { rms.max(0.002) } else { self.floor * 0.995 + rms * 0.005 };
-            let loud = rms > (self.floor * 4.0).max(0.02);
+            let loud = rms > (self.floor * 4.0).max(0.012);
             if loud {
                 self.quiet_for = 0.0;
                 self.loud_for += SAY_FRAME;

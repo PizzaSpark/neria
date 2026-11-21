@@ -797,11 +797,16 @@ export global Voice {
     in property <string> error;
     // Test it: 0 not running, 1 listening, 2 trying other spellings.
     in property <int> test;
-    // The three sayings: 0 waiting, 1 listening now, 2 heard, 3 missed.
+    // The three turns: 0 waiting, 1 "Say it now", 2 heard, 3 missed.
     in property <[int]> boxes: [0, 0, 0];
+    // What's left of the turn under way, 1 → 0 (the bar in its box).
+    in property <float> turn-left: 1;
     // Under the boxes: what to do next ("Say "clip that" three times…").
     in property <string> test-note;
     in property <[VoiceSpelling]> spellings;
+    // Your voice samples kept from Test it (it also hears you by how you sound).
+    in property <int> samples;
+    callback forget-samples();
     callback toggled(bool);
     callback get-cancel();
     callback phrase-edited(int, string);
