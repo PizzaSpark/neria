@@ -131,6 +131,23 @@ cuBLAS and silently runs on the CPU: don't use it. Models from Hugging Face:
 `-ng` (the CPU when the card can't). If an update breaks it, check whisper-cli's
 `examples/cli/cli.cpp` for renamed flags first.
 
+### Wake word for "Hey Neria, clip that" (studied 2026-11-21, nothing built yet)
+- **sherpa-onnx keyword spotting (k2-fsa, Apache 2.0): the pick to prototype.** Open
+  vocabulary: the phrase is plain text turned into the model's tokens (`text2token`), one line
+  per phrase with a boost (`:1.5`) and a trigger threshold (`#0.35`), so "Hey Neria" needs no
+  training. English model `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (16 MB, a
+  14 MB `-mobile` int8 one) on the `kws-models` release; sherpa-onnx itself was at v2.0.2
+  (2026-11-19). Official Rust crate `sherpa-onnx` (`KeywordSpotter`, streaming; its build
+  fetches a prebuilt static Windows x64 library, so no extra DLL next to the exe). Unknown
+  until tried: how well an uncommon name like "Neria" spots, CPU while idle
+- openWakeWord (dscripka): code Apache 2.0, but its pretrained models are CC BY-NC-SA, a
+  custom phrase means training (Colab, synthetic speech, ~1 h) and its runtime is Python
+  (only a community C++ port). The fallback if sherpa's spotting is too loose
+- Porcupine (Picovoice): needs an AccessKey checked online and its console for custom words;
+  not portable or offline enough for Neria
+- whisper.cpp (already fetched for Speech to text): too heavy to listen all the time; at most
+  reads a few words after the wake word
+
 ### ytarchive and streamlink (ideas only, for recording live streams: `record.rs`)
 
 Read 2026-11-15: ytarchive `2110ce2` (2025-06-25, 0.5.0; `Info.go`, `util.go`,
