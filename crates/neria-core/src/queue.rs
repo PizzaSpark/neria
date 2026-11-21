@@ -1,7 +1,7 @@
 //! Download queue with a concurrency limit, cancel and retry.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -1011,19 +1011,25 @@ impl Queue {
             (self.inner.notify)(e.snap.clone());
             (from, to)
         };
-        let _ = self.save_clip(id, to - from, Some((from, to)));
+        let _ = self.save_clip(id, to - from, Some((from, to)), 0.0);
     }
 
     /// "Clip the last…" on a recording: the newest `seconds` as their own file, in a
     /// finished row of its own (in the background; the row shows when it's saved).
     /// Returns the id its row will have once it's saved (Undo for "clip that").
     pub fn clip_last(&self, id: u64, seconds: f64) -> u64 {
-        self.save_clip(id, seconds, None)
+        self.clip_back(id, seconds, 0.0)
+    }
+
+    /// The `seconds` ending `ago` seconds before the newest recorded moment: what the player
+    /// showed when it runs behind the recording ("clip that" and Clip the last while watching).
+    pub fn clip_back(&self, id: u64, seconds: f64, ago: f64) -> u64 {
+        self.save_clip(id, seconds, None, ago)
     }
 
     /// The last `seconds` of a recording (or the marked part `from`–`to`, which ends now)
     /// as a row of its own.
-    fn save_clip(&self, id: u64, seconds: f64, marked: Option<(f64, f64)>) -> u64 {
+    fn save_clip(&self, id: u64, seconds: f64, marked: Option<(f64, f64)>, ago: f64) -> u64 {
         let cid = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let (work, dir, title, thumb, group) = {
             let settings = self.inner.settings.lock().unwrap().clone();
@@ -1041,7 +1047,7 @@ impl Queue {
                 ),
                 None => (
                     format!("{title} (last {})", crate::fmt::duration(seconds)),
-                    crate::record::clip_last(&work, seconds, &dir, &title),
+                    crate::record::clip_last_ago(&work, seconds, ago, &dir, &title),
                 ),
             };
             let mut snap = JobSnapshot::new(cid, group, label);
@@ -1219,6 +1225,12 @@ impl Queue {
         entries.retain(|e| !gone(e));
         self.save_locked(&entries);
         removed
+    }
+
+    /// The row that saved `file` (Undo after "clip that" removes it with the file).
+    pub fn id_of_file(&self, file: &Path) -> Option<u64> {
+        let entries = self.inner.entries.lock().unwrap();
+        entries.iter().find(|e| e.snap.file.as_deref() == Some(file)).map(|e| e.snap.id)
     }
 
     pub fn file_of(&self, id: u64) -> Option<PathBuf> {

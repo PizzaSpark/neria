@@ -313,8 +313,11 @@ pub fn install(ui: &AppWindow, queue: &Queue) {
     actions.on_clip_last({
         let (queue, weak) = (queue.clone(), ui.as_weak());
         move |id, secs| {
-            queue.clip_last(id as u64, secs as f64);
-            crate::show_toast(&weak.unwrap(), &format!("Saving the last {}…", fmt::duration(secs as f64)));
+            let ui = weak.unwrap();
+            // Ends where the player is when you're watching it behind live.
+            let ago = if ui.global::<crate::Watch>().get_on() { crate::clipper::behind_live(&ui) } else { 0.0 };
+            queue.clip_back(id as u64, secs as f64, ago);
+            crate::show_toast(&ui, &format!("Saving the last {}…", fmt::duration(secs as f64)));
         }
     });
 }
@@ -358,7 +361,8 @@ pub fn sync_watch(ui: &AppWindow, s: &JobSnapshot) {
     let url = crate::QUEUE.get().and_then(|q| q.url_of(s.id)).unwrap_or_default();
     let before = st.joined.unwrap_or(0.0);
     let (earlier, link) = if let Some((got, of)) = st.earlier {
-        let size = if st.earlier_bytes > 0 { format!(" · {}", fmt::bytes(st.earlier_bytes as f64)) } else { String::new() };
+        let size =
+            if st.earlier_bytes > 0 { format!(" · {}", fmt::bytes(st.earlier_bytes as f64)) } else { String::new() };
         (format!("Getting the part before · {} of {}{size}", fmt::duration(got), fmt::duration(of)), false)
     } else if st.earlier_done {
         (format!("The {} before is in: it goes in front when saved", record::age_words(before)), false)
@@ -381,7 +385,11 @@ pub fn sync_watch(ui: &AppWindow, s: &JobSnapshot) {
     let size = if st.bytes > 0 { format!(" · {}", fmt::bytes(st.bytes as f64)) } else { String::new() };
     let text = match s.clip_from {
         Some(from) if running => {
-            format!("Clipping from {} · {} so far{size}", fmt::duration(from), fmt::duration((st.recorded - from).max(0.0)))
+            format!(
+                "Clipping from {} · {} so far{size}",
+                fmt::duration(from),
+                fmt::duration((st.recorded - from).max(0.0))
+            )
         }
         _ if running && st.phase == Phase::CatchingUp => format!(
             "Catching up · {} of {}{size} · you can clip once it has",

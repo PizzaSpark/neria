@@ -54,6 +54,9 @@ pub struct Clipper {
     // Field order matters for Drop: the renderer must go before mpv.
     renderer: Option<GlRenderer>,
     target: Option<Target>,
+    /// The picture was cleared (another source, Back): show the target again on the next
+    /// frame even when its size didn't change, or it stays black.
+    frame_cleared: bool,
     gl: Option<glow::Context>,
     mpv: Option<Mpv>,
     source: Option<Source>,
@@ -201,6 +204,7 @@ impl Clipper {
         }
         set_chapters(ui, &chapters);
         ui.set_clip_frame(slint::Image::default());
+        self.frame_cleared = true;
         ui.set_page(1);
 
         // The file is loaded on the next frame, once mpv's GL renderer exists
@@ -366,6 +370,7 @@ impl Clipper {
                 ui.set_clip_loaded(false);
                 ui.set_clip_is_link(false);
                 ui.set_clip_frame(slint::Image::default());
+                self.frame_cleared = true;
             }
         }
         ui.global::<Watch>().set_on(false);
@@ -750,7 +755,8 @@ impl Clipper {
         let (w, h) = (((dw as f64) * scale).round() as i32, ((dh as f64) * scale).round() as i32);
 
         unsafe {
-            if self.target.as_ref().is_none_or(|t| t.w != w || t.h != h) {
+            if self.frame_cleared || self.target.as_ref().is_none_or(|t| t.w != w || t.h != h) {
+                self.frame_cleared = false;
                 if let Some(old) = self.target.take() {
                     gl.delete_framebuffer(old.fbo);
                     gl.delete_texture(old.tex);
@@ -861,6 +867,14 @@ thread_local! {
     /// The open live stream's timeline start on the clock (Unix seconds): a mark at `t` is
     /// `anchor + t`. `None` when what's open isn't live.
     static LIVE_ANCHOR: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+}
+
+/// How far the player is behind the live edge, in seconds: "the last 30 s" ends where the
+/// player is (what you saw), not at the newest moment the site has. 0 when not live.
+pub fn behind_live(ui: &AppWindow) -> f64 {
+    let edge =
+        LIVE_ANCHOR.with(|a| a.get()).map_or(ui.get_clip_duration() as f64, |anchor| neria_core::live::now() - anchor);
+    (edge - ui.get_clip_position() as f64).max(0.0)
 }
 
 fn is_gif_file(path: &Path) -> bool {
@@ -1130,8 +1144,12 @@ pub fn install(
         move || {
             let ui = weak.unwrap();
             let mut c = clipper.borrow_mut();
+            // A live stream keeps playing: saving the last bit (its button or "clip that")
+            // is fetched from the site, and pausing would leave you behind live.
             if let Some(mpv) = &c.mpv {
-                let _ = mpv.set_property("pause", "yes");
+                if !ui.global::<ClipLive>().get_on() {
+                    let _ = mpv.set_property("pause", "yes");
+                }
             }
             let clips = crate::clips_ui::clips();
             let input = match c.source.clone() {
@@ -1202,7 +1220,9 @@ pub fn install(
                         return clip::export(&req, cancel, progress);
                     }
                     let path = clip::export(&req, cancel, |p| progress(p * 0.5))?;
-                    crate::chat_ui::put_into_export(&path, &msgs, &chat_spec, end - start, cancel, &mut |p| progress(0.5 + p * 0.5))
+                    crate::chat_ui::put_into_export(&path, &msgs, &chat_spec, end - start, cancel, &mut |p| {
+                        progress(0.5 + p * 0.5)
+                    })
                 });
                 return;
             }
@@ -1226,7 +1246,9 @@ pub fn install(
                             offset += b - a;
                         }
                         if let Some(f) = made.last() {
-                            out.push(crate::chat_ui::put_into_export(f, &all, &chat_spec, offset, cancel, &mut |p| progress(0.5 + p * 0.5))?);
+                            out.push(crate::chat_ui::put_into_export(f, &all, &chat_spec, offset, cancel, &mut |p| {
+                                progress(0.5 + p * 0.5)
+                            })?);
                         }
                     } else {
                         let n = made.len().max(1) as f32;
@@ -1291,25 +1313,28 @@ pub fn install(
                 // From the replay buffer, into the Videos folder (off the UI thread).
                 let pieces = b.dir.clone();
                 let title = ui.get_clip_name().to_string();
+                let ago = behind_live(&ui);
                 ui.set_clip_status("Saving…".into());
                 start_export(&ui, &mut c, "Live clip saved", move |_cancel, progress| {
                     let dir = neria_core::folders::for_kind(
                         &neria_core::settings::Settings::load(),
                         neria_core::folders::Kind::Video,
                     );
-                    let out = neria_core::live::clip_last_in(&pieces, secs, &dir, &title);
+                    let out = neria_core::live::clip_last_in(&pieces, secs, ago, &dir, &title);
                     progress(1.0);
                     out
                 });
                 return;
             }
-            // Rewound from the site's window: the last `secs` up to the live edge, taken from
-            // the clock (mpv's length can stall while paused; the anchor can't).
+            // Rewound from the site's window: the last `secs` up to where the player is (what
+            // you saw: it runs a little behind the live edge), the edge taken from the clock
+            // (mpv's length can stall while paused; the anchor can't).
             let edge = LIVE_ANCHOR
                 .with(|a| a.get())
                 .map_or(ui.get_clip_duration() as f64, |anchor| neria_core::live::now() - anchor);
-            ui.set_clip_in((edge - secs).max(0.0) as f32);
-            ui.set_clip_out(edge as f32);
+            let end = edge - behind_live(&ui);
+            ui.set_clip_in((end - secs).max(0.0) as f32);
+            ui.set_clip_out(end as f32);
             drop(c);
             ui.invoke_clip_export();
         }

@@ -59,6 +59,9 @@ struct State {
     /// The last clip made on hearing it, and an Undo waiting for it to be saved.
     last_clip: Option<u64>,
     undo_wanted: Option<Instant>,
+    /// When the last one was heard while watching: Show looks for the file saved since.
+    saved_since: Option<std::time::SystemTime>,
+    saved_secs: f64,
     /// Bumped by each toast and flash, so an older one's timer doesn't hide a newer one.
     toast_gen: u64,
     /// Sample screens for design checks (`NERIA_VOICE_DEMO`): nothing listens.
@@ -235,18 +238,34 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
         let weak = ui.as_weak();
         move || {
             let ui = weak.unwrap();
-            if ui.global::<Voice>().get_mic_missing() {
-                ui.set_settings_section(5);
-                ui.set_drawer_open(true);
-                return;
-            }
+            ui.set_settings_section(5);
+            ui.set_drawer_open(true);
+        }
+    });
+    // The mark's menu: how much to keep (the same setting as Settings → Voice).
+    v.on_keep_picked({
+        let weak = ui.as_weak();
+        move |i| {
+            let i = i.clamp(0, 3);
+            save(|p| p.keep = KEEPS[i as usize]);
+            weak.unwrap().global::<Voice>().set_keep(i);
+        }
+    });
+    // …and stop listening for this stream, or listen again.
+    v.on_set_paused({
+        let weak = ui.as_weak();
+        move |paused| {
             ST.with(|s| {
                 let mut s = s.borrow_mut();
-                s.muted_here = true;
-                s.mic = None;
+                s.muted_here = paused;
+                s.retry_at = None;
+                if paused {
+                    s.mic = None;
+                }
             });
-            ui.global::<Voice>().set_listening(false);
-            crate::show_toast(&ui, "Stopped listening for this stream.");
+            let ui = weak.unwrap();
+            ui.global::<Voice>().set_paused(paused);
+            reconcile(&ui);
         }
     });
     v.on_undo({
@@ -258,7 +277,10 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             finish_undo(&ui);
         }
     });
-    v.on_show(|| {});
+    v.on_show({
+        let weak = ui.as_weak();
+        move || show_saved(&weak.unwrap())
+    });
 
     if let Ok(demo) = std::env::var("NERIA_VOICE_DEMO") {
         ST.with(|s| s.borrow_mut().demo = true);
@@ -441,12 +463,17 @@ fn reconcile(ui: &AppWindow) {
         None
     };
     let v = ui.global::<Voice>();
-    let listening = matches!(want, Some(Mode::Listen(..)));
-    v.set_listening(listening);
-    if let Some(Mode::Listen(phrases, _)) = &want {
+    // The mark shows whenever voice could listen here, also once stopped ("Not listening"),
+    // so it can be turned back on from the same place.
+    let phrases = p.phrases();
+    let mark = ready && player && !phrases.is_empty();
+    v.set_listening(mark);
+    v.set_paused(mark && muted);
+    if mark {
         let more = if phrases.len() > 1 { format!(" +{}", phrases.len() - 1) } else { String::new() };
         v.set_listen_text(format!("Listening for \"{}\"{more}", phrases[0]).into());
-    } else {
+    }
+    if !matches!(want, Some(Mode::Listen(..))) {
         v.set_mic_missing(false);
     }
     let running = ST.with(|s| s.borrow().mic.as_ref().map(|m| m.mode.clone()));
@@ -695,16 +722,27 @@ fn heard(ui: &AppWindow, phrase: &str) {
             return;
         }
         let Some(queue) = ST.with(|s| s.borrow().queue.clone()) else { return };
-        let cid = queue.clip_last(w.get_recording_id() as u64, secs);
+        let cid = queue.clip_back(w.get_recording_id() as u64, secs, crate::clipper::behind_live(ui));
         ST.with(|s| {
             let mut s = s.borrow_mut();
             s.last_clip = Some(cid);
             s.undo_wanted = None;
+            s.saved_since = None;
         });
         toast(ui, &said, &format!("Clipping the last {len}"), 1, true);
+        ui.global::<Voice>().set_heard_show(true);
     } else if live.get_on() && (live.get_can_rewind() || live.get_buffering()) {
+        ST.with(|s| {
+            let mut s = s.borrow_mut();
+            s.last_clip = None;
+            s.undo_wanted = None;
+            // A moment back: the file can be stamped as it opens, a hair before now.
+            s.saved_since = Some(std::time::SystemTime::now() - Duration::from_secs(2));
+            s.saved_secs = secs;
+        });
         live.invoke_last(secs as f32);
-        toast(ui, &said, &format!("Saving the last {len}"), 1, false);
+        toast(ui, &said, &format!("Saving the last {len} to your Videos"), 1, true);
+        ui.global::<Voice>().set_heard_show(true);
     } else {
         toast(ui, &said, "Nothing kept to clip from yet", 2, false);
         return;
@@ -728,7 +766,7 @@ fn toast(ui: &AppWindow, tag: &str, text: &str, kind: i32, undo: bool) {
         s.toast_gen
     });
     let weak = ui.as_weak();
-    Timer::single_shot(Duration::from_secs(6), move || {
+    Timer::single_shot(Duration::from_secs(8), move || {
         if ST.with(|s| s.borrow().toast_gen) == n {
             if let Some(ui) = weak.upgrade() {
                 hide_toast(&ui);
@@ -754,16 +792,90 @@ fn flash(ui: &AppWindow) {
     });
 }
 
+/// Show: the clip just made, in Explorer (from its queue row while recording; while watching,
+/// the newest video saved since it was heard). Still being saved: says where it goes.
+fn show_saved(ui: &AppWindow) {
+    let (queue, cid, since) = ST.with(|s| {
+        let s = s.borrow();
+        (s.queue.clone(), s.last_clip, s.saved_since)
+    });
+    let dir = neria_core::folders::for_kind(&Settings::load(), neria_core::folders::Kind::Video);
+    let file = match (queue, cid, since) {
+        (Some(q), Some(cid), _) => q.file_of(cid),
+        (_, _, Some(since)) => std::fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+            .filter(|(t, p)| *t >= since && !p.extension().is_some_and(|x| x == "part" || x == "ytdl"))
+            .max_by_key(|(t, _)| *t)
+            .map(|(_, p)| p),
+        _ => None,
+    };
+    match file {
+        Some(f) if f.is_file() => crate::reveal(&f),
+        _ => crate::show_toast(ui, &format!("Still saving. It goes in {}.", dir.display())),
+    }
+}
+
+/// Undo while watching: "Save the last" made no row of its own we know the id of, so the
+/// video saved in the Videos folder since it was heard, named with its length ("0m30s"), is
+/// deleted once it's there (and its row, if it has one).
+fn undo_watched(ui: &AppWindow, queue: &Queue, wanted: Instant) {
+    let (since, secs) = ST.with(|s| (s.borrow().saved_since, s.borrow().saved_secs));
+    let Some(since) = since else { return };
+    let dir = neria_core::folders::for_kind(&Settings::load(), neria_core::folders::Kind::Video);
+    let stamp = neria_core::clip::stamp(secs);
+    let found = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .filter(|(t, p)| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            *t >= since && name.contains(&stamp) && !name.ends_with(".part") && !name.ends_with(".ytdl")
+        })
+        .max_by_key(|(t, _)| *t)
+        .map(|(_, p)| p);
+    if let Some(file) = found {
+        let _ = std::fs::remove_file(&file);
+        if let Some(id) = queue.id_of_file(&file) {
+            ui.invoke_remove_job(id as i32);
+        }
+        ST.with(|s| {
+            let mut s = s.borrow_mut();
+            s.saved_since = None;
+            s.undo_wanted = None;
+        });
+        crate::show_toast(ui, "Undone: that clip is deleted.");
+        return;
+    }
+    if wanted.elapsed() > Duration::from_secs(120) {
+        ST.with(|s| s.borrow_mut().undo_wanted = None);
+        return;
+    }
+    let weak: Weak<AppWindow> = ui.as_weak();
+    Timer::single_shot(Duration::from_millis(700), move || {
+        if let Some(ui) = weak.upgrade() {
+            finish_undo(&ui);
+        }
+    });
+}
+
 /// Undo: the clip's file is deleted and its row goes, now if it's saved or as soon as it is.
 fn finish_undo(ui: &AppWindow) {
     let (queue, cid, wanted) = ST.with(|s| {
         let s = s.borrow();
         (s.queue.clone(), s.last_clip, s.undo_wanted)
     });
-    let (Some(queue), Some(cid), Some(wanted)) = (queue, cid, wanted) else { return };
+    let (Some(queue), Some(wanted)) = (queue, wanted) else { return };
+    let Some(cid) = cid else {
+        undo_watched(ui, &queue, wanted);
+        return;
+    };
     if let Some(file) = queue.file_of(cid) {
         let _ = std::fs::remove_file(&file);
-        queue.remove(cid);
+        ui.invoke_remove_job(cid as i32);
         ST.with(|s| {
             let mut s = s.borrow_mut();
             s.last_clip = None;

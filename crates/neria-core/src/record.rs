@@ -1756,17 +1756,23 @@ fn finish_one(file: &Path, out_dir: &Path, name: &str, ext: &str, audio: bool, w
 /// "Clip the last…": the newest `seconds` of what's recorded, as its own file in `out_dir`,
 /// while the recording goes on.
 pub fn clip_last(work: &Path, seconds: f64, out_dir: &Path, title: &str) -> Result<PathBuf> {
-    clip_last_as(work, seconds, out_dir, title, &format!("last {}", crate::clip::stamp(seconds)))
+    clip_last_ago(work, seconds, 0.0, out_dir, title)
+}
+
+/// The `seconds` ending `ago` seconds before the newest recorded moment (where the player
+/// showed it, when it runs behind the recording).
+pub fn clip_last_ago(work: &Path, seconds: f64, ago: f64, out_dir: &Path, title: &str) -> Result<PathBuf> {
+    clip_last_as(work, seconds, ago.max(0.0), out_dir, title, &format!("last {}", crate::clip::stamp(seconds)))
 }
 
 /// A clip marked while recording ("Start clip" … "End clip"): it ends now, so it's the last
 /// `seconds`, named by where it sits in the recording ("clip 12m30s-15m10s").
 pub fn clip_marked(work: &Path, from: f64, to: f64, out_dir: &Path, title: &str) -> Result<PathBuf> {
     let tag = format!("clip {}-{}", crate::clip::stamp(from), crate::clip::stamp(to));
-    clip_last_as(work, (to - from).max(1.0), out_dir, title, &tag)
+    clip_last_as(work, (to - from).max(1.0), 0.0, out_dir, title, &tag)
 }
 
-fn clip_last_as(work: &Path, seconds: f64, out_dir: &Path, title: &str, tag: &str) -> Result<PathBuf> {
+fn clip_last_as(work: &Path, seconds: f64, ago: f64, out_dir: &Path, title: &str, tag: &str) -> Result<PathBuf> {
     let m = read_manifest(work).context("The recording isn't there")?;
     let part = m.parts.last().context("Nothing recorded yet")?;
     let files: Vec<PathBuf> = files_of(work, &part.name)
@@ -1782,7 +1788,8 @@ fn clip_last_as(work: &Path, seconds: f64, out_dir: &Path, title: &str, tag: &st
     let ext = if m.audio { "m4a" } else { "mp4" };
     let out = crate::clip::unique_path(out_dir, &format!("{name} ({tag})"), ext);
     // Not longer than this part holds (the connection dropped since the clip started).
-    let seconds = if part.recorded >= 1.0 { seconds.min(part.recorded) } else { seconds };
+    let ago = if part.recorded >= 1.0 { ago.min((part.recorded - 1.0).max(0.0)) } else { 0.0 };
+    let seconds = if part.recorded >= 1.0 { seconds.min(part.recorded - ago) } else { seconds };
     let pieces: Vec<&PathBuf> =
         files.iter().filter(|f| is_format_piece(f.file_name().and_then(|n| n.to_str()).unwrap_or(""))).collect();
     let mut args: Vec<String> = Vec::new();
@@ -1793,14 +1800,15 @@ fn clip_last_as(work: &Path, seconds: f64, out_dir: &Path, title: &str, tag: &st
         if part.recorded < 1.0 {
             bail!("Nothing recorded yet: give it a few seconds.");
         }
-        let from = (part.recorded - seconds).max(0.0);
+        let from = (part.recorded - ago - seconds).max(0.0);
         for p in &pieces {
             args.extend(["-ss".into(), format!("{from:.3}"), "-i".into(), s(p)]);
         }
         args.extend(["-t".into(), format!("{seconds:.3}")]);
         args.extend(["-map", "0:v?", "-map", "1:a?", "-map", "0:a?", "-map", "1:v?"].map(String::from));
     } else if let Some(f) = files.first() {
-        args.extend(["-sseof".into(), format!("-{seconds:.3}"), "-i".into(), s(f), "-map".into(), "0".into()]);
+        args.extend(["-sseof".into(), format!("-{:.3}", seconds + ago), "-i".into(), s(f), "-map".into(), "0".into()]);
+        args.extend(["-t".into(), format!("{seconds:.3}")]);
         args.extend(["-dn".into(), "-bsf:a".into(), "aac_adtstoasc".into(), "-bsf:v".into(), TS_FIX.into()]);
     } else {
         bail!("Nothing recorded yet");

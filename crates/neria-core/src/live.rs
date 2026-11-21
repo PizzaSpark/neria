@@ -176,7 +176,7 @@ impl ReplayBuffer {
 
     /// The last `seconds` as one file in `out_dir` (`Title (last 1m00s).mp4`).
     pub fn clip_last(&self, seconds: f64, out_dir: &Path, title: &str) -> Result<PathBuf> {
-        clip_last_in(&self.dir, seconds, out_dir, title)
+        clip_last_in(&self.dir, seconds, 0.0, out_dir, title)
     }
 
     /// Stop recording and throw the pieces away.
@@ -213,9 +213,13 @@ pub fn clean_leftovers() {
 }
 
 /// [`ReplayBuffer::clip_last`] from its folder (`buffer.dir`), so it can run off the UI thread.
-pub fn clip_last_in(dir: &Path, seconds: f64, out_dir: &Path, title: &str) -> Result<PathBuf> {
+pub fn clip_last_in(dir: &Path, seconds: f64, ago: f64, out_dir: &Path, title: &str) -> Result<PathBuf> {
     {
-        let pieces = newest_pieces(dir, seconds, PIECE_SECS);
+        // Ending `ago` seconds back (where the player is, behind the newest piece): the
+        // newest pieces that far back are left out.
+        let mut pieces = newest_pieces(dir, seconds + ago.max(0.0), PIECE_SECS);
+        let drop = ((ago.max(0.0) / PIECE_SECS).round() as usize).min(pieces.len().saturating_sub(1));
+        pieces.truncate(pieces.len() - drop);
         if pieces.is_empty() {
             bail!("Nothing kept yet: give it a few seconds.");
         }

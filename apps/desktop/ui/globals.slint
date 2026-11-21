@@ -825,8 +825,13 @@ export global Voice {
     in property <int> heard-kind: 1;
     in property <bool> heard-undo;
     in property <bool> heard-show;
-    // The Listening mark: stop listening for this stream (or, mic gone, open Settings).
+    // Stopped for this stream from the mark's menu ("Not listening").
+    in property <bool> paused;
+    // The mark with the mic gone: open Settings → Voice.
     callback mark-clicked();
+    // The mark's menu: how much to keep (remembered, as in Settings), stop / listen again.
+    callback keep-picked(int);
+    callback set-paused(bool);
     callback undo();
     callback show();
 }

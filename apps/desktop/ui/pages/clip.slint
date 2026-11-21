@@ -66,12 +66,22 @@ component ZoomButtons inherits HorizontalLayout {
     }
 }
 
-// "Clip that" is on: says it's listening (and for what), with the mic's level so you can see
-// it's yours. Click: stop listening for this stream. The mic gone: says so, opens Settings.
-// Compact: the mic and its level only.
+// "Clip that" is on: says it's listening (for what, how much it keeps), with the mic's level so
+// you can see it's yours; "Not listening" once stopped for this stream. Click: a menu with how
+// much to keep (15 s – 2 min, remembered) and Stop / Listen again. The mic gone: says so, and
+// a click opens Settings → Voice. Compact: the mic and its level only.
 component ListenMark inherits VerticalLayout {
     alignment: center;
     horizontal-stretch: 0;
+    property <[string]> keeps: ["15 seconds", "30 seconds", "1 minute", "2 minutes"];
+    property <string> short: Voice.keep == 0 ? "15 s" : Voice.keep == 1 ? "30 s" : Voice.keep == 2 ? "1 min" : "2 min";
+    function open() {
+        if Voice.mic-missing {
+            Voice.mark-clicked();
+        } else {
+            menu.show();
+        }
+    }
     Rectangle {
         height: 30px;
         min-width: row.preferred-width;
@@ -80,15 +90,16 @@ component ListenMark inherits VerticalLayout {
         border-color: ta.has-hover ? Theme.muted : Theme.line-strong;
         background: ta.has-hover ? Theme.raised : transparent;
         accessible-role: button;
-        accessible-label: Voice.mic-missing ? "Mic not found: open Settings, Voice" : Voice.listen-text + ". Stop listening for this stream";
-        accessible-action-default => { Voice.mark-clicked(); }
+        accessible-label: Voice.mic-missing ? "Mic not found: open Settings, Voice"
+            : Voice.paused ? "Not listening. Open the voice menu" : Voice.listen-text + ", keeps the last " + root.short + ". Open the voice menu";
+        accessible-action-default => { root.open(); }
         KeyPress {
             radius: 9px;
-            activated => { Voice.mark-clicked(); }
+            activated => { root.open(); }
         }
         ta := TouchArea {
             mouse-cursor: pointer;
-            clicked => { Voice.mark-clicked(); }
+            clicked => { root.open(); }
         }
         row := HorizontalLayout {
             padding-left: 9px;
@@ -97,17 +108,17 @@ component ListenMark inherits VerticalLayout {
             Icon {
                 text: "\u{E720}";
                 font-size: 13px;
-                color: Voice.mic-missing ? Theme.warn : Theme.ink;
+                color: Voice.mic-missing ? Theme.warn : Voice.paused ? Theme.muted : Theme.ink;
             }
-            if !Screen.compact || Voice.mic-missing: Text {
-                text: Voice.mic-missing ? "Mic not found" : Voice.listen-text;
-                color: Voice.mic-missing ? Theme.warn : Theme.ink;
+            if !Screen.compact || Voice.mic-missing || Voice.paused: Text {
+                text: Voice.mic-missing ? "Mic not found" : Voice.paused ? "Not listening" : Voice.listen-text + " · " + root.short;
+                color: Voice.mic-missing ? Theme.warn : Voice.paused ? Theme.muted : Theme.ink;
                 font-family: Theme.body;
                 font-size: 12px;
                 vertical-alignment: center;
             }
             // Three bars that move with the mic.
-            if !Voice.mic-missing: HorizontalLayout {
+            if !Voice.mic-missing && !Voice.paused: HorizontalLayout {
                 spacing: 2px;
                 alignment: center;
                 for k in [0.55, 1.0, 0.7]: VerticalLayout {
@@ -119,6 +130,32 @@ component ListenMark inherits VerticalLayout {
                         background: Theme.ok;
                     }
                 }
+            }
+            Icon {
+                text: "\u{E70E}";
+                font-size: 9px;
+                color: Theme.muted;
+            }
+        }
+    }
+    menu := PopupWindow {
+        x: 0;
+        // Opens upwards: the bar is at the bottom.
+        y: -232px;
+        Menu {
+            width: 240px;
+            MenuItem {
+                text: "When you say it, keep the last:";
+            }
+            for k[i] in root.keeps: MenuItem {
+                icon: Voice.keep == i ? "\u{E73E}" : "";
+                text: k;
+                clicked => { Voice.keep-picked(i); }
+            }
+            MenuItem {
+                icon: Voice.paused ? "\u{E720}" : "\u{E71A}";
+                text: Voice.paused ? "Listen again" : "Stop listening for this stream";
+                clicked => { Voice.set-paused(!Voice.paused); }
             }
         }
     }
