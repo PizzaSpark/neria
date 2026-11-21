@@ -1,0 +1,850 @@
+import { ScrollView, Slider } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, LinkField } from "../widgets.slint";
+import { Phone, PhoneRow, Capture } from "../globals.slint";
+import { SavedList } from "../components/saved-list.slint";
+
+// Capture page → Phone (mock: design/phone.html, picks 1A · 2A · 3A · 4A · 5A): connect your
+// Android phone by QR, mirror it with its own replay buffer and "Clip the last 30 s", record
+// it, hear it alone (Sound only), present it in a bare window. The picture is drawn by mpv
+// (`phone_ui.rs`); taps, scrolling and typing on it go to the phone.
+
+component Head inherits Text {
+    color: Theme.ink;
+    font-family: Theme.display;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+component Hint inherits Text {
+    color: Theme.muted;
+    font-family: Theme.body;
+    font-size: 12px;
+    wrap: word-wrap;
+}
+
+// The state line between hairlines: a tag, the big line, the line under it, the mono line.
+component PhoneStatus inherits VerticalLayout {
+    spacing: 12px;
+    vertical-stretch: 0;
+    Divider { }
+    HorizontalLayout {
+        spacing: 14px;
+        if Phone.state >= 4: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Tag {
+                text: Phone.recording ? "REC " + Phone.rec-time : Phone.state == 5 ? "LIVE" : Phone.state == 6 ? "PLAYING" : "STARTING";
+                kind: Phone.recording || Phone.state == 5 ? 5 : Phone.state == 6 ? 1 : 0;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 3px;
+            Text {
+                text: Phone.status;
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: Screen.compact ? 15px : 17px;
+                font-weight: 600;
+                wrap: word-wrap;
+            }
+            if Phone.detail != "": Text {
+                text: Phone.detail;
+                color: Phone.problem ? Theme.warn : Theme.muted;
+                font-family: Theme.body;
+                font-size: 12.5px;
+                wrap: word-wrap;
+            }
+            if Phone.tech != "" && !Screen.compact: Text {
+                text: Phone.tech;
+                color: Theme.muted;
+                font-family: Theme.mono;
+                font-size: 11.5px;
+                overflow: elide;
+            }
+        }
+    }
+    Divider { }
+}
+
+// The tools aren't here yet: what they are, and getting them.
+component GetTools inherits VerticalLayout {
+    spacing: 14px;
+    alignment: start;
+    Text {
+        text: "Mirror, record and clip your Android phone";
+        color: Theme.ink;
+        font-family: Theme.body;
+        font-size: 17px;
+        font-weight: 600;
+        wrap: word-wrap;
+    }
+    Hint {
+        text: "Neria shows your phone's screen here, keeps its last minute so you can clip it, records it, plays its sound, and puts it in a window of its own to share. It needs scrcpy's phone tools first (11 MB, kept next to Neria).";
+        font-size: 13px;
+    }
+    if Phone.state == 0: HorizontalLayout {
+        alignment: start;
+        PrimaryButton {
+            text: "Get the phone tools";
+            icon: "\u{E896}";
+            clicked => { Phone.get-tools(); }
+        }
+    }
+    if Phone.state == 1: VerticalLayout {
+        spacing: 6px;
+        Bar { value: Phone.tools-progress; }
+        Text {
+            text: Phone.tools-text;
+            color: Theme.muted;
+            font-family: Theme.mono;
+            font-size: 11.5px;
+        }
+    }
+    if Phone.detail != "" && Phone.problem: Notice {
+        text: Phone.detail;
+        wrap: true;
+    }
+}
+
+// One step of the setup: its number (green tick when done, yellow outline when next), what to
+// do, and where (wide windows: a small picture of the phone's screen).
+component Step inherits VerticalLayout {
+    in property <int> n;
+    in property <string> title;
+    in property <string> text;
+    in property <string> pic;
+    property <bool> done: Phone.step > root.n;
+    property <bool> now: Phone.step == root.n;
+    HorizontalLayout {
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 0;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 6px;
+                background: root.done ? Theme.ok-bg : transparent;
+                border-width: root.done ? 0px : 2px;
+                border-color: root.now ? Theme.pop : Theme.line-strong;
+                Text {
+                    text: root.done ? "✓" : root.n;
+                    color: root.done ? Theme.ok : root.now ? Theme.ink : Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: root.title;
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: 13px;
+                font-weight: 600;
+                wrap: word-wrap;
+            }
+            if root.text != "": Hint {
+                text: root.text;
+                font-size: 12.5px;
+            }
+        }
+        if Screen.wide && root.pic != "": VerticalLayout {
+            alignment: start;
+            horizontal-stretch: 0;
+            Rectangle {
+                width: 96px;
+                height: 54px;
+                border-radius: 6px;
+                background: Theme.raised;
+                Text {
+                    width: parent.width - 8px;
+                    text: root.pic;
+                    color: Theme.dim;
+                    font-family: Theme.body;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+    Divider { }
+}
+
+// The pairing QR on white, with its quiet zone.
+component QrCode inherits Rectangle {
+    in property <length> size: 196px;
+    width: root.size;
+    height: root.size;
+    border-radius: 10px;
+    background: Theme.qr-paper;
+    accessible-role: image;
+    accessible-label: "Pairing QR code: scan it with the phone (Wireless debugging, Pair device with QR code)";
+    Image {
+        x: 12px;
+        y: 12px;
+        width: parent.width - 24px;
+        height: parent.height - 24px;
+        source: Phone.qr;
+        image-rendering: pixelated;
+    }
+}
+
+// Pairing with the 6 digits the phone shows.
+component CodeBox inherits VerticalLayout {
+    padding-top: 12px;
+    spacing: 6px;
+    Head { text: "Pairing code instead"; }
+    Hint {
+        text: Phone.code-target != "" ? "Found " + Phone.code-target + ". Type the 6 digits it shows." : "On the phone: Wireless debugging → Pair device with pairing code. Neria finds it; then type the 6 digits it shows.";
+        font-size: 12.5px;
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        code := LinkField {
+            horizontal-stretch: 1;
+            max-width: 240px;
+            placeholder: "6 digits";
+            accepted => { Phone.pair-code(code.text); }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            GhostButton {
+                text: "Pair";
+                clicked => { Phone.pair-code(code.text); }
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+    }
+    if Phone.code-problem != "": Notice {
+        text: Phone.code-problem;
+        wrap: true;
+    }
+}
+
+component ConnectSteps inherits VerticalLayout {
+    spacing: 0px;
+    if !Screen.compact: Text {
+        text: "Connect your Android phone";
+        color: Theme.ink;
+        font-family: Theme.body;
+        font-size: 17px;
+        font-weight: 600;
+    }
+    if !Screen.compact: Hint {
+        text: "Same Wi-Fi as this PC, Android 11 or newer. Once only: next time it connects by itself.";
+        font-size: 12.5px;
+    }
+    Rectangle { height: 6px; }
+    Step {
+        n: 1;
+        title: "Turn on Developer options";
+        text: Screen.compact ? "About phone → tap Build number 7 times." : "Settings → About phone → tap Build number 7 times.";
+        pic: "About phone\nBuild number";
+    }
+    Step {
+        n: 2;
+        title: "Open Wireless debugging";
+        text: Screen.compact ? "Turn it on → Pair device with QR code." : "Settings → System → Developer options → Wireless debugging: turn it on, then tap Pair device with QR code.";
+        pic: "Wireless debugging\n● On";
+    }
+    Step {
+        n: 3;
+        title: "Scan this code";
+        text: Screen.compact ? "" : "The phone pairs and Neria connects. Nothing to type.";
+        pic: "Pair device\nwith QR code";
+    }
+    Rectangle { height: 10px; }
+    FlexboxLayout {
+        spacing: 16px;
+        TextLink {
+            text: Screen.compact ? "Pairing code instead" : "Use a pairing code instead";
+            clicked => { Phone.code-open = !Phone.code-open; }
+        }
+        TextLink {
+            text: Screen.compact ? "USB cable" : "Use a USB cable";
+            clicked => { Phone.usb-open = !Phone.usb-open; }
+        }
+        if Phone.phones.length > 0: TextLink {
+            text: "Back to my phones";
+            clicked => { Phone.back(); }
+        }
+    }
+    if Phone.code-open: CodeBox { }
+    if Phone.usb-open: VerticalLayout {
+        padding-top: 12px;
+        spacing: 6px;
+        Head { text: "USB cable"; }
+        Hint {
+            text: "On the phone: Developer options → USB debugging, turn it on. Plug the phone in and tap \"Allow\" when it asks (tick \"Always allow from this computer\"). It shows up here by itself.";
+            font-size: 12.5px;
+        }
+    }
+}
+
+// Connecting: the QR and the steps; a pairing code and USB as quiet links.
+component Connect inherits VerticalLayout {
+    spacing: 14px;
+    property <bool> side: !Screen.compact;
+    if root.side: HorizontalLayout {
+        spacing: 30px;
+        VerticalLayout {
+            horizontal-stretch: 0;
+            spacing: 10px;
+            alignment: start;
+            QrCode { }
+            Text {
+                width: 196px;
+                text: Phone.qr-note;
+                color: Theme.muted;
+                font-family: Theme.body;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: start;
+            ConnectSteps { }
+        }
+    }
+    if !root.side: VerticalLayout {
+        spacing: 10px;
+        Text {
+            text: "Connect your Android phone";
+            color: Theme.ink;
+            font-family: Theme.body;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        HorizontalLayout {
+            alignment: center;
+            QrCode { size: 176px; }
+        }
+        Text {
+            text: Phone.qr-note;
+            color: Theme.muted;
+            font-family: Theme.body;
+            font-size: 12px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        ConnectSteps { }
+    }
+}
+
+// A phone you've connected: its name, how, whether it's here; Mirror / Forget.
+component PhoneItem inherits VerticalLayout {
+    in property <PhoneRow> item;
+    HorizontalLayout {
+        padding-top: 9px;
+        padding-bottom: 9px;
+        padding-left: 4px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 6px;
+                background: Theme.raised;
+                Icon {
+                    text: "\u{E8EA}";
+                    font-size: 14px;
+                    color: Theme.dim;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+            Text {
+                text: root.item.name;
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: 13.5px;
+                font-weight: 500;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.problem != "" ? root.item.problem : root.item.hint;
+                color: root.item.problem != "" ? Theme.warn : Theme.muted;
+                font-family: Theme.body;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+        }
+        if !Screen.compact || !root.item.here: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Tag {
+                text: root.item.here ? (root.item.problem != "" ? "Waiting" : "Connected") : "Not here";
+                kind: root.item.here ? (root.item.problem != "" ? 2 : 1) : 0;
+            }
+        }
+        if root.item.here && root.item.problem == "": VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            HorizontalLayout {
+                spacing: 8px;
+                GhostButton {
+                    compact: true;
+                    text: Screen.compact ? "" : "Sound only";
+                    icon: "\u{E767}";
+                    label: "Play " + root.item.name + "'s sound only";
+                    clicked => { Phone.sound-only(root.item.serial); }
+                }
+                GhostButton {
+                    compact: true;
+                    text: "Mirror";
+                    icon: "\u{E8EA}";
+                    label: "Mirror " + root.item.name;
+                    clicked => { Phone.mirror(root.item.serial); }
+                }
+            }
+        }
+        if !root.item.here: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            TextLink {
+                text: "Forget";
+                clicked => { Phone.forget(root.item.id); }
+            }
+        }
+    }
+    Divider { }
+}
+
+component PhoneList inherits VerticalLayout {
+    spacing: 0px;
+    Head { text: "Your phones"; }
+    Rectangle { height: 4px; }
+    for p in Phone.phones: PhoneItem {
+        item: p;
+    }
+    HorizontalLayout {
+        padding-top: 10px;
+        alignment: start;
+        TextLink {
+            text: "+ Add a phone";
+            clicked => { Phone.add-phone(); }
+        }
+    }
+}
+
+// The phone's screen: drawn by mpv, a tap / drag / scroll / typing goes to the phone.
+component Picture inherits Rectangle {
+    border-radius: 16px;
+    background: Theme.video;
+    border-width: 2px;
+    border-color: fs.has-focus ? Theme.ink : Theme.line-strong;
+    clip: true;
+    accessible-role: image;
+    accessible-label: Phone.name + "'s screen: click to tap, drag to swipe, scroll, type";
+    Image {
+        x: 3px;
+        y: 3px;
+        width: parent.width - 6px;
+        height: parent.height - 6px;
+        source: Phone.frame;
+        image-fit: contain;
+    }
+    if Phone.frame.width == 0: Text {
+        width: parent.width - 20px;
+        text: Phone.state == 4 ? "Starting…" : "Waiting for the picture…";
+        color: Theme.muted;
+        font-family: Theme.body;
+        font-size: 12.5px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                Phone.press(4);
+                return accept;
+            }
+            Phone.typed(e.text);
+            accept
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                fs.focus();
+                Phone.touch(0, self.mouse-x / self.width, self.mouse-y / self.height);
+            } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.up {
+                Phone.touch(1, max(0, min(1, self.mouse-x / self.width)), max(0, min(1, self.mouse-y / self.height)));
+            }
+        }
+        moved => {
+            if self.pressed {
+                Phone.touch(2, max(0, min(1, self.mouse-x / self.width)), max(0, min(1, self.mouse-y / self.height)));
+            }
+        }
+        scroll-event(e) => {
+            Phone.scroll(self.mouse-x / self.width, self.mouse-y / self.height, e.delta-y / 1px);
+            accept
+        }
+    }
+}
+
+// Back, Home, Recent apps, turn: under the picture.
+component PhoneKeys inherits HorizontalLayout {
+    alignment: center;
+    spacing: 8px;
+    GhostButton {
+        compact: true;
+        text: "";
+        icon: "\u{E72B}";
+        label: "Back";
+        clicked => { Phone.press(4); }
+    }
+    GhostButton {
+        compact: true;
+        text: "";
+        icon: "\u{E80F}";
+        label: "Home";
+        clicked => { Phone.press(3); }
+    }
+    GhostButton {
+        compact: true;
+        text: "";
+        icon: "\u{E8A9}";
+        label: "Recent apps";
+        clicked => { Phone.press(187); }
+    }
+    GhostButton {
+        compact: true;
+        text: "";
+        icon: "\u{E7AD}";
+        label: "Turn the screen";
+        clicked => { Phone.rotate(); }
+    }
+}
+
+// Mirroring: Clip the last 30 s (the yellow one), Record, Screenshot, Present.
+component MirrorActions inherits VerticalLayout {
+    spacing: 10px;
+    if Screen.wide: HorizontalLayout {
+        alignment: start;
+        spacing: 10px;
+        PrimaryButton {
+            text: "Clip the last 30 s";
+            icon: "\u{E8C6}";
+            enabled: Phone.state == 5;
+            clicked => { Phone.clip(); }
+        }
+        GhostButton {
+            text: Phone.recording ? "Stop and save" : "Record";
+            icon: Phone.recording ? "\u{E71A}" : "\u{E7C8}";
+            on: Phone.recording;
+            clicked => { Phone.record(); }
+        }
+        GhostButton {
+            text: "Screenshot";
+            icon: "\u{E722}";
+            clicked => { Phone.screenshot(); }
+        }
+        GhostButton {
+            text: Phone.presenting ? "Stop presenting" : "Present in a window";
+            icon: "\u{E7F4}";
+            on: Phone.presenting;
+            clicked => { Phone.present(); }
+        }
+    }
+    if !Screen.compact && !Screen.wide: FlexboxLayout {
+        spacing: 10px;
+        PrimaryButton {
+            text: "Clip the last 30 s";
+            icon: "\u{E8C6}";
+            enabled: Phone.state == 5;
+            clicked => { Phone.clip(); }
+        }
+        GhostButton {
+            text: Phone.recording ? "Stop and save" : "Record";
+            icon: Phone.recording ? "\u{E71A}" : "\u{E7C8}";
+            on: Phone.recording;
+            clicked => { Phone.record(); }
+        }
+        GhostButton {
+            text: "Screenshot";
+            icon: "\u{E722}";
+            clicked => { Phone.screenshot(); }
+        }
+        GhostButton {
+            text: Phone.presenting ? "Stop presenting" : "Present in a window";
+            icon: "\u{E7F4}";
+            on: Phone.presenting;
+            clicked => { Phone.present(); }
+        }
+    }
+    if Screen.compact: PrimaryButton {
+        text: "Clip the last 30 s";
+        icon: "\u{E8C6}";
+        enabled: Phone.state == 5;
+        clicked => { Phone.clip(); }
+    }
+    if Screen.compact: HorizontalLayout {
+        spacing: 8px;
+        GhostButton {
+            horizontal-stretch: 1;
+            compact: true;
+            text: Phone.recording ? "Stop" : "Record";
+            icon: Phone.recording ? "\u{E71A}" : "\u{E7C8}";
+            label: Phone.recording ? "Stop and save the recording" : "Record";
+            on: Phone.recording;
+            clicked => { Phone.record(); }
+        }
+        GhostButton {
+            horizontal-stretch: 1;
+            compact: true;
+            text: "Screenshot";
+            icon: "\u{E722}";
+            clicked => { Phone.screenshot(); }
+        }
+        GhostButton {
+            horizontal-stretch: 0;
+            compact: true;
+            text: "";
+            icon: "\u{E712}";
+            label: "More";
+            clicked => { more.show(); }
+        }
+    }
+    more := PopupWindow {
+        x: root.width - 200px;
+        y: root.height;
+        Menu {
+            MenuItem {
+                icon: "\u{E7F4}";
+                text: Phone.presenting ? "Stop presenting" : "Present in a window";
+                clicked => { Phone.present(); }
+            }
+            MenuItem {
+                icon: "\u{E767}";
+                text: "Sound only";
+                clicked => { Phone.sound-only(""); }
+            }
+            MenuItem {
+                icon: "\u{E711}";
+                text: "Stop mirroring";
+                clicked => { Phone.stop(); }
+            }
+        }
+    }
+}
+
+// While mirroring: the ticks, Present's own, Sound only / Stop.
+component MirrorChoices inherits VerticalLayout {
+    spacing: 2px;
+    if !Screen.compact: Hint {
+        text: "Click and drag on the picture to use the phone; scroll and type work too. " + Phone.save-key + " clips here as well.";
+    }
+    Rectangle { height: 8px; }
+    Head { text: "While mirroring"; }
+    Tick {
+        text: "Phone's sound on this PC (Android 11+)";
+        checked <=> Phone.sound;
+        toggled => { Phone.changed(); }
+    }
+    Tick {
+        text: "Turn the phone's screen off (it keeps running)";
+        checked <=> Phone.screen-off;
+        toggled => { Phone.changed(); }
+    }
+    Tick {
+        text: "Keep the phone awake";
+        checked <=> Phone.awake;
+        toggled => { Phone.changed(); }
+    }
+    Rectangle { height: 8px; }
+    Head { text: "Present in a window"; }
+    Tick {
+        text: "Stay on top";
+        checked <=> Phone.on-top;
+        toggled => { Phone.changed(); }
+    }
+    Tick {
+        text: "Show taps (people see what you press)";
+        checked <=> Phone.show-taps;
+        toggled => { Phone.changed(); }
+    }
+    if !Screen.compact: HorizontalLayout {
+        padding-top: 10px;
+        spacing: 8px;
+        alignment: start;
+        GhostButton {
+            compact: true;
+            text: "Sound only";
+            icon: "\u{E767}";
+            clicked => { Phone.sound-only(""); }
+        }
+        GhostButton {
+            compact: true;
+            text: "Stop mirroring";
+            icon: "\u{E711}";
+            clicked => { Phone.stop(); }
+        }
+    }
+}
+
+// Sound only: the volume here, Record, Show the picture, Stop.
+component SoundOnly inherits VerticalLayout {
+    spacing: 10px;
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Icon {
+                text: "\u{E767}";
+                font-size: 15px;
+                color: Theme.dim;
+            }
+        }
+        Slider {
+            horizontal-stretch: 1;
+            max-width: 300px;
+            minimum: 0;
+            maximum: 100;
+            step: 5;
+            value: Phone.volume * 100;
+            accessible-label: "Volume here, in percent";
+            changed(v) => {
+                Phone.volume = v / 100;
+                Phone.volume-changed();
+            }
+        }
+        Text {
+            horizontal-stretch: 0;
+            min-width: 40px;
+            text: Math.round(Phone.volume * 100) + "%";
+            color: Theme.muted;
+            font-family: Theme.mono;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+        if !Screen.compact: Rectangle { horizontal-stretch: 1; }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: Screen.compact ? stretch : start;
+        GhostButton {
+            horizontal-stretch: Screen.compact ? 1 : 0;
+            compact: Screen.compact;
+            text: Phone.recording ? (Screen.compact ? "Stop" : "Stop and save") : "Record";
+            icon: Phone.recording ? "\u{E71A}" : "\u{E7C8}";
+            label: Phone.recording ? "Stop and save the recording" : "Record the sound";
+            on: Phone.recording;
+            clicked => { Phone.record(); }
+        }
+        GhostButton {
+            horizontal-stretch: Screen.compact ? 1 : 0;
+            compact: Screen.compact;
+            text: Screen.compact ? "Picture" : "Show the picture";
+            icon: "\u{E8EA}";
+            label: "Show the picture (mirror)";
+            clicked => { Phone.show-picture(); }
+        }
+        GhostButton {
+            horizontal-stretch: Screen.compact ? 1 : 0;
+            compact: Screen.compact;
+            text: "Stop";
+            icon: "\u{E711}";
+            label: "Stop playing";
+            clicked => { Phone.stop(); }
+        }
+    }
+    Tick {
+        text: "Keep playing on the phone too";
+        checked <=> Phone.keep-on-phone;
+        toggled => { Phone.changed(); }
+    }
+    Hint {
+        text: "Off: the phone goes quiet while it plays here (Android's way of sending all of its sound). Takes effect the next time it starts.";
+    }
+}
+
+export component PhonePane inherits Rectangle {
+    // The picture's own shape, and whether it stands (a phone) or lies (a landscape game).
+    property <float> aspect: Phone.frame-h > 0 ? Phone.frame-w / Phone.frame-h : 0.45;
+    property <bool> standing: root.aspect < 1;
+    property <bool> showing: Phone.state == 4 || Phone.state == 5;
+    // Wide and medium: a standing phone beside the actions, as tall as the page lets it.
+    property <bool> beside: root.showing && root.standing && !Screen.compact;
+    property <length> side-h: max(220px, root.height - 50px);
+    property <length> side-w: min(root.side-h * root.aspect, root.width * 0.45);
+    // Stacked: the picture across the top.
+    property <length> top-max-h: max(160px, root.height * (Screen.compact ? 0.5 : 0.55));
+    property <length> top-w: min(root.standing ? 260px : 720px, root.width - Theme.lane, root.top-max-h * root.aspect);
+    property <length> top-h: root.top-w / root.aspect;
+
+    if root.beside: HorizontalLayout {
+        spacing: 26px;
+        VerticalLayout {
+            horizontal-stretch: 0;
+            spacing: 10px;
+            Picture {
+                width: root.side-w;
+                height: root.side-w / root.aspect;
+            }
+            PhoneKeys { }
+            Rectangle { vertical-stretch: 1; }
+        }
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                padding-right: Theme.lane;
+                spacing: 14px;
+                alignment: start;
+                PhoneStatus { }
+                MirrorActions { }
+                MirrorChoices { }
+                if Capture.saved.length > 0: SavedList { }
+            }
+        }
+    }
+    if !root.beside: ScrollView {
+        VerticalLayout {
+            padding-right: Theme.lane;
+            spacing: 14px;
+            alignment: start;
+            if Phone.state <= 1: GetTools { }
+            if Phone.state == 2: Connect { }
+            if Phone.state == 3 && Phone.detail != "": PhoneStatus { }
+            if Phone.state == 3: PhoneList { }
+            if root.showing: VerticalLayout {
+                spacing: 10px;
+                HorizontalLayout {
+                    alignment: center;
+                    Picture {
+                        width: root.top-w;
+                        height: root.top-h;
+                    }
+                }
+                PhoneKeys { }
+            }
+            if root.showing || Phone.state == 6: PhoneStatus { }
+            if root.showing: MirrorActions { }
+            if root.showing: MirrorChoices { }
+            if Phone.state == 6: SoundOnly { }
+            if Phone.state >= 3 && Capture.saved.length > 0: SavedList { }
+        }
+    }
+}

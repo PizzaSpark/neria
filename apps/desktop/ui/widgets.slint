@@ -633,11 +633,13 @@ export component FilterTab inherits Rectangle {
     in property <int> count;
     in property <bool> active;
     in property <bool> attention;
+    // Tabs that aren't a filter (Capture page: This PC / Phone) have no count.
+    in property <bool> show-count: true;
     callback clicked();
     min-width: row.preferred-width;
     height: 32px;
     accessible-role: tab;
-    accessible-label: root.text + ", " + root.count;
+    accessible-label: root.show-count ? root.text + ", " + root.count : root.text;
     accessible-item-selected: root.active;
     accessible-action-default => { root.clicked(); }
     KeyPress {
@@ -659,7 +661,7 @@ export component FilterTab inherits Rectangle {
             font-weight: root.active ? 600 : 500;
             vertical-alignment: center;
         }
-        Text {
+        if root.show-count: Text {
             text: root.count;
             color: root.attention && root.count > 0 ? Theme.warn : Theme.muted;
             font-family: Theme.mono;

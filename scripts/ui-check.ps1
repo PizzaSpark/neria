@@ -156,6 +156,17 @@ $states = [ordered]@{
   "cap-stop"   = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "stopped" }
   "cap-toast"  = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "toast"; NERIA_VOICE_DEMO = "listening" }
   "cap-key"    = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "key" }
+  # Capture page → Phone (NERIA_PHONE_DEMO: sample data, nothing connects).
+  "ph-tools"   = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "tools" }
+  "ph-get"     = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "getting" }
+  "ph-qr"      = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "connect" }
+  "ph-code"    = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "code" }
+  "ph-list"    = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "phones" }
+  "ph-problem" = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "problem" }
+  "ph-mirror"  = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "mirror" }
+  "ph-land"    = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "landscape" }
+  "ph-rec"     = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "rec" }
+  "ph-sound"   = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "sound" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-voice-off" = @{ NERIA_SETTINGS = "voice" }

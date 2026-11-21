@@ -603,6 +603,10 @@ fn tooltip(ui: &AppWindow) -> String {
     if let Some(status) = crate::capture_ui::status_line() {
         return format!("Neria · {status}");
     }
+    // "Playing from Pixel 7", "Mirroring Pixel 7".
+    if let Some(status) = crate::phone_ui::status_line() {
+        return format!("Neria · {status}");
+    }
     match ui.get_active_count() {
         0 => "Neria".into(),
         1 => "Neria · 1 download going".into(),

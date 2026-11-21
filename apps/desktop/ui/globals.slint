@@ -986,3 +986,92 @@ export global Capture {
     // The page is showing (the list of windows refreshes while it does).
     callback page-shown(bool);
 }
+
+// A phone remembered or connected (Capture page → Phone).
+export struct PhoneRow {
+    // adb's name for it when it's here ("" when it isn't).
+    serial: string,
+    // The same phone over USB and Wi-Fi (`ro.serialno`).
+    id: string,
+    name: string,
+    // "Wi-Fi · Android 15".
+    hint: string,
+    here: bool,
+    // "Tap Allow on your phone", "" when ready.
+    problem: string,
+}
+
+// Capture page → Phone (mock: design/phone.html, picks 1A · 2A · 3A · 4A · 5A): your Android
+// phone mirrored, its last minute kept, recorded, heard, presented.
+export global Phone {
+    // Which tab the Capture page shows: 0 This PC, 1 Phone.
+    in-out property <int> tab;
+    // 0 the tools aren't here, 1 getting them, 2 connecting (the QR), 3 phones (none mirrored),
+    // 4 starting, 5 mirroring, 6 sound only.
+    in property <int> state;
+    in property <float> tools-progress;
+    in property <string> tools-text;
+    // The big line, the line under it (a problem turns it warn), the mono line.
+    in property <string> status;
+    in property <string> detail;
+    in property <bool> problem;
+    in property <string> tech;
+    // Connecting: the QR, which step is next (1 Developer options, 2 Wireless debugging,
+    // 3 scan), the line under the code ("Looking for your phone on this Wi-Fi…").
+    in property <image> qr;
+    in property <int> step: 1;
+    in property <string> qr-note;
+    // The pairing code fallback: open, the phone found to pair with, why it didn't.
+    in-out property <bool> code-open;
+    in property <string> code-target;
+    in property <string> code-problem;
+    in property <bool> usb-open;
+    in property <[PhoneRow]> phones;
+    // The phone mirrored (or played).
+    in property <string> name;
+    // Its picture (mpv draws it) and its shape.
+    in property <image> frame;
+    in property <int> frame-w: 1080;
+    in property <int> frame-h: 2400;
+    in property <bool> recording;
+    in property <string> rec-time;
+    in property <bool> presenting;
+    // While mirroring: the phone's sound here, its screen off, kept awake.
+    in-out property <bool> sound: true;
+    in-out property <bool> screen-off;
+    in-out property <bool> awake: true;
+    // Sound only: keep playing on the phone too; the volume here (0–1).
+    in-out property <bool> keep-on-phone: true;
+    in-out property <float> volume: 1.0;
+    // Present: on top, taps shown, kept awake.
+    in-out property <bool> on-top: true;
+    in-out property <bool> show-taps;
+    // "F8": the save key clips here too.
+    in property <string> save-key: "F8";
+    callback get-tools();
+    callback add-phone();
+    callback back();
+    callback pair-code(string);
+    callback mirror(string);
+    callback sound-only(string);
+    callback forget(string);
+    callback stop();
+    callback clip();
+    callback record();
+    callback screenshot();
+    callback present();
+    callback show-picture();
+    // A tick changed (sound, screen off, awake, keep on phone, present's).
+    callback changed();
+    callback volume-changed();
+    // On the picture: 0 down, 1 up, 2 move; where, 0–1 across and down the picture.
+    callback touch(int, float, float);
+    callback scroll(float, float, float);
+    // Back 4, Home 3, Recent apps 187.
+    callback press(int);
+    callback rotate();
+    // Typed while the picture has focus: text, or "\u{8}" / "\n".
+    callback typed(string);
+    // The tab is showing.
+    callback shown(bool);
+}

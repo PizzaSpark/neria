@@ -1053,12 +1053,14 @@ pub fn install(
                         // The Compress page's sample player draws with the same GL context.
                         if let Some(gl) = &clipper.borrow().gl {
                             crate::cmp_player::render(&ui, gl);
+                            crate::phone_ui::render(&ui, gl);
                         }
                     }
                 }
                 RenderingState::RenderingTeardown => {
                     if let Some(gl) = &clipper.borrow().gl {
                         crate::cmp_player::teardown(gl);
+                        crate::phone_ui::teardown(gl);
                     }
                     clipper.borrow_mut().teardown();
                 }

@@ -1,5 +1,5 @@
 import { Theme } from "../theme.slint";
-import { Capture } from "../globals.slint";
+import { Capture, Phone } from "../globals.slint";
 import { NavItem, LogoMark } from "../widgets.slint";
 
 // The nav rail on the left (wide and medium windows): logo mark, the four pages, Settings
@@ -47,7 +47,7 @@ export component Sidebar inherits Rectangle {
             icon: "\u{E7C8}";
             label: "Capture";
             active: root.page == 3;
-            dot: Capture.state == 2;
+            dot: Capture.state == 2 || Phone.state >= 5;
             clicked => { root.page = 3; }
         }
         Rectangle { vertical-stretch: 1; }
@@ -102,7 +102,7 @@ export component TabBar inherits Rectangle {
             icon: "\u{E7C8}";
             label: "Capture";
             active: root.page == 3 && !root.settings-open;
-            dot: Capture.state == 2;
+            dot: Capture.state == 2 || Phone.state >= 5;
             clicked => { root.page = 3; }
         }
         NavItem {

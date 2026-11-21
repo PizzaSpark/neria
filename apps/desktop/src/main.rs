@@ -17,6 +17,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 mod background_ui;
 mod bulk_ui;
 mod capture_ui;
+mod phone_ui;
 mod chat_ui;
 mod clipper;
 mod clips_ui;
@@ -2075,6 +2076,7 @@ fn main() -> anyhow::Result<()> {
     live_ui::install(&ui, &queue);
     voice_ui::install(&ui, settings.clone(), queue.clone());
     capture_ui::install(&ui, settings.clone());
+    phone_ui::install(&ui, settings.clone());
     sound_ui::install(&ui);
     let _gone_timer = watch_gone(&ui);
     ui.on_retry_setup({
@@ -2114,6 +2116,8 @@ fn main() -> anyhow::Result<()> {
     _clipper.borrow_mut().stop_buffer();
     // Recordings are stopped and saved first (what isn't done by then is saved next start).
     live_ui::save_before_quit(&queue);
+    // The phone: its recording saved, mirroring and Neria's adb stopped.
+    phone_ui::shutdown();
     queue.shutdown();
     neria_core::cookies::clear_run_copies();
     Ok(())

@@ -1,0 +1,86 @@
+import { Theme, Screen } from "../theme.slint";
+import { GhostButton, Divider, Thumb, Icon } from "../widgets.slint";
+import { Capture, CaptureSaved } from "../globals.slint";
+
+// What instant replay and the phone saved (Capture page, both tabs): a frame, the name, its
+// length, size and age, Open in clipper and Show.
+export component SavedRow inherits VerticalLayout {
+    in property <CaptureSaved> item;
+    HorizontalLayout {
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Thumb {
+                width: 64px;
+                height: 36px;
+                source: root.item.thumb;
+                background: Theme.video;
+                if root.item.thumb.width == 0: Icon {
+                    text: "\u{E8B2}";
+                    font-size: 13px;
+                    color: Theme.dim;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.item.title;
+                color: Theme.ink;
+                font-size: 13.5px;
+                font-weight: 500;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.detail;
+                color: Theme.muted;
+                font-family: Theme.mono;
+                font-size: 11px;
+                overflow: elide;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            HorizontalLayout {
+                spacing: 8px;
+                GhostButton {
+                    compact: true;
+                    text: Screen.wide ? "Open in clipper" : "";
+                    icon: "\u{E8C6}";
+                    label: "Open " + root.item.title + " in the clipper";
+                    clicked => { Capture.open-clip(root.item.path); }
+                }
+                GhostButton {
+                    compact: true;
+                    text: "";
+                    icon: "\u{E8B7}";
+                    label: "Show " + root.item.title + " in its folder";
+                    clicked => { Capture.show-file(root.item.path); }
+                }
+            }
+        }
+    }
+    Divider { }
+}
+
+// "Saved" and its rows.
+export component SavedList inherits VerticalLayout {
+    spacing: 0px;
+    Text {
+        text: "Saved";
+        color: Theme.ink;
+        font-family: Theme.display;
+        font-size: 14px;
+        font-weight: 700;
+    }
+    Rectangle { height: 4px; }
+    for s in Capture.saved: SavedRow {
+        item: s;
+    }
+}

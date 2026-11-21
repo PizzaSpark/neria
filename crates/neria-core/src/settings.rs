@@ -141,6 +141,8 @@ pub struct Settings {
     pub voice: crate::voice::Prefs,
     /// The Capture page: instant replay of a game or the screen.
     pub capture: crate::capture::Prefs,
+    /// The Capture page's Phone tab: mirroring, Sound only, Present.
+    pub phone: crate::phone::Prefs,
     /// Closing with downloads going: "ask", "tray" (keep going there) or "quit".
     pub close_action: String,
     /// Windows notifications when something finishes or fails.
@@ -201,6 +203,7 @@ impl Default for Settings {
             chat_save: true,
             voice: Default::default(),
             capture: Default::default(),
+            phone: Default::default(),
             caption_format: Default::default(),
             caption_mode: Default::default(),
             chapters_separate: false,

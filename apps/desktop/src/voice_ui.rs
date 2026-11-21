@@ -986,6 +986,13 @@ fn heard(ui: &AppWindow, phrase: &str) {
     } else if crate::capture_ui::running() {
         // Instant replay: the same save as its key, with its own toast and notification.
         crate::capture_ui::save(ui, crate::capture_ui::By::Voice(phrase.to_string(), p.sound));
+        if crate::phone_ui::mirroring() {
+            crate::phone_ui::clip(ui);
+        }
+        return;
+    } else if crate::phone_ui::mirroring() {
+        // The phone mirrored: its last seconds.
+        crate::phone_ui::clip(ui);
         return;
     } else {
         toast(ui, &said, "Nothing kept to clip from yet", 2, false);

@@ -266,6 +266,44 @@ impl Info {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Choices (in `settings.json`)
+
+/// The Phone tab's choices.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Prefs {
+    /// While mirroring: the phone's sound here, its screen off, kept awake.
+    pub sound: bool,
+    pub screen_off: bool,
+    pub awake: bool,
+    /// Sound only: keep playing on the phone too; the volume here.
+    pub keep_on_phone: bool,
+    pub volume: f32,
+    /// Present: on top, taps shown.
+    pub on_top: bool,
+    pub show_taps: bool,
+    /// Seconds "Clip the last" saves, and how much is kept.
+    pub clip: u32,
+    pub keep: u32,
+}
+
+impl Default for Prefs {
+    fn default() -> Self {
+        Prefs {
+            sound: true,
+            screen_off: false,
+            awake: true,
+            keep_on_phone: true,
+            volume: 1.0,
+            on_top: true,
+            show_taps: false,
+            clip: 30,
+            keep: 60,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Phones you've connected (`phones.json`)
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

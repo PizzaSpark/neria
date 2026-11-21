@@ -138,6 +138,11 @@ fn keep_text(secs: u32) -> String {
 }
 
 /// The plain status, also the tray's tooltip: "Keeping the last 1 min of VALORANT".
+/// The save key ("F8"), for the Phone tab.
+pub fn save_key() -> String {
+    prefs().key
+}
+
 pub fn status_line() -> Option<String> {
     if !on() {
         return None;
@@ -341,6 +346,7 @@ fn turn_off(ui: &AppWindow) {
     halt();
     set_phase(Phase::Off);
     show(ui);
+    crate::phone_ui::take_key(ui);
 }
 
 /// Stop recording (off the UI thread: ffmpeg is stopped and its pieces deleted).
@@ -806,6 +812,8 @@ fn register_key(ui: &AppWindow) {
     if !on() {
         return;
     }
+    // The phone holds the key while instant replay is off; one holder at a time.
+    crate::phone_ui::release_key();
     let p = prefs();
     let c = ui.global::<Capture>();
     let key = match Hotkey::parse(&p.key) {
@@ -817,7 +825,13 @@ fn register_key(ui: &AppWindow) {
     };
     let weak = ui.as_weak();
     match hotkey::listen(key, move || {
-        let _ = weak.upgrade_in_event_loop(|ui| save(&ui, By::Key));
+        let _ = weak.upgrade_in_event_loop(|ui| {
+            save(&ui, By::Key);
+            // The phone mirrored at the same time: its last seconds too.
+            if crate::phone_ui::mirroring() {
+                crate::phone_ui::clip(&ui);
+            }
+        });
     }) {
         Ok(l) => {
             ST.with(|s| s.borrow_mut().hotkey = Some(l));
@@ -943,24 +957,30 @@ pub fn save(ui: &AppWindow, by: By) {
             ST.with(|s| s.borrow_mut().saving = false);
             match saved {
                 Ok(file) => {
-                    save_prefs(|p| p.add_saved(file.clone()));
-                    ST.with(|s| s.borrow_mut().last = Some((file.clone(), Instant::now())));
-                    history::record(history::Record {
-                        key: String::new(),
-                        url: String::new(),
-                        file: file.clone(),
-                        title: name.clone(),
-                        at: SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()),
-                    });
                     let text = format!("Saved the last {} of {what}", keep_text(secs));
-                    toast(&ui, heard.as_deref().unwrap_or("Saved"), &text, by_voice, Some(&file));
-                    crate::background_ui::notify_saved(&ui, &text, &file);
-                    show_saved(&ui);
+                    saved_file(&ui, &file, &name, heard.as_deref().unwrap_or("Saved"), &text, by_voice);
                 }
                 Err(e) => toast(&ui, heard.as_deref().unwrap_or("Not saved"), &e.to_string(), false, None),
             }
         });
     });
+}
+
+/// Something saved from the Capture page (instant replay, the phone): in Saved, in the
+/// history, the toast with Open in clipper (and Undo), a notification when Neria is behind.
+pub fn saved_file(ui: &AppWindow, file: &Path, name: &str, tag: &str, text: &str, undo: bool) {
+    save_prefs(|p| p.add_saved(file.to_path_buf()));
+    ST.with(|s| s.borrow_mut().last = Some((file.to_path_buf(), Instant::now())));
+    history::record(history::Record {
+        key: String::new(),
+        url: String::new(),
+        file: file.to_path_buf(),
+        title: name.to_string(),
+        at: SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()),
+    });
+    toast(ui, tag, text, undo, Some(file));
+    crate::background_ui::notify_saved(ui, text, file);
+    show_saved(ui);
 }
 
 /// Undo the clip just saved (its toast, or "undo that" within 3 minutes): the file goes.
@@ -983,7 +1003,7 @@ pub fn can_undo() -> bool {
     ST.with(|s| s.borrow().last.as_ref().is_some_and(|(_, at)| at.elapsed() < Duration::from_secs(180)))
 }
 
-fn toast(ui: &AppWindow, tag: &str, text: &str, undo: bool, file: Option<&Path>) {
+pub fn toast(ui: &AppWindow, tag: &str, text: &str, undo: bool, file: Option<&Path>) {
     let c = ui.global::<Capture>();
     c.set_toast_tag(tag.into());
     c.set_toast_text(text.into());
@@ -1035,7 +1055,7 @@ fn age(t: SystemTime) -> String {
 }
 
 /// The Saved list: each clip still there, with its length, size, age and a frame.
-fn show_saved(ui: &AppWindow) {
+pub fn show_saved(ui: &AppWindow) {
     if ST.with(|s| s.borrow().demo) {
         return;
     }

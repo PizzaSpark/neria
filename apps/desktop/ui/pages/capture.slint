@@ -1,10 +1,12 @@
 import { ComboBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { Menu, MenuItem, PrimaryButton, GhostButton, IconButton, TextLink, ChoiceChips, PageTitle, Notice, Divider, Thumb, Tick, Tag, Icon, KeyPress, SectionTitle } from "../widgets.slint";
-import { Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Voice } from "../globals.slint";
+import { Menu, MenuItem, PrimaryButton, GhostButton, IconButton, TextLink, ChoiceChips, PageTitle, Notice, Divider, Thumb, Tick, Tag, Icon, KeyPress, SectionTitle, FilterTab } from "../widgets.slint";
+import { Capture, CaptureSource, CaptureTrack, CaptureApp, Voice, Phone } from "../globals.slint";
+import { SavedList } from "../components/saved-list.slint";
+import { PhonePane } from "phone.slint";
 
 // The Capture page (mock: design/capture.html, picks 1A · 2A · 3A · 4A): instant replay of a
-// game, a window or a monitor. The status and its buttons stay at the top; what to record,
+// game, a window or a monitor; its Phone tab is `phone.slint` (design/phone.html). The status and its buttons stay at the top; what to record,
 // how much, the sound and the key scroll under it; then the clips it saved.
 
 // A small heading over a group of choices.
@@ -583,73 +585,8 @@ component Choices inherits VerticalLayout {
 }
 
 // A saved clip: frame, name, length · size · when; Open in clipper, Show, ×.
-component SavedRow inherits VerticalLayout {
-    in property <CaptureSaved> item;
-    HorizontalLayout {
-        padding-top: 8px;
-        padding-bottom: 8px;
-        spacing: 12px;
-        VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            Thumb {
-                width: 64px;
-                height: 36px;
-                source: root.item.thumb;
-                background: Theme.video;
-                if root.item.thumb.width == 0: Icon {
-                    text: "\u{E8B2}";
-                    font-size: 13px;
-                    color: Theme.dim;
-                }
-            }
-        }
-        VerticalLayout {
-            alignment: center;
-            spacing: 3px;
-            horizontal-stretch: 1;
-            Text {
-                text: root.item.title;
-                color: Theme.ink;
-                font-size: 13.5px;
-                font-weight: 500;
-                overflow: elide;
-            }
-            Text {
-                text: root.item.detail;
-                color: Theme.muted;
-                font-family: Theme.mono;
-                font-size: 11px;
-                overflow: elide;
-            }
-        }
-        VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            HorizontalLayout {
-                spacing: 8px;
-                GhostButton {
-                    compact: true;
-                    text: Screen.wide ? "Open in clipper" : "";
-                    icon: "\u{E8C6}";
-                    label: "Open " + root.item.title + " in the clipper";
-                    clicked => { Capture.open-clip(root.item.path); }
-                }
-                GhostButton {
-                    compact: true;
-                    text: "";
-                    icon: "\u{E8B7}";
-                    label: "Show " + root.item.title + " in its folder";
-                    clicked => { Capture.show-file(root.item.path); }
-                }
-            }
-        }
-    }
-    Divider { }
-}
-
 export component CapturePage inherits Rectangle {
-    init => { Capture.page-shown(true); }
+    init => { Capture.page-shown(true); if Phone.tab == 1 { Phone.shown(true); } }
     VerticalLayout {
         padding: Screen.compact ? Screen.pad : 28px;
         padding-bottom: Screen.compact ? 12px : 28px;
@@ -664,14 +601,37 @@ export component CapturePage inherits Rectangle {
                 horizontal-stretch: 1;
                 spacing: 4px;
                 title: "Keep the moment.";
-                subtitle: Screen.compact || Capture.state != 0 ? "" : "Neria keeps the last minute of your game or screen on the graphics card, so the game hardly notices. Press the key when something happens and it's saved.";
+                subtitle: Screen.compact || Capture.state != 0 || Phone.tab == 1 ? "" : "Neria keeps the last minute of your game or screen on the graphics card, so the game hardly notices. Press the key when something happens and it's saved.";
             }
             if Voice.listening: ListenBadge { }
         }
 
-        StatusBand { }
+        // This PC / Phone: calm tabs (they change the view, not a setting).
+        HorizontalLayout {
+            spacing: 22px;
+            vertical-stretch: 0;
+            alignment: start;
+            FilterTab {
+                text: "This PC";
+                show-count: false;
+                active: Phone.tab == 0;
+                clicked => { Phone.tab = 0; Phone.shown(false); }
+            }
+            FilterTab {
+                text: Phone.name != "" ? Phone.name : "Phone";
+                show-count: false;
+                active: Phone.tab == 1;
+                clicked => { Phone.tab = 1; Phone.shown(true); }
+            }
+        }
 
-        ScrollView {
+        if Phone.tab == 1: PhonePane {
+            vertical-stretch: 1;
+        }
+
+        if Phone.tab == 0: StatusBand { }
+
+        if Phone.tab == 0: ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
                 spacing: 18px;
@@ -688,14 +648,7 @@ export component CapturePage inherits Rectangle {
                 }
                 if !Screen.wide: SourceList { }
                 if !Screen.wide: Choices { }
-                if Capture.saved.length > 0: VerticalLayout {
-                    spacing: 0px;
-                    Head { text: "Saved"; }
-                    Rectangle { height: 4px; }
-                    for s in Capture.saved: SavedRow {
-                        item: s;
-                    }
-                }
+                if Capture.saved.length > 0: SavedList { }
             }
         }
     }
