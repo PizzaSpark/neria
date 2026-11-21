@@ -36,7 +36,8 @@ pub const PIECE_SECS: u32 = 2;
 /// What to record.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Source {
-    /// A whole monitor (0 = the main one).
+    /// A whole monitor, by its place in `capture_pick::monitors()` (0: the first graphics
+    /// chip's first screen, usually the main one).
     Monitor(u32),
     /// The window of a program, by its file name (`game.exe`), as Windows Graphics Capture
     /// sees it: works when the window is covered, not in exclusive fullscreen.
@@ -44,9 +45,29 @@ pub enum Source {
 }
 
 impl Source {
+    /// Before the input: a monitor on another graphics chip is recorded on that chip.
+    fn device_args(&self) -> Vec<String> {
+        match self {
+            Source::Monitor(i) => match crate::capture_pick::monitors().into_iter().find(|m| m.index == *i) {
+                Some(m) if m.adapter != 0 => vec![
+                    "-init_hw_device".into(),
+                    format!("d3d11va=grab:{}", m.adapter),
+                    "-filter_hw_device".into(),
+                    "grab".into(),
+                ],
+                _ => Vec::new(),
+            },
+            Source::Window(_) => Vec::new(),
+        }
+    }
+
     fn filter(&self, fps: u32) -> String {
         match self {
-            Source::Monitor(i) => format!("ddagrab=output_idx={i}:framerate={fps}"),
+            Source::Monitor(i) => {
+                let output =
+                    crate::capture_pick::monitors().into_iter().find(|m| m.index == *i).map(|m| m.output).unwrap_or(*i);
+                format!("ddagrab=output_idx={output}:framerate={fps}")
+            }
             Source::Window(exe) => {
                 // A regex inside a quoted filter argument: dots as `[.]`, no backslashes needed.
                 let exe: String = exe
@@ -139,8 +160,18 @@ impl Route {
 
 fn try_route(source: &Source, fps: u32, route: Route) -> std::result::Result<(), String> {
     let graph = format!("{}{}", source.filter(fps), route.chain());
+    let dev = source.device_args();
+    // A screen on another graphics chip: ddagrab only takes that chip inside -filter_complex.
+    let input: Vec<String> = if dev.is_empty() {
+        vec!["-f".into(), "lavfi".into(), "-i".into(), graph]
+    } else {
+        vec!["-filter_complex".into(), format!("{graph}[v]"), "-map".into(), "[v]".into()]
+    };
     let out = proc::command(paths::tool("ffmpeg"))
-        .args(["-hide_banner", "-v", "error", "-f", "lavfi", "-i", &graph, "-t", "0.5"])
+        .args(["-hide_banner", "-v", "error"])
+        .args(dev)
+        .args(input)
+        .args(["-t", "0.5"])
         .args(["-fps_mode", "cfr", "-r", &fps.to_string()])
         .args(route.encoder(fps, 8))
         .args(["-f", "null", "-"])
@@ -179,6 +210,119 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options { source: Source::Monitor(0), fps: 60, keep: 60, mbps: 16, route: None, sounds: default_sounds(None) }
+    }
+}
+
+/// Instant replay's choices (the Capture page), saved in `settings.json`.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Prefs {
+    /// Turn instant replay on when Neria starts.
+    pub on_at_start: bool,
+    /// "monitor" or "window".
+    pub kind: String,
+    /// The program's file name (`VALORANT-Win64-Shipping.exe`) when `kind` is "window".
+    pub exe: String,
+    /// The monitor's name ("DELL U2720Q") and its number when picked (names win: numbers
+    /// change when a screen is plugged in).
+    pub monitor: String,
+    pub monitor_index: u32,
+    /// What it's called in the status and the saved file's name ("VALORANT", "DELL U2720Q").
+    pub label: String,
+    /// Seconds kept (`KEEPS`).
+    pub keep: u32,
+    /// Sound tracks: the game & PC, a voice-chat app on its own (when it runs), the mic.
+    pub pc: bool,
+    pub chat_apart: bool,
+    pub mic: bool,
+    /// Part of the mic's name; empty for Windows' default.
+    pub mic_name: String,
+    /// The save key (`hotkey::Hotkey::parse`).
+    pub key: String,
+    pub fps: u32,
+    pub mbps: u32,
+    /// The clips saved, newest first (up to `SAVED_MAX`).
+    pub saved: Vec<PathBuf>,
+}
+
+/// How much can be kept: the Capture page's chips, in seconds.
+pub const KEEPS: [u32; 4] = [30, 60, 120, 300];
+/// Saved clips listed on the Capture page.
+pub const SAVED_MAX: usize = 8;
+/// The voice-chat app split off onto its own track.
+pub const CHAT_APP: &str = "Discord.exe";
+
+impl Default for Prefs {
+    fn default() -> Self {
+        Prefs {
+            on_at_start: false,
+            kind: "monitor".into(),
+            exe: String::new(),
+            monitor: String::new(),
+            monitor_index: 0,
+            label: String::new(),
+            keep: 60,
+            pc: true,
+            chat_apart: true,
+            mic: true,
+            mic_name: String::new(),
+            key: crate::hotkey::DEFAULT.into(),
+            fps: 60,
+            mbps: 16,
+            saved: Vec::new(),
+        }
+    }
+}
+
+impl Prefs {
+    /// The source, the monitor found by its name when it's still there.
+    pub fn source(&self, monitors: &[crate::capture_pick::Monitor]) -> Source {
+        if self.kind == "window" && !self.exe.is_empty() {
+            return Source::Window(self.exe.clone());
+        }
+        let i = monitors
+            .iter()
+            .find(|m| !self.monitor.is_empty() && m.name == self.monitor)
+            .map(|m| m.index)
+            .unwrap_or(self.monitor_index);
+        Source::Monitor(i)
+    }
+
+    /// The tracks to record now (the chat app split off only while it runs).
+    pub fn sounds(&self) -> Vec<Sound> {
+        let mut v = Vec::new();
+        let chat = self.chat_apart && capture_sound::app_running(CHAT_APP);
+        match (self.pc, chat) {
+            (true, true) => {
+                v.push(Sound::PcExcept(CHAT_APP.into()));
+                v.push(Sound::App(CHAT_APP.into()));
+            }
+            (true, false) => v.push(Sound::Pc),
+            (false, true) => v.push(Sound::App(CHAT_APP.into())),
+            (false, false) => {}
+        }
+        if self.mic {
+            v.push(Sound::Mic(Some(self.mic_name.clone()).filter(|m| !m.is_empty())));
+        }
+        v
+    }
+
+    /// What's recorded, for the status ("Valorant", "DELL U2720Q").
+    pub fn what(&self) -> String {
+        if !self.label.is_empty() {
+            return self.label.clone();
+        }
+        if self.kind == "window" && !self.exe.is_empty() {
+            return self.exe.trim_end_matches(".exe").to_string();
+        }
+        "your main screen".into()
+    }
+
+    /// A clip just saved goes to the top of the list.
+    pub fn add_saved(&mut self, file: PathBuf) {
+        self.saved.retain(|p| p != &file && p.is_file());
+        self.saved.insert(0, file);
+        self.saved.truncate(SAVED_MAX);
     }
 }
 
@@ -281,7 +425,7 @@ impl ScreenBuffer {
 
     /// The last `seconds` (up to a piece more) as an MP4 in `out_dir`, while recording goes on.
     pub fn save(&self, seconds: u32, out_dir: &Path) -> Result<PathBuf> {
-        save_from(&self.dir, seconds, out_dir, &track_titles(&self.options.sounds))
+        save_from(&self.dir, seconds, out_dir, &track_titles(&self.options.sounds), "Replay")
     }
 
     pub fn stop(&self) {
@@ -339,14 +483,17 @@ fn newest_pieces(dir: &Path, seconds: u32) -> Vec<PathBuf> {
     pieces.into_iter().skip(skip).map(|(_, p)| p).collect()
 }
 
-/// [`ScreenBuffer::save`] from its folder, to run off the UI thread.
-pub fn save_from(dir: &Path, seconds: u32, out_dir: &Path, titles: &[String]) -> Result<PathBuf> {
-    let pieces = newest_pieces(dir, seconds);
+/// [`ScreenBuffer::save`] from its folder, to run off the UI thread: `name (last 1m00s).mp4`.
+pub fn save_from(dir: &Path, seconds: u32, out_dir: &Path, titles: &[String], name: &str) -> Result<PathBuf> {
+    // Absolute: ffmpeg reads relative names in the list from the list's own folder.
+    let pieces: Vec<PathBuf> =
+        newest_pieces(dir, seconds).into_iter().map(|p| std::path::absolute(&p).unwrap_or(p)).collect();
     if pieces.is_empty() {
         bail!("Nothing kept yet: give it a few seconds.");
     }
     std::fs::create_dir_all(out_dir)?;
-    let out = crate::clip::unique_path(out_dir, &format!("Replay (last {})", crate::clip::stamp(seconds as f64)), "mp4");
+    let name = crate::music::sanitize(name);
+    let out = crate::clip::unique_path(out_dir, &format!("{name} (last {})", crate::clip::stamp(seconds as f64)), "mp4");
     let list = dir.join(format!("save-{}.txt", std::process::id()));
     let lines: Vec<String> =
         pieces.iter().map(|p| format!("file '{}'", p.to_string_lossy().replace('\'', "'\\''"))).collect();
@@ -389,7 +536,14 @@ fn record(
     let graph = format!("{}{}", o.source.filter(o.fps), route.chain());
     let mut cmd = proc::command(paths::tool("ffmpeg"));
     cmd.args(["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y"]);
-    cmd.args(["-f", "lavfi", "-i", &graph]);
+    let dev = o.source.device_args();
+    // A screen on another graphics chip: ddagrab only takes that chip inside -filter_complex,
+    // so the picture is made there instead of as input 0.
+    let in_graph = !dev.is_empty();
+    cmd.args(dev);
+    if !in_graph {
+        cmd.args(["-f", "lavfi", "-i", &graph]);
+    }
     // Each sound track: opened now (a missing app fails here), sent when ffmpeg connects.
     let feeds_stop = Arc::new(AtomicBool::new(false));
     // However this run ends, its tracks stop sending.
@@ -413,16 +567,29 @@ fn record(
     for f in &feeds {
         cmd.args(capture_sound::input_args(f.port));
     }
-    cmd.args(["-map", "0:v"]);
+    let first = if in_graph { 0 } else { 1 };
+    let mut graphs = Vec::new();
+    if in_graph {
+        graphs.push(format!("{graph}[v]"));
+    }
     // Most players (and Discord, browsers) play only the first track: make it all of them
     // mixed, the separate ones after it for editing.
     if feeds.len() >= 2 {
-        let ins: String = (1..=feeds.len()).map(|i| format!("[{i}:a]")).collect();
-        let mix = format!("{ins}amix=inputs={}:normalize=0:dropout_transition=0,alimiter=limit=0.97[mix]", feeds.len());
-        cmd.args(["-filter_complex", &mix, "-map", "[mix]"]);
+        let ins: String = (first..first + feeds.len()).map(|i| format!("[{i}:a]")).collect();
+        graphs.push(format!(
+            "{ins}amix=inputs={}:normalize=0:dropout_transition=0,alimiter=limit=0.97[mix]",
+            feeds.len()
+        ));
+    }
+    if !graphs.is_empty() {
+        cmd.args(["-filter_complex", &graphs.join(";")]);
+    }
+    cmd.args(["-map", if in_graph { "[v]" } else { "0:v" }]);
+    if feeds.len() >= 2 {
+        cmd.args(["-map", "[mix]"]);
     }
     for i in 0..feeds.len() {
-        cmd.args(["-map", &format!("{}:a", i + 1)]);
+        cmd.args(["-map", &format!("{}:a", first + i)]);
     }
     if feeds.is_empty() {
         cmd.arg("-an");

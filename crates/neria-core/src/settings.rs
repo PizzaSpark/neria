@@ -139,6 +139,8 @@ pub struct Settings {
     pub chat_save: bool,
     /// Settings → Voice: "clip that" heard while the live player is open.
     pub voice: crate::voice::Prefs,
+    /// The Capture page: instant replay of a game or the screen.
+    pub capture: crate::capture::Prefs,
     /// Closing with downloads going: "ask", "tray" (keep going there) or "quit".
     pub close_action: String,
     /// Windows notifications when something finishes or fails.
@@ -198,6 +200,7 @@ impl Default for Settings {
             transcribe: Default::default(),
             chat_save: true,
             voice: Default::default(),
+            capture: Default::default(),
             caption_format: Default::default(),
             caption_mode: Default::default(),
             chapters_separate: false,

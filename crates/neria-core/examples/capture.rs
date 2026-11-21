@@ -13,6 +13,8 @@
 //!   Enter saves the last `--keep` seconds, `q` + Enter stops.
 //! - `--hotkey <key>` (F8; e.g. `Alt+F10`): saves the last `--keep` seconds from anywhere,
 //!   even inside a game, with a short sound; `--no-hotkey`.
+//! - `--list`: the monitors (by name) and programs with a window open (games first), as the
+//!   Capture page lists them, then stop.
 //! - `--out <dir>` (default: the current folder).
 //!
 //! While it runs it prints how it keeps up every 2 s: play a game with it and compare the
@@ -54,6 +56,15 @@ fn main() -> anyhow::Result<()> {
         });
     }
     let out: PathBuf = val("--out").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    if args.iter().any(|a| a == "--list") {
+        for m in neria_core::capture_pick::monitors() {
+            println!("monitor {}: {} · {}", m.index, m.name, m.detail());
+        }
+        for p in neria_core::capture_pick::programs() {
+            println!("{} {} ({})", if p.game { "game  " } else { "window" }, p.name, p.exe);
+        }
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--mics") {
         for m in neria_core::capture::mics() {
             println!("{m}");
@@ -114,7 +125,7 @@ fn main() -> anyhow::Result<()> {
             let (dir, out, titles, busy) = (dir.clone(), out.clone(), titles.clone(), busy.clone());
             std::thread::spawn(move || {
                 let t = Instant::now();
-                match neria_core::capture::save_from(&dir, keep, &out, &titles) {
+                match neria_core::capture::save_from(&dir, keep, &out, &titles, "Replay") {
                     Ok(p) => println!("hotkey: saved {} in {:.1}s", p.display(), t.elapsed().as_secs_f64()),
                     Err(e) => println!("hotkey: couldn't save: {e}"),
                 }

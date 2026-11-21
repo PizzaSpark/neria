@@ -4,6 +4,7 @@
 //! front-end can share it.
 
 pub mod capture;
+pub mod capture_pick;
 pub mod capture_sound;
 pub mod chat;
 pub mod chat_draw;
