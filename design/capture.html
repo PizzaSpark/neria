@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria Capture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --live:#ff6b6f; --livebg:#3d1719;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; position: relative; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25 } }
+  .ghost { height: 34px; padding: 0 12px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; flex: none; background: none; }
+  .ghost.sm { height: 30px; padding: 0 10px; }
+  .btn { height: 38px; padding: 0 16px; border-radius: 9px; background: var(--pop); color: var(--onpop); font: 700 14px "Space Grotesk", sans-serif;
+         border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; flex: none; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  svg.i { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; flex: none; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 4px 0 10px; }
+  .tick { display: flex; gap: 10px; align-items: center; font-size: 13px; margin: 8px 0; }
+  .box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--edge); flex: none; display: grid; place-items: center; }
+  .box.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-size: 13px; font-weight: 700; }
+  .select { background: var(--panel); border: 2px solid var(--ls); border-radius: 9px; height: 34px; display: flex; align-items: center; padding: 0 10px; gap: 8px; font-size: 12.5px; min-width: 0; }
+  .setrow { display: flex; align-items: center; gap: 12px; margin: 10px 0; font-size: 13px; }
+  .setrow > span:first-child { width: 110px; flex: none; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .key { font: 500 11px "JetBrains Mono", monospace; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--ink); }
+  .h5 { font: 700 14px "Space Grotesk", sans-serif; margin: 18px 0 8px; }
+  .h5:first-child { margin-top: 0; }
+  .hl { font: 700 30px/1.1 "Space Grotesk", sans-serif; }
+
+  /* app frame */
+  .app { display: flex; }
+  .rail { width: 80px; border-right: 1px solid var(--line); padding: 18px 10px; flex: none; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+  .rail .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--pop); border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); margin: 0 auto 14px; }
+  .rail .n { height: 54px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--dim); border: 2px solid transparent; }
+  .rail .n.on { color: var(--ink); border-color: var(--ls); background: var(--panel); }
+  .main { flex: 1; min-width: 0; padding: 24px 26px; }
+  .tabbar { display: flex; border-top: 1px solid var(--line); padding: 6px 5px 5px; }
+  .tabbar .n { flex: 1; height: 54px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--dim); border: 2px solid transparent; }
+  .tabbar .n.on { color: var(--ink); border-color: var(--ls); background: var(--panel); }
+
+  /* capture page */
+  .state { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 0; margin: 18px 0 6px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .state .big { font: 600 17px "Inter Tight", sans-serif; }
+  .src { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .src .rad { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--edge); flex: none; }
+  .src .rad.on { border: 6px solid var(--ink); }
+  .src .ic { width: 28px; height: 28px; border-radius: 6px; background: var(--raised); flex: none; display: grid; place-items: center; color: var(--dim); }
+  .saved { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .thumb { width: 64px; height: 36px; border-radius: 6px; background: linear-gradient(140deg, #3a1f4a, #c44569 60%, #f8b500); flex: none; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .listen { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border-radius: 9px; border: 2px solid var(--ls); font-size: 12px; color: var(--ink); white-space: nowrap; }
+
+  .toast { background: var(--panel); border: 1px solid var(--ls); border-radius: 12px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; font-size: 12.5px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.7); }
+  .wtoast { width: 364px; background: #202020; color: #fff; border-radius: 8px; padding: 14px 16px; font-family: "Segoe UI", sans-serif; font-size: 13px; box-shadow: 0 20px 40px -10px rgba(0,0,0,.6); }
+  .wtoast .btns { display: flex; gap: 8px; margin-top: 12px; }
+  .wtoast .btns span { flex: 1; background: #2d2d2d; border-radius: 4px; padding: 7px; text-align: center; }
+  .menu { width: 250px; background: #2b2b2b; color: #fff; border-radius: 8px; padding: 4px; font-family: "Segoe UI", sans-serif; font-size: 13px; }
+  .menu div { padding: 7px 12px; border-radius: 4px; }
+  .menu hr { border: 0; border-top: 1px solid #444; margin: 4px 0; }
+  .menu .dis { color: #999; }
+
+  .w1000 { width: 1000px; } .w400 { width: 400px; } .w760 { width: 760px; }
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 880px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="mic" viewBox="0 0 16 16"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2.5M5.5 15h5"/></symbol>
+  <symbol id="game" viewBox="0 0 16 16"><path d="M4 5h8a3 3 0 0 1 3 3v1.5a2 2 0 0 1-3.6 1.2L10.5 9.5h-5L4.6 10.7A2 2 0 0 1 1 9.5V8a3 3 0 0 1 3-3z"/><path d="M4.5 7v2M3.5 8h2"/></symbol>
+  <symbol id="mon" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M6 14h4M8 11v3"/></symbol>
+  <symbol id="win" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M1.5 5.5h13"/></symbol>
+  <symbol id="rec" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.5"/></symbol>
+</svg>
+<div class="page">
+  <h1>Capture: instant replay, with a face</h1>
+  <p class="lead">The engine already keeps the last minute of a game or a monitor on the GPU, with separate sound tracks,
+  and F8 saves it. This is the part you see: <b>where it lives</b>, turning it on, <b>what it records</b> (a game, a window or
+  a monitor by name), how much, the sound tracks and the key; <b>the status</b> while it runs; <b>the toast</b> when a clip is
+  saved (in the window and as a Windows notification, since the game is usually in front), <b>the tray</b>, and
+  <b>"clip that"</b> by voice.</p>
+
+  <section>
+    <div class="label"><span>Ground rules</span><h2>What it does and doesn't</h2></div>
+    <ul class="why">
+      <li><b>Off until you turn it on.</b> Turning it on is the page's one yellow action; it stays on (also from the tray)
+        until you turn it off. Not on at start-up unless you ask ("Turn on when Neria starts").</li>
+      <li><b>Nothing is saved until you press the key</b> (or say the phrase). The kept minute lives in pieces next to the exe
+        that overwrite the oldest, and are deleted when it stops.</li>
+      <li><b>A game that isn't open yet is fine</b>: it waits for its window ("Waiting for Valorant to open") and starts by
+        itself, then waits again when the game closes.</li>
+      <li><b>Saved clips go to Videos</b> (the same folder as downloads), named "Valorant 2026-11-21 21-04 (last 1m00s).mp4",
+        and open in the clipper with one click.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="label"><span>1 · Where it lives</span><h2>A Capture page, or a Settings section</h2></div>
+    <div class="opt">
+      <h3>1A · A fourth page, "Capture", in the rail <span class="rec">PICK</span></h3>
+      <p>Download, Clip, Compress, <b>Capture</b>. It's a thing you turn on and watch, not a preference, and it has a
+      list of what you saved. The rail's Capture icon gets a small red dot while it runs, so you see it from every page.
+      On compact windows the tab bar gets a fifth tab (five fit at 400: 78 px each).</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide · 1000 · on, running</div>
+          <div class="q w1000">
+            <div class="app">
+              <div class="rail">
+                <div class="logo"></div>
+                <div class="n">⭳<span>Download</span></div>
+                <div class="n">✂<span>Clip</span></div>
+                <div class="n">▣<span>Compress</span></div>
+                <div class="n on" style="position:relative"><svg class="i"><use href="#rec"/></svg><span>Capture</span><i style="position:absolute;top:8px;right:14px;width:7px;height:7px;border-radius:50%;background:var(--live)"></i></div>
+                <div style="flex:1;height:230px"></div>
+                <div class="n">⚙<span>Settings</span></div>
+              </div>
+              <div class="main">
+                <div class="row"><span class="hl grow">Keep the moment.</span><span class="listen"><svg class="i" style="width:13px;height:13px"><use href="#mic"/></svg>Listening for "clip that"</span></div>
+                <div class="state">
+                  <span class="tag live"><span class="dot pulse"></span>ON</span>
+                  <div class="grow">
+                    <div class="big">Keeping the last 1 min of Valorant</div>
+                    <div class="mut" style="margin-top:3px">Press <span class="key">F8</span> or say "clip that" to save it · <span class="mono">1440p · 60 fps · NVIDIA · 3 sound tracks</span></div>
+                  </div>
+                  <button class="ghost">Save now</button>
+                  <button class="ghost">Turn off</button>
+                </div>
+                <div class="cols" style="margin-top:14px">
+                  <div>
+                    <div class="h5">What to record</div>
+                    <div class="src"><span class="rad on"></span><span class="ic"><svg class="i"><use href="#game"/></svg></span><span class="grow">Valorant<div class="mut" style="font-size:12px">VALORANT-Win64-Shipping.exe</div></span><span class="tag">Game</span></div>
+                    <div class="src"><span class="rad"></span><span class="ic"><svg class="i"><use href="#win"/></svg></span><span class="grow">Discord</span></div>
+                    <div class="src"><span class="rad"></span><span class="ic"><svg class="i"><use href="#mon"/></svg></span><span class="grow">DELL U2720Q<div class="mut" style="font-size:12px">Main screen · 2560 × 1440</div></span></div>
+                    <div class="src"><span class="rad"></span><span class="ic"><svg class="i"><use href="#mon"/></svg></span><span class="grow">LG 24MP59G<div class="mut" style="font-size:12px">Second screen · 1920 × 1080</div></span></div>
+                    <div class="row" style="margin-top:8px"><span class="lnk">Show every open window</span><span class="grow"></span><span class="lnk">Refresh</span></div>
+                  </div>
+                  <div>
+                    <div class="h5">How much to keep</div>
+                    <div class="chips"><span class="chip">30 s</span><span class="chip on">1 min</span><span class="chip">2 min</span><span class="chip">5 min</span></div>
+                    <div class="h5">Sound</div>
+                    <div class="tick"><span class="box on">✓</span><span class="grow">Game &amp; PC</span></div>
+                    <div class="tick"><span class="box on">✓</span><span class="grow">Discord on its own track <span class="mut">(when it runs)</span></span></div>
+                    <div class="tick"><span class="box on">✓</span><span>Mic</span><div class="select grow" style="margin-left:8px"><span class="grow">Microphone (fifine)</span><span class="mut">▾</span></div></div>
+                    <div class="hint">Each is its own track in the saved file, all mixed into the first one so any player plays them.</div>
+                    <div class="h5">Save key</div>
+                    <div class="row"><div class="select" style="width:150px"><span class="grow mono">F8</span></div><span class="lnk">Change</span></div>
+                    <div class="hint">Works inside games. Voice: Settings → Voice.</div>
+                  </div>
+                </div>
+                <div class="h5" style="margin-top:22px">Saved</div>
+                <div class="saved"><span class="thumb"></span><span class="grow"><div>Valorant 2026-11-21 21-04 (last 1m00s)</div><div class="mono mut">1:00 · 118 MB · 2 min ago</div></span><button class="ghost sm">✂ Open in clipper</button><span class="lnk">Show</span></div>
+                <div class="saved"><span class="thumb" style="filter:hue-rotate(80deg)"></span><span class="grow"><div>Valorant 2026-11-21 20-51 (last 1m00s)</div><div class="mono mut">1:00 · 121 MB · 15 min ago</div></span><button class="ghost sm">✂ Open in clipper</button><span class="lnk">Show</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Off (first visit)</div>
+          <div class="q w760">
+            <div class="main">
+              <div class="hl">Keep the moment.</div>
+              <div class="hint" style="font-size:13.5px;max-width:520px;margin-top:8px">Neria keeps the last minute of your game or screen, on the graphics card, so it costs a game almost nothing. Press <span class="key">F8</span> when something happens and it's saved.</div>
+              <div class="state">
+                <div class="grow"><div class="big">Instant replay is off</div><div class="mut" style="margin-top:3px">Will keep the last 1 min of Valorant</div></div>
+                <button class="btn">Turn on instant replay</button>
+              </div>
+              <div class="mut" style="margin-top:12px">… the same choices underneath …</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Waiting for the game / a problem</div>
+          <div class="q w400" style="padding:16px">
+            <div class="state" style="margin-top:0">
+              <span class="tag">WAITING</span>
+              <div class="grow"><div class="big">Waiting for Valorant to open</div><div class="mut">Starts by itself when its window shows.</div></div>
+            </div>
+            <div class="state">
+              <span class="tag warn">STOPPED</span>
+              <div class="grow"><div class="big">Couldn't record Valorant</div><div class="mut">It's in exclusive fullscreen: switch it to Borderless, or record the monitor.</div></div>
+              <button class="ghost">Try again</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>1B · A "Capture" section in Settings, with a strip on the Download page</h3>
+      <p>Fewer places, but you'd turn it on from a drawer, the saved clips have no home except the queue, and the status
+      would be a strip squeezed above the link box. Turning a recorder on and off is not a setting. Not mocked further.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>2 · What to record</span><h2>Games first, then windows, then monitors by name</h2></div>
+    <div class="opt">
+      <h3>2A · One list, games on top <span class="rec">PICK</span></h3>
+      <p>Programs with a window open now, a <b>Game</b> tag when it covers a whole screen or lives in a games folder
+      (Steam, Epic, Riot, Battle.net, Xbox), then every monitor by its own name and size ("DELL U2720Q · Main screen ·
+      2560 × 1440"). The picked game stays in the list when it closes ("not open now"), so it waits for it. Other
+      windows (browsers, Explorer) only under "Show every open window".</p>
+    </div>
+    <div class="opt">
+      <h3>2B · Three chips (Game / Window / Monitor), then a menu</h3>
+      <p>Two clicks for the common case and the menu hides the names. Not mocked further.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>3 · Saved</span><h2>Knowing it saved, without leaving the game</h2></div>
+    <div class="opt">
+      <h3>3A · The "saved" sound + a Windows notification; a toast when Neria is in front <span class="rec">PICK</span></h3>
+      <p>In a game you can't see Neria, so the key plays the short "saved" sound (as now) and Windows shows a
+      notification with <b>Open in clipper</b> (the notification setting in General applies; off: the sound only). When
+      Neria's window is in front, its own toast says it. Voice: the same, plus "undo that" deletes it.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Windows notification</div>
+          <div class="wtoast"><div class="row"><b>Neria</b></div><div style="margin-top:8px;font-weight:600">Saved the last 1 min of Valorant</div><div style="color:#ccc">Valorant 2026-11-21 21-04 (last 1m00s).mp4</div><div class="btns"><span>Open in clipper</span><span>Show</span></div></div>
+        </div>
+        <div>
+          <div class="cap">Neria's toast (window in front)</div>
+          <div class="toast" style="width:430px"><span class="tag ok">Saved</span><span class="grow">The last 1 min of Valorant</span><button class="ghost sm">✂ Open in clipper</button></div>
+          <div class="cap" style="margin-top:14px">Said "clip that"</div>
+          <div class="toast" style="width:430px"><span class="tag ok">Heard "clip that"</span><span class="grow">Saved the last 1 min</span><span class="lnk">Undo</span><button class="ghost sm">✂ Open</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>4 · Tray</span><h2>Turning it on and off without the window</h2></div>
+    <div class="opt">
+      <h3>4A · Two lines added to the tray menu <span class="rec">PICK</span></h3>
+      <p>While instant replay is on, closing the window goes to the tray without asking (a recorder that quits when
+      you close it would surprise you). The tray's tooltip says the status line.</p>
+      <div class="pair">
+        <div class="menu">
+          <div class="dis">Keeping the last 1 min of Valorant</div>
+          <div>Save the last 1 min (F8)</div>
+          <div>Turn off instant replay</div>
+          <hr>
+          <div>Open Neria</div>
+          <div>Pause downloads</div>
+          <div>Quit</div>
+        </div>
+        <div class="menu">
+          <div>Turn on instant replay</div>
+          <hr>
+          <div>Open Neria</div>
+          <div>Pause downloads</div>
+          <div>Quit</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>5 · Compact</span><h2>400 wide</h2></div>
+    <div class="pair scroll">
+      <div>
+        <div class="cap">Compact · 400 · on</div>
+        <div class="q w400">
+          <div style="padding:16px">
+            <div class="row"><span style="width:26px;height:26px;border-radius:7px;background:var(--pop);border:2px solid #000"></span><span class="hl grow" style="font-size:24px">Keep the moment.</span><span class="listen"><svg class="i" style="width:13px;height:13px"><use href="#mic"/></svg></span></div>
+            <div class="state">
+              <span class="tag live"><span class="dot pulse"></span>ON</span>
+              <div class="grow"><div class="big" style="font-size:15px">Keeping the last 1 min of Valorant</div><div class="mut">Press <span class="key">F8</span> to save it</div></div>
+              <div class="row" style="width:100%"><button class="ghost grow">Save now</button><button class="ghost grow">Turn off</button></div>
+            </div>
+            <div class="h5">What to record</div>
+            <div class="src"><span class="rad on"></span><span class="grow">Valorant</span><span class="tag">Game</span></div>
+            <div class="src"><span class="rad"></span><span class="grow">DELL U2720Q · Main screen</span></div>
+            <div class="h5">How much to keep</div>
+            <div class="chips"><span class="chip">30 s</span><span class="chip on">1 min</span><span class="chip">2 min</span><span class="chip">5 min</span></div>
+          </div>
+          <div class="tabbar"><div class="n">⭳<span>Download</span></div><div class="n">✂<span>Clip</span></div><div class="n">▣<span>Compress</span></div><div class="n on"><svg class="i"><use href="#rec"/></svg><span>Capture</span></div><div class="n">⚙<span>Settings</span></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="cap">Settings → Voice: the tick now says both</div>
+        <div class="q w400" style="padding:16px">
+          <div class="h5">Clip with your voice</div>
+          <div class="tick" style="align-items:flex-start"><span class="box on">✓</span><span>Listen for a phrase while the live player is open or instant replay runs</span></div>
+          <div class="hint">Saying it does what the button does: Clip the last while recording a stream, Save the last while
+          watching one, the key's save while instant replay runs. Never recorded or sent anywhere.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Summary</span><h2>The picks</h2></div>
+    <table class="cmp">
+      <tr><th>Part</th><th>Pick</th><th>Why</th></tr>
+      <tr><td>Where</td><td>1A · a Capture page (rail + tab bar), red dot while on</td><td>A thing you turn on and watch, with its own saved list</td></tr>
+      <tr><td>What</td><td>2A · one list: games, windows, monitors by name</td><td>The common pick is one click; names, not numbers</td></tr>
+      <tr><td>Saved</td><td>3A · sound + Windows notification; toast when in front</td><td>The game is in front; Open in clipper either way</td></tr>
+      <tr><td>Tray</td><td>4A · status, Save, Turn on/off</td><td>On and off without the window; closing keeps it going</td></tr>
+      <tr><td>Voice</td><td>The same listener, sets and Settings → Voice; listens while instant replay is on</td><td>"Clip that" = F8; "undo that" deletes it</td></tr>
+    </table>
+  </section>
+</div>
+</body>
+</html>
