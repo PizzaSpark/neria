@@ -7,9 +7,10 @@ FFmpeg, Deno, gallery-dl (photos in posts) and libmpv, all auto-fetched into `bi
 defaults, no dead ends, nothing that needs a manual to understand. A feature that works but
 feels confusing isn't done.
 
-**Order:** v0.3 (finish and ship what's built) → UI foundation → feature tracks →
-livestreams → bigger ideas → Android. Within each section, items are in the order we'll do
-them; related ideas are merged into one item so they get built together.
+**Order:** "Up next" below is the one list of what we do and in what order (reordered
+2026-11-21). The sections after it are the details: what each track built and its open bits.
+Within a section, items are in the order we'll do them; related ideas are merged into one item
+so they get built together.
 
 ## Shipped ✅
 
@@ -178,16 +179,35 @@ them; related ideas are merged into one item so they get built together.
 - Fixes on the way: recordings' yt-dlp/ffmpeg no longer outlive Neria
 - Notes: `docs/releases/v0.7.0.md`
 
-## Now: after v0.3.0
-Loose ends left from v0.3 (released 2026-11-12 without them).
-1. **Check what's left on real links**: an Instagram carousel all the way through with
-   cookies. Brave locks its cookies while open (the error and Settings now say "close it
-   fully"); not yet checked whether it reads them once closed
-2. **Code signing** to remove the SmartScreen warning: SignPath Foundation signs open-source
-   projects for free; the repo is public, so apply and sign in the release workflow
-3. Friends test round two
+## Up next (priority order)
+1. **Ship v0.9.0.** Finish the chat / recording fixes in flight on `capture-prototype`, then
+   release what's on `main` since v0.8.0: Compress for sound files (MP3 too, waveform trim),
+   several kept parts and Even out, Speech to text, Live chat. The Capture engine can ride
+   along hidden (no UI yet)
+2. **Trust before more features.** These have waited since v0.3:
+   - **Code signing**: SignPath Foundation signs open-source projects for free; apply and sign
+     in the release workflow, so friends stop seeing SmartScreen's warning
+   - **Friends test round two** on the signed v0.9.0; what they hit goes ahead of item 3
+   - **Code review** of the Clip track and the code from before the Download track (only the
+     Download track has had one)
+   - **Real-link checks left**: an Instagram carousel all the way through with cookies;
+     whether Brave's cookies are read once Brave is fully closed; a scheduled stream /
+     premiere recorded from its first second (Livestreams 2)
+3. **Capture track**: its UI (item 4), then "Hey Neria, clip that" (item 5). The engine,
+   sound and hotkey are built; this makes them something people can use
+4. **Phone track**: connecting by QR first, then the quick mirror, then the mirror in Neria's
+   own page, sharing Capture's replay buffer and "Clip the last"
+5. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
+   (starts ~1 s faster on every download and every Spotify candidate check, Music 4)
+6. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
+   live and Kick's chat (Livestreams 11); Speech to text extras (burned-in captions,
+   translate); Spotify's own-key path and playlists over 100 songs (Music 4)
+7. **Bigger ideas** (section "Later"), in this order: browser extension, Library page,
+   command palette, Audio tools page, saved workflows, external tools
+8. **Android**, still on hold until the desktop app has every feature we want
+Waiting on someone who can test it: YouTube Music Premium quality (Music 5).
 
-## Next: UI foundation
+## UI foundation ✅ (v0.3.0)
 The features grew page by page. Make the UI one coherent system, so the features below are
 built once on it. Friends' feedback feeds in here.
 1. ✅ Split the pages out of `app.slint` into per-page/component files; one component set
@@ -232,7 +252,7 @@ built once on it. Friends' feedback feeds in here.
    Guardrails so later screens keep all this: `cargo test -p neria --test ui_rules` and
    `scripts/ui-check.ps1`, with a checklist in `docs/DESIGN.md`
 
-## Then: feature tracks
+## Feature tracks (built; open bits are in "Up next")
 Grouped by page. Tracks can be interleaved; within a track, top first.
 
 ### Download
