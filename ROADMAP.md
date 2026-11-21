@@ -951,7 +951,16 @@ last minute is always kept, and saving turns it into a file that opens in the cl
    keep, which sound tracks, the key; a plain status ("Keeping the last 60 s of
    Valorant") and the tray; a saved clip as a toast with Open in clipper. Resizing (1440p is
    kept as 1440p today)
-5. [ ] **"Hey Neria, clip that".** Off until turned on; the mic is only listened to on the PC,
+5. [ ] **"Hey Neria, clip that".** Listener prototype built 2026-11-21 (`voice.rs`,
+   `--example voice`): the phrase is whatever the user types (default "clip that"), several
+   allowed. Checked: live on the user's mic 6 of 6 heard, nothing in between, ~2–3% of one
+   core; Windows' two speech voices 9 of 10 clean, 10 of 10 with moderate noise, 2 of 10 when
+   the noise is louder than the voice; "clip it", "clippy", "clip the end" never fired.
+   A made-up word as spelled ("Neria") wasn't heard; spelled as it sounds ("Nearia") it was,
+   so the UI needs a **Test it**: say it a few times, Neria tries spellings and keeps what
+   works. Still to do: that, the live player's "Clip the last" / "Save the last" on hearing
+   it, Capture's save, a Settings place (on/off, phrase, mic, Test it, a level meter).
+   Off until turned on; the mic is only listened to on the PC,
    nothing is sent anywhere. A small always-on wake-word listener (around 1% CPU, never the
    large whisper model) that presses the same save as the hotkey, with the same "saved"
    sound. Then, if wanted: a few words after the wake word read by a small whisper model

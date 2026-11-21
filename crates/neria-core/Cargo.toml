@@ -19,6 +19,10 @@ sha1 = "0.10"
 ab_glyph = "0.2"
 tiny-skia = "0.11"
 image = { version = "0.25", default-features = false, features = ["png", "gif", "webp", "jpeg"] }
+# "Clip that" (voice.rs): keyword spotting, its model fetched as a .tar.bz2.
+sherpa-onnx = "=2.0.2"
+bzip2 = "0.6"
+tar = "0.4"
 
 # Instant replay's sound (capture_sound.rs): what the PC plays, one app's sound, the mic (WASAPI).
 [target.'cfg(windows)'.dependencies]

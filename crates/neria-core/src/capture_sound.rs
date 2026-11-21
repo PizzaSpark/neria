@@ -72,14 +72,40 @@ pub fn feed(sound: &Sound, stop: Arc<AtomicBool>) -> Result<Feed> {
     Ok(Feed { port, title, thread })
 }
 
+/// A sound read here instead of sent to ffmpeg (voice listening): 48 kHz stereo 16-bit
+/// little-endian, as it comes.
+pub struct Reader(imp::Source);
+
+impl Reader {
+    pub fn open(sound: &Sound) -> Result<Reader> {
+        let mut source = imp::Source::open(sound)?;
+        source.start()?;
+        Ok(Reader(source))
+    }
+
+    /// Append what came since last time, waiting up to `wait` for something.
+    pub fn read(&mut self, out: &mut Vec<u8>, wait: Duration) -> Result<()> {
+        self.0.read(out, wait)
+    }
+}
+
 /// The ffmpeg input for a feed.
 pub fn input_args(port: u16) -> Vec<String> {
     [
         // The format is known: don't sit on the first seconds of sound working it out (that
         // stalls the picture at start, input after input).
-        "-analyzeduration", "0", "-probesize", "32",
-        "-f", "s16le", "-ar", &RATE.to_string(), "-ac", &CHANNELS.to_string(),
-        "-i", &format!("tcp://127.0.0.1:{port}"),
+        "-analyzeduration",
+        "0",
+        "-probesize",
+        "32",
+        "-f",
+        "s16le",
+        "-ar",
+        &RATE.to_string(),
+        "-ac",
+        &CHANNELS.to_string(),
+        "-i",
+        &format!("tcp://127.0.0.1:{port}"),
     ]
     .map(String::from)
     .to_vec()
@@ -327,7 +353,10 @@ mod imp {
     impl windows::Win32::System::Com::IAgileObject_Impl for Done_Impl {}
 
     impl IActivateAudioInterfaceCompletionHandler_Impl for Done_Impl {
-        fn ActivateCompleted(&self, _: windows_core::Ref<IActivateAudioInterfaceAsyncOperation>) -> windows_core::Result<()> {
+        fn ActivateCompleted(
+            &self,
+            _: windows_core::Ref<IActivateAudioInterfaceAsyncOperation>,
+        ) -> windows_core::Result<()> {
             if let Some(tx) = self.0.lock().unwrap().take() {
                 let _ = tx.send(());
             }
