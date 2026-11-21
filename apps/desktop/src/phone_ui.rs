@@ -818,6 +818,18 @@ fn live(ui: &AppWindow) {
         p.set_problem(true);
         return;
     }
+    // The picture stopped (its player let go of the stream): load it again.
+    if let Some(v) = &s.video {
+        let idle = UI.with(|u| u.borrow().mpv.as_ref().and_then(|m| m.get_flag("idle-active")).unwrap_or(false));
+        if (idle || v.readers() == 0) && UI.with(|u| u.borrow().renderer.is_some()) {
+            let url = v.url();
+            UI.with(|u| {
+                if let Some(m) = &u.borrow().mpv {
+                    let _ = m.command(&["loadfile", &url, "replace"]);
+                }
+            });
+        }
+    }
     // A presenting window closed by hand.
     let closed = UI.with(|u| u.borrow_mut().presenting.as_mut().is_some_and(|c| c.try_wait().ok().flatten().is_some()));
     if closed {
@@ -1107,6 +1119,7 @@ fn stop_picture(ui: &AppWindow) {
         u.shown_frame = false;
     });
     ui.global::<Phone>().set_frame(slint::Image::default());
+    ui.global::<Phone>().set_has_frame(false);
 }
 
 /// From the window's rendering hook: draw the phone's newest frame.
@@ -1159,6 +1172,7 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
                             slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(t.tex.0, [w as u32, h as u32].into()).build();
                         let p = ui.global::<Phone>();
                         p.set_frame(image);
+                        p.set_has_frame(true);
                         p.set_frame_w(dw as i32);
                         p.set_frame_h(dh as i32);
                         u.target = Some(t);
@@ -1174,6 +1188,7 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
                 let image = slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(t.tex.0, [w as u32, h as u32].into()).build();
                 let p = ui.global::<Phone>();
                 p.set_frame(image);
+                p.set_has_frame(true);
                 p.set_frame_w(dw as i32);
                 p.set_frame_h(dh as i32);
                 u.shown_frame = true;
@@ -1321,6 +1336,7 @@ fn show_demo(ui: &AppWindow, what: &str) {
         p.set_name("Pixel 7".into());
         let (w, h) = if landscape { (2400, 1080) } else { (1080, 2400) };
         p.set_frame(if landscape { demo_frame(480, 216) } else { demo_frame(216, 480) });
+        p.set_has_frame(true);
         p.set_frame_w(w);
         p.set_frame_h(h);
         p.set_status("Mirroring Pixel 7".into());

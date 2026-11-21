@@ -1033,6 +1033,8 @@ export global Phone {
     in property <string> name;
     // Its picture (mpv draws it) and its shape.
     in property <image> frame;
+    // The picture is drawn (a GL texture's size isn't a sure sign).
+    in property <bool> has-frame;
     in property <int> frame-w: 1080;
     in property <int> frame-h: 2400;
     in property <bool> recording;

@@ -898,6 +898,7 @@ struct Feed(Arc<Mutex<Fan>>);
 /// Send to every client (a reader that just joined gets `header` first, at a key frame);
 /// the slow and the gone are dropped.
 fn deliver(fan: &mut Fan, chunk: &Chunk, key: bool, header: Option<Chunk>) {
+    let raw_video = fan.mkv.is_none() && fan.config.is_some();
     fan.clients.retain_mut(|c| {
         if c.need_key {
             // Without its header (no SPS yet) a reader couldn't make sense of it: wait.
@@ -911,7 +912,17 @@ fn deliver(fan: &mut Fan, chunk: &Chunk, key: bool, header: Option<Chunk>) {
                 }
             }
         }
-        c.tx.try_send(chunk.clone()).is_ok()
+        match c.tx.try_send(chunk.clone()) {
+            Ok(()) => true,
+            // A raw picture reader that fell behind (the page's player while the window
+            // wasn't drawn) skips ahead to the next key frame instead of being let go: Annex B
+            // takes SPS/PPS + a key frame at any point. Matroska can't (one header per reader).
+            Err(std::sync::mpsc::TrySendError::Full(_)) if raw_video => {
+                c.need_key = true;
+                true
+            }
+            Err(_) => false,
+        }
     });
 }
 

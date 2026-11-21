@@ -481,7 +481,7 @@ component Picture inherits Rectangle {
         source: Phone.frame;
         image-fit: contain;
     }
-    if Phone.frame.width == 0: Text {
+    if !Phone.has-frame: Text {
         width: parent.width - 20px;
         text: Phone.state == 4 ? "Starting…" : "Waiting for the picture…";
         color: Theme.muted;
