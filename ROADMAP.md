@@ -909,6 +909,37 @@ Dev hooks: `NERIA_TTV_ORDER` (the relay's players, in order), `NERIA_TTV_OFF` (n
 `close-rec`, `chat`, `chat-dialog`, `chat-sheet`, `chat-file`, `watch-live-chat`; chat:
 `NERIA_CHAT_DEMO`, `NERIA_CHAT_EXPORT`, `NERIA_CHAT_DEBUG`, `NERIA_CHAT_OFF`, `--example chat`.
 
+## Phone: mirror, record and clip your Android phone (own track)
+Planned 2026-11-21. scrcpy's video is excellent, but getting it running (developer options,
+adb, IPs and ports for wireless) is the hard part, and it stops at a plain window. Neria's
+version: the phone as a **capture source**, feeding the clipper and Compress, like the
+instant replay prototype (`capture.rs`). Not a general phone manager. A desktop feature, so
+the Android hold doesn't apply. Comes after Capture has its UI, or as part of that track.
+Tools: `adb` (platform-tools) and scrcpy (Apache 2.0) fetched into `bin/` like the others,
+one pinned scrcpy version (its server and client protocol must match), updated on purpose.
+1. [ ] **Connecting, the real fix.** Wireless first: Neria shows a QR code, the phone scans it
+   in Developer options → Wireless debugging → "Pair device with QR code" (Android 11+,
+   adb's mDNS pairing, as Android Studio does), and it's connected: no IP, port or code to
+   type. Pairing code as the fallback; USB too. A guided one-time setup with pictures (turn on
+   Developer options, then wireless or USB debugging) that notices each step is done. A device
+   list that remembers phones and reconnects on its own. Plain problems: "Tap Allow on your
+   phone", "Wireless debugging turned off (it does after a restart)", "This phone needs its
+   maker's USB driver: use wireless instead"
+2. [ ] **Mirror, quick version.** Neria starts scrcpy with the right flags: sound (Android
+   11+), phone screen off while mirroring, stay awake, Record to the Videos folder, the
+   finished file opening in the clipper. The mirror is scrcpy's own window for now
+3. [ ] **Mirror in Neria's own page.** Only `scrcpy-server.jar`: pushed with adb, it streams
+   H.264/H.265 and Opus over a socket; Neria decodes and draws it (low-latency mpv or
+   FFmpeg), and sends touches, keys and scrolling back over scrcpy's control protocol. A
+   Studio + Play page (`docs/DESIGN.md`) with Record, a screenshot, and **Clip the last 30 s**
+   from a replay buffer shared with Capture
+4. [ ] **Extras, if wanted.** The phone's camera as a source (Android 12+); drop an APK to
+   install it, drop files to send them to the phone; copy and paste between PC and phone
+Watch out: only one adb server runs per PC (port 5037); another adb at a different version
+(Android Studio's) kills ours and the other way round: notice it and use theirs or say so
+plainly. Portable rule: adb's keys live in `%USERPROFILE%\.android` by default; check
+which variable adb honours to keep them (and the pairings) next to the exe instead.
+
 ## Later: bigger ideas (keep UX simple)
 - **Browser extension (Chrome, Edge, Firefox)**: a Neria button on video pages and posts, and
   "Download with Neria" when right-clicking a link, image or video. It hands the link to the
