@@ -1017,7 +1017,17 @@ one pinned scrcpy version (its server and client protocol must match), updated o
    FFmpeg), and sends touches, keys and scrolling back over scrcpy's control protocol. A
    Studio + Play page (`docs/DESIGN.md`) with Record, a screenshot, and **Clip the last 30 s**
    from a replay buffer shared with Capture
-4. [ ] **Extras, if wanted.** The phone's camera as a source (Android 12+); drop an APK to
+4. [ ] **Sound only** (asked for 2026-11-21): the phone's sound on the PC with no picture
+   (music, a call, a game's sound while the screen stays off): scrcpy's sound forwarding
+   (Android 11+) without its video, a small "Playing from Pixel 7" strip with its volume and
+   Stop; Record saves it as a sound file
+5. [ ] **Present the phone** (asked for 2026-11-21): a window of its own with only the phone's
+   screen in it (no Neria around it, no bars), named "Phone screen · Pixel 7" so it's easy to
+   pick when sharing a window in Discord, Teams, Meet or OBS, or to put on a projector for a
+   class. Keeps the phone's shape as it's resized, turns when the phone turns, can stay on
+   top; optional: show taps (scrcpy's `--show-touches`) so people see what you press, and keep
+   the phone awake while presenting. Opened from the mirror page ("Present in a window")
+6. [ ] **Extras, if wanted.** The phone's camera as a source (Android 12+); drop an APK to
    install it, drop files to send them to the phone; copy and paste between PC and phone
 Watch out: only one adb server runs per PC (port 5037); another adb at a different version
 (Android Studio's) kills ours and the other way round: notice it and use theirs or say so
