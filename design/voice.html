@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria Voice Clips</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --live:#ff6b6f; --livebg:#3d1719;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; }
+  .q.pad { padding: 16px 20px 14px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.rec { background: var(--live); color: #1a0506; }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25 } }
+  .ghost { height: 34px; padding: 0 12px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; flex: none; background: none; }
+  .ghost.sm { height: 30px; padding: 0 10px; }
+  .ghost.on { border-color: var(--pop); }
+  .btn { height: 34px; padding: 0 14px; border-radius: 9px; background: var(--pop); color: var(--onpop); font: 600 13px "Inter Tight", sans-serif;
+         border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; flex: none; }
+  .btn.red { background: var(--live); color: #1a0506; }
+  .btn .car { border-left: 2px solid rgba(0,0,0,.35); padding-left: 8px; margin-left: 4px; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  svg.i { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; flex: none; }
+
+  /* settings drawer */
+  .drawer { display: flex; min-height: 560px; }
+  .drawer .nav { width: 150px; padding: 18px 10px; border-right: 1px solid var(--line); flex: none; }
+  .drawer .nav h4 { font: 700 17px "Space Grotesk", sans-serif; padding: 0 8px 14px; }
+  .drawer .nav div { padding: 8px 10px; border-radius: 9px; color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center; margin-bottom: 4px; border: 2px solid transparent; }
+  .drawer .nav div.on { color: var(--ink); border-color: var(--ls); background: var(--panel); font-weight: 600; }
+  .drawer .body { padding: 22px 22px 22px 20px; flex: 1; min-width: 0; }
+  .grp { margin-bottom: 22px; }
+  .grp > h5 { font: 700 14px "Space Grotesk", sans-serif; margin-bottom: 10px; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 4px 0 10px; }
+  .tick { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; margin: 8px 0; }
+  .box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--edge); flex: none; display: grid; place-items: center; }
+  .box.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-size: 13px; font-weight: 700; }
+  .field { background: var(--panel); border: 2px solid var(--ls); border-radius: 10px; height: 42px; display: flex; align-items: center; padding: 0 6px 0 12px; gap: 8px; font-size: 13.5px; }
+  .field.focus { border-color: var(--ink); }
+  .select { background: var(--panel); border: 2px solid var(--ls); border-radius: 9px; height: 34px; display: flex; align-items: center; padding: 0 10px; gap: 8px; font-size: 12.5px; min-width: 0; }
+  .meter { height: 6px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; }
+  .meter i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ok); border-radius: 3px; }
+  .setrow { display: flex; align-items: center; gap: 12px; margin: 10px 0; font-size: 13px; }
+  .setrow > span:first-child { width: 92px; flex: none; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .notice { border-left: 3px solid var(--ls); padding: 6px 0 6px 12px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+
+  /* test it */
+  .test { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 14px 0; margin: 8px 0 4px; }
+  .says { display: flex; gap: 8px; margin: 10px 0 8px; }
+  .say { flex: 1; height: 38px; border-radius: 9px; border: 2px dashed var(--ls); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: var(--dim); }
+  .say.got { border: 2px solid transparent; background: var(--okbg); color: var(--ok); font-weight: 600; }
+  .say.now { border-color: var(--pop); color: var(--ink); }
+  .say.miss { border: 2px solid transparent; background: var(--warnbg); color: var(--warn); font-weight: 600; }
+  .alt { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .alt:last-child { border-bottom: 0; }
+
+  /* live player */
+  .video { aspect-ratio: 16/9; position: relative; background: linear-gradient(160deg, #0f3b3a, #2f8f7a 60%, #d8e3a0); }
+  .video .badge { position: absolute; left: 10px; top: 10px; display: flex; gap: 6px; }
+  .tape { margin: 12px 16px 0; height: 30px; border-radius: 6px; background: var(--panel); position: relative; }
+  .tape .kept { position: absolute; left: 30%; right: 0; top: 0; bottom: 0; background: #2c2c32; border-radius: 6px; }
+  .tape .cl { position: absolute; top: 0; bottom: 0; background: rgba(255,210,63,.28); border-left: 3px solid var(--pop); }
+  .tape .edge { position: absolute; top: -4px; bottom: -4px; right: 0; width: 3px; background: var(--live); border-radius: 2px; }
+  .pbar { display: flex; gap: 8px; align-items: center; padding: 12px 16px 14px; margin-top: 12px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .status { font-size: 12.5px; color: var(--muted); }
+  .status b { color: var(--ink); font-weight: 600; }
+  .listen { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border-radius: 9px; border: 2px solid var(--ls); font-size: 12px; color: var(--ink); white-space: nowrap; }
+  .listen .lv { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; }
+  .listen .lv i { width: 3px; background: var(--ok); border-radius: 1px; }
+  .toast { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; background: var(--panel); border: 1px solid var(--ls); border-radius: 12px;
+           padding: 10px 12px; display: flex; gap: 10px; align-items: center; font-size: 12.5px; white-space: nowrap; box-shadow: 0 12px 30px -10px rgba(0,0,0,.7); }
+  .flash { position: absolute; inset: 0; box-shadow: inset 0 0 0 3px var(--pop); border-radius: 0; }
+  .heardline { position: absolute; right: 10px; top: 10px; }
+  .w760 { width: 760px; } .w400 { width: 400px; } .w560 { width: 560px; }
+
+  /* compact sheet */
+  .sheet .tabs { display: flex; gap: 14px; padding: 12px 16px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--muted); overflow: hidden; white-space: nowrap; }
+  .sheet .tabs span { padding-bottom: 9px; }
+  .sheet .tabs span.on { color: var(--ink); border-bottom: 2px solid var(--ink); font-weight: 600; }
+  .sheet .body { padding: 16px 16px 18px; }
+  .sheet .setrow { flex-wrap: wrap; }
+  .sheet .setrow > span:first-child { width: 100%; }
+
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 880px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="mic" viewBox="0 0 16 16"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2.5M5.5 15h5"/></symbol>
+  <symbol id="play" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></symbol>
+  <symbol id="scis" viewBox="0 0 16 16"><circle cx="4" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><path d="M5.3 10.6 12 2M10.7 10.6 4 2"/></symbol>
+</svg>
+<div class="page">
+  <h1>"Clip that": your voice presses save</h1>
+  <p class="lead">The listener works (on your mic: <b>6 of 6 heard, nothing in between, ~2–3% of one core</b>). This is the part you
+  see: where you turn it on and type your phrase, how <b>Test it</b> makes sure it hears you (and finds a spelling for a
+  made-up word like "Neria"), and what happens in the live player when it hears you. Capture's own screen comes later
+  and reuses all of this.</p>
+
+  <section>
+    <div class="label"><span>Ground rules</span><h2>What it does and doesn't</h2></div>
+    <ul class="why">
+      <li><b>Off until you turn it on.</b> The first time, it fetches a 5 MB voice model; nothing at first run.</li>
+      <li><b>Listens only while something can be clipped</b>: the live player is open (watching or recording a stream), and
+        later while Capture runs. Not "always while Neria is open". A <b>Listening</b> mark is on screen the whole time, and
+        clicking it stops listening.</li>
+      <li><b>Never records the mic or sends it anywhere.</b> The phrase is matched on the PC and the sound is thrown away.</li>
+      <li><b>Hearing it = the same as pressing the button</b>: while recording, "Clip the last 30 s"; while only watching,
+        "Save the last 30 s". The length is the one setting it has (30 s by default).</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="label"><span>1 · Where it lives</span><h2>A Voice section in Settings</h2></div>
+    <div class="opt">
+      <h3>1A · Its own section, "Voice" <span class="rec">PICK</span></h3>
+      <p>Between General and About. It has enough of its own (phrase, mic, meter, Test it, what it does) and Capture's
+      voice options land here later. Shown with voice on, the model fetched, and Test it passed.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Settings drawer · wide</div>
+          <div class="q w760">
+            <div class="drawer">
+              <div class="nav">
+                <h4>Settings</h4>
+                <div>Download</div><div>Following</div><div>Spotify</div><div>Network</div><div>General</div>
+                <div class="on"><svg class="i"><use href="#mic"/></svg>Voice</div><div>About</div>
+              </div>
+              <div class="body">
+                <div class="grp">
+                  <h5>Clip with your voice</h5>
+                  <div class="tick"><span class="box on">✓</span><span>Listen for a phrase while the live player is open</span></div>
+                  <div class="hint">Saying it does what the button does: Clip the last while recording, Save the last while
+                  watching. The mic is only listened to on this PC, never recorded or sent anywhere.</div>
+                </div>
+                <div class="grp">
+                  <h5>Your phrase</h5>
+                  <div class="field focus"><span class="grow">clip that</span><span class="tag ok">Heard 3 of 3</span></div>
+                  <div class="hint">Two or three words work best. Short ones ("clip") go off by mistake; words you'd say a lot
+                  in a game ("nice") too. <span class="lnk">Add another phrase</span></div>
+                </div>
+                <div class="grp">
+                  <h5>Mic</h5>
+                  <div class="setrow">
+                    <div class="select grow"><span class="grow">Microphone (fifine)</span><span class="mut">▾</span></div>
+                    <div style="width:150px" class="meter"><i style="width:38%"></i></div>
+                  </div>
+                  <div class="test">
+                    <div class="row"><div class="grow"><b style="font-weight:600">Test it</b>
+                      <div class="hint" style="margin:2px 0 0">Say your phrase three times, the way you would mid-game.</div></div>
+                      <button class="ghost">Test it again</button></div>
+                    <div class="says"><div class="say got">✓ Heard</div><div class="say got">✓ Heard</div><div class="say got">✓ Heard</div></div>
+                  </div>
+                </div>
+                <div class="grp">
+                  <h5>When it hears you</h5>
+                  <div class="setrow"><span>Keep the last</span><div class="chips"><span class="chip">15 s</span><span class="chip on">30 s</span><span class="chip">1 min</span><span class="chip">2 min</span></div></div>
+                  <div class="tick"><span class="box on">✓</span><span>Play the "saved" sound</span></div>
+                </div>
+                <div class="row"><span class="mono mut">Voice model · 5.3 MB</span><span class="grow"></span><span class="lnk">Remove</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Compact · 400 (sections along the top)</div>
+          <div class="q w400 sheet">
+            <div class="row" style="padding:14px 16px 0"><b style="font:700 17px 'Space Grotesk', sans-serif" class="grow">Settings</b><span class="mut">✕</span></div>
+            <div class="tabs"><span>Network</span><span>General</span><span class="on">Voice</span><span>About</span></div>
+            <div class="body">
+              <div class="tick" style="margin-top:0"><span class="box on">✓</span><span>Listen for a phrase while the live player is open</span></div>
+              <div class="hint">Never recorded or sent anywhere.</div>
+              <div class="grp" style="margin-top:14px">
+                <h5>Your phrase</h5>
+                <div class="field"><span class="grow">clip that</span><span class="tag ok">3 of 3</span></div>
+              </div>
+              <div class="grp">
+                <h5>Mic</h5>
+                <div class="select"><span class="grow">Microphone (fifine)</span><span class="mut">▾</span></div>
+                <div class="meter" style="margin-top:8px"><i style="width:38%"></i></div>
+                <div class="row" style="margin-top:12px"><span class="grow hint" style="margin:0">Say it three times.</span><button class="ghost">Test it</button></div>
+              </div>
+              <div class="grp" style="margin-bottom:0">
+                <h5>When it hears you</h5>
+                <div class="chips"><span class="chip">15 s</span><span class="chip on">30 s</span><span class="chip">1 min</span><span class="chip">2 min</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>1B · A group inside General</h3>
+      <p>Fewer sections, but General already holds theme, tray, notifications and updates; the meter and Test it make
+      it the longest page in Settings, and Capture's options would have nowhere to go. Not mocked further.</p>
+    </div>
+    <div class="opt">
+      <h3>First time: turning it on</h3>
+      <p>Ticking the box fetches the model right there (the same row Speech to text uses), then opens Test it by itself,
+      so nobody ends up with a phrase that was never heard.</p>
+      <div class="pair scroll">
+        <div class="q pad w560">
+          <div class="tick" style="margin-top:0"><span class="box on">✓</span><span>Listen for a phrase while the live player is open</span></div>
+          <div class="row" style="margin:10px 0 4px"><span class="grow">Getting the voice model…</span><span class="mono mut">2.1 / 5.3 MB</span><button class="ghost sm">Cancel</button></div>
+          <div class="meter"><i style="width:40%; background: var(--pop)"></i></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>2 · Test it</span><h2>Making sure it hears you, and your word</h2></div>
+    <p class="why">The listener only knows how a word is spelled, not how you say it. Common words are fine ("clip that",
+    "save it"); a name like "Neria" needs a spelling that sounds right ("Nearia" was heard, "Neria" wasn't).
+    Test it finds that for you instead of asking you to guess.</p>
+    <div class="opt">
+      <h3>2A · Right in the section, three boxes <span class="rec">PICK</span></h3>
+      <p>Three boxes fill as you speak; the meter shows the mic is alive. If it misses, Neria quietly tries a few
+      spellings that sound the same against what you just said (it kept the sound for this test only, then throws it
+      away) and offers the one that works. Nothing changes until you press <b>Use it</b>.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Listening: one heard, waiting for the second</div>
+          <div class="q pad w560">
+            <div class="field"><span class="grow">clip that</span></div>
+            <div class="test" style="border-bottom:0">
+              <div class="row"><div class="grow"><b style="font-weight:600">Say "clip that"</b></div><button class="ghost sm">Stop</button></div>
+              <div class="meter" style="margin-top:10px"><i style="width:62%"></i></div>
+              <div class="says"><div class="say got">✓ Heard</div><div class="say now"><span class="dot pulse" style="color:var(--pop)"></span>Listening…</div><div class="say">3</div></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">A made-up word: missed, then a spelling that works</div>
+          <div class="q pad w560">
+            <div class="field"><span class="grow">neria clip that</span><span class="tag warn">Heard 0 of 3</span></div>
+            <div class="test" style="border-bottom:0">
+              <div class="says"><div class="say miss">Missed</div><div class="say miss">Missed</div><div class="say miss">Missed</div></div>
+              <div class="hint" style="margin-bottom:4px">It didn't catch "neria". These sound the same, tried on what you just said:</div>
+              <div class="alt"><span class="grow">nearia clip that</span><span class="tag ok">3 of 3</span><button class="btn" style="height:30px">Use it</button></div>
+              <div class="alt"><span class="grow">near ya clip that</span><span class="tag">1 of 3</span></div>
+              <div class="alt"><span class="grow mut">Or say it differently, or pick other words</span><span class="lnk">Test again</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>2B · A Test it dialog</h3>
+      <p>The same steps in a dialog ("Say it", "Again", "Once more", result). Clearer for a first-timer, but it covers
+      the mic meter and the phrase box you might want to change, and it's one more window. Not mocked further.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>3 · In the live player</span><h2>Knowing it listens, and that it heard you</h2></div>
+    <div class="opt">
+      <h3>3A · A Listening mark in the bar, a toast when it hears you <span class="rec">PICK</span></h3>
+      <p>The mark sits with the other controls, a small level so you can see it's your mic; click it to stop
+      listening for this stream. On hearing the phrase: the "saved" sound, a pop-yellow flash round the picture, the new
+      part on the tape, and a toast that says what happened with <b>Undo</b> (a false alarm costs one click).</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Recording, listening · wide</div>
+          <div class="q w760">
+            <div class="video"><div class="badge"><span class="tag rec"><span class="dot pulse"></span>REC 1:24:07</span></div></div>
+            <div class="tape"><div class="kept"></div><div class="edge"></div></div>
+            <div class="pbar">
+              <span class="status"><b>Recording it live.</b> 2.1 GB · 1080p</span><span class="grow"></span>
+              <span class="listen"><svg class="i" style="width:13px;height:13px"><use href="#mic"/></svg>Listening for "clip that"<span class="lv"><i style="height:5px"></i><i style="height:10px"></i><i style="height:7px"></i></span></span>
+              <button class="ghost">Start clip</button>
+              <button class="btn">Clip the last 30 s<span class="car">▾</span></button>
+              <button class="btn red">Stop</button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">The moment it hears you</div>
+          <div class="q w760">
+            <div class="video"><div class="flash"></div><div class="badge"><span class="tag rec"><span class="dot pulse"></span>REC 1:24:12</span></div>
+              <div class="toast"><span class="tag ok">Heard "clip that"</span><span>Clipped the last 30 s</span><span class="lnk">Undo</span><span class="lnk">Show</span></div></div>
+            <div class="tape"><div class="kept"></div><div class="cl" style="left:93%; right:0"></div><div class="edge"></div></div>
+            <div class="pbar">
+              <span class="status"><b>Recording it live.</b> 2.1 GB · 1080p</span><span class="grow"></span>
+              <span class="listen"><svg class="i" style="width:13px;height:13px"><use href="#mic"/></svg>Listening for "clip that"<span class="lv"><i style="height:9px"></i><i style="height:12px"></i><i style="height:6px"></i></span></span>
+              <button class="ghost">Start clip</button>
+              <button class="btn">Clip the last 30 s<span class="car">▾</span></button>
+              <button class="btn red">Stop</button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Compact · 400: the mark shrinks to the mic and its level</div>
+          <div class="q w400">
+            <div class="video"><div class="badge"><span class="tag rec"><span class="dot pulse"></span>REC</span></div>
+              <div class="toast" style="max-width:368px"><span class="tag ok">Heard</span><span>Clipped the last 30 s</span><span class="lnk">Undo</span></div></div>
+            <div class="tape"><div class="kept"></div><div class="cl" style="left:90%; right:0"></div><div class="edge"></div></div>
+            <div class="pbar">
+              <span class="listen" title="Listening for “clip that”"><svg class="i" style="width:13px;height:13px"><use href="#mic"/></svg><span class="lv"><i style="height:5px"></i><i style="height:10px"></i><i style="height:7px"></i></span></span>
+              <span class="grow"></span>
+              <button class="btn">Clip the last<span class="car">▾</span></button>
+              <button class="btn red">Stop</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>3B · Just the sound and the new clip, no mark</h3>
+      <p>Quieter, but nothing on screen says the mic is being listened to, and a false alarm only shows up later as an
+      extra clip in the queue. Fails the "you always know it's listening" rule. Not mocked further.</p>
+    </div>
+    <div class="opt">
+      <h3>Watching (not recording), and when it's off</h3>
+      <p>Watching: the same mark, and hearing it saves the last 30 s ("Saved the last 30 s · Show"). Voice off in
+      Settings: no mark at all. Mic gone (unplugged): the mark turns to <span class="tag warn">Mic not found</span> and
+      clicking it opens Settings → Voice.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Summary</span><h2>The picks</h2></div>
+    <table class="cmp">
+      <tr><th>Part</th><th>Pick</th><th>Why</th></tr>
+      <tr><td>Where</td><td>1A · Settings → Voice</td><td>Room for the meter and Test it; Capture's voice options go here later</td></tr>
+      <tr><td>Test it</td><td>2A · inline, three boxes, spellings offered</td><td>Fixes made-up words without guessing; nothing changes until Use it</td></tr>
+      <tr><td>Live player</td><td>3A · Listening mark + toast with Undo</td><td>You always know it's listening; a false alarm is one click</td></tr>
+      <tr><td>Listens when</td><td>Only while the live player is open (later: Capture running)</td><td>Not an always-on mic; turning it on is a choice per feature</td></tr>
+    </table>
+  </section>
+</div>
+</body>
+</html>
