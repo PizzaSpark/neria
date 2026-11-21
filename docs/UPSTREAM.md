@@ -17,6 +17,8 @@ After porting anything (or re-reviewing upstream), move the baseline forward and
 | syncedlyrics | [moehmeni/syncedlyrics](https://github.com/moehmeni/syncedlyrics) | `main` | `3c8a318d9a8df26855bdc3a5d23f7fd2b99ade2e` | 2024-07-28 | n/a | MIT: code may be ported, with credit in the source |
 | HandBrake | [HandBrake/HandBrake](https://github.com/HandBrake/HandBrake) | `master` | `2ab11403ca9d44a1ea02252174153e0918fd5a09` (`preset/preset_builtin.json`) | 2026-10-29 | n/a | GPL-2.0: **numbers and ideas only, never copy code** (Neria is MIT) |
 | TTV-AB | [GosuDRM/TTV-AB](https://github.com/GosuDRM/TTV-AB) | `main` | `1825fa5` | 2026-11-15 | 26.0.3 | MIT with repository attribution: code may be ported, crediting GosuDRM with a link to the repo |
+| scrcpy | [Genymobile/scrcpy](https://github.com/Genymobile/scrcpy) | `master` | `a60891aea193d92e7e5c3942700eca63f9d19a5f` (tag `v5.0.1`) | 2026-10-08 | v5.0.1 | Apache-2.0: its prebuilt Windows release is fetched as a tool (adb + scrcpy + `scrcpy-server`); code may be ported with credit and the NOTICE kept |
+| adb (platform-tools) | [platform/packages/modules/adb](https://android.googlesource.com/platform/packages/modules/adb) | `main` | read 2026-11-22 | 2026-11-22 | the adb inside scrcpy's release | Apache-2.0: studied only (pairing, keys, mDNS) |
 | loopgif (our own) | [PizzaSpark/loopgif](https://github.com/PizzaSpark/loopgif) | `main` | `cf5c980ee120026feeaef370d4affba5023425ef` | 2026-11-07 | n/a | Ours: port freely |
 
 Why Sunnify is ideas-only: its LICENSE allows using and redistributing the software only
@@ -218,6 +220,33 @@ a fresh `site` token (it opens on a pre-roll) and the others to see which still 
 goes back to `site` after a break; Neria doesn't need those (it records, and a relay that
 starts on a clean source stays on it).
 
+### scrcpy (Apache 2.0; its release run as a tool: `phone.rs`)
+| Feature in Neria | Upstream files to watch |
+|---|---|
+| The pinned release (`PHONE_VERSION`): `scrcpy-win64-v5.0.1.zip` carries `adb.exe` (+ its two DLLs), `scrcpy.exe` and `scrcpy-server`; the server and the client must be the very same version | GitHub releases |
+| Starting the server ourselves (the page's own mirror, Sound only): `adb push scrcpy-server /data/local/tmp/scrcpy-server.jar`, `adb forward tcp:<port> localabstract:scrcpy_<scid>`, `adb shell CLASSPATH=… app_process / com.genymobile.scrcpy.Server 5.0.1 key=value…` (`scid` is 8 hex digits; `tunnel_forward=true`) | `app/src/server.c` (`execute_server`, the `ADD_PARAM` list), `server/…/Options.java` (every key) |
+| The wire: sockets opened in order video, audio, control; on the first one a dummy byte (forward tunnel) then the 64-byte device name; video and audio start with the codec id (u32, `h264` 0x68323634, `raw` 0x00726177); video then sends a 12-byte *session packet* (MSB set, width, height) per capture session (rotation starts a new one); every media packet has a 12-byte header (bit 63 session, 62 config, 61 key frame, PTS in µs, u32 size). Audio `raw` = 48 kHz stereo s16le, the same as our WASAPI feeds | `doc/develop.md` → Protocol, `server/…/device/Streamer.java`, `device/DesktopConnection.java` |
+| Control messages (big-endian): 0 key (action u8, keycode i32, repeat i32, meta i32), 1 text (u32 length + UTF-8, ≤300 bytes), 2 touch (action u8, pointer id i64, x i32, y i32, w u16, h u16, pressure u16 fixed-point, action button i32, buttons i32), 3 scroll (position, h i16, v i16 fixed-point /16, buttons i32), 4 back or screen on (action u8), 10 display power (bool), 17 reset video (a key frame now) | `server/…/control/ControlMessage.java`, `ControlMessageReader.java`, `app/tests/test_control_msg_serialize.c` |
+| Key frames often enough for 2 s pieces: `video_codec_options=i-frame-interval:int=2` (applied after scrcpy's own 10 s); still screens still send a frame every 100 ms (`KEY_REPEAT_PREVIOUS_FRAME_AFTER`) | `server/…/video/SurfaceEncoder.java` (`createFormat`) |
+| Sound: `audio_source=output` (default, mutes the phone while forwarded) or `playback` + `audio_dup=true` (keeps playing on the phone too); Android 11+ | `doc/audio.md` |
+
+adb (studied, not copied): connecting by QR is Android Studio's way: the QR holds
+`WIFI:T:ADB;S:<name>;P:<password>;;`, the phone then announces `<name>` as
+`_adb-tls-pairing._tcp` over mDNS (`adb mdns services` lists it), and `adb pair <ip:port>
+<password>` pairs; a paired phone's `_adb-tls-connect._tcp` is then connected by the adb
+server by itself (`ADB_MDNS_AUTO_CONNECT` allows only that by default, and only for phones in
+`adb_known_hosts.pb`), so remembered phones reconnect with no code of ours
+(`client/transport_mdns.cpp`, `adb_mdns.cpp`). **Keys:** on Windows adb keeps `adbkey` and
+`adb_known_hosts.pb` in `<profile>\.android` from `SHGetFolderPathW(CSIDL_PROFILE)`; no
+variable moves them (`adb_utils.cpp` `adb_get_android_dir_path`, `client/auth.cpp`
+`load_userkey`; `ADB_VENDOR_KEYS` only adds keys). So Phone writes there, as Android Studio
+does. One adb server per port: Neria's runs on its own (`ANDROID_ADB_SERVER_PORT=5038`) so a
+different adb (Android Studio's, 5037) is never killed; a USB phone is held by whichever
+server took it first.
+
+When the mirror breaks after a scrcpy update: the protocol has no compatibility promise, so
+re-read `doc/develop.md` → Protocol and `Streamer.java` at the new tag, then move the baseline.
+
 ## How to check what changed since the baseline
 
 Quick look in the browser (replace the SHA with the baseline above):
@@ -255,3 +284,4 @@ Also skim both repos' open issues for the symptom (e.g. "429", "embed", "no matc
 | 2026-11-15 | TTV-AB | n/a → `1825fa5` | Idea ported for Twitch recordings and watching without ads (`ttv.rs`, credit there): ask Twitch for the stream as other players (`embed`, `popout`, `mobile_web`, `frontpage`), which came without the pre-roll `site` got; merge their playlists by each piece's date-time. Our own Rust relay; no code copied. |
 | 2026-11-14 | spotify-lyrics-api | `e158b96` (still latest) | Now the idea behind the opt-in "Spotify's own synced lyrics" (user asked for it, with a spare-account warning). Our own Rust; secret read from Spotify's script, not from spot-secrets-go. No code copied. |
 | 2026-11-18 | whisper.cpp | n/a → `b5454` | Speech to text (`transcribe.rs`): its prebuilt `whisper-cli` + ggml models, run as a tool. No code copied; JSON output parsed. |
+| 2026-11-22 | scrcpy | n/a → `a60891a` (v5.0.1) | Phone track: the server's start, the wire (session packets are new in 4.0), control messages, codec options; adb's QR pairing, auto-connect and where it keeps its keys. Release fetched as a tool; our own Rust client (`phone.rs`), no code copied. |

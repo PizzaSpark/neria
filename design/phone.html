@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Mirror</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --live:#ff6b6f; --livebg:#3d1719;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; position: relative; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25 } }
+  .ghost { height: 34px; padding: 0 12px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; flex: none; background: none; }
+  .ghost.sm { height: 30px; padding: 0 10px; }
+  .btn { height: 38px; padding: 0 16px; border-radius: 9px; background: var(--pop); color: var(--onpop); font: 700 14px "Space Grotesk", sans-serif;
+         border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; flex: none; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  svg.i { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; flex: none; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 4px 0 10px; }
+  .tick { display: flex; gap: 10px; align-items: center; font-size: 13px; margin: 8px 0; }
+  .box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--edge); flex: none; display: grid; place-items: center; }
+  .box.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-size: 13px; font-weight: 700; }
+  .select { background: var(--panel); border: 2px solid var(--ls); border-radius: 9px; height: 34px; display: flex; align-items: center; padding: 0 10px; gap: 8px; font-size: 12.5px; min-width: 0; }
+  .setrow { display: flex; align-items: center; gap: 12px; margin: 10px 0; font-size: 13px; }
+  .setrow > span:first-child { width: 110px; flex: none; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .key { font: 500 11px "JetBrains Mono", monospace; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--ink); }
+  .h5 { font: 700 14px "Space Grotesk", sans-serif; margin: 18px 0 8px; }
+  .h5:first-child { margin-top: 0; }
+  .hl { font: 700 30px/1.1 "Space Grotesk", sans-serif; }
+
+  /* app frame */
+  .app { display: flex; }
+  .rail { width: 80px; border-right: 1px solid var(--line); padding: 18px 10px; flex: none; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+  .rail .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--pop); border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); margin: 0 auto 14px; }
+  .rail .n { height: 54px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--dim); border: 2px solid transparent; }
+  .rail .n.on { color: var(--ink); border-color: var(--ls); background: var(--panel); }
+  .main { flex: 1; min-width: 0; padding: 24px 26px; }
+  .tabbar { display: flex; border-top: 1px solid var(--line); padding: 6px 5px 5px; }
+  .tabbar .n { flex: 1; height: 54px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--dim); border: 2px solid transparent; }
+  .tabbar .n.on { color: var(--ink); border-color: var(--ls); background: var(--panel); }
+
+  /* capture page */
+  .state { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 0; margin: 18px 0 6px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .state .big { font: 600 17px "Inter Tight", sans-serif; }
+  .src { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .src .rad { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--edge); flex: none; }
+  .src .rad.on { border: 6px solid var(--ink); }
+  .src .ic { width: 28px; height: 28px; border-radius: 6px; background: var(--raised); flex: none; display: grid; place-items: center; color: var(--dim); }
+  .saved { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .thumb { width: 64px; height: 36px; border-radius: 6px; background: linear-gradient(140deg, #3a1f4a, #c44569 60%, #f8b500); flex: none; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .listen { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border-radius: 9px; border: 2px solid var(--ls); font-size: 12px; color: var(--ink); white-space: nowrap; }
+
+  .toast { background: var(--panel); border: 1px solid var(--ls); border-radius: 12px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; font-size: 12.5px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.7); }
+  .wtoast { width: 364px; background: #202020; color: #fff; border-radius: 8px; padding: 14px 16px; font-family: "Segoe UI", sans-serif; font-size: 13px; box-shadow: 0 20px 40px -10px rgba(0,0,0,.6); }
+  .wtoast .btns { display: flex; gap: 8px; margin-top: 12px; }
+  .wtoast .btns span { flex: 1; background: #2d2d2d; border-radius: 4px; padding: 7px; text-align: center; }
+  .menu { width: 250px; background: #2b2b2b; color: #fff; border-radius: 8px; padding: 4px; font-family: "Segoe UI", sans-serif; font-size: 13px; }
+  .menu div { padding: 7px 12px; border-radius: 4px; }
+  .menu hr { border: 0; border-top: 1px solid #444; margin: 4px 0; }
+  .menu .dis { color: #999; }
+
+  .w1000 { width: 1000px; } .w400 { width: 400px; } .w760 { width: 760px; }
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 880px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+</style>
+<style>
+  .tabs { display: flex; gap: 22px; margin-top: 14px; border-bottom: 1px solid var(--line); }
+  .tabs span { padding: 8px 0; font-size: 13.5px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; gap: 6px; align-items: center; }
+  .tabs span.on { color: var(--ink); border-color: var(--ink); }
+  .phone { border-radius: 18px; border: 2px solid var(--ls); background: #0b0b0c; padding: 6px; flex: none; position: relative; }
+  .scr { border-radius: 12px; height: 100%; background: linear-gradient(170deg, #1d3557 0%, #457b9d 38%, #e9c46a 75%, #f4a261 100%); position: relative; overflow: hidden; }
+  .scr .bar { position: absolute; left: 0; right: 0; top: 0; height: 16px; background: rgba(0,0,0,.25); }
+  .scr .ap { position: absolute; left: 10%; right: 10%; top: 22%; height: 34%; border-radius: 10px; background: rgba(255,255,255,.18); }
+  .scr .ap2 { position: absolute; left: 10%; right: 10%; top: 60%; height: 12%; border-radius: 10px; background: rgba(0,0,0,.18); }
+  .nav3 { display: flex; justify-content: center; gap: 8px; margin-top: 10px; }
+  .qr { width: 196px; height: 196px; background: #fff; border-radius: 10px; padding: 12px; flex: none; }
+  .qr svg { width: 100%; height: 100%; display: block; }
+  .step { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; align-items: flex-start; }
+  .step .num { width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--ls); display: grid; place-items: center; font: 600 12px "JetBrains Mono", monospace; color: var(--muted); flex: none; }
+  .step .num.done { background: var(--okbg); color: var(--ok); border-color: transparent; }
+  .step .num.now { border-color: var(--pop); color: var(--ink); }
+  .pic { width: 92px; height: 56px; border-radius: 6px; background: var(--raised); flex: none; display: grid; place-items: center; color: var(--dim); font-size: 10px; text-align: center; line-height: 1.2; }
+  .dev { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .dev .ic { width: 28px; height: 28px; border-radius: 6px; background: var(--raised); flex: none; display: grid; place-items: center; color: var(--dim); }
+  .slider { height: 6px; border-radius: 3px; background: var(--line); position: relative; flex: 1; min-width: 60px; }
+  .slider b { position: absolute; left: 0; top: 0; bottom: 0; width: 64%; background: var(--ink); border-radius: 3px; }
+  .slider i { position: absolute; left: 64%; top: -5px; width: 16px; height: 16px; border-radius: 50%; background: var(--ink); margin-left: -8px; }
+  .desk { background: linear-gradient(135deg, #0e2a47, #1f4e79 60%, #3a6ea5); border-radius: 10px; padding: 26px; position: relative; flex: none; }
+  .share { width: 330px; background: #313338; color: #dbdee1; border-radius: 8px; padding: 14px; font-family: "Segoe UI", sans-serif; font-size: 13px; }
+  .share .g { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .share .g div { background: #2b2d31; border-radius: 6px; padding: 6px; font-size: 11.5px; }
+  .share .g div span { display: block; height: 54px; border-radius: 4px; background: #1e1f22; margin-bottom: 5px; }
+  .share .g div.sel { outline: 2px solid #5865f2; }
+  .w560 { width: 560px; }
+</style>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="rec" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.5"/></symbol>
+  <symbol id="ph" viewBox="0 0 16 16"><rect x="4" y="1.5" width="8" height="13" rx="1.6"/><path d="M7 12.5h2"/></symbol>
+  <symbol id="mon" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M6 14h4M8 11v3"/></symbol>
+  <symbol id="cam" viewBox="0 0 16 16"><path d="M2 5h2.5l1.2-1.8h4.6L11.5 5H14v8H2z"/><circle cx="8" cy="9" r="2.4"/></symbol>
+  <symbol id="spk" viewBox="0 0 16 16"><path d="M2.5 6h2.5l3.5-3v10l-3.5-3H2.5z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></symbol>
+  <symbol id="win" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M1.5 5.5h13"/></symbol>
+  <symbol id="qrc" viewBox="0 0 29 29"><path fill="#000" d="M0 0h7v7H0zM1 1v5h5V1zM2 2h3v3H2zM22 0h7v7h-7zM23 1v5h5V1zM24 2h3v3h-3zM0 22h7v7H0zM1 23v5h5v-5zM2 24h3v3H2zM9 0h1v2H9zM11 1h2v1h-2zM14 0h1v3h-1zM16 2h2v1h-2zM19 0h1v2h-1zM9 4h3v1H9zM13 5h3v2h-3zM17 4h1v3h-1zM10 8h2v2h-2zM0 9h3v1H0zM4 8h2v3H4zM14 9h4v1h-4zM20 8h1v3h-1zM23 9h3v1h-3zM27 8h2v2h-2zM8 11h1v4H8zM11 12h3v1h-3zM16 11h2v3h-2zM22 12h2v2h-2zM25 11h1v4h-1zM1 13h3v1H1zM5 14h2v2H5zM10 15h2v2h-2zM13 14h1v4h-1zM19 15h3v1h-3zM27 14h2v1h-2zM0 17h2v2H0zM3 18h3v1H3zM8 18h1v3H8zM15 17h3v1h-3zM20 18h2v2h-2zM24 17h3v1h-3zM10 20h3v1h-3zM16 20h1v3h-1zM18 21h3v1h-3zM23 20h1v3h-1zM26 21h3v1h-3zM9 23h2v2H9zM12 24h3v1h-3zM19 23h2v2h-2zM25 24h2v3h-2zM9 26h1v3H9zM11 27h4v1h-4zM16 26h2v1h-2zM20 27h3v2h-3zM28 26h1v3h-1z"/></symbol>
+</svg>
+<div class="page">
+  <h1>Phone: mirror, record and clip your Android phone</h1>
+  <p class="lead">scrcpy's picture is excellent; getting it running is the hard part (Developer options, adb, IPs and ports) and it
+  stops at a plain window. Neria's take: <b>the phone is another capture source</b>, next to instant replay, feeding the
+  clipper and Compress. Not a phone manager. Below: where it lives, connecting by QR, the mirror itself, Sound only and
+  Present. Recommended picks are marked <b style="background:#151412;color:#ffd23f;padding:0 5px;border-radius:4px;font:500 11px 'JetBrains Mono'">PICK</b>.</p>
+
+  <section>
+    <div class="label"><span>1 · Where it lives</span><h2>Next to instant replay, or a page of its own</h2></div>
+    <div class="opt">
+      <h3>1A · The Capture page gets two tabs: "This PC" and "Phone" <span class="rec">PICK</span></h3>
+      <p>Both are a source you turn on, with the same <b>Clip the last…</b>, the same Saved list and the same toast with
+      Open in clipper. The rail stays at five places (the tab bar at 400 px stays roomy), and the Capture icon's red dot
+      means "something is being kept", from the PC or the phone. Calm filter-style tabs, as in the queue: they change the
+      view, not a setting. The phone's tab shows its name once one is connected ("Pixel 7").</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide · 1000 · Phone tab, mirroring</div>
+          <div class="q w1000">
+            <div class="app">
+              <div class="rail">
+                <div class="logo"></div>
+                <div class="n">⭳<span>Download</span></div>
+                <div class="n">✂<span>Clip</span></div>
+                <div class="n">▣<span>Compress</span></div>
+                <div class="n on" style="position:relative"><svg class="i"><use href="#rec"/></svg><span>Capture</span><i style="position:absolute;top:8px;right:14px;width:7px;height:7px;border-radius:50%;background:var(--live)"></i></div>
+                <div style="flex:1;height:380px"></div>
+                <div class="n">⚙<span>Settings</span></div>
+              </div>
+              <div class="main">
+                <div class="row"><span class="hl grow">Keep the moment.</span></div>
+                <div class="tabs"><span><svg class="i"><use href="#mon"/></svg>This PC</span><span class="on"><svg class="i"><use href="#ph"/></svg>Pixel 7</span></div>
+                <div class="row" style="align-items:flex-start;gap:26px;margin-top:18px">
+                  <div>
+                    <div class="phone" style="width:236px;height:470px"><div class="scr"><div class="bar"></div><div class="ap"></div><div class="ap2"></div></div></div>
+                    <div class="nav3"><button class="ghost sm" aria-label="Back">◁</button><button class="ghost sm" aria-label="Home">○</button><button class="ghost sm" aria-label="Recent apps">□</button><button class="ghost sm" aria-label="Turn the screen">⟳</button></div>
+                  </div>
+                  <div class="grow">
+                    <div class="state" style="margin-top:0">
+                      <span class="tag live"><span class="dot pulse"></span>LIVE</span>
+                      <div class="grow">
+                        <div class="big">Mirroring Pixel 7</div>
+                        <div class="mut" style="margin-top:3px">Keeping the last 1 min · <span class="mono">1080 × 2400 · 60 fps · Wi-Fi</span></div>
+                      </div>
+                    </div>
+                    <div class="row" style="flex-wrap:wrap;gap:10px;margin:16px 0 4px">
+                      <button class="btn">✂ Clip the last 30 s</button>
+                      <button class="ghost"><svg class="i"><use href="#rec"/></svg>Record</button>
+                      <button class="ghost"><svg class="i"><use href="#cam"/></svg>Screenshot</button>
+                      <button class="ghost"><svg class="i"><use href="#win"/></svg>Present in a window</button>
+                    </div>
+                    <div class="hint">Click and drag on the picture to use the phone; scroll and type work too. <span class="key">F8</span> clips here as well.</div>
+                    <div class="h5">While mirroring</div>
+                    <div class="tick"><span class="box on">✓</span><span class="grow">Phone's sound on this PC <span class="mut">(Android 11+)</span></span></div>
+                    <div class="tick"><span class="box on">✓</span><span class="grow">Turn the phone's screen off <span class="mut">(it keeps running)</span></span></div>
+                    <div class="tick"><span class="box on">✓</span><span class="grow">Keep the phone awake</span></div>
+                    <div class="row" style="margin-top:10px"><button class="ghost sm"><svg class="i"><use href="#spk"/></svg>Sound only</button><button class="ghost sm">Stop mirroring</button></div>
+                    <div class="h5" style="margin-top:20px">Saved</div>
+                    <div class="saved"><span class="thumb" style="width:36px;height:64px"></span><span class="grow"><div>Pixel 7 2026-11-22 14-31 (last 30s)</div><div class="mono mut">0:30 · 41 MB · just now</div></span><button class="ghost sm">✂ Open in clipper</button><span class="lnk">Show</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>1B · A sixth place in the rail, "Phone"</h3>
+      <p>Clearer on its own, but a sixth tab at 400 px (65 px each) and two places that do the same "keep the last minute,
+      clip it". The mirror page would be the same as 1A's tab. Not mocked further.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>2 · Connecting</span><h2>A QR code, not IPs and ports</h2></div>
+    <p class="why">Android 11+ pairs over Wi-Fi by scanning a QR code in <b>Developer options → Wireless debugging → Pair
+    device with QR code</b> (what Android Studio does). Neria shows the code, sees the phone on the network, pairs and
+    connects; a paired phone reconnects by itself afterwards (adb does that for phones it knows). The one thing we can't
+    skip: turning on Developer options once. Steps tick themselves off as Neria notices them.</p>
+    <div class="opt">
+      <h3>2A · QR on the left, the steps with pictures on the right <span class="rec">PICK</span></h3>
+      <p>Everything on one screen, the code always visible (the phone camera wants it while you're in Settings). A pairing
+      code and USB are quiet links underneath. The steps are calm rows; the current one has a yellow outline; done ones turn green.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide · first time · waiting for the scan</div>
+          <div class="q w1000"><div class="main">
+            <div class="hl">Keep the moment.</div>
+            <div class="tabs"><span><svg class="i"><use href="#mon"/></svg>This PC</span><span class="on"><svg class="i"><use href="#ph"/></svg>Phone</span></div>
+            <div class="row" style="align-items:flex-start;gap:30px;margin-top:20px">
+              <div>
+                <div class="qr"><svg><use href="#qrc"/></svg></div>
+                <div class="mut" style="margin-top:10px;font-size:12.5px;display:flex;gap:8px;align-items:center"><span class="dot pulse" style="color:var(--pop)"></span>Looking for your phone on this Wi-Fi…</div>
+              </div>
+              <div class="grow">
+                <div style="font:600 17px 'Inter Tight'">Connect your Android phone</div>
+                <div class="mut" style="margin:4px 0 10px">Same Wi-Fi as this PC, Android 11 or newer. Once only: next time it connects by itself.</div>
+                <div class="step"><span class="num done">✓</span><span class="grow"><b>Turn on Developer options</b><div class="mut">Settings → About phone → tap <i>Build number</i> 7 times.</div></span><span class="pic">About phone<br>Build number</span></div>
+                <div class="step"><span class="num now">2</span><span class="grow"><b>Open Wireless debugging</b><div class="mut">Settings → System → Developer options → <i>Wireless debugging</i>, turn it on, then tap <i>Pair device with QR code</i>.</div></span><span class="pic">Wireless debugging<br>● On</span></div>
+                <div class="step"><span class="num">3</span><span class="grow"><b>Scan this code</b><div class="mut">The phone pairs and Neria connects. Nothing to type.</div></span><span class="pic">Pair device<br>with QR code</span></div>
+                <div class="row" style="margin-top:12px;gap:16px"><span class="lnk">Use a pairing code instead</span><span class="lnk">Use a USB cable</span></div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Compact · 400</div>
+          <div class="q w400" style="padding:16px">
+            <div class="tabs" style="margin-top:0"><span><svg class="i"><use href="#mon"/></svg>This PC</span><span class="on"><svg class="i"><use href="#ph"/></svg>Phone</span></div>
+            <div style="font:600 16px 'Inter Tight';margin-top:14px">Connect your Android phone</div>
+            <div class="row" style="justify-content:center;margin:14px 0"><div class="qr" style="width:170px;height:170px"><svg><use href="#qrc"/></svg></div></div>
+            <div class="step"><span class="num done">✓</span><span class="grow"><b>Developer options</b><div class="mut">About phone → tap Build number 7 times.</div></span></div>
+            <div class="step"><span class="num now">2</span><span class="grow"><b>Wireless debugging</b><div class="mut">Turn it on → Pair device with QR code.</div></span></div>
+            <div class="step"><span class="num">3</span><span class="grow"><b>Scan this code</b></span></div>
+            <div class="row" style="margin-top:10px;gap:14px;flex-wrap:wrap"><span class="lnk">Pairing code instead</span><span class="lnk">USB cable</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Fallbacks and plain problems</div>
+          <div class="q w560" style="padding:16px">
+            <div class="h5">Pairing code instead</div>
+            <div class="hint">On the phone: Wireless debugging → <i>Pair device with pairing code</i>. Type the 6 digits it shows.</div>
+            <div class="row"><div class="select" style="width:150px"><span class="grow mono">482 913</span></div><span class="mut" style="font-size:12px">Found <b style="color:var(--ink)">Pixel 7</b></span><button class="ghost sm">Pair</button></div>
+            <div class="state">
+              <span class="tag warn">ON THE PHONE</span>
+              <div class="grow"><div class="big">Tap "Allow" on your phone</div><div class="mut">It asks once whether to allow USB debugging from this PC. Tick "Always allow".</div></div>
+            </div>
+            <div class="state" style="margin-top:0;border-top:0">
+              <span class="tag warn">OFF</span>
+              <div class="grow"><div class="big">Wireless debugging turned off</div><div class="mut">Android turns it off after a restart or on another Wi-Fi. Turn it back on and Neria reconnects.</div></div>
+            </div>
+            <div class="state" style="margin-top:0;border-top:0">
+              <span class="tag warn">USB</span>
+              <div class="grow"><div class="big">This phone needs its maker's USB driver</div><div class="mut">Windows doesn't see it as a phone yet. Use Wi-Fi instead (no driver needed).</div></div>
+              <button class="ghost sm">Use Wi-Fi</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>2B · A step-by-step dialog (one step per screen, Next / Back)</h3>
+      <p>Friendlier for the very first time, but the QR hides until step 3, you can't see what's coming, and a phone that's
+      already set up still clicks through. Not mocked further.</p>
+    </div>
+    <div class="opt">
+      <h3>Phones you've connected</h3>
+      <p>Once one phone is known, the tab opens on it. More than one: a short list above the mirror (or in place of it when
+      none is connected), each with how it connects and whether it's here now. <b>Add a phone</b> brings back the QR.</p>
+      <div class="pair scroll"><div class="q w560" style="padding:16px">
+        <div class="dev"><span class="ic"><svg class="i"><use href="#ph"/></svg></span><span class="grow">Pixel 7<div class="mut" style="font-size:12px">Wi-Fi · Android 15</div></span><span class="tag ok">Connected</span><button class="btn" style="height:34px">Mirror</button></div>
+        <div class="dev"><span class="ic"><svg class="i"><use href="#ph"/></svg></span><span class="grow">Galaxy Tab S9<div class="mut" style="font-size:12px">USB · Android 14</div></span><span class="tag">Not here</span><span class="lnk">Forget</span></div>
+        <div class="row" style="margin-top:10px"><span class="lnk">+ Add a phone</span></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>3 · Mirroring</span><h2>The phone in Neria, with its own replay</h2></div>
+    <div class="opt">
+      <h3>3A · Picture on the left, actions on the right (as in 1A) <span class="rec">PICK</span></h3>
+      <p>The phone's picture at its own shape; a landscape game turns the picture and the actions move under it. <b>Clip the
+      last 30 s</b> is the yellow one (the buffer keeps 1 min, like Capture's). Record starts a recording with a red REC tag
+      and its time; Stop saves it. Screenshot saves a PNG at full size. Each saved thing goes to Saved and the toast with
+      Open in clipper. Back / Home / Recent apps / turn under the picture.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Compact · 400 · mirroring (picture first, actions under it)</div>
+          <div class="q w400" style="padding:16px">
+            <div class="tabs" style="margin-top:0"><span><svg class="i"><use href="#mon"/></svg>This PC</span><span class="on"><svg class="i"><use href="#ph"/></svg>Pixel 7</span></div>
+            <div class="row" style="justify-content:center;margin-top:12px"><div class="phone" style="width:170px;height:340px"><div class="scr"><div class="bar"></div><div class="ap"></div><div class="ap2"></div></div></div></div>
+            <div class="nav3"><button class="ghost sm">◁</button><button class="ghost sm">○</button><button class="ghost sm">□</button><button class="ghost sm">⟳</button></div>
+            <div class="state"><span class="tag live"><span class="dot pulse"></span>LIVE</span><div class="grow"><div class="big" style="font-size:15px">Mirroring Pixel 7</div><div class="mut mono">Keeping 1 min · Wi-Fi</div></div></div>
+            <button class="btn" style="width:100%">✂ Clip the last 30 s</button>
+            <div class="row" style="margin-top:10px"><button class="ghost sm grow"><svg class="i"><use href="#rec"/></svg>Record</button><button class="ghost sm grow"><svg class="i"><use href="#cam"/></svg>Screenshot</button><button class="ghost sm" aria-label="More">⋯</button></div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Recording · landscape game</div>
+          <div class="q w560" style="padding:16px">
+            <div class="phone" style="width:100%;height:250px"><div class="scr" style="background:linear-gradient(100deg,#264653,#2a9d8f 45%,#e76f51)"></div></div>
+            <div class="nav3"><button class="ghost sm">◁</button><button class="ghost sm">○</button><button class="ghost sm">□</button><button class="ghost sm">⟳</button></div>
+            <div class="state"><span class="tag live"><span class="dot pulse"></span>REC <span class="mono">02:14</span></span><div class="grow"><div class="big" style="font-size:15px">Recording Pixel 7</div><div class="mut mono">2400 × 1080 · 60 fps · 186 MB</div></div><button class="ghost sm">■ Stop and save</button></div>
+            <div class="row" style="flex-wrap:wrap;gap:10px"><button class="btn">✂ Clip the last 30 s</button><button class="ghost sm"><svg class="i"><use href="#cam"/></svg>Screenshot</button><button class="ghost sm"><svg class="i"><use href="#win"/></svg>Present</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>3B · Picture in the middle, one bar of controls under it (a player)</h3>
+      <p>Looks like the clipper, but the options and Saved have nowhere to go except a drawer, and a tall phone leaves the
+      sides empty on wide windows. Not mocked further.</p>
+    </div>
+    <div class="opt">
+      <h3>The quick version, before Neria's own picture</h3>
+      <p>Built first (roadmap step 2) and kept: <b>Mirror in its own window</b> opens scrcpy's own window with the right
+      flags (sound, phone screen off, stay awake); Record there saves to the Videos folder and opens in the clipper.
+      Once the page draws the phone itself, this window is what <b>Present</b> uses (section 5).</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>4 · Sound only</span><h2>The phone's sound, no picture</h2></div>
+    <div class="opt">
+      <h3>4A · A strip in place of the picture, plus a tray line <span class="rec">PICK</span></h3>
+      <p>For music, a call, a game's sound while the phone's screen stays off. Its volume here (not the phone's), Record
+      saves a sound file (M4A), Stop. The Capture dot shows while it plays; the tray says "Playing from Pixel 7".
+      <b>Show the picture</b> switches to mirroring.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide</div>
+          <div class="q w760" style="padding:20px">
+            <div class="tabs" style="margin-top:0"><span><svg class="i"><use href="#mon"/></svg>This PC</span><span class="on"><svg class="i"><use href="#ph"/></svg>Pixel 7</span></div>
+            <div class="state">
+              <span class="tag ok"><svg class="i" style="width:12px;height:12px"><use href="#spk"/></svg>PLAYING</span>
+              <div class="grow"><div class="big">Playing from Pixel 7</div><div class="mut">Sound only · the phone's screen can stay off</div></div>
+            </div>
+            <div class="row" style="gap:14px;margin:14px 0"><svg class="i"><use href="#spk"/></svg><div class="slider" style="max-width:260px"><b></b><i></i></div><span class="mono mut">64%</span><span class="grow"></span><button class="ghost"><svg class="i"><use href="#rec"/></svg>Record</button><button class="ghost">Show the picture</button><button class="ghost">Stop</button></div>
+            <div class="tick"><span class="box on">✓</span><span>Keep playing on the phone too</span></div>
+            <div class="hint">Off: the phone goes quiet while it plays here (Android's way of sending its whole sound).</div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Compact · 400</div>
+          <div class="q w400" style="padding:16px">
+            <div class="state" style="margin-top:0"><span class="tag ok">PLAYING</span><div class="grow"><div class="big" style="font-size:15px">Playing from Pixel 7</div></div></div>
+            <div class="row" style="gap:10px;margin:12px 0"><svg class="i"><use href="#spk"/></svg><div class="slider"><b></b><i></i></div><span class="mono mut">64%</span></div>
+            <div class="row"><button class="ghost sm grow"><svg class="i"><use href="#rec"/></svg>Record</button><button class="ghost sm grow">Picture</button><button class="ghost sm grow">Stop</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>4B · A mini player along the bottom of every page</h3>
+      <p>Handy while you download, but it costs every page 48 px and is a new kind of strip. The tray line and the dot
+      already say it plays. Not mocked further.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>5 · Present the phone</span><h2>Only the phone, in a window of its own</h2></div>
+    <div class="opt">
+      <h3>5A · A bare window named "Phone screen · Pixel 7" <span class="rec">PICK</span></h3>
+      <p>No Neria around it, no bars: easy to pick in Discord, Teams, Meet or OBS, or to put on a projector. It keeps the
+      phone's shape when resized, turns when the phone turns, and you can still use the phone in it. Choices next to the
+      button: <b>Stay on top</b>, <b>Show taps</b> (people see what you press), <b>Keep the phone awake</b>. The page shows
+      "Presenting" with Stop; clipping keeps working.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">The window on the desktop (no frame)</div>
+          <div class="desk" style="width:420px;height:420px">
+            <div class="phone" style="width:180px;height:360px;margin:0 auto;border-color:#000"><div class="scr"><div class="bar"></div><div class="ap"></div><div class="ap2"></div><div style="position:absolute;left:52%;top:40%;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.55)"></div></div></div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Picking it to share (Discord)</div>
+          <div class="share"><b>Screen share</b><div class="g"><div><span></span>Neria</div><div class="sel"><span></span>Phone screen · Pixel 7</div><div><span></span>Discord</div><div><span></span>Valorant</div></div></div>
+          <div class="cap" style="margin-top:16px">On the page</div>
+          <div class="q" style="width:330px;padding:14px">
+            <div class="row"><button class="ghost"><svg class="i"><use href="#win"/></svg>Present in a window</button></div>
+            <div class="tick"><span class="box on">✓</span>Stay on top</div>
+            <div class="tick"><span class="box">&nbsp;</span>Show taps</div>
+            <div class="tick"><span class="box on">✓</span>Keep the phone awake</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>5B · Present by making Neria's own window bare (hide the rail and actions)</h3>
+      <p>One window less, but you lose Neria while presenting and the share picker shows "Neria". Not mocked further.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>How it works</span><h2>What's under it</h2></div>
+    <table class="cmp">
+      <tr><th>Piece</th><th>How</th></tr>
+      <tr><td>Tools</td><td>scrcpy's own Windows release (Apache 2.0), one pinned version, fetched into <code>bin/phone/</code> the first time you open the Phone tab (11 MB: adb, scrcpy, its server). Never at first run.</td></tr>
+      <tr><td>Connecting</td><td>adb's QR pairing (mDNS) as Android Studio does; Neria's own adb on its own port, so Android Studio's adb is never killed.</td></tr>
+      <tr><td>The picture</td><td>scrcpy's server on the phone streams H.264 and the sound to Neria; Neria shows it with its own player and sends taps, keys and scrolling back.</td></tr>
+      <tr><td>Clip the last…</td><td>The same short pieces as instant replay (copied, not encoded again), so clipping costs nothing.</td></tr>
+      <tr><td>Not portable, one thing</td><td>adb keeps its key and the list of paired phones in your user folder (<code>.android</code>), as Android Studio does; adb can't be told to keep them elsewhere.</td></tr>
+    </table>
+  </section>
+</div>
+</body>
+</html>
