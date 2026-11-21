@@ -481,7 +481,7 @@ fn explain_pair(out: &str) -> String {
 
 /// Connect to a paired phone's Wireless debugging (`adb connect`), when adb hasn't by itself.
 pub fn connect(addr: &str) -> Result<()> {
-    let out = adb_out(&["connect", addr], Duration::from_secs(15))?;
+    let out = adb_out(&["connect", addr], Duration::from_secs(8))?;
     if out.contains("connected to") {
         Ok(())
     } else {
@@ -492,16 +492,23 @@ pub fn connect(addr: &str) -> Result<()> {
 /// Connect each remembered phone that has Wireless debugging on, once, unless it's `held`
 /// (Disconnect) or already connected. Returns the ids connected now.
 pub fn reconnect(devices: &[Device], held: &[String]) -> Vec<String> {
+    // A phone that didn't let us in (this PC removed on the phone, say) isn't tried again
+    // for a minute.
+    static REFUSED: Mutex<Vec<(String, Instant)>> = Mutex::new(Vec::new());
+    REFUSED.lock().unwrap().retain(|(_, t)| t.elapsed() < Duration::from_secs(60));
+    let refused: Vec<String> = REFUSED.lock().unwrap().iter().map(|(i, _)| i.clone()).collect();
     let known: Vec<String> = known().into_iter().map(|k| k.id).collect();
     let mut done = Vec::new();
     for s in services().unwrap_or_default().into_iter().filter(|s| s.kind == Kind::Connect) {
         let Some(id) = s.phone_id().map(str::to_string) else { continue };
         let here = devices.iter().any(|d| d.serial.starts_with(&format!("adb-{id}-")) || d.serial.starts_with(&format!("{}:", s.ip())));
-        if !known.contains(&id) || held.contains(&id) || here || done.contains(&id) {
+        if !known.contains(&id) || held.contains(&id) || here || done.contains(&id) || refused.contains(&id) {
             continue;
         }
         if connect(&s.addr).is_ok() {
             done.push(id);
+        } else {
+            REFUSED.lock().unwrap().push((id, Instant::now()));
         }
     }
     done
@@ -523,7 +530,9 @@ pub fn visible_ids() -> Vec<String> {
 pub fn connect_id(id: &str) -> Result<()> {
     let svc = services()?.into_iter().find(|s| s.kind == Kind::Connect && s.phone_id() == Some(id));
     match svc {
-        Some(s) => connect(&s.addr),
+        Some(s) => connect(&s.addr).map_err(|_| {
+            anyhow::anyhow!("The phone didn't let Neria in. If this PC was removed on the phone, pair it again: Add a phone.")
+        }),
         None => bail!("The phone isn't on this Wi-Fi with Wireless debugging on."),
     }
 }
