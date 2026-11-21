@@ -73,6 +73,10 @@ struct Ui {
     renderer: Option<GlRenderer>,
     target: Option<Target>,
     pending: Option<String>,
+    /// Where the picture's player was at the last check, and the phone's frame count then
+    /// (the picture stalled when the player stays put while frames keep coming).
+    last_pos: Option<f64>,
+    last_frames: u64,
     /// The texture is in the page (`Phone.frame`); cleared when mirroring stops.
     shown_frame: bool,
 }
@@ -818,10 +822,35 @@ fn live(ui: &AppWindow) {
         p.set_problem(true);
         return;
     }
-    // The picture stopped (its player let go of the stream): load it again.
+    // The picture stopped (its player let go of the stream, or stalls while the phone goes
+    // on): load it again.
     if let Some(v) = &s.video {
-        let idle = UI.with(|u| u.borrow().mpv.as_ref().and_then(|m| m.get_flag("idle-active")).unwrap_or(false));
-        if (idle || v.readers() == 0) && UI.with(|u| u.borrow().renderer.is_some()) {
+        let (idle, pos) = UI.with(|u| {
+            let u = u.borrow();
+            let m = u.mpv.as_ref();
+            (m.and_then(|m| m.get_flag("idle-active")).unwrap_or(false), m.and_then(|m| m.get_f64("time-pos")))
+        });
+        let frames = s.live.lock().unwrap().frames;
+        let stalled = UI.with(|u| {
+            let mut u = u.borrow_mut();
+            let same = pos.is_some() && pos == u.last_pos && frames > u.last_frames + 5;
+            if !same || u.last_pos.is_none() {
+                u.last_pos = pos;
+                u.last_frames = frames;
+            }
+            same
+        });
+        if let Some(log) = std::env::var_os("NERIA_PHONE_DEBUG") {
+            use std::io::Write as _;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(log) {
+                let _ = writeln!(f, "frames {frames} pos {pos:?} idle {idle} stalled {stalled} readers {}", v.readers());
+            }
+        }
+        if (idle || stalled || v.readers() == 0) && UI.with(|u| u.borrow().renderer.is_some()) {
+            UI.with(|u| {
+                let mut u = u.borrow_mut();
+                u.last_pos = None;
+            });
             let url = v.url();
             UI.with(|u| {
                 if let Some(m) = &u.borrow().mpv {
@@ -950,6 +979,14 @@ fn screenshot(ui: &AppWindow) {
     let dir = out_dir(folders::Kind::Photo);
     let _ = std::fs::create_dir_all(&dir);
     let file = neria_core::clip::unique_path(&dir, &neria_core::music::sanitize(&stamp_name(&s.name)), "png");
+    // What the page shows, at the phone's full size, at once (mpv has the frame).
+    let shot = UI.with(|u| u.borrow().mpv.as_ref().map(|m| m.command(&["screenshot-to-file", &file.to_string_lossy(), "video"])));
+    if let Some(Ok(())) = shot {
+        if file.is_file() {
+            show_screenshot(ui, &file);
+            return;
+        }
+    }
     let weak = ui.as_weak();
     std::thread::spawn(move || {
         let res = s.screenshot(&file);

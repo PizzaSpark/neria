@@ -708,7 +708,11 @@ impl Options {
                 a.push(format!("max_fps={}", self.max_fps));
             }
             // A key frame every piece, so a save starts at most a piece early.
-            a.push(format!("video_codec_options=i-frame-interval:int={}", capture::PIECE_SECS));
+            // Android counts this in frames at an assumed 60 fps: 1 s is a key frame every 60
+            // frames, every second while things move and a few seconds on a quiet screen (it
+            // sends 10 or so a second then). Asking for one ("reset video") restarts the
+            // encoder, which players can stall on, so that's only done when a reader joins.
+            a.push("video_codec_options=i-frame-interval:float=1".into());
         }
         if self.audio {
             // 48 kHz stereo s16le: what our speaker and ffmpeg's sound inputs take as is.
@@ -1589,8 +1593,9 @@ impl Session {
                             readers += n;
                             waiting |= w;
                         }
-                        let stale = l.lock().unwrap().last_key.is_none_or(|t| t.elapsed() > Duration::from_secs(3));
-                        if readers > 0 && (waiting || stale) && asked.elapsed() > Duration::from_millis(1500) {
+                        // Only for a reader that joined, and only when no key frame is due soon.
+                        let recent = l.lock().unwrap().last_key.is_some_and(|t| t.elapsed() < Duration::from_millis(700));
+                        if readers > 0 && waiting && !recent && asked.elapsed() > Duration::from_secs(3) {
                             asked = Instant::now();
                             let mut g = ctl.lock().unwrap();
                             if let Some(s) = g.as_mut() {
@@ -2314,7 +2319,7 @@ mod tests {
         let a = Options::default().server_args(0x1234);
         assert!(a.contains(&"scid=00001234".to_string()));
         assert!(a.contains(&"audio_codec=raw".to_string()));
-        assert!(a.iter().any(|x| x.starts_with("video_codec_options=i-frame-interval:int=")));
+        assert!(a.iter().any(|x| x.starts_with("video_codec_options=i-frame-interval:")));
         let s = Options::sound_only().server_args(1);
         assert!(s.contains(&"video=false".to_string()) && s.contains(&"audio_dup=true".to_string()));
     }
