@@ -909,6 +909,32 @@ Dev hooks: `NERIA_TTV_ORDER` (the relay's players, in order), `NERIA_TTV_OFF` (n
 `close-rec`, `chat`, `chat-dialog`, `chat-sheet`, `chat-file`, `watch-live-chat`; chat:
 `NERIA_CHAT_DEMO`, `NERIA_CHAT_EXPORT`, `NERIA_CHAT_DEBUG`, `NERIA_CHAT_OFF`, `--example chat`.
 
+## Capture: instant replay of a game or the screen (own track)
+Prototype on branch `capture-prototype` (commit 009fc2e; engine `capture.rs`,
+`capture_sound.rs`, `hotkey.rs`; headless `--example capture`). Medal / ShadowPlay-style: the
+last minute is always kept, and saving turns it into a file that opens in the clipper.
+1. [x] **Engine (prototype).** FFmpeg grabs on the GPU (`ddagrab` a monitor, `gfxcapture` one
+   window) straight into the GPU's encoder; the route is tried at start (`Route::pick`:
+   NVENC, AMF, Quick Sync, NVENC through memory, x264). Pieces that overwrite the oldest;
+   saving includes the piece still being written
+2. [x] **Sound (prototype).** WASAPI, a track each: "Everything" (the mix) first, the PC (or
+   everything but one app), one app's process tree (Discord), a mic; silence filled by the
+   clock
+3. [x] **Hotkey (prototype).** `RegisterHotKey` (no hook, nothing for anti-cheat to object to),
+   F8 by default, a "saved" sound
+4. [ ] **UI.** Turn it on and off, what to capture (a game, a window, a monitor), how much to
+   keep, which sound tracks, the key; a plain status ("Keeping the last 60 s of
+   Valorant") and the tray; a saved clip as a toast with Open in clipper. Resizing (1440p is
+   kept as 1440p today)
+5. [ ] **"Hey Neria, clip that".** Off until turned on; the mic is only listened to on the PC,
+   nothing is sent anywhere. A small always-on wake-word listener (around 1% CPU, never the
+   large whisper model) that presses the same save as the hotkey, with the same "saved"
+   sound. Then, if wanted: a few words after the wake word read by a small whisper model
+   ("clip the last two minutes", "mark that"). Pick the engine by reading the real upstream
+   options (openWakeWord, sherpa-onnx keyword spotting, Porcupine's licence) and record it in
+   `docs/UPSTREAM.md`. Must not fire on game sound or friends on Discord: listen to the mic
+   track only, and test with a game playing loudly
+
 ## Phone: mirror, record and clip your Android phone (own track)
 Planned 2026-11-21. scrcpy's video is excellent, but getting it running (developer options,
 adb, IPs and ports for wireless) is the hard part, and it stops at a plain window. Neria's
