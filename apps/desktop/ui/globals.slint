@@ -816,6 +816,8 @@ export global Voice {
     in property <[VoiceSet]> sets;
     callback forget-samples();
     callback rename-set(string, string);
+    // The set whose name was just saved: its row says "Saved" for a moment.
+    in property <string> saved-set;
     callback forget-set(string);
     callback toggled(bool);
     callback get-cancel();

@@ -356,12 +356,27 @@ component VoiceSection inherits VerticalLayout {
                     placeholder-text: "Who's this? (Me, Jake…)";
                     edited(t) => { Voice.rename-set(st.id, t); }
                 }
-                Text {
+                // Names save as you type: says so for a moment.
+                if Voice.saved-set != st.id: Text {
                     text: st.samples + " samples";
                     color: Theme.muted;
                     font-family: Theme.mono;
                     font-size: 11.5px;
                     vertical-alignment: center;
+                }
+                if Voice.saved-set == st.id: HorizontalLayout {
+                    spacing: 5px;
+                    Icon {
+                        text: "\u{E73E}";
+                        font-size: 11px;
+                        color: Theme.ok;
+                    }
+                    Text {
+                        text: "Saved";
+                        color: Theme.ok;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
                 }
                 IconButton {
                     icon: "\u{E711}";

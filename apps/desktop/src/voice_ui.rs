@@ -68,6 +68,8 @@ struct State {
     toast_gen: u64,
     /// Bumped when the voice samples change (the listener reloads them).
     samples_gen: u64,
+    /// Bumped by each rename (the "Saved" mark goes after the last one).
+    saved_gen: u64,
     /// Sample screens for design checks (`NERIA_VOICE_DEMO`): nothing listens.
     demo: bool,
     _timer: Option<Timer>,
@@ -195,8 +197,28 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             crate::show_toast(&ui, "Forgot all your voice samples. Test it again to make new ones.");
         }
     });
-    v.on_rename_set(|id, name| {
-        let _ = voice_match::rename_set(&id, &name);
+    v.on_rename_set({
+        let weak = ui.as_weak();
+        move |id, name| {
+            let ui = weak.unwrap();
+            if voice_match::rename_set(&id, &name).is_ok() {
+                ui.global::<Voice>().set_saved_set(id.clone());
+                // Back to "3 samples" a moment after the last key.
+                let n = ST.with(|s| {
+                    let mut s = s.borrow_mut();
+                    s.saved_gen += 1;
+                    s.saved_gen
+                });
+                let weak = ui.as_weak();
+                Timer::single_shot(Duration::from_millis(1500), move || {
+                    if ST.with(|s| s.borrow().saved_gen) == n {
+                        if let Some(ui) = weak.upgrade() {
+                            ui.global::<Voice>().set_saved_set("".into());
+                        }
+                    }
+                });
+            }
+        }
     });
     v.on_forget_set({
         let weak = ui.as_weak();
