@@ -180,29 +180,34 @@ so they get built together.
 - Notes: `docs/releases/v0.7.0.md`
 
 ## Up next (priority order)
-1. **Ship v0.9.0.** Finish the chat / recording fixes in flight on `capture-prototype`, then
-   release what's on `main` since v0.8.0: Compress for sound files (MP3 too, waveform trim),
+1. **Ship v0.9.0 in December** (nothing pushed before then, user's call 2026-11-21). Release
+   what's on `capture-prototype` since v0.8.0: Compress for sound files (MP3 too, waveform trim),
    several kept parts and Even out, Speech to text, Live chat. The Capture engine can ride
    along hidden (no UI yet)
 2. **Real-link checks left**: an Instagram carousel all the way through with cookies; whether
    Brave's cookies are read once Brave is fully closed; a scheduled stream / premiere recorded
    from its first second (Livestreams 2)
-3. **Phone track**: connecting by QR first, then the quick mirror, then the mirror in Neria's
+3. **"Hey Neria, clip that"** (moved up, user's call 2026-11-21; Capture 5). The listener on
+   its own first, like Capture's engine: an always-on wake word on the mic, a headless
+   example, checked against loud game sound and friends on Discord. First real use: the live
+   player's "Clip the last" / "Save the last" (their UI is there already); Capture's F8 save
+   listens for it too and gets its settings with Capture's UI
+4. **Phone track**: connecting by QR first, then the quick mirror, then the mirror in Neria's
    own page with its own replay buffer and "Clip the last" (Capture shares it later)
-4. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
+5. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
    (starts ~1 s faster on every download and every Spotify candidate check, Music 4)
-5. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
+6. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
    live and Kick's chat (Livestreams 11); Speech to text extras (burned-in captions,
    translate); Spotify's own-key path and playlists over 100 songs (Music 4)
-6. **Capture track** (later, user's call 2026-11-21): its UI (item 4), then "Hey Neria, clip
-   that" (item 5). The engine, sound and hotkey are built
-7. **Bigger ideas** (section "Later"), in this order: browser extension, Library page,
+7. **Capture track's UI** (later, user's call 2026-11-21; Capture 4). The engine, sound,
+   hotkey and voice trigger are built by then
+8. **Bigger ideas** (section "Later"), in this order: browser extension, Library page,
    command palette, Audio tools page, saved workflows, external tools
-8. **Before the mobile build**, once everything above is done:
+9. **Before the mobile build**, once everything above is done:
    - **Code review** of the Clip track and the code from before the Download track (only the
      Download track has had one)
    - **Friends test round two** (they'll test then)
-9. **Android**, on hold until then
+10. **Android**, on hold until then
 Parked: **code signing** (SignPath Foundation, free for open source; SmartScreen's warning is
 fine for now, user's call 2026-11-21).
 Waiting on someone who can test it: YouTube Music Premium quality (Music 5).
