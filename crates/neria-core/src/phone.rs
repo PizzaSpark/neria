@@ -112,6 +112,10 @@ pub fn remove() -> Result<()> {
 pub fn adb() -> Command {
     let mut cmd = proc::command(adb_exe());
     cmd.env("ANDROID_ADB_SERVER_PORT", ADB_PORT.to_string());
+    // Neria connects paired phones itself (`reconnect`): adb's own auto-connect takes a phone
+    // twice when it announces itself under two names (after Wireless debugging is turned off
+    // and on), and would undo Disconnect.
+    cmd.env("ADB_MDNS_AUTO_CONNECT", "0");
     cmd
 }
 
@@ -371,6 +375,14 @@ pub struct Service {
 }
 
 impl Service {
+    /// The phone's serial number in its name ("adb-VOUSK…-shbQqu (2)" → "VOUSK…"), the same as
+    /// `Info::id`.
+    pub fn phone_id(&self) -> Option<&str> {
+        let name = self.instance.split(" (").next()?;
+        let rest = name.strip_prefix("adb-")?;
+        rest.rsplit_once('-').map(|(id, _)| id).filter(|id| !id.is_empty())
+    }
+
     pub fn ip(&self) -> &str {
         self.addr.rsplit_once(':').map(|(ip, _)| ip).unwrap_or(&self.addr)
     }
@@ -477,6 +489,45 @@ pub fn connect(addr: &str) -> Result<()> {
     }
 }
 
+/// Connect each remembered phone that has Wireless debugging on, once, unless it's `held`
+/// (Disconnect) or already connected. Returns the ids connected now.
+pub fn reconnect(devices: &[Device], held: &[String]) -> Vec<String> {
+    let known: Vec<String> = known().into_iter().map(|k| k.id).collect();
+    let mut done = Vec::new();
+    for s in services().unwrap_or_default().into_iter().filter(|s| s.kind == Kind::Connect) {
+        let Some(id) = s.phone_id().map(str::to_string) else { continue };
+        let here = devices.iter().any(|d| d.serial.starts_with(&format!("adb-{id}-")) || d.serial.starts_with(&format!("{}:", s.ip())));
+        if !known.contains(&id) || held.contains(&id) || here || done.contains(&id) {
+            continue;
+        }
+        if connect(&s.addr).is_ok() {
+            done.push(id);
+        }
+    }
+    done
+}
+
+/// Let go of a phone (every way it's connected over Wi-Fi). USB stays until it's unplugged.
+pub fn disconnect(serials: &[String]) {
+    for s in serials {
+        let _ = adb_out(&["disconnect", s], Duration::from_secs(5));
+    }
+}
+
+/// Remembered phones Neria can see on the Wi-Fi now (Wireless debugging on), by id.
+pub fn visible_ids() -> Vec<String> {
+    services().unwrap_or_default().iter().filter(|s| s.kind == Kind::Connect).filter_map(|s| s.phone_id().map(str::to_string)).collect()
+}
+
+/// Connect one remembered phone now (its Connect button).
+pub fn connect_id(id: &str) -> Result<()> {
+    let svc = services()?.into_iter().find(|s| s.kind == Kind::Connect && s.phone_id() == Some(id));
+    match svc {
+        Some(s) => connect(&s.addr),
+        None => bail!("The phone isn't on this Wi-Fi with Wireless debugging on."),
+    }
+}
+
 /// After pairing, the phone that just paired, connected (by adb by itself, or by us).
 pub fn wait_connected(ip: &str, timeout: Duration) -> Result<Device> {
     let began = Instant::now();
@@ -492,7 +543,7 @@ pub fn wait_connected(ip: &str, timeout: Duration) -> Result<Device> {
             return Ok(d.clone());
         }
         if let (Some(c), false) = (connect, tried) {
-            if began.elapsed() > Duration::from_secs(3) {
+            {
                 tried = true;
                 let _ = self::connect(&c.addr);
             }
@@ -2188,6 +2239,9 @@ mod tests {
         assert_eq!(s[1].ip(), "192.168.1.42");
         let p = Pairing { name: "neria-abc123".into(), password: "x".into() };
         assert_eq!(p.found(&s).unwrap().addr, "192.168.1.42:41234");
+        assert_eq!(s[0].phone_id(), Some("2B121FDH200ABC"));
+        let twice = Service { instance: "adb-VOUSK-shbQqu (2)".into(), kind: Kind::Connect, addr: "1.2.3.4:5".into() };
+        assert_eq!(twice.phone_id(), Some("VOUSK"));
         assert!(Pairing::new().qr_text().starts_with("WIFI:T:ADB;S:neria-"));
     }
 

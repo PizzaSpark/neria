@@ -416,6 +416,25 @@ component PhoneItem inherits VerticalLayout {
                 }
             }
         }
+        if root.item.here && !Screen.compact: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            TextLink {
+                text: "Disconnect";
+                clicked => { Phone.disconnect(root.item.id); }
+            }
+        }
+        if !root.item.here && root.item.visible: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            GhostButton {
+                compact: true;
+                text: "Connect";
+                icon: "\u{E8EA}";
+                label: "Connect " + root.item.name;
+                clicked => { Phone.connect(root.item.id); }
+            }
+        }
         if !root.item.here: VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;

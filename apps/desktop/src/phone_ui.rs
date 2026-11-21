@@ -60,6 +60,10 @@ struct Ui {
     down: bool,
     hotkey: Option<hotkey::Listener>,
     saving: bool,
+    /// Phones let go of with Disconnect (by id): not connected again until Connect.
+    held: Vec<String>,
+    /// Remembered phones on this Wi-Fi with Wireless debugging on (by id).
+    visible: Vec<String>,
     /// When pairing last failed (its note stays a while).
     pair_failed: Option<Instant>,
     /// Pair with the next phone found asking for a code.
@@ -161,8 +165,32 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
     p.on_forget({
         let weak = ui.as_weak();
         move |id| {
+            let ui = weak.unwrap();
+            let_go(&ui, &id);
             phone::forget(&id);
-            show_phones(&weak.unwrap());
+            show_phones(&ui);
+        }
+    });
+    p.on_disconnect({
+        let weak = ui.as_weak();
+        move |id| let_go(&weak.unwrap(), &id)
+    });
+    p.on_connect({
+        let weak = ui.as_weak();
+        move |id| {
+            let ui = weak.unwrap();
+            let id = id.to_string();
+            UI.with(|u| u.borrow_mut().held.retain(|h| *h != id));
+            let w = ui.as_weak();
+            std::thread::spawn(move || {
+                let res = phone::connect_id(&id);
+                let _ = w.upgrade_in_event_loop(move |ui| {
+                    if let Err(e) = res {
+                        crate::capture_ui::toast(&ui, "Not connected", &e.to_string(), false, None);
+                    }
+                    look(&ui);
+                });
+            });
         }
     });
     p.on_stop({
@@ -401,9 +429,15 @@ fn look(ui: &AppWindow) {
     }
     let pairing = UI.with(|u| u.borrow().pairing.clone()).filter(|_| state(ui) == st::CONNECT);
     let known: Vec<String> = UI.with(|u| u.borrow().infos.keys().cloned().collect());
+    let held = UI.with(|u| u.borrow().held.clone());
     let weak = ui.as_weak();
     std::thread::spawn(move || {
-        let devices = phone::devices().unwrap_or_default();
+        let mut devices = phone::devices().unwrap_or_default();
+        // Remembered phones with Wireless debugging on: connected once each, by us.
+        if !phone::reconnect(&devices, &held).is_empty() {
+            devices = phone::devices().unwrap_or_default();
+        }
+        let visible = phone::visible_ids();
         let mut infos = Vec::new();
         for d in devices.iter().filter(|d| d.state == State::Ready && !known.contains(&d.serial)) {
             if let Ok(i) = phone::info(&d.serial) {
@@ -422,6 +456,7 @@ fn look(ui: &AppWindow) {
                 let mut u = u.borrow_mut();
                 u.looking = false;
                 u.devices = devices;
+                u.visible = visible;
                 u.infos.extend(infos);
             });
             // A failed pairing's note stays until the next scan.
@@ -478,12 +513,17 @@ fn show_phones(ui: &AppWindow) {
     if UI.with(|u| u.borrow().demo) {
         return;
     }
-    let (devices, infos) = UI.with(|u| (u.borrow().devices.clone(), u.borrow().infos.clone()));
+    let (devices, infos, visible) = UI.with(|u| (u.borrow().devices.clone(), u.borrow().infos.clone(), u.borrow().visible.clone()));
     let mut rows = Vec::new();
     let mut ids = Vec::new();
     for d in &devices {
         let info = infos.get(&d.serial);
         if let Some(i) = info {
+            // One phone connected twice (it announced itself under two names, adb took
+            // both): listed once.
+            if !i.id.is_empty() && ids.contains(&i.id) {
+                continue;
+            }
             ids.push(i.id.clone());
         }
         rows.push(PhoneRow {
@@ -499,6 +539,7 @@ fn show_phones(ui: &AppWindow) {
             )
             .into(),
             here: true,
+            visible: false,
             problem: phone::problem(d).unwrap_or("").into(),
         });
     }
@@ -506,6 +547,7 @@ fn show_phones(ui: &AppWindow) {
         if ids.contains(&k.id) {
             continue;
         }
+        let seen = visible.contains(&k.id);
         rows.push(PhoneRow {
             serial: "".into(),
             id: k.id.as_str().into(),
@@ -514,10 +556,17 @@ fn show_phones(ui: &AppWindow) {
                 "{} · Android {}{}",
                 if k.wifi { "Wi-Fi" } else { "USB" },
                 k.android,
-                if k.wifi { " · turn on Wireless debugging and it connects" } else { " · plug it in" }
+                if seen {
+                    " · disconnected"
+                } else if k.wifi {
+                    " · turn on Wireless debugging and it connects"
+                } else {
+                    " · plug it in"
+                }
             )
             .into(),
             here: false,
+            visible: seen,
             problem: "".into(),
         });
     }
@@ -533,6 +582,29 @@ fn show_phones(ui: &AppWindow) {
         p.set_status("Android Studio's adb is running".into());
         p.set_detail("A phone on a USB cable may be taken by it. Close Android Studio, or use Wi-Fi.".into());
     }
+}
+
+/// Disconnect: stop mirroring it, let go of every Wi-Fi connection to it, and don't connect it
+/// again by ourselves until Connect (or Neria starts again).
+fn let_go(ui: &AppWindow, id: &str) {
+    let serials: Vec<String> = UI.with(|u| {
+        let u = u.borrow();
+        u.infos.iter().filter(|(_, i)| i.id == id).map(|(s, _)| s.clone()).filter(|s| u.devices.iter().any(|d| d.serial == *s && d.wifi)).collect()
+    });
+    if UI.with(|u| serials.contains(&u.borrow().serial)) && state(ui) >= st::STARTING {
+        stop(ui, None);
+    }
+    UI.with(|u| {
+        let mut u = u.borrow_mut();
+        if !u.held.iter().any(|h| h == id) {
+            u.held.push(id.to_string());
+        }
+    });
+    let weak = ui.as_weak();
+    std::thread::spawn(move || {
+        phone::disconnect(&serials);
+        let _ = weak.upgrade_in_event_loop(|ui| look(&ui));
+    });
 }
 
 fn connect_screen(ui: &AppWindow) {
@@ -1211,6 +1283,7 @@ fn show_demo(ui: &AppWindow, what: &str) {
             name: "Pixel 7".into(),
             hint: "Wi-Fi · Android 15".into(),
             here: true,
+            visible: false,
             problem: "".into(),
         },
         PhoneRow {
@@ -1219,6 +1292,7 @@ fn show_demo(ui: &AppWindow, what: &str) {
             name: "Galaxy Tab S9".into(),
             hint: "USB · Android 14 · plug it in".into(),
             here: false,
+            visible: false,
             problem: "".into(),
         },
     ];
