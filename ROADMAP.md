@@ -980,6 +980,9 @@ last minute is always kept, and saving turns it into a file that opens in the cl
    them counts too, either one is enough. Checked on recorded voices: the phrase matched at
    0.8–7, every other line at 11+, and another voice saying "clip that" matched none. Only
    works for the phrase said with a short pause around it (the words model covers the rest).
+   Each Test it adds a **named set** ("Me", "Jake"; up to 5, each forgotten on its own), so
+   several people or ways of saying it all count. Test it no longer raises Sensitivity by
+   itself (user's call: more false alarms for everyone); voice samples are the accent fix.
    Not yet: Capture's save; the friend's accent re-tested with samples.
    Off until turned on; the mic is only listened to on the PC,
    nothing is sent anywhere. A small always-on wake-word listener (around 1% CPU, never the

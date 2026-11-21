@@ -768,6 +768,13 @@ export struct VoiceSpelling {
     best: bool,
 }
 
+// One set of voice samples (one Test it): its label ("Me", "Jake") and how many samples.
+export struct VoiceSet {
+    id: string,
+    name: string,
+    samples: int,
+}
+
 // "Clip that": a phrase you say presses Clip the last / Save the last while the live player
 // is open (`voice_ui.rs`). Settings → Voice turns it on, takes the phrase and the mic, and
 // tests it; the player shows that it listens and what it did when it heard you.
@@ -804,9 +811,12 @@ export global Voice {
     // Under the boxes: what to do next ("Say "clip that" three times…").
     in property <string> test-note;
     in property <[VoiceSpelling]> spellings;
-    // Your voice samples kept from Test it (it also hears you by how you sound).
+    // Your voice samples kept from Test it, in sets (one per Test it), all counted.
     in property <int> samples;
+    in property <[VoiceSet]> sets;
     callback forget-samples();
+    callback rename-set(string, string);
+    callback forget-set(string);
     callback toggled(bool);
     callback get-cancel();
     callback phrase-edited(int, string);

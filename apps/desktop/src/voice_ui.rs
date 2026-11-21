@@ -19,7 +19,7 @@ use neria_core::voice::{self, Pieces, Prefs, Sayings, Spotter, Tuning};
 use neria_core::voice_match;
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 
-use crate::{AppWindow, ClipLive, Voice, VoicePhrase, VoiceSpelling, Watch};
+use crate::{AppWindow, ClipLive, Voice, VoicePhrase, VoiceSet, VoiceSpelling, Watch};
 
 /// Keep the last: the chips in Settings, in seconds.
 const KEEPS: [u32; 4] = [15, 30, 60, 120];
@@ -191,8 +191,20 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             let ui = weak.unwrap();
             let _ = voice_match::forget();
             ST.with(|s| s.borrow_mut().samples_gen += 1);
-            ui.global::<Voice>().set_samples(0);
-            crate::show_toast(&ui, "Forgot your voice samples. Test it again to make new ones.");
+            show_sets(&ui);
+            crate::show_toast(&ui, "Forgot all your voice samples. Test it again to make new ones.");
+        }
+    });
+    v.on_rename_set(|id, name| {
+        let _ = voice_match::rename_set(&id, &name);
+    });
+    v.on_forget_set({
+        let weak = ui.as_weak();
+        move |id| {
+            let ui = weak.unwrap();
+            let _ = voice_match::forget_set(&id);
+            ST.with(|s| s.borrow_mut().samples_gen += 1);
+            show_sets(&ui);
         }
     });
     v.on_test_start({
@@ -357,7 +369,7 @@ fn show_prefs(ui: &AppWindow) {
     v.set_keep(KEEPS.iter().position(|k| *k == p.keep).unwrap_or(1) as i32);
     v.set_sound(p.sound);
     v.set_undo_phrase(p.undo.clone().into());
-    v.set_samples(voice_match::count() as i32);
+    show_sets(ui);
     v.set_sensitivity(p.sensitivity.min(2) as i32);
     let bytes: u64 = std::fs::read_dir(voice::dir())
         .into_iter()
@@ -370,6 +382,18 @@ fn show_prefs(ui: &AppWindow) {
     if v.get_test() == 0 && v.get_test_note().is_empty() {
         v.set_test_note("Say your phrase three times, the way you would mid-game.".into());
     }
+}
+
+/// Settings → Voice: your sets of voice samples, by label.
+fn show_sets(ui: &AppWindow) {
+    let sets = voice_match::sets();
+    let v = ui.global::<Voice>();
+    v.set_samples(sets.iter().map(|s| s.samples).sum::<usize>() as i32);
+    v.set_sets(ModelRc::new(VecModel::from(
+        sets.into_iter()
+            .map(|s| VoiceSet { id: s.id.into(), name: s.name.into(), samples: s.samples as i32 })
+            .collect::<Vec<_>>(),
+    )));
 }
 
 /// A phrase the model can't take (no letters): say so under it.
@@ -560,7 +584,8 @@ fn run_mic(mode: &Mode, stop: &AtomicBool, send: &dyn Fn(Msg)) -> Result<(), (St
     let test = matches!(mode, Mode::Test(..));
     // Your voice samples (from Test it): a saying that sounds like them counts too. Sayings
     // are found by loudness; the last few seconds are kept at 16 kHz to compare.
-    let voice_samples = if matches!(mode, Mode::Listen(..)) { voice_match::load() } else { None };
+    let voice_samples =
+        if matches!(mode, Mode::Listen(..)) { Some(voice_match::load()).filter(|v| !v.is_empty()) } else { None };
     let mut sayings = Sayings::new(capture_sound::RATE);
     let mut recent: Vec<f32> = Vec::new();
     let mut recent_from = 0.0f64; // seconds since start of recent[0]
@@ -625,7 +650,7 @@ fn run_mic(mode: &Mode, stop: &AtomicBool, send: &dyn Fn(Msg)) -> Result<(), (St
                         if b - a <= 3.0 && fed - words_at > 2.5 {
                             let s = ((a - 0.15 - recent_from).max(0.0) * 16_000.0) as usize;
                             let e = (((b + 0.15 - recent_from) * 16_000.0) as usize).min(recent.len());
-                            if s < e && mine.matches(&recent[s..e]).0 {
+                            if s < e && mine.matches(&recent[s..e]) {
                                 if let Some(first) = phrases.first() {
                                     send(Msg::Heard(voice::words(first).join(" ")));
                                 }
@@ -742,7 +767,7 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
             .collect();
         let parts: Vec<Vec<f32>> = turn_sound.iter().map(|(_, p)| p.clone()).collect();
         if let Some(mine) = voice_match::Samples::from_sound(&parts) {
-            if voice_match::save(&parts).is_ok() {
+            if voice_match::add_set(&parts).is_ok() {
                 learned = mine.len();
                 ST.with(|s| s.borrow_mut().samples_gen += 1);
                 for ((i, _), ok) in turn_sound.iter().zip(mine.self_check()) {
@@ -754,7 +779,7 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
         }
     }
     v.set_boxes(ModelRc::new(VecModel::from(boxes.clone())));
-    v.set_samples(voice_match::count() as i32);
+    show_sets(ui);
     let heard = boxes.iter().filter(|b| **b == 2).count();
     let said = boxes.iter().filter(|b| **b >= 2).count();
     let Some(phrase) = prefs().phrases().into_iter().next() else {
@@ -782,7 +807,7 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
         v.set_test(0);
         v.set_test_note(
             if learned > 0 {
-                "Heard you every time, and it learned your voice from these three. You're set."
+                "Heard you every time. These three are saved as a new voice below: give it a name (Me, Jake…)."
             } else {
                 "Heard you every time. You're set."
             }
@@ -796,60 +821,27 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
         return;
     }
     v.set_test(2);
-    v.set_test_note("It missed some. Tuning it to your voice…".into());
+    v.set_test_note("It missed some. Trying spellings that sound the same…".into());
     let level = prefs().sensitivity;
     let alternatives = Pieces::load().map(|p| voice::spellings(&p, &phrase)).unwrap_or_default();
     let weak = ui.as_weak();
     std::thread::spawn(move || {
-        // First: listen harder (accents, quiet voices), as little as it takes, on what was
-        // just said. Then: spellings that sound the same, at that sensitivity.
-        let mut best = (level, heard);
-        for l in level + 1..=2 {
-            let n = voice::try_spellings(&audio, &sayings, std::slice::from_ref(&phrase), Tuning::sensitivity(l))
-                .first()
-                .map_or(0, |(_, n)| *n);
-            if n > best.1 {
-                best = (l, n);
-            }
-            if n == said {
-                break;
-            }
-        }
-        let found = if best.1 < said && !alternatives.is_empty() {
-            voice::try_spellings(&audio, &sayings, &alternatives, Tuning::sensitivity(best.0))
+        // Spellings that sound the same, at the sensitivity you picked (never raised by
+        // itself: that would bring false alarms for everyone; voice samples are for accents).
+        let found = if !alternatives.is_empty() {
+            voice::try_spellings(&audio, &sayings, &alternatives, Tuning::sensitivity(level))
         } else {
             Vec::new()
         };
         let _ = weak.upgrade_in_event_loop(move |ui| {
             let v = ui.global::<Voice>();
             v.set_test(0);
-            let (tuned, tuned_heard) = best;
-            if tuned != level {
-                save(|p| {
-                    p.sensitivity = tuned;
-                    p.tested_heard = tuned_heard as u8;
-                });
-                show_prefs(&ui);
-                if tuned_heard == said {
-                    let word = if tuned == 1 { "High" } else { "Highest" };
-                    v.set_test_note(
-                        format!("Tuned to your voice: Sensitivity is now {word}, and it heard all {said}.").into(),
-                    );
-                    return;
-                }
-            }
             if alternatives.is_empty() {
                 v.set_test_note(
-                    if tuned != level {
-                        format!("Tuned to your voice: it heard {tuned_heard} of {said} now. Say it a little louder or closer, or pick other words.")
-                    } else {
-                        "It missed some. Say it a little louder or closer, or pick other words.".to_string()
-                    }
-                    .into(),
+                    "It missed some. Say it a little louder or closer, or pick other words.".into(),
                 );
                 return;
             }
-            let heard = tuned_heard;
             let better: Vec<_> = found.into_iter().filter(|(_, n)| *n > heard).take(3).collect();
             if better.is_empty() {
                 v.set_test_note(
@@ -1104,8 +1096,12 @@ fn show_demo(ui: &AppWindow, what: &str) {
     v.set_model_text("Voice model · 5.3 MB".into());
     v.set_phrases(ModelRc::new(VecModel::from(vec![row("clip that", "Heard 3 of 3", 1)])));
     v.set_boxes(ModelRc::new(VecModel::from(vec![2, 2, 2])));
-    v.set_test_note("Heard you every time, and it learned your voice from these three. You're set.".into());
-    v.set_samples(3);
+    v.set_test_note("Heard you every time. These three are saved as a new voice below: give it a name (Me, Jake…).".into());
+    v.set_samples(6);
+    v.set_sets(ModelRc::new(VecModel::from(vec![
+        VoiceSet { id: "set-1".into(), name: "Me".into(), samples: 3 },
+        VoiceSet { id: "set-2".into(), name: "Jake".into(), samples: 3 },
+    ])));
     v.set_listen_text("Listening for \"clip that\"".into());
     match what {
         "getting" => {

@@ -260,31 +260,143 @@ impl Samples {
 /// How much further than your samples are from each other a match may be.
 pub const LIMIT_OVER_TYPICAL: f32 = 1.5;
 
-/// Keep the sayings as the samples (replacing the old ones).
-pub fn save(sayings: &[Vec<f32>]) -> Result<()> {
-    let d = dir();
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).with_context(|| format!("cannot create {}", d.display()))?;
-    for (i, s) in sayings.iter().enumerate() {
-        write_wav(&d.join(format!("{}.wav", i + 1)), s)?;
+/// At most this many sets are kept (the oldest goes): each Test it adds one.
+pub const MAX_SETS: usize = 5;
+
+/// All your sets: one per Test it (a person, or a way of saying it). A saying counts if it
+/// matches any one set, judged by that set's own strictness, so another accent or another
+/// person added doesn't loosen the match for the others.
+#[derive(Clone, Debug, Default)]
+pub struct Voices {
+    pub sets: Vec<Samples>,
+}
+
+impl Voices {
+    pub fn matches(&self, sound: &[f32]) -> bool {
+        self.sets.iter().any(|s| s.matches(sound).0)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.sets.is_empty()
+    }
+}
+
+/// Loose WAVs from before sets were a thing: moved into a set of their own.
+fn tidy_loose() {
+    let loose = wavs_in(&dir());
+    if loose.is_empty() {
+        return;
+    }
+    let old = dir().join("set-000000000000000");
+    if std::fs::create_dir_all(&old).is_ok() {
+        for f in loose {
+            if let Some(name) = f.file_name() {
+                let _ = std::fs::rename(&f, old.join(name));
+            }
+        }
+    }
+}
+
+/// The folders of the sets, oldest first (`set-<unix ms>`; loose WAVs from before sets were
+/// a thing are one set too).
+fn set_dirs() -> Vec<PathBuf> {
+    tidy_loose();
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(dir())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir() && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("set-")))
+        .collect();
+    dirs.sort();
+    dirs
+}
+
+fn wavs_in(d: &Path) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(d)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "wav"))
+        .collect();
+    files.sort();
+    files
+}
+
+/// One set as Settings lists it: its folder name (the id), its label, how many samples.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SetInfo {
+    pub id: String,
+    pub name: String,
+    pub samples: usize,
+}
+
+/// The sets, oldest first, with their labels (`name.txt` in each; "Voice 1"… when unnamed).
+pub fn sets() -> Vec<SetInfo> {
+    set_dirs()
+        .iter()
+        .enumerate()
+        .map(|(i, d)| SetInfo {
+            id: d.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            name: std::fs::read_to_string(d.join("name.txt"))
+                .ok()
+                .map(|n| n.trim().to_string())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| format!("Voice {}", i + 1)),
+            samples: wavs_in(d).len(),
+        })
+        .collect()
+}
+
+/// Give a set a label ("Me", "Jake").
+pub fn rename_set(id: &str, name: &str) -> Result<()> {
+    let d = dir().join(id);
+    if !id.starts_with("set-") || !d.is_dir() {
+        bail!("that set is gone");
+    }
+    std::fs::write(d.join("name.txt"), name.trim())?;
+    Ok(())
+}
+
+/// Forget one set.
+pub fn forget_set(id: &str) -> Result<()> {
+    let d = dir().join(id);
+    if id.starts_with("set-") && d.is_dir() {
+        std::fs::remove_dir_all(d)?;
     }
     Ok(())
 }
 
-/// The saved samples, if there are any.
-pub fn load() -> Option<Samples> {
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir())
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "wav"))
-        .collect();
-    files.sort();
-    let sound: Vec<Vec<f32>> = files.iter().filter_map(|f| read_wav(f).ok()).collect();
-    Samples::from_sound(&sound)
+/// Add these sayings as a new set (the oldest set goes past `MAX_SETS`); its id.
+pub fn add_set(sayings: &[Vec<f32>]) -> Result<String> {
+    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let d = dir().join(format!("set-{ms:015}"));
+    std::fs::create_dir_all(&d).with_context(|| format!("cannot create {}", d.display()))?;
+    for (i, s) in sayings.iter().enumerate() {
+        write_wav(&d.join(format!("{}.wav", i + 1)), s)?;
+    }
+    let sets = set_dirs();
+    for extra in sets.iter().take(sets.len().saturating_sub(MAX_SETS)) {
+        let _ = std::fs::remove_dir_all(extra);
+    }
+    Ok(d.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
 }
 
-/// Forget the samples.
+/// Every saved set.
+pub fn load() -> Voices {
+    let groups: Vec<Vec<PathBuf>> = set_dirs().iter().map(|d| wavs_in(d)).collect();
+    let sets = groups
+        .iter()
+        .filter_map(|files| {
+            let sound: Vec<Vec<f32>> = files.iter().filter_map(|f| read_wav(f).ok()).collect();
+            Samples::from_sound(&sound)
+        })
+        .collect();
+    Voices { sets }
+}
+
+/// Forget every set.
 pub fn forget() -> Result<()> {
     let d = dir();
     if d.exists() {
@@ -293,10 +405,11 @@ pub fn forget() -> Result<()> {
     Ok(())
 }
 
-pub fn count() -> usize {
-    std::fs::read_dir(dir())
-        .map(|r| r.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "wav")).count())
-        .unwrap_or(0)
+/// How many sets there are, and samples in all.
+pub fn count() -> (usize, usize) {
+    let dirs = set_dirs();
+    let samples = dirs.iter().map(|d| wavs_in(d).len()).sum();
+    (dirs.len(), samples)
 }
 
 /// 16-bit mono WAV at 16 kHz.

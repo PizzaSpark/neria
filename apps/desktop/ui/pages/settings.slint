@@ -336,17 +336,43 @@ component VoiceSection inherits VerticalLayout {
                 n: i + 1;
             }
         }
-        if Voice.samples > 0 && Voice.test == 0: HorizontalLayout {
-            spacing: 8px;
-            Hint {
-                horizontal-stretch: 1;
-                text: "Your voice: " + Voice.samples + " samples from Test it. A saying that sounds like them counts too, even when the words don't match. Kept on this PC.";
+        // Your voices: one set per Test it, named, each forgotten on its own.
+        if Voice.sets.length > 0 && Voice.test == 0: VerticalLayout {
+            spacing: 6px;
+            Text {
+                text: "Your voices";
+                color: Theme.ink;
+                font-size: 13px;
+                font-weight: 600;
             }
-            VerticalLayout {
-                alignment: center;
-                horizontal-stretch: 0;
+            Hint {
+                text: "A saying that sounds like any of these counts too, even when the words don't match. Test it again to add another person or another way of saying it (up to 5). Kept on this PC.";
+            }
+            for st in Voice.sets: HorizontalLayout {
+                spacing: 8px;
+                LineEdit {
+                    horizontal-stretch: 1;
+                    text: st.name;
+                    placeholder-text: "Who's this? (Me, Jake…)";
+                    edited(t) => { Voice.rename-set(st.id, t); }
+                }
+                Text {
+                    text: st.samples + " samples";
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 11.5px;
+                    vertical-alignment: center;
+                }
+                IconButton {
+                    icon: "\u{E711}";
+                    label: "Forget the voice " + st.name;
+                    clicked => { Voice.forget-set(st.id); }
+                }
+            }
+            if Voice.sets.length > 1: HorizontalLayout {
+                alignment: start;
                 TextLink {
-                    text: "Forget them";
+                    text: "Forget all";
                     clicked => { Voice.forget-samples(); }
                 }
             }
@@ -424,7 +450,7 @@ component VoiceSection inherits VerticalLayout {
             changed => { Voice.changed(); }
         }
         Hint {
-            text: "Higher hears accents, quiet voices and a far-off mic better, and goes off by mistake a little more. Test it raises it by itself when it misses you.";
+            text: "Higher hears quiet voices and a far-off mic better, and goes off by mistake more. For an accent, Test it is the better fix: it learns how you say it.";
         }
     }
 
