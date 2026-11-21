@@ -131,6 +131,69 @@ component OwnSound inherits VerticalLayout {
     }
 }
 
+// A short name typed in place (a voice set's label): saved as you type; while typing, a
+// ✓ Done button (or Enter) closes it. No "clear" ×, which read like "delete".
+component NameField inherits Rectangle {
+    in property <string> text;
+    in property <string> placeholder;
+    callback edited(string);
+    height: 38px;
+    border-radius: 9px;
+    background: Theme.panel;
+    border-width: 2px;
+    border-color: input.has-focus ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
+    // keyboard: Tab reaches the text input itself.
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 4px;
+        spacing: 6px;
+        Rectangle {
+            horizontal-stretch: 1;
+            if input.text == "": Text {
+                x: 0;
+                width: parent.width;
+                height: parent.height;
+                text: root.placeholder;
+                color: Theme.muted;
+                font-family: Theme.body;
+                font-size: 13px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            input := TextInput {
+                x: 0;
+                width: parent.width;
+                height: parent.height;
+                text: root.text;
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: 13px;
+                vertical-alignment: center;
+                single-line: true;
+                accessible-placeholder-text: root.placeholder;
+                selection-background-color: Theme.pop.with-alpha(0.45);
+                selection-foreground-color: Theme.ink;
+                edited => { root.edited(self.text); }
+                accepted => { self.clear-focus(); }
+            }
+        }
+        if input.has-focus: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            GhostButton {
+                compact: true;
+                icon: "\u{E73E}";
+                text: "Done";
+                clicked => { input.clear-focus(); }
+            }
+        }
+    }
+}
+
 // One of Test it's three turns: waiting, "Say it now" (with the time left running down and the
 // mic's level, so you see it hears you), heard, missed.
 component SayBox inherits Rectangle {
@@ -350,10 +413,10 @@ component VoiceSection inherits VerticalLayout {
             }
             for st in Voice.sets: HorizontalLayout {
                 spacing: 8px;
-                LineEdit {
+                NameField {
                     horizontal-stretch: 1;
                     text: st.name;
-                    placeholder-text: "Who's this? (Me, Jake…)";
+                    placeholder: "Who's this? (Me, Jake…)";
                     edited(t) => { Voice.rename-set(st.id, t); }
                 }
                 // Names save as you type: says so for a moment.
