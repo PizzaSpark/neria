@@ -958,8 +958,14 @@ last minute is always kept, and saving turns it into a file that opens in the cl
    the noise is louder than the voice; "clip it", "clippy", "clip the end" never fired.
    A made-up word as spelled ("Neria") wasn't heard; spelled as it sounds ("Nearia") it was,
    so the UI needs a **Test it**: say it a few times, Neria tries spellings and keeps what
-   works. Still to do: that, the live player's "Clip the last" / "Save the last" on hearing
-   it, Capture's save, a Settings place (on/off, phrase, mic, Test it, a level meter).
+   works. Built 2026-11-21 (mock `design/voice.html`, picked 1A · 2A · 3A): Settings → Voice
+   (on/off fetching the model, phrases, mic + meter, Test it with three sayings and
+   sound-alike spellings offered, Keep the last, the sound) and the live player (a Listening
+   mark that stops it for this stream, a yellow flash, a "Heard" toast; Clip the last while
+   recording with Undo, Save the last while watching). The phrase splitting was wrong until
+   then (its check was skipped): fixed, and "neria clip that" is now heard as typed. Checked:
+   screenshots at every width with sample data. Not yet: a live end-to-end check in the
+   app on a real stream; Undo for Save the last; Capture's save.
    Off until turned on; the mic is only listened to on the PC,
    nothing is sent anywhere. A small always-on wake-word listener (around 1% CPU, never the
    large whisper model) that presses the same save as the hotkey, with the same "saved"

@@ -137,6 +137,8 @@ pub struct Settings {
     /// Save live chat with recordings and with past streams that kept theirs
     /// (`Video.chat.json` next to the video; Settings → Download).
     pub chat_save: bool,
+    /// Settings → Voice: "clip that" heard while the live player is open.
+    pub voice: crate::voice::Prefs,
     /// Closing with downloads going: "ask", "tray" (keep going there) or "quit".
     pub close_action: String,
     /// Windows notifications when something finishes or fails.
@@ -195,6 +197,7 @@ impl Default for Settings {
             caption_langs: Vec::new(),
             transcribe: Default::default(),
             chat_save: true,
+            voice: Default::default(),
             caption_format: Default::default(),
             caption_mode: Default::default(),
             chapters_separate: false,

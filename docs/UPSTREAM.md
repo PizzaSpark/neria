@@ -135,8 +135,9 @@ cuBLAS and silently runs on the CPU: don't use it. Models from Hugging Face:
 Baseline: sherpa-onnx crate `=2.0.2` (static Windows lib, its own build script fetches it;
 the link warns LNK4098, LIBCMT vs the dynamic CRT, harmless so far) and the gigaspeech 3.3M
 int8 model. The model ships no tokenizer for us: `Pieces` reads `bpe.model` (sentencepiece's
-protobuf, pieces + scores) and merges letters by best score, checked against the model's own
-`keywords_raw.txt` → `keywords.txt`. If phrases stop being heard after an update, compare
+protobuf, pieces + scores) and, as a unigram model, picks the split whose scores add up
+highest (not pairwise merges: that gave `▁W OR L D` for `▁WORLD`), checked against the model's
+own `keywords_raw.txt` → `keywords.txt` (the test needs an absolute `NERIA_HOME` with the model). If phrases stop being heard after an update, compare
 `text2token`'s output first.
 - **sherpa-onnx keyword spotting (k2-fsa, Apache 2.0): the pick to prototype.** Open
   vocabulary: the phrase is plain text turned into the model's tokens (`text2token`), one line

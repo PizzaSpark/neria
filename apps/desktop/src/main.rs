@@ -39,6 +39,7 @@ mod spotify_ui;
 mod timeline_ui;
 mod transcribe_ui;
 mod updates_ui;
+mod voice_ui;
 
 slint::include_modules!();
 
@@ -1186,7 +1187,7 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                 ui.global::<Music>().invoke_add_lyrics();
             }
             if let Ok(section) = std::env::var("NERIA_SETTINGS") {
-                let names = ["download", "following", "spotify", "network", "general", "about"];
+                let names = ["download", "following", "spotify", "network", "general", "voice", "about"];
                 let section = if section.eq_ignore_ascii_case("appearance") { "general".into() } else { section };
                 if let Some(i) = names.iter().position(|n| section.eq_ignore_ascii_case(n)) {
                     ui.set_settings_section(i as i32);
@@ -2042,6 +2043,7 @@ fn main() -> anyhow::Result<()> {
     extras_ui::install(&ui);
     transcribe_ui::install(&ui, settings.clone());
     live_ui::install(&ui, &queue);
+    voice_ui::install(&ui, settings.clone(), queue.clone());
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());
         move || start_setup(&weak.unwrap(), settings.clone(), queue.clone())

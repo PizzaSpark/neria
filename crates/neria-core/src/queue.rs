@@ -1011,23 +1011,25 @@ impl Queue {
             (self.inner.notify)(e.snap.clone());
             (from, to)
         };
-        self.save_clip(id, to - from, Some((from, to)));
+        let _ = self.save_clip(id, to - from, Some((from, to)));
     }
 
     /// "Clip the last…" on a recording: the newest `seconds` as their own file, in a
     /// finished row of its own (in the background; the row shows when it's saved).
-    pub fn clip_last(&self, id: u64, seconds: f64) {
-        self.save_clip(id, seconds, None);
+    /// Returns the id its row will have once it's saved (Undo for "clip that").
+    pub fn clip_last(&self, id: u64, seconds: f64) -> u64 {
+        self.save_clip(id, seconds, None)
     }
 
     /// The last `seconds` of a recording (or the marked part `from`–`to`, which ends now)
     /// as a row of its own.
-    fn save_clip(&self, id: u64, seconds: f64, marked: Option<(f64, f64)>) {
+    fn save_clip(&self, id: u64, seconds: f64, marked: Option<(f64, f64)>) -> u64 {
+        let cid = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let (work, dir, title, thumb, group) = {
             let settings = self.inner.settings.lock().unwrap().clone();
             let entries = self.inner.entries.lock().unwrap();
-            let Some(e) = entries.iter().find(|e| e.snap.id == id) else { return };
-            let Some(work) = e.req.live.as_ref().and_then(|l| l.work.clone()) else { return };
+            let Some(e) = entries.iter().find(|e| e.snap.id == id) else { return cid };
+            let Some(work) = e.req.live.as_ref().and_then(|l| l.work.clone()) else { return cid };
             (work, download::out_dir(&e.req, &settings), e.snap.title.clone(), e.snap.thumbnail.clone(), e.snap.group)
         };
         let queue = self.clone();
@@ -1042,7 +1044,6 @@ impl Queue {
                     crate::record::clip_last(&work, seconds, &dir, &title),
                 ),
             };
-            let cid = queue.inner.next_id.fetch_add(1, Ordering::Relaxed);
             let mut snap = JobSnapshot::new(cid, group, label);
             snap.thumbnail = thumb;
             match result {
@@ -1067,6 +1068,7 @@ impl Queue {
             entries.push(Entry::new(snap, req));
             queue.save_locked(&entries);
         });
+        cid
     }
 
     /// Stop a download but keep what it has so far. Waiting jobs just don't start.

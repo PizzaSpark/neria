@@ -753,3 +753,80 @@ export global Transcribe {
     callback open-for-download();
     callback set-download(bool);
 }
+
+// One phrase in Settings → Voice: as typed, and how its last Test it went ("Heard 3 of 3").
+export struct VoicePhrase {
+    text: string,
+    tag: string,
+    kind: int, // Tag kind: 1 heard every time, 2 missed some
+}
+
+// A spelling that sounds like the phrase, tried on what Test it heard: "nearia clip that", "3 of 3".
+export struct VoiceSpelling {
+    text: string,
+    heard: string,
+    best: bool,
+}
+
+// "Clip that": a phrase you say presses Clip the last / Save the last while the live player
+// is open (`voice_ui.rs`). Settings → Voice turns it on, takes the phrase and the mic, and
+// tests it; the player shows that it listens and what it did when it heard you.
+export global Voice {
+    // ---- Settings → Voice ----
+    in-out property <bool> on;
+    in property <[VoicePhrase]> phrases;
+    // "Windows' default", then the mics by name.
+    in property <[string]> mics;
+    in-out property <int> mic;
+    // How loud the mic is now, 0–1 (the meter).
+    in property <float> level;
+    // Keep the last: 0 15 s, 1 30 s, 2 1 min, 3 2 min.
+    in-out property <int> keep: 1;
+    in-out property <bool> sound: true;
+    // The voice model: on the drive, being fetched ("2.1 / 5.3 MB"), or what went wrong.
+    in property <bool> ready;
+    in property <bool> getting;
+    in property <float> progress;
+    in property <string> get-text;
+    in property <string> model-text;
+    in property <string> error;
+    // Test it: 0 not running, 1 listening, 2 trying other spellings.
+    in property <int> test;
+    // The three sayings: 0 waiting, 1 listening now, 2 heard, 3 missed.
+    in property <[int]> boxes: [0, 0, 0];
+    // Under the boxes: what to do next ("Say "clip that" three times…").
+    in property <string> test-note;
+    in property <[VoiceSpelling]> spellings;
+    callback toggled(bool);
+    callback get-cancel();
+    callback phrase-edited(int, string);
+    callback add-phrase();
+    callback remove-phrase(int);
+    // Mic, Keep the last, the sound.
+    callback changed();
+    callback test-start();
+    callback test-stop();
+    callback use-spelling(string);
+    callback remove-model();
+    // The Voice section is showing (the meter runs) or not.
+    callback section-open(bool);
+
+    // ---- The live player ----
+    in property <bool> listening;
+    // 'Listening for "clip that"'.
+    in property <string> listen-text;
+    // The picked mic isn't there (unplugged).
+    in property <bool> mic-missing;
+    // A moment's yellow frame round the picture when it hears you.
+    in property <bool> flash;
+    // The toast on the picture: 'Heard "clip that"', "Clipped the last 30 s", Undo / Show.
+    in property <string> heard-tag;
+    in property <string> heard-text;
+    in property <int> heard-kind: 1;
+    in property <bool> heard-undo;
+    in property <bool> heard-show;
+    // The Listening mark: stop listening for this stream (or, mic gone, open Settings).
+    callback mark-clicked();
+    callback undo();
+    callback show();
+}

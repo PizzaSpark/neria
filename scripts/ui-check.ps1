@@ -134,13 +134,18 @@ $states = [ordered]@{
   "cmp-parts"  = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_PARTS = "20-80,150-200,300-330"; NERIA_COMPRESS_EVEN = "14"; NERIA_COMPRESS_ADVANCED = "1" }
   "cmp-talk-mp3" = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_FORMAT = "mp3"; NERIA_COMPRESS_ADVANCED = "1" }
   "cmp-talk-opus" = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_FORMAT = "opus"; NERIA_COMPRESS_ADVANCED = "1" }
-  "cmp-trim-song" = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_TRIM = "60,150" }
+  "cmp-trim-song" =@{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_TRIM = "60,150" }
   "cmp-parts-each" =@{ NERIA_COMPRESS = $film; NERIA_COMPRESS_PARTS = "2-8,20-26"; NERIA_COMPRESS_EACH = "1" }
   "cmp-play"   = @{ NERIA_COMPRESS = $film; NERIA_COMPRESS_PLAY = "1" }
   "cmp-play-song" = @{ NERIA_COMPRESS = $talk; NERIA_COMPRESS_PLAY = "1" }
   "cmp-song-mix" = @{ NERIA_COMPRESS = "$video;$song" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
+  "set-voice-off" = @{ NERIA_SETTINGS = "voice" }
+  "set-voice"  = @{ NERIA_SETTINGS = "voice"; NERIA_VOICE_DEMO = "on" }
+  "set-voice-get" = @{ NERIA_SETTINGS = "voice"; NERIA_VOICE_DEMO = "getting" }
+  "set-voice-test" = @{ NERIA_SETTINGS = "voice"; NERIA_VOICE_DEMO = "test" }
+  "set-voice-miss" = @{ NERIA_SETTINGS = "voice"; NERIA_VOICE_DEMO = "test-miss" }
   "set-net"    = @{ NERIA_SETTINGS = "network" }
   "set-follow" = @{ NERIA_SETTINGS = "following" }
   "set-spotify" = @{ NERIA_SETTINGS = "spotify" }
@@ -208,6 +213,8 @@ $states = [ordered]@{
   "clip-live"  = @{ NERIA_OPEN = "https://www.youtube.com/@aljazeeraenglish/live" }
   "clip-live-buffer" = @{ NERIA_OPEN = "https://www.twitch.tv/lofigirl" }
   "watch-live" = @{ NERIA_WATCH = "https://www.youtube.com/@aljazeeraenglish/live" }
+  "watch-live-voice" = @{ NERIA_WATCH = "https://www.youtube.com/@aljazeeraenglish/live"; NERIA_VOICE_DEMO = "heard" }
+  "watch-live-nomic" = @{ NERIA_WATCH = "https://www.youtube.com/@aljazeeraenglish/live"; NERIA_VOICE_DEMO = "missing" }
   "match"      = @{ NERIA_DIALOG = "match" }
   "sync"       = @{ NERIA_DIALOG = "sync" }
   "spotify"    = @{ NERIA_DIALOG = "spotify" }

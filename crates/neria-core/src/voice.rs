@@ -130,24 +130,34 @@ impl Pieces {
         }
         let mut out = Vec::new();
         for w in words {
-            let mut sym: Vec<String> = std::iter::once("▁".to_string()).chain(w.chars().map(String::from)).collect();
-            // "▁" joins the first letter when the model has that piece; sentencepiece does
-            // the same by merging the best-scored neighbours until none join.
-            loop {
-                let best = (0..sym.len().saturating_sub(1))
-                    .filter_map(|i| {
-                        let joined = format!("{}{}", sym[i], sym[i + 1]);
-                        self.score.get(&joined).map(|s| (i, *s, joined))
-                    })
-                    .max_by(|a, b| a.1.total_cmp(&b.1).then(b.0.cmp(&a.0)));
-                let Some((i, _, joined)) = best else { break };
-                sym[i] = joined;
-                sym.remove(i + 1);
+            // A unigram model (icefall's): of all the ways to cut "▁WORD" into known pieces,
+            // the one whose scores (log chances) add up highest.
+            let chars: Vec<char> = std::iter::once('▁').chain(w.chars()).collect();
+            let n = chars.len();
+            let mut best: Vec<Option<(f32, usize)>> = vec![None; n + 1];
+            best[0] = Some((0.0, 0));
+            for end in 1..=n {
+                for start in end.saturating_sub(16)..end {
+                    let Some((before, _)) = best[start] else { continue };
+                    let piece: String = chars[start..end].iter().collect();
+                    let Some(&s) = self.score.get(&piece) else { continue };
+                    if best[end].is_none_or(|(b, _)| before + s > b) {
+                        best[end] = Some((before + s, start));
+                    }
+                }
             }
-            if let Some(bad) = sym.iter().find(|s| !self.score.contains_key(*s)) {
+            if best[n].is_none() {
+                let bad = chars.iter().find(|c| !self.score.contains_key(&c.to_string())).unwrap_or(&'?');
                 bail!("the model doesn't know the letter {bad:?}");
             }
-            out.extend(sym);
+            let mut cuts = Vec::new();
+            let mut end = n;
+            while end > 0 {
+                let (_, start) = best[end].unwrap();
+                cuts.push(chars[start..end].iter().collect::<String>());
+                end = start;
+            }
+            out.extend(cuts.into_iter().rev());
         }
         Ok(out)
     }
@@ -365,9 +375,260 @@ pub fn read_file(path: &Path) -> Result<Vec<f32>> {
     Ok(raw.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
 }
 
+/// Settings → Voice, saved in `settings.json`.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Prefs {
+    /// Listen while the live player is open (off by default).
+    pub on: bool,
+    /// What to listen for, as typed. Empty ones are skipped.
+    pub phrases: Vec<String>,
+    /// Part of the mic's name; empty for Windows' default.
+    pub mic: String,
+    /// How much "Clip the last" / "Save the last" keeps, in seconds.
+    pub keep: u32,
+    /// The "saved" sound on hearing it.
+    pub sound: bool,
+    /// The last Test it: the phrase tested and how many of the sayings were heard (of 3).
+    pub tested: String,
+    pub tested_heard: u8,
+}
+
+impl Default for Prefs {
+    fn default() -> Self {
+        Prefs {
+            on: false,
+            phrases: vec![DEFAULT_PHRASE.into()],
+            mic: String::new(),
+            keep: 30,
+            sound: true,
+            tested: String::new(),
+            tested_heard: 0,
+        }
+    }
+}
+
+impl Prefs {
+    /// The phrases worth listening for (typed, with words in them).
+    pub fn phrases(&self) -> Vec<String> {
+        self.phrases.iter().map(|p| p.trim().to_string()).filter(|p| !words(p).is_empty()).collect()
+    }
+
+    /// The mic to open: `None` is Windows' default.
+    pub fn mic(&self) -> Option<String> {
+        (!self.mic.trim().is_empty()).then(|| self.mic.clone())
+    }
+}
+
+/// Times you spoke, found by loudness: Test it counts three of them.
+pub struct Sayings {
+    rate: f32,
+    /// Quietest the room has been lately, so a fan or game sound isn't speech.
+    floor: f32,
+    frame: Vec<f32>,
+    t: f64,
+    loud_for: f64,
+    quiet_for: f64,
+    open: Option<f64>,
+    /// Each saying's start and end, in seconds since the test started.
+    pub done: Vec<(f64, f64)>,
+}
+
+/// One 30 ms step of `Sayings`.
+const SAY_FRAME: f64 = 0.03;
+
+impl Sayings {
+    pub fn new(rate: u32) -> Sayings {
+        Sayings {
+            rate: rate as f32,
+            floor: 0.01,
+            frame: Vec::new(),
+            t: 0.0,
+            loud_for: 0.0,
+            quiet_for: 0.0,
+            open: None,
+            done: Vec::new(),
+        }
+    }
+
+    /// Someone is speaking now.
+    pub fn speaking(&self) -> bool {
+        self.open.is_some() && self.loud_for >= 0.15
+    }
+
+    /// Feed mono samples; true when a saying just ended.
+    pub fn feed(&mut self, samples: &[f32]) -> bool {
+        let n = (self.rate as f64 * SAY_FRAME) as usize;
+        let mut ended = false;
+        for &s in samples {
+            self.frame.push(s);
+            if self.frame.len() < n {
+                continue;
+            }
+            let rms = (self.frame.iter().map(|x| x * x).sum::<f32>() / n as f32).sqrt();
+            self.frame.clear();
+            self.t += SAY_FRAME;
+            // The floor follows quiet quickly and loud slowly.
+            self.floor = if rms < self.floor { rms.max(0.002) } else { self.floor * 0.995 + rms * 0.005 };
+            let loud = rms > (self.floor * 4.0).max(0.02);
+            if loud {
+                self.quiet_for = 0.0;
+                self.loud_for += SAY_FRAME;
+                if self.open.is_none() {
+                    self.open = Some(self.t - SAY_FRAME);
+                }
+            } else if let Some(start) = self.open {
+                self.quiet_for += SAY_FRAME;
+                // A saying ends after half a second of quiet; a click or a cough is too short.
+                if self.quiet_for >= 0.5 {
+                    if self.loud_for >= 0.25 {
+                        self.done.push((start, self.t - self.quiet_for));
+                        ended = true;
+                    }
+                    self.open = None;
+                    self.loud_for = 0.0;
+                }
+            }
+        }
+        ended
+    }
+
+    /// Which saying a phrase heard at `at` belongs to (the spotter fires a moment after).
+    pub fn which(&self, at: f64) -> Option<usize> {
+        let mut all = self.done.clone();
+        if let Some(start) = self.open {
+            all.push((start, self.t));
+        }
+        all.iter().position(|&(a, b)| at >= a && at <= b + 1.2)
+    }
+}
+
+/// Other spellings that sound like the phrase, for words the model doesn't know ("neria" →
+/// "nearia", "near ya"…): Test it tries them on what you said. Common words stay as typed.
+pub fn spellings(pieces: &Pieces, phrase: &str) -> Vec<String> {
+    let ws = words(phrase);
+    // A word the model knows well comes out as one or two pieces; a longer one in three or
+    // more is likely a name it never heard ("NERIA" → "▁NE RI A"; "CLIP" is short, so stays).
+    let odd = |w: &str| w.len() >= 5 && pieces.encode(w).map(|p| p.len() >= 3).unwrap_or(true);
+    const SWAPS: [(&str, &str); 14] = [
+        ("ER", "EAR"),
+        ("ER", "EER"),
+        ("IA", "EA"),
+        ("IA", "YA"),
+        ("IA", "IYA"),
+        ("I", "EE"),
+        ("E", "EA"),
+        ("A", "AH"),
+        ("Y", "IE"),
+        ("PH", "F"),
+        ("C", "K"),
+        ("QU", "KW"),
+        ("X", "KS"),
+        ("OO", "U"),
+    ];
+    let mut out: Vec<String> = Vec::new();
+    for (i, w) in ws.iter().enumerate() {
+        if !odd(w) {
+            continue;
+        }
+        let mut forms: Vec<String> = Vec::new();
+        for (from, to) in SWAPS {
+            if let Some(pos) = w.find(from) {
+                forms.push(format!("{}{}{}", &w[..pos], to, &w[pos + from.len()..]));
+            }
+        }
+        // Two swaps together ("NERIA" → "NEARYA"), and split where it reads as two words.
+        let pairs: Vec<String> = forms
+            .iter()
+            .flat_map(|f| {
+                SWAPS.iter().filter_map(move |(from, to)| {
+                    let pos = f.rfind(from)?;
+                    let g = format!("{}{}{}", &f[..pos], to, &f[pos + from.len()..]);
+                    (g != *f).then_some(g)
+                })
+            })
+            .collect();
+        forms.extend(pairs);
+        if w.len() >= 5 {
+            let mid = w.len() / 2;
+            forms.push(format!("{} {}", &w[..mid], &w[mid..]));
+        }
+        for f in forms {
+            let mut v = ws.clone();
+            v[i] = f;
+            let line = v.join(" ").to_lowercase();
+            if line != phrase.to_lowercase() && !out.contains(&line) && pieces.encode(&line).is_ok() {
+                out.push(line);
+            }
+        }
+    }
+    out.truncate(24);
+    out
+}
+
+/// How many of the `sayings` each spelling is heard in, run on the test's own sound (16 kHz),
+/// best first. Spellings heard in none are left out.
+pub fn try_spellings(
+    audio: &[f32],
+    sayings: &[(f64, f64)],
+    spellings: &[String],
+    tune: Tuning,
+) -> Vec<(String, usize)> {
+    let mut out: Vec<(String, usize)> = spellings
+        .iter()
+        .filter_map(|s| {
+            let mut spotter = Spotter::new(std::slice::from_ref(s), tune).ok()?;
+            let mut hit = vec![false; sayings.len()];
+            for chunk in audio.chunks(1600) {
+                for h in spotter.feed(16_000, chunk) {
+                    if let Some(i) = sayings.iter().position(|&(a, b)| h.at >= a && h.at <= b + 1.2) {
+                        hit[i] = true;
+                    }
+                }
+            }
+            let n = hit.iter().filter(|h| **h).count();
+            (n > 0).then(|| (s.clone(), n))
+        })
+        .collect();
+    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out
+}
+
+/// 48 kHz → 16 kHz for keeping a test's sound (averaging each three; speech is well under 8 kHz).
+pub fn to_16k(samples: &[f32]) -> Vec<f32> {
+    samples.chunks(3).map(|c| c.iter().sum::<f32>() / c.len() as f32).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sayings_are_counted_by_loudness() {
+        let rate = 16_000;
+        let mut s = Sayings::new(rate);
+        let quiet = vec![0.003f32; rate as usize];
+        let loud: Vec<f32> = (0..rate as usize / 2).map(|i| (i as f32 * 0.05).sin() * 0.3).collect();
+        let mut ended = 0;
+        for part in [&quiet, &loud, &quiet, &loud, &quiet] {
+            ended += part.chunks(800).filter(|c| s.feed(c)).count();
+        }
+        assert_eq!(ended, 2);
+        assert_eq!(s.done.len(), 2);
+        let (a, b) = s.done[0];
+        assert!((a - 1.0).abs() < 0.1 && (b - 1.5).abs() < 0.1, "{a}–{b}");
+        assert_eq!(s.which(1.9), Some(0));
+        assert_eq!(s.which(0.5), None);
+    }
+
+    #[test]
+    fn spellings_only_for_odd_words() {
+        let Ok(p) = Pieces::load() else { return };
+        let v = spellings(&p, "neria clip that");
+        assert!(v.contains(&"nearia clip that".to_string()), "{v:?}");
+        assert!(v.iter().all(|s| s.ends_with("clip that")), "{v:?}");
+        assert!(spellings(&p, "clip that").is_empty());
+    }
 
     #[test]
     fn words_keep_letters_only() {

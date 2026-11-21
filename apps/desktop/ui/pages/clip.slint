@@ -5,10 +5,10 @@ import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
 import { Timeline, ChapterStrip } from "../components/timeline.slint";
-import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions, Transcribe, ClipChat } from "../globals.slint";
+import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions, Transcribe, ClipChat, Voice } from "../globals.slint";
 import { ChatPanel } from "../components/chat-panel.slint";
 import { LiveTimeline } from "../components/live-timeline.slint";
-import { Menu, MenuItem, TextLink, LiveTape } from "../widgets.slint";
+import { Menu, MenuItem, TextLink, LiveTape, KeyPress } from "../widgets.slint";
 
 // The timeline's zoom: out, in, fit the clip, the whole video, and how much is on screen.
 // Ctrl+scroll on the timeline (or a touchpad pinch) and + / − do the same.
@@ -62,6 +62,110 @@ component ZoomButtons inherits HorizontalLayout {
             text: Screen.wide ? (ClipLive.on ? "All of it" : "Whole video") : "";
             label: ClipLive.on ? "Show all the site keeps" : "Show the whole video";
             clicked => { ClipView.whole(); }
+        }
+    }
+}
+
+// "Clip that" is on: says it's listening (and for what), with the mic's level so you can see
+// it's yours. Click: stop listening for this stream. The mic gone: says so, opens Settings.
+// Compact: the mic and its level only.
+component ListenMark inherits VerticalLayout {
+    alignment: center;
+    horizontal-stretch: 0;
+    Rectangle {
+        height: 30px;
+        min-width: row.preferred-width;
+        border-radius: 9px;
+        border-width: 2px;
+        border-color: ta.has-hover ? Theme.muted : Theme.line-strong;
+        background: ta.has-hover ? Theme.raised : transparent;
+        accessible-role: button;
+        accessible-label: Voice.mic-missing ? "Mic not found: open Settings, Voice" : Voice.listen-text + ". Stop listening for this stream";
+        accessible-action-default => { Voice.mark-clicked(); }
+        KeyPress {
+            radius: 9px;
+            activated => { Voice.mark-clicked(); }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { Voice.mark-clicked(); }
+        }
+        row := HorizontalLayout {
+            padding-left: 9px;
+            padding-right: 9px;
+            spacing: 6px;
+            Icon {
+                text: "\u{E720}";
+                font-size: 13px;
+                color: Voice.mic-missing ? Theme.warn : Theme.ink;
+            }
+            if !Screen.compact || Voice.mic-missing: Text {
+                text: Voice.mic-missing ? "Mic not found" : Voice.listen-text;
+                color: Voice.mic-missing ? Theme.warn : Theme.ink;
+                font-family: Theme.body;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+            // Three bars that move with the mic.
+            if !Voice.mic-missing: HorizontalLayout {
+                spacing: 2px;
+                alignment: center;
+                for k in [0.55, 1.0, 0.7]: VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 3px;
+                        height: 3px + 9px * min(1, Voice.level * 2.2 * k);
+                        border-radius: 1px;
+                        background: Theme.ok;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// What "clip that" just did, on the picture: 'Heard "clip that"' · "Clipped the last 30 s"
+// · Undo / Show. Gone after a few seconds.
+component HeardToast inherits Rectangle {
+    width: min(row.preferred-width, self.widest);
+    in property <length> widest;
+    height: 42px;
+    border-radius: 12px;
+    background: Theme.panel;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    row := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 14px;
+        spacing: 10px;
+        if Voice.heard-tag != "": VerticalLayout {
+            alignment: center;
+            Tag {
+                text: Screen.compact ? "Heard" : Voice.heard-tag;
+                kind: Voice.heard-kind;
+            }
+        }
+        Text {
+            text: Voice.heard-text;
+            color: Theme.ink;
+            font-family: Theme.body;
+            font-size: 12.5px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if Voice.heard-undo: VerticalLayout {
+            alignment: center;
+            TextLink {
+                text: "Undo";
+                clicked => { Voice.undo(); }
+            }
+        }
+        if Voice.heard-show: VerticalLayout {
+            alignment: center;
+            TextLink {
+                text: "Show";
+                clicked => { Voice.show(); }
+            }
         }
     }
 }
@@ -150,6 +254,7 @@ component LiveRow inherits FlexboxLayout {
     spacing: 8px;
     horizontal-stretch: 1;
     vertical-stretch: 0;
+    if Voice.listening: ListenMark { }
     // Not rewindable: how much to keep (one row of chips, so it wraps as a whole), then go.
     if !ClipLive.can-rewind && !ClipLive.buffering && !Screen.compact: Text {
         text: "Keep the last";
@@ -741,6 +846,19 @@ export component ClipPage inherits FocusScope {
                     text: "LIVE";
                     kind: 3;
                 }
+                // "Clip that" heard: a moment's yellow frame, and what it did.
+                if Voice.flash: Rectangle {
+                    width: parent.width;
+                    height: parent.height;
+                    border-width: 3px;
+                    border-color: Theme.pop;
+                    border-radius: 10px;
+                }
+                if Voice.heard-text != "": HeardToast {
+                    widest: parent.width - 24px;
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - self.height - 12px;
+                }
                 if !ClipPicture.editing && root.picture-changed: Tag {
                     x: 10px;
                     y: 10px;
@@ -1070,6 +1188,7 @@ export component ClipPage inherits FocusScope {
                     overflow: elide;
                 }
             }
+            if Voice.listening: ListenMark { }
             // Start a clip (10 s back), End clip saves it; the recording goes on.
             if !Watch.rec-clipping: PrimaryButton {
                 horizontal-stretch: Screen.compact ? 1 : 0;
@@ -1157,6 +1276,7 @@ export component ClipPage inherits FocusScope {
                 overflow: elide;
                 vertical-alignment: center;
             }
+            if Voice.listening: ListenMark { }
             LastMenu {
                 note: ClipLive.can-rewind || ClipLive.buffering ? "" : "Nothing kept to clip from yet";
                 picked(secs) => { ClipLive.last(secs); }
