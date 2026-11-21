@@ -19,7 +19,10 @@ use neria_core::settings::Settings;
 use neria_core::{folders, fmt, history, media};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
-use crate::{AppWindow, Capture, CaptureSaved, CaptureSource, Voice};
+use neria_core::capture::Role;
+use neria_core::capture_sound::{self, AppSound};
+
+use crate::{AppWindow, Capture, CaptureApp, CaptureSaved, CaptureSource, CaptureTrack, Voice};
 
 #[derive(Clone, Debug, PartialEq)]
 enum Phase {
@@ -60,6 +63,17 @@ struct State {
     last: Option<(PathBuf, Instant)>,
     toast_gen: u64,
     ticks: u64,
+    /// What's being recorded now: its name ("VALORANT", "Built-in screen") and the game's
+    /// file name when it's a game (Automatic moves when another game comes to the front).
+    target: Option<(String, Option<String>)>,
+    /// "Everything" is built app by app (two or more never recorded): new apps need a restart.
+    by_app: bool,
+    /// When it last started keeping, and the last save (a restart waits for a quiet moment).
+    since: Option<Instant>,
+    saved_at: Option<Instant>,
+    /// The apps playing sound, as last asked (levels for the track list).
+    apps: Vec<AppSound>,
+    asking_apps: bool,
     /// Frames and lengths of saved clips, worked out once.
     probed: Vec<(PathBuf, Option<f64>, Option<PathBuf>)>,
     /// Sample screens for design checks (`NERIA_CAPTURE_DEMO`): nothing records.
@@ -103,6 +117,18 @@ pub fn on() -> bool {
     ST.with(|s| s.borrow().wanted)
 }
 
+/// What's recorded, for the status and the file's name: Automatic's current target, else
+/// what's picked.
+fn what() -> String {
+    let p = prefs();
+    if p.automatic() {
+        return ST
+            .with(|s| s.borrow().target.as_ref().map(|t| t.0.clone()))
+            .unwrap_or_else(|| "the game in front".into());
+    }
+    p.what()
+}
+
 /// "1 min", "30 s", "5 min".
 fn keep_text(secs: u32) -> String {
     if secs >= 60 && secs % 60 == 0 { format!("{} min", secs / 60) } else { format!("{secs} s") }
@@ -115,10 +141,10 @@ pub fn status_line() -> Option<String> {
     }
     let p = prefs();
     Some(match phase() {
-        Phase::On => format!("Keeping the last {} of {}", keep_text(p.keep), p.what()),
-        Phase::Starting => format!("Starting instant replay of {}", p.what()),
-        Phase::Waiting => format!("Waiting for {} to open", p.what()),
-        Phase::Stopped(_) => format!("Couldn't record {}", p.what()),
+        Phase::On => format!("Keeping the last {} of {}", keep_text(p.keep), what()),
+        Phase::Starting => format!("Starting instant replay of {}", what()),
+        Phase::Waiting => format!("Waiting for {} to open", what()),
+        Phase::Stopped(_) => format!("Couldn't record {}", what()),
         Phase::Off => return None,
     })
 }
@@ -212,6 +238,29 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         let weak = ui.as_weak();
         move |text, ctrl, alt, shift, win| key_picked(&weak.unwrap(), &text, ctrl, alt, shift, win)
     });
+    c.on_never_add({
+        let weak = ui.as_weak();
+        move |exe| {
+            let exe = exe.to_string();
+            save_prefs(|p| {
+                if !p.is_never(&exe) {
+                    p.never.push(exe.clone());
+                }
+            });
+            never_changed(&weak.unwrap());
+        }
+    });
+    c.on_never_remove({
+        let weak = ui.as_weak();
+        move |exe| {
+            save_prefs(|p| p.never.retain(|n| !n.eq_ignore_ascii_case(&exe)));
+            never_changed(&weak.unwrap());
+        }
+    });
+    c.on_never_menu({
+        let weak = ui.as_weak();
+        move || never_choices(&weak.unwrap())
+    });
     c.on_open_clip({
         let weak = ui.as_weak();
         move |path| open_in_clipper(&weak.unwrap(), Path::new(path.as_str()))
@@ -302,7 +351,30 @@ fn halt() {
 fn begin(ui: &AppWindow) {
     let p = prefs();
     let monitors = capture_pick::monitors();
-    let source = p.source(&monitors);
+    // Automatic: the game in front, else the screen in use (the main one if unsure).
+    let (source, label, game) = if p.automatic() {
+        let f = capture_pick::front();
+        match f.game {
+            Some(g) => (Source::Window(g.exe.clone()), g.name.clone(), Some(g.exe)),
+            None => {
+                let m = f
+                    .monitor
+                    .and_then(|i| monitors.iter().find(|m| m.index == i))
+                    .or_else(|| monitors.iter().find(|m| m.main))
+                    .cloned();
+                let i = m.as_ref().map(|m| m.index).unwrap_or(0);
+                (Source::Monitor(i), m.map(|m| m.name).unwrap_or_else(|| "your screen".into()), None)
+            }
+        }
+    } else {
+        let source = p.source(&monitors);
+        let game = match &source {
+            Source::Window(exe) => Some(exe.clone()),
+            Source::Monitor(_) => None,
+        };
+        (source, p.what(), game)
+    };
+    ST.with(|s| s.borrow_mut().target = Some((label.clone(), game.clone())));
     if let Source::Window(exe) = &source {
         if !capture_pick::window_open(exe) {
             set_phase(Phase::Waiting);
@@ -320,7 +392,17 @@ fn begin(ui: &AppWindow) {
     });
     let weak = ui.as_weak();
     std::thread::spawn(move || {
-        let options = Options { source, fps: p.fps, keep: p.keep, mbps: p.mbps, route, sounds: p.sounds() };
+        let plan = p.sound_plan(game.as_deref().map(|g| (g, label.as_str())));
+        let by_app = plan.by_app;
+        let options = Options {
+            source,
+            fps: p.fps,
+            keep: p.keep,
+            mbps: p.mbps,
+            route,
+            sounds: plan.sounds,
+            tracks: plan.tracks,
+        };
         let started = ScreenBuffer::start(options);
         let _ = weak.upgrade_in_event_loop(move |ui| {
             let current = ST.with(|s| s.borrow().started_n == started_n && s.borrow().wanted);
@@ -330,6 +412,8 @@ fn begin(ui: &AppWindow) {
                         let mut s = s.borrow_mut();
                         s.route = Some((key, b.route));
                         s.buffer = Some(Arc::new(b));
+                        s.by_app = by_app;
+                        s.since = Some(Instant::now());
                     });
                     set_phase(Phase::On);
                 }
@@ -345,8 +429,8 @@ fn begin(ui: &AppWindow) {
 }
 
 /// ffmpeg's reason, in words that say what to do.
-fn explain(problem: &str, p: &Prefs) -> String {
-    let what = p.what();
+fn explain(problem: &str, _p: &Prefs) -> String {
+    let what = what();
     let low = problem.to_lowercase();
     if low.contains("no window") || low.contains("window not found") {
         format!("{what}'s window isn't there. If it's in exclusive fullscreen, pick Borderless in the game, or record the monitor.")
@@ -371,10 +455,25 @@ fn tick(ui: &AppWindow) {
     if ui.get_page() == 3 && n % 3 == 0 && !crate::background_ui::in_tray() {
         refresh_sources(ui);
     }
+    // The apps playing sound: levels for the track list, and new ones to take in.
+    if (ui.get_page() == 3 && !crate::background_ui::in_tray()) || (on() && n % 3 == 0) {
+        ask_apps(ui);
+    }
     if !on() {
         return;
     }
     let p = prefs();
+    // Automatic: another game came to the front.
+    if p.automatic() && phase() == Phase::On && n % 2 == 0 {
+        if let Some(g) = capture_pick::front().game {
+            let now = ST.with(|s| s.borrow().target.as_ref().and_then(|t| t.1.clone()));
+            if !now.is_some_and(|e| e.eq_ignore_ascii_case(&g.exe)) {
+                halt();
+                begin(ui);
+                return;
+            }
+        }
+    }
     match phase() {
         Phase::Waiting => {
             if p.kind == "window" && capture_pick::window_open(&p.exe) {
@@ -385,7 +484,12 @@ fn tick(ui: &AppWindow) {
             let stopped = ST.with(|s| s.borrow().buffer.as_ref().filter(|b| !b.running()).map(|b| b.problem.lock().unwrap().clone()));
             if let Some(problem) = stopped {
                 halt();
-                if p.kind == "window" && !capture_pick::window_open(&p.exe) {
+                let game_gone = ST.with(|s| s.borrow().target.as_ref().and_then(|t| t.1.clone()))
+                    .is_some_and(|exe| !capture_pick::window_open(&exe));
+                if p.automatic() && game_gone {
+                    // The game closed: back to the screen until the next game.
+                    begin(ui);
+                } else if p.kind == "window" && !capture_pick::window_open(&p.exe) {
                     // The game closed: wait for it again.
                     set_phase(Phase::Waiting);
                 } else {
@@ -405,13 +509,29 @@ fn show(ui: &AppWindow) {
     }
     let c = ui.global::<Capture>();
     let p = prefs();
-    let what = p.what();
+    let what = what();
     let keep = keep_text(p.keep);
     let ph = if on() { phase() } else { Phase::Off };
     let (state, status, detail) = match &ph {
-        Phase::Off => (0, "Instant replay is off".to_string(), format!("Will keep the last {keep} of {what}")),
+        Phase::Off => (
+            0,
+            "Instant replay is off".to_string(),
+            if p.automatic() {
+                format!("Will keep the last {keep} of the game in front")
+            } else {
+                format!("Will keep the last {keep} of {what}")
+            },
+        ),
         Phase::Starting => (1, format!("Starting instant replay of {what}…"), "Finding the quickest way on this PC".into()),
-        Phase::On => (2, format!("Keeping the last {keep} of {what}"), how_to_save(&p)),
+        Phase::On => (2, format!("Keeping the last {keep} of {what}"), {
+            if p.automatic() {
+                let game = ST.with(|s| s.borrow().target.as_ref().is_some_and(|t| t.1.is_some()));
+                let follows = if game { "Automatic: moves to the next game you open." } else { "Automatic: no game in front yet." };
+                format!("{follows} {}", how_to_save(&p))
+            } else {
+                how_to_save(&p)
+            }
+        }),
         Phase::Waiting => (3, format!("Waiting for {what} to open"), "It starts by itself when the game's window shows.".into()),
         Phase::Stopped(why) => (4, format!("Couldn't record {what}"), why.clone()),
     };
@@ -422,7 +542,7 @@ fn show(ui: &AppWindow) {
         let s = s.borrow();
         let b = s.buffer.as_ref().filter(|_| ph == Phase::On)?;
         let (kept, bytes) = b.kept();
-        let tracks = b.options.sounds.len();
+        let tracks = b.options.titles().len();
         let mut parts = Vec::new();
         if (kept as u32) < b.options.keep {
             parts.push(format!("{} kept so far", fmt::duration(kept)));
@@ -460,9 +580,9 @@ fn show_prefs(ui: &AppWindow) {
     let p = prefs();
     let c = ui.global::<Capture>();
     c.set_keep(KEEPS.iter().position(|k| *k == p.keep).unwrap_or(1) as i32);
-    c.set_pc(p.pc);
-    c.set_chat_apart(p.chat_apart);
+    c.set_per_app(p.per_app);
     c.set_mic(p.mic);
+    show_never(ui);
     c.set_key(p.key.clone().into());
     c.set_at_start(p.on_at_start);
     c.set_voice_hint(match voice_phrase() {
@@ -501,8 +621,7 @@ fn changed(ui: &AppWindow) {
     let before = prefs();
     save_prefs(|p| {
         p.keep = KEEPS[c.get_keep().clamp(0, 3) as usize];
-        p.pc = c.get_pc();
-        p.chat_apart = c.get_chat_apart();
+        p.per_app = c.get_per_app();
         p.mic = c.get_mic();
         p.mic_name = mic_name;
         p.on_at_start = c.get_at_start();
@@ -510,8 +629,7 @@ fn changed(ui: &AppWindow) {
     let after = prefs();
     // How much and which tracks are fixed while it runs: start again with them.
     let restart = after.keep != before.keep
-        || after.pc != before.pc
-        || after.chat_apart != before.chat_apart
+        || after.per_app != before.per_app
         || after.mic != before.mic
         || after.mic_name != before.mic_name;
     if restart && on() && phase() != Phase::Waiting {
@@ -523,6 +641,9 @@ fn changed(ui: &AppWindow) {
 
 /// The id of what's picked: "w:<exe>" or "m:<monitor name>".
 fn picked_id(p: &Prefs, monitors: &[Monitor]) -> String {
+    if p.automatic() {
+        return "auto".into();
+    }
     if p.kind == "window" && !p.exe.is_empty() {
         return format!("w:{}", p.exe);
     }
@@ -548,7 +669,7 @@ fn refresh_sources(ui: &AppWindow) {
             });
             // Nothing picked yet: the main screen, by name.
             let p = prefs();
-            if p.kind != "window" && p.monitor.is_empty() {
+            if p.kind == "monitor" && p.monitor.is_empty() {
                 if let Some(m) = ST.with(|s| s.borrow().monitors.iter().find(|m| m.main).cloned()) {
                     save_prefs(|p| {
                         p.monitor = m.name.clone();
@@ -569,6 +690,16 @@ fn show_sources(ui: &AppWindow) {
     let p = prefs();
     let (monitors, programs) = ST.with(|s| (s.borrow().monitors.clone(), s.borrow().programs.clone()));
     let mut rows = Vec::new();
+    let now = ST.with(|s| s.borrow().target.as_ref().map(|t| t.0.clone()));
+    rows.push(CaptureSource {
+        id: "auto".into(),
+        kind: 3,
+        name: "Automatic".into(),
+        hint: match (p.automatic() && on(), now) {
+            (true, Some(t)) => format!("The game in front · now: {t}").into(),
+            _ => "The game in front, else the screen you're using".into(),
+        },
+    });
     let picked_exe = (p.kind == "window").then(|| p.exe.clone()).unwrap_or_default();
     for g in &programs {
         if g.game || all || g.exe.eq_ignore_ascii_case(&picked_exe) {
@@ -583,7 +714,7 @@ fn show_sources(ui: &AppWindow) {
     // The game picked but not open now: still listed, it's waited for.
     if !picked_exe.is_empty() && !programs.iter().any(|g| g.exe.eq_ignore_ascii_case(&picked_exe)) {
         rows.insert(
-            0,
+            1,
             CaptureSource {
                 id: format!("w:{picked_exe}").into(),
                 kind: 0,
@@ -602,7 +733,9 @@ fn show_sources(ui: &AppWindow) {
 fn pick(ui: &AppWindow, id: &str) {
     let (monitors, programs) = ST.with(|s| (s.borrow().monitors.clone(), s.borrow().programs.clone()));
     let before = prefs();
-    if let Some(exe) = id.strip_prefix("w:") {
+    if id == "auto" {
+        save_prefs(|p| p.kind = "auto".into());
+    } else if let Some(exe) = id.strip_prefix("w:") {
         let name = programs.iter().find(|g| g.exe.eq_ignore_ascii_case(exe)).map(|g| g.name.clone());
         save_prefs(|p| {
             if !(p.kind == "window" && p.exe.eq_ignore_ascii_case(exe)) {
@@ -759,13 +892,14 @@ pub fn save(ui: &AppWindow, by: By) {
     let out_dir = settings
         .map(|s| folders::for_kind(&s.lock().unwrap(), folders::Kind::Video))
         .unwrap_or_else(|| folders::for_kind(&Settings::load(), folders::Kind::Video));
-    let what = p.what();
+    let what = what();
     let name = format!("{what} {}", chrono::Local::now().format("%Y-%m-%d %H-%M"));
+    ST.with(|s| s.borrow_mut().saved_at = Some(Instant::now()));
     let secs = p.keep;
     let by_voice = heard.is_some();
     let weak = ui.as_weak();
     std::thread::spawn(move || {
-        let titles = capture::track_titles(&buffer.options.sounds);
+        let titles = buffer.options.titles();
         let saved = capture::save_from(&buffer.dir, secs, &out_dir, &titles, &name);
         let _ = weak.upgrade_in_event_loop(move |ui| {
             ST.with(|s| s.borrow_mut().saving = false);
@@ -918,6 +1052,164 @@ fn show_saved(ui: &AppWindow) {
     });
 }
 
+/// A name for an app's file name: its window's title when it's a game, else "Spotify".
+fn app_label(exe: &str) -> String {
+    let progs = ST.with(|s| s.borrow().programs.clone());
+    progs
+        .iter()
+        .find(|g| g.game && g.exe.eq_ignore_ascii_case(exe))
+        .map(|g| g.name.clone())
+        .unwrap_or_else(|| capture_sound::app_name(exe))
+}
+
+fn show_never(ui: &AppWindow) {
+    let rows: Vec<CaptureApp> =
+        prefs().never.iter().map(|e| CaptureApp { exe: e.into(), name: app_label(e).into() }).collect();
+    ui.global::<Capture>().set_never(ModelRc::new(VecModel::from(rows)));
+}
+
+/// "+ Add an app": apps playing sound, then programs open now, not already never recorded.
+fn never_choices(ui: &AppWindow) {
+    let p = prefs();
+    let (apps, progs) = ST.with(|s| (s.borrow().apps.clone(), s.borrow().programs.clone()));
+    let mut rows: Vec<CaptureApp> = Vec::new();
+    let mut add = |exe: &str, name: String| {
+        if !p.is_never(exe) && !rows.iter().any(|r| r.exe.as_str().eq_ignore_ascii_case(exe)) {
+            rows.push(CaptureApp { exe: exe.into(), name: name.into() });
+        }
+    };
+    for a in &apps {
+        add(&a.exe, app_label(&a.exe));
+    }
+    for g in &progs {
+        add(&g.exe, if g.game { g.name.clone() } else { capture_sound::app_name(&g.exe) });
+    }
+    ui.global::<Capture>().set_never_choices(ModelRc::new(VecModel::from(rows)));
+}
+
+/// Never record changed: the list, the tracks, and a restart if it's on (tracks are fixed
+/// while recording).
+fn never_changed(ui: &AppWindow) {
+    show_never(ui);
+    show_tracks(ui);
+    if on() && phase() != Phase::Waiting {
+        halt();
+        begin(ui);
+    }
+}
+
+/// Ask Windows which apps play sound (off the window's thread: COM), then show the tracks,
+/// and take in a new app when "Everything" is built app by app.
+fn ask_apps(ui: &AppWindow) {
+    if ST.with(|s| s.borrow().demo || std::mem::replace(&mut s.borrow_mut().asking_apps, true)) {
+        return;
+    }
+    let weak = ui.as_weak();
+    std::thread::spawn(move || {
+        let apps = capture_sound::playing_apps();
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            ST.with(|s| {
+                let mut s = s.borrow_mut();
+                s.asking_apps = false;
+                s.apps = apps;
+            });
+            show_tracks(&ui);
+            take_in_new_apps(&ui);
+        });
+    });
+}
+
+/// Apps playing sound that the running recording has no track for (not never recorded).
+fn new_apps() -> Vec<AppSound> {
+    let p = prefs();
+    ST.with(|s| {
+        let s = s.borrow();
+        let Some(b) = s.buffer.as_ref() else { return Vec::new() };
+        s.apps
+            .iter()
+            .filter(|a| !p.is_never(&a.exe))
+            .filter(|a| !b.options.sounds.iter().any(|x| matches!(x, capture::Sound::App(e) if e.eq_ignore_ascii_case(&a.exe))))
+            .cloned()
+            .collect()
+    })
+}
+
+/// Two or more never recorded: an app that started later isn't heard at all, so restart at a
+/// quiet moment (kept at least 20 s, nothing saved in the last 10 s).
+fn take_in_new_apps(ui: &AppWindow) {
+    let (by_app, since, saved_at) = ST.with(|s| (s.borrow().by_app, s.borrow().since, s.borrow().saved_at));
+    if !by_app || phase() != Phase::On || new_apps().is_empty() {
+        return;
+    }
+    let quiet = since.is_some_and(|t| t.elapsed() > Duration::from_secs(20))
+        && saved_at.is_none_or(|t| t.elapsed() > Duration::from_secs(10))
+        && !ST.with(|s| s.borrow().saving);
+    if quiet {
+        halt();
+        begin(ui);
+    }
+}
+
+/// The tracks the next save holds (while on), or would hold, with each app's level.
+fn show_tracks(ui: &AppWindow) {
+    if ST.with(|s| s.borrow().demo) {
+        return;
+    }
+    let p = prefs();
+    let (apps, buffer, target) =
+        ST.with(|s| (s.borrow().apps.clone(), s.borrow().buffer.clone(), s.borrow().target.clone()));
+    let level = |exe: &str| apps.iter().find(|a| a.exe.eq_ignore_ascii_case(exe)).map(|a| a.peak).unwrap_or(0.0);
+    let (sounds, tracks) = match buffer.as_ref().filter(|_| phase() == Phase::On) {
+        Some(b) => (b.options.sounds.clone(), b.options.tracks.clone()),
+        None => {
+            let game = target.as_ref().and_then(|t| t.1.clone().map(|e| (e, t.0.clone())));
+            let plan = p.plan_from(game.as_ref().map(|(e, n)| (e.as_str(), n.as_str())), &apps);
+            (plan.sounds, plan.tracks)
+        }
+    };
+    let game_exe = target.as_ref().and_then(|t| t.1.clone()).unwrap_or_default();
+    let mut rows = Vec::new();
+    let everything = apps.iter().filter(|a| !p.is_never(&a.exe)).map(|a| a.peak).fold(0f32, f32::max);
+    let titles = Options { sounds: sounds.clone(), tracks: tracks.clone(), ..Options::default() }.titles();
+    if titles.first().is_some_and(|t| t == "Everything") {
+        rows.push(CaptureTrack {
+            n: 1,
+            name: "Everything".into(),
+            kind: 0,
+            note: "mixed, what players play".into(),
+            level: everything,
+            exe: "".into(),
+        });
+    }
+    for (i, snd) in sounds.iter().enumerate() {
+        let role = tracks.get(i).map(|t| t.role).unwrap_or(Role::Both);
+        if role == Role::MixOnly {
+            continue;
+        }
+        let name = tracks.get(i).map(|t| t.name.clone()).unwrap_or_else(|| snd.title());
+        let (kind, exe, lvl) = match snd {
+            capture::Sound::App(e) => (if e.eq_ignore_ascii_case(&game_exe) { 1 } else { 2 }, e.clone(), level(e)),
+            capture::Sound::Mic(_) => (3, String::new(), 0.0),
+            _ => (2, String::new(), 0.0),
+        };
+        let name = if kind == 2 { app_label(&exe) } else { name };
+        rows.push(CaptureTrack { n: rows.len() as i32 + 1, name: name.into(), kind, note: "".into(), level: lvl, exe: exe.into() });
+    }
+    let c = ui.global::<Capture>();
+    c.set_tracks(ModelRc::new(VecModel::from(rows)));
+    let later: Vec<String> = if phase() == Phase::On { new_apps().iter().map(|a| app_label(&a.exe)).collect() } else { Vec::new() };
+    let by_app = ST.with(|s| s.borrow().by_app);
+    c.set_tracks_note(match (later.is_empty(), by_app) {
+        (true, _) => "".into(),
+        (false, false) => format!(
+            "{} started later: it's in Everything, and gets a track of its own the next time instant replay starts.",
+            later.join(", ")
+        )
+        .into(),
+        (false, true) => format!("{} started later: Neria takes it in at the next quiet moment.", later.join(", ")).into(),
+    });
+}
+
 /// The tray menu's Capture lines: (id, text, enabled).
 pub fn tray_items() -> Vec<(&'static str, String, bool)> {
     if !on() {
@@ -951,18 +1243,35 @@ fn show_demo(ui: &AppWindow, what: &str) {
         hint: hint.into(),
     };
     c.set_sources(ModelRc::new(VecModel::from(vec![
+        src("auto", 3, "Automatic", "The game in front · now: VALORANT"),
         src("w:VALORANT-Win64-Shipping.exe", 0, "VALORANT", "VALORANT-Win64-Shipping.exe"),
         src("w:r5apex.exe", 0, "Apex Legends", "r5apex.exe"),
         src("m:DELL U2720Q", 2, "DELL U2720Q", "Main screen · 2560 × 1440"),
         src("m:LG 24MP59G", 2, "LG 24MP59G", "Another screen · 1920 × 1080"),
     ])));
-    c.set_picked("w:VALORANT-Win64-Shipping.exe".into());
+    c.set_picked("auto".into());
     c.set_mics(ModelRc::new(VecModel::from(vec![
         SharedString::from("Windows' default"),
         "Microphone (2- fifine Microphone)".into(),
     ])));
     c.set_mic_index(1);
     c.set_key("F8".into());
+    let tr = |n: i32, name: &str, kind: i32, note: &str, level: f32, exe: &str| CaptureTrack {
+        n,
+        name: name.into(),
+        kind,
+        note: note.into(),
+        level,
+        exe: exe.into(),
+    };
+    c.set_tracks(ModelRc::new(VecModel::from(vec![
+        tr(1, "Everything", 0, "mixed, what players play", 0.4, ""),
+        tr(2, "VALORANT", 1, "", 0.35, "VALORANT-Win64-Shipping.exe"),
+        tr(3, "Discord", 2, "", 0.2, "Discord.exe"),
+        tr(4, "Brave", 2, "", 0.0, "brave.exe"),
+        tr(5, "Mic", 3, "", 0.0, ""),
+    ])));
+    c.set_never(ModelRc::new(VecModel::from(vec![CaptureApp { exe: "Spotify.exe".into(), name: "Spotify".into() }])));
     let saved = vec![
         CaptureSaved {
             path: "C:\\Videos\\VALORANT 2026-11-21 21-04 (last 1m00s).mp4".into(),

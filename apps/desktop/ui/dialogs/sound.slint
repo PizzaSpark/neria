@@ -1,7 +1,7 @@
 import { ScrollView, Slider } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { ClipSound } from "../globals.slint";
-import { PrimaryButton, GhostButton, SectionTitle, Hint, Dialog, ChoiceChips } from "../widgets.slint";
+import { PrimaryButton, GhostButton, SectionTitle, Hint, Dialog, ChoiceChips, Tick } from "../widgets.slint";
 
 // A small heading with its chips under it.
 component Part inherits VerticalLayout {
@@ -35,6 +35,49 @@ export component SoundDialog inherits Dialog {
                     options: ["Same as the file", "mp3", "m4a", "opus", "flac", "wav"];
                     current <=> ClipSound.file-format;
                     changed => { ClipSound.changed(); }
+                }
+            }
+            // An instant replay: its apps and mic, each on its own track, mixed again as set.
+            if ClipSound.tracks.length > 0 && ClipSound.level != 3: Part {
+                title: "Tracks";
+                for t[i] in ClipSound.tracks: HorizontalLayout {
+                    spacing: 12px;
+                    Tick {
+                        horizontal-stretch: 0;
+                        min-width: Screen.compact ? 96px : 130px;
+                        text: t.name;
+                        elide: true;
+                        checked: t.on;
+                        toggled(v) => { ClipSound.track-set(i, v, t.volume); }
+                    }
+                    Slider {
+                        horizontal-stretch: 1;
+                        minimum: 0;
+                        maximum: 200;
+                        step: 10;
+                        enabled: t.on;
+                        value: t.volume * 100;
+                        accessible-label: t.name + " volume, in percent";
+                        changed(v) => { ClipSound.track-set(i, t.on, v / 100); }
+                    }
+                    Text {
+                        horizontal-stretch: 0;
+                        min-width: 48px;
+                        text: t.on ? Math.round(t.volume * 100) + "%" : "off";
+                        color: t.on ? Theme.ink : Theme.muted;
+                        font-family: Theme.mono;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                }
+                Tick {
+                    text: "Keep the tracks apart in the saved clip too";
+                    checked <=> ClipSound.tracks-apart;
+                    toggled => { ClipSound.changed(); }
+                }
+                Hint {
+                    text: "The first track is made again from these as set. What's only in the replay's \"Everything\" (Windows' sounds, apps that started later) is left out once a track changes.";
                 }
             }
             Part {

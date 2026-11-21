@@ -177,6 +177,7 @@ impl Clipper {
         ui.set_clip_playing(false);
         ui.set_clip_has_video(true);
         ui.set_clip_has_audio(true);
+        crate::sound_ui::set_tracks(ui, &[]);
         ui.set_clip_gif_file(matches!(&source, Source::File(p) if is_gif_file(p)));
         crate::sound_ui::fit_to_clip(ui);
         // A crop or a clip list belongs to the video it was made on.
@@ -235,6 +236,11 @@ impl Clipper {
         let chain = if ui.global::<Watch>().get_on() { String::new() } else { crate::sound_ui::edit(ui).preview() };
         let af = if chain.is_empty() { String::new() } else { format!("lavfi=[{chain}]") };
         let _ = mpv.set_property("af", &af);
+        // An instant replay's tracks mixed again: heard as they'll be saved.
+        let mix = if ui.global::<Watch>().get_on() { String::new() } else { crate::sound_ui::player_mix(ui) };
+        if mpv.get_string("lavfi-complex").unwrap_or_default() != mix {
+            let _ = mpv.set_property("lavfi-complex", &mix);
+        }
         // The picture too: watching plays the link as it is. A phone video's own rotation
         // moves into the filters (see `player_filter`), so the frame is the saved file's.
         let rotation = self.rotation.load(Ordering::SeqCst);
@@ -495,9 +501,11 @@ impl Clipper {
             let has_video = info.has_video;
             let has_audio = info.has_audio;
             let chapters = info.chapters.clone();
+            let titles = info.audio_titles.clone();
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 ui.set_clip_has_video(has_video);
                 ui.set_clip_has_audio(has_audio);
+                crate::sound_ui::set_tracks(&ui, &titles);
                 // A sound-only file can't be muted or saved as sound only: back to as is.
                 crate::sound_ui::fit_to_clip(&ui);
                 ui.global::<ClipSound>().invoke_changed();
@@ -1206,6 +1214,8 @@ pub fn install(
                 );
                 req.audio = crate::sound_ui::edit(&ui);
                 req.audio_only = crate::sound_ui::audio_only(&ui);
+                req.tracks = crate::sound_ui::tracks(&ui);
+                req.tracks_apart = ui.global::<ClipSound>().get_tracks_apart();
                 req.picture = picture;
                 req.name = name;
                 req

@@ -1455,6 +1455,7 @@ mod tests {
             has_video: true,
             has_audio: true,
             audio_tracks: 1,
+            audio_titles: Vec::new(),
             audio_codec: "aac".into(),
             audio_channels: 2,
             interlaced: false,

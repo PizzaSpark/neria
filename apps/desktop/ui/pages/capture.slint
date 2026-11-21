@@ -1,7 +1,7 @@
 import { ComboBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { PrimaryButton, GhostButton, IconButton, TextLink, ChoiceChips, PageTitle, Notice, Divider, Thumb, Tick, Tag, Icon, KeyPress, SectionTitle } from "../widgets.slint";
-import { Capture, CaptureSource, CaptureSaved, Voice } from "../globals.slint";
+import { Menu, MenuItem, PrimaryButton, GhostButton, IconButton, TextLink, ChoiceChips, PageTitle, Notice, Divider, Thumb, Tick, Tag, Icon, KeyPress, SectionTitle } from "../widgets.slint";
+import { Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Voice } from "../globals.slint";
 
 // The Capture page (mock: design/capture.html, picks 1A · 2A · 3A · 4A): instant replay of a
 // game, a window or a monitor. The status and its buttons stay at the top; what to record,
@@ -76,7 +76,7 @@ component SourceRow inherits Rectangle {
                 border-radius: 6px;
                 background: Theme.raised;
                 Icon {
-                    text: root.item.kind == 0 ? "\u{E7FC}" : root.item.kind == 2 ? "\u{E7F4}" : "\u{ECAA}";
+                    text: root.item.kind == 0 ? "\u{E7FC}" : root.item.kind == 2 ? "\u{E7F4}" : root.item.kind == 3 ? "\u{E945}" : "\u{ECAA}";
                     font-size: 14px;
                     color: Theme.dim;
                 }
@@ -105,6 +105,154 @@ component SourceRow inherits Rectangle {
         if root.item.kind == 0: VerticalLayout {
             alignment: center;
             Tag { text: "Game"; }
+        }
+        if root.item.kind == 3 && root.selected && Capture.state == 2: VerticalLayout {
+            alignment: center;
+            Tag {
+                text: "Following";
+                kind: 1;
+            }
+        }
+    }
+}
+
+// One track the next save holds: its number, icon, name, level, and "Never record" for apps.
+component TrackRow inherits Rectangle {
+    in property <CaptureTrack> track;
+    min-height: row.preferred-height;
+    Rectangle {
+        x: 0;
+        y: root.height - 1px;
+        width: root.width;
+        height: 1px;
+        background: Theme.line;
+    }
+    row := HorizontalLayout {
+        padding-top: 6px;
+        padding-bottom: 6px;
+        padding-left: 4px;
+        spacing: 10px;
+        Text {
+            width: 18px;
+            text: root.track.n;
+            color: Theme.muted;
+            font-family: Theme.mono;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+        if !Screen.compact: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 6px;
+                background: Theme.raised;
+                Icon {
+                    text: root.track.kind == 0 ? "\u{E767}" : root.track.kind == 1 ? "\u{E7FC}" : root.track.kind == 3 ? "\u{E720}" : "\u{ECAA}";
+                    font-size: 12px;
+                    color: Theme.dim;
+                }
+            }
+        }
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            spacing: 6px;
+            Text {
+                horizontal-stretch: 0;
+                text: root.track.name;
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: 13px;
+                font-weight: root.track.kind == 0 ? 600 : 400;
+                vertical-alignment: center;
+            }
+            if root.track.note != "" && !Screen.compact: Text {
+                horizontal-stretch: 1;
+                text: root.track.note;
+                color: Theme.muted;
+                font-family: Theme.body;
+                font-size: 12px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if root.track.note == "" || Screen.compact: Rectangle { horizontal-stretch: 1; }
+        }
+        if root.track.kind != 3: HorizontalLayout {
+            horizontal-stretch: 0;
+            spacing: 2px;
+            alignment: center;
+            for k in [0.55, 1.0, 0.7]: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 3px;
+                    height: 3px + 9px * min(1, root.track.level * 2.2 * k);
+                    border-radius: 1px;
+                    background: root.track.level > 0.005 ? Theme.ok : Theme.line-strong;
+                }
+            }
+        }
+        if root.track.exe != "": VerticalLayout {
+            alignment: center;
+            TextLink {
+                text: Screen.compact ? "Never" : "Never record";
+                clicked => { Capture.never-add(root.track.exe); }
+            }
+        }
+    }
+}
+
+// Never record: the apps as chips with ×, then "+ Add an app" (a menu of apps playing sound
+// and programs open now).
+component NeverList inherits FlexboxLayout {
+    spacing: 6px;
+    for a in Capture.never: Rectangle {
+        height: 30px;
+        min-width: chip.preferred-width;
+        border-radius: 9px;
+        border-width: 2px;
+        border-color: Theme.line-strong;
+        chip := HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 2px;
+            spacing: 2px;
+            Text {
+                text: a.name;
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: 12.5px;
+                vertical-alignment: center;
+            }
+            IconButton {
+                icon: "\u{E711}";
+                label: "Record " + a.name + " again";
+                clicked => { Capture.never-remove(a.exe); }
+            }
+        }
+    }
+    VerticalLayout {
+        GhostButton {
+            compact: true;
+            text: "Add an app";
+            icon: "\u{E710}";
+            label: "Add an app to Never record";
+            clicked => {
+                Capture.never-menu();
+                menu.show();
+            }
+        }
+        menu := PopupWindow {
+            x: 0;
+            y: 34px;
+            Menu {
+                width: 240px;
+                if Capture.never-choices.length == 0: MenuItem {
+                    text: "No other app is playing sound or open";
+                }
+                for a in Capture.never-choices: MenuItem {
+                    text: a.name;
+                    clicked => { Capture.never-add(a.exe); }
+                }
+            }
         }
     }
 }
@@ -368,13 +516,8 @@ component Choices inherits VerticalLayout {
     Rectangle { height: 8px; }
     Head { text: "Sound"; }
     Tick {
-        text: "Game & PC";
-        checked <=> Capture.pc;
-        toggled => { Capture.changed(); }
-    }
-    Tick {
-        text: "Discord on a track of its own (when it runs)";
-        checked <=> Capture.chat-apart;
+        text: "A track for each app playing sound";
+        checked <=> Capture.per-app;
         toggled => { Capture.changed(); }
     }
     HorizontalLayout {
@@ -392,8 +535,24 @@ component Choices inherits VerticalLayout {
             selected => { Capture.changed(); }
         }
     }
+    if Capture.tracks.length > 0: Hint {
+        text: Capture.state == 2 ? "The next save holds:" : "A save would hold:";
+    }
+    if Capture.tracks.length > 0: VerticalLayout {
+        for t in Capture.tracks: TrackRow {
+            track: t;
+        }
+    }
+    if Capture.tracks-note != "": Hint {
+        text: Capture.tracks-note;
+    }
+    Rectangle { height: 4px; }
+    Head { text: "Never record"; }
+    NeverList { }
     Hint {
-        text: "Each is a track of its own in the saved file, and all of them mixed are the first track, so any player plays them.";
+        text: Capture.never.length >= 2
+            ? "Left out of every track, Everything too. With two or more here, an app that starts playing later joins at Neria's next quiet restart (a few seconds)."
+            : "Left out of every track, Everything too, every time.";
     }
     Rectangle { height: 8px; }
     Head { text: "Save key"; }

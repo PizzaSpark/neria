@@ -1,10 +1,69 @@
 //! Clip page → Sound (`ClipSound` global, `dialogs/sound.slint`): reading the dialog into a
 //! `sound::AudioEdit`, its button text and note. The player side is `Clipper::apply_sound`.
 
+use neria_core::clip::TrackMix;
 use neria_core::sound::{AudioEdit, Level};
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
-use crate::{AppWindow, ClipSound};
+use crate::{AppWindow, ClipSound, ClipTrack};
+
+/// An instant replay's own tracks (its sound track names, "Everything" first): the rest
+/// become the Tracks group, all on at 100%. Any other file: none.
+pub fn set_tracks(ui: &AppWindow, titles: &[String]) {
+    let rows: Vec<ClipTrack> = if titles.len() >= 2 && titles[0] == "Everything" {
+        titles[1..].iter().map(|t| ClipTrack { name: t.into(), on: true, volume: 1.0 }).collect()
+    } else {
+        Vec::new()
+    };
+    let g = ui.global::<ClipSound>();
+    g.set_tracks(ModelRc::new(VecModel::from(rows)));
+    g.set_tracks_apart(false);
+}
+
+/// The Tracks group as the export takes it (indices count from the file's second track).
+pub fn tracks(ui: &AppWindow) -> Vec<TrackMix> {
+    let g = ui.global::<ClipSound>();
+    g.get_tracks()
+        .iter()
+        .enumerate()
+        .map(|(i, t)| TrackMix { index: i as u32 + 1, name: t.name.to_string(), on: t.on, volume: t.volume })
+        .collect()
+}
+
+/// The tracks are mixed again (one off, louder or quieter, or kept apart).
+pub fn mixes_tracks(ui: &AppWindow) -> bool {
+    let mut req = neria_core::clip::ClipRequest::new("", 0.0, 1.0, neria_core::clip::ClipMode::Fast, true);
+    req.audio = edit(ui);
+    req.tracks = tracks(ui);
+    req.tracks_apart = ui.global::<ClipSound>().get_tracks_apart();
+    req.mixes_tracks()
+}
+
+/// For the player: the tracks mixed as set (mpv's `lavfi-complex`), "" when as they are.
+pub fn player_mix(ui: &AppWindow) -> String {
+    if !mixes_tracks(ui) {
+        return String::new();
+    }
+    neria_core::clip::tracks_graph(&tracks(ui), false, None, true).unwrap_or_default()
+}
+
+pub fn install(ui: &AppWindow) {
+    let g = ui.global::<ClipSound>();
+    g.on_track_set({
+        let weak = ui.as_weak();
+        move |i, on, volume| {
+            let ui = weak.unwrap();
+            let g = ui.global::<ClipSound>();
+            let rows = g.get_tracks();
+            if let Some(mut row) = rows.row_data(i as usize) {
+                row.on = on;
+                row.volume = (volume * 10.0).round() / 10.0;
+                rows.set_row_data(i as usize, row);
+            }
+            g.invoke_changed();
+        }
+    });
+}
 
 const FADES: [f64; 5] = [0.0, 0.5, 1.0, 2.0, 3.0];
 pub const FORMATS: [&str; 5] = ["mp3", "m4a", "opus", "flac", "wav"];
@@ -71,7 +130,10 @@ pub fn refresh(ui: &AppWindow) {
     let only = audio_only(ui);
     // A sound file saved as another format says the format, not "Sound only".
     let lead = if ui.get_clip_has_video() { "Sound only" } else { "Save as" };
+    let mixing = mixes_tracks(ui);
     let button = match (&only, e.is_none()) {
+        (None, true) if mixing => "Sound: tracks mixed".to_string(),
+        (None, false) if mixing => format!("Sound: {} · tracks", e.summary()),
         (Some(f), true) => format!("{lead} · {f}"),
         (Some(f), false) => format!("{lead} · {f} · {}", e.summary()),
         (None, _) => format!("Sound: {}", e.summary()),
@@ -84,6 +146,7 @@ pub fn refresh(ui: &AppWindow) {
         (None, Level::Gain(db)) if db.abs() >= 0.05 => format!("{}{db:.0} dB", if db > 0.0 { "+" } else { "" }),
         (None, Level::Normalize(_)) => "Evened out".into(),
         _ if !e.is_none() => "Fades".into(),
+        _ if mixing => "Tracks".into(),
         _ => "Sound".into(),
     };
     g.set_short_text(short.into());
@@ -97,7 +160,7 @@ pub fn refresh(ui: &AppWindow) {
         "Only the sound is saved, cut exactly at In and Out."
     } else if e.mutes() {
         ""
-    } else if e.reencodes() && fast {
+    } else if (e.reencodes() || mixing) && fast {
         "Best quality still copies the picture as it is; only the sound is re-encoded."
     } else if e.fade_in > 0.0 || e.fade_out > 0.0 {
         "You hear the volume while it plays; fades are added when it's saved."
@@ -116,5 +179,14 @@ pub fn reset(ui: &AppWindow) {
     g.set_fade_out(0);
     g.set_save(0);
     g.set_file_format(0);
+    let rows = g.get_tracks();
+    for i in 0..rows.row_count() {
+        if let Some(mut r) = rows.row_data(i) {
+            r.on = true;
+            r.volume = 1.0;
+            rows.set_row_data(i, r);
+        }
+    }
+    g.set_tracks_apart(false);
     refresh(ui);
 }

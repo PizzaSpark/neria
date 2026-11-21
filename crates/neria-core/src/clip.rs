@@ -31,6 +31,46 @@ pub struct ClipRequest {
     pub picture: Picture,
     /// A name from the clip list: the file becomes `video - Name.mp4`.
     pub name: Option<String>,
+    /// An instant replay's own sound tracks (Clip → Sound → Tracks), mixed again as set into
+    /// the first track. Empty: the first track as it is.
+    pub tracks: Vec<TrackMix>,
+    /// …and kept as tracks of their own after it too.
+    pub tracks_apart: bool,
+}
+
+/// One of a file's sound tracks in the mix.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrackMix {
+    /// Its place among the file's sound tracks (`0:a:N`).
+    pub index: u32,
+    pub name: String,
+    pub on: bool,
+    /// 1.0 = as it is.
+    pub volume: f32,
+}
+
+/// The mix of `tracks` as filter graph lines, ending in `[aout]` (and `[k<N>]` for each
+/// kept apart). `pre`: the stream label prefix (`0:a:` for ffmpeg, `aid` for mpv, 1-based).
+pub fn tracks_graph(tracks: &[TrackMix], apart: bool, chain: Option<&str>, mpv: bool) -> Option<String> {
+    let on: Vec<&TrackMix> = tracks.iter().filter(|t| t.on).collect();
+    if on.is_empty() {
+        return None;
+    }
+    let mut g = Vec::new();
+    for t in &on {
+        let input = if mpv { format!("[aid{}]", t.index + 1) } else { format!("[0:a:{}]", t.index) };
+        let vol = format!("volume={:.2}", t.volume.max(0.0));
+        if apart {
+            g.push(format!("{input}{vol},asplit=2[m{i}][k{i}]", i = t.index));
+        } else {
+            g.push(format!("{input}{vol}[m{}]", t.index));
+        }
+    }
+    let ins: String = on.iter().map(|t| format!("[m{}]", t.index)).collect();
+    let tail = chain.map(|c| format!(",{c}")).unwrap_or_default();
+    let out = if mpv { "[ao]" } else { "[aout]" };
+    g.push(format!("{ins}amix=inputs={}:normalize=0,alimiter=limit=0.97{tail}{out}", on.len()));
+    Some(g.join(";"))
 }
 
 impl ClipRequest {
@@ -45,7 +85,21 @@ impl ClipRequest {
             audio_only: None,
             picture: Picture::default(),
             name: None,
+            tracks: Vec::new(),
+            tracks_apart: false,
         }
+    }
+
+    /// The replay's tracks are mixed again (one muted or turned up or down, or kept apart).
+    pub fn mixes_tracks(&self) -> bool {
+        !self.audio.mutes()
+            && !self.tracks.is_empty()
+            && (self.tracks_apart || self.tracks.iter().any(|t| !t.on || (t.volume - 1.0).abs() > 0.01))
+    }
+
+    /// The sound is re-encoded (changed, or its tracks mixed again).
+    pub fn sound_reencodes(&self) -> bool {
+        self.audio.reencodes() || self.mixes_tracks()
     }
 
     /// How it's really cut: a changed picture can't be copied, so it's always re-encoded.
@@ -56,7 +110,7 @@ impl ClipRequest {
     /// A lossless cut that copies the video but re-encodes the sound: both have to start
     /// on the same keyframe, or the sound would run ahead of the picture.
     fn copies_video_with_new_sound(&self) -> bool {
-        self.effective_mode() == ClipMode::Fast && self.has_video && self.audio_only.is_none() && self.audio.reencodes()
+        self.effective_mode() == ClipMode::Fast && self.has_video && self.audio_only.is_none() && self.sound_reencodes()
     }
 }
 
@@ -104,19 +158,41 @@ pub fn build_args(req: &ClipRequest, start: f64, measured: Option<&sound::Loudne
     a.extend(["-ss".into(), format!("{start:.3}"), "-i".into(), req.input.to_string_lossy().into_owned()]);
     a.extend(["-t".into(), format!("{dur:.3}")]);
     let out_ext = out.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+    // An instant replay's tracks mixed again: the sound's own changes go after the mix.
+    let chain = req.audio.chain(dur, measured);
+    let mix = if req.mixes_tracks() {
+        tracks_graph(&req.tracks, req.tracks_apart && req.audio_only.is_none(), chain.as_deref(), false)
+    } else {
+        None
+    };
+    if let Some(g) = &mix {
+        a.extend(["-filter_complex".into(), g.clone()]);
+    }
+    let first_sound: &str = if mix.is_some() { "[aout]" } else { "0:a:0" };
 
     if req.audio_only.is_some() {
         // Just the sound, always encoded into the picked format.
-        a.extend(["-map", "0:a:0", "-vn", "-sn", "-dn"].map(String::from));
+        a.extend(["-map", first_sound, "-vn", "-sn", "-dn"].map(String::from));
         a.extend(sound::encoder_for(&out_ext));
     } else {
         // `V` = real video only (skips embedded cover art).
         a.extend(["-map".into(), "0:V:0?".into()]);
         if !req.audio.mutes() {
-            a.extend(["-map".into(), "0:a:0?".into()]);
+            a.extend(["-map".into(), if mix.is_some() { "[aout]".into() } else { "0:a:0?".into() }]);
+        }
+        if mix.is_some() {
+            a.extend(["-metadata:s:a:0".into(), "title=Everything".into(), "-metadata:s:a:0".into(), "handler_name=Everything".into()]);
+            if req.tracks_apart {
+                for (n, t) in req.tracks.iter().filter(|t| t.on).enumerate() {
+                    a.extend(["-map".into(), format!("[k{}]", t.index)]);
+                    for key in ["title", "handler_name"] {
+                        a.extend([format!("-metadata:s:a:{}", n + 1), format!("{key}={}", t.name)]);
+                    }
+                }
+            }
         }
         match (req.effective_mode(), req.has_video) {
-            (ClipMode::Fast, _) if !req.audio.reencodes() => {
+            (ClipMode::Fast, _) if !req.sound_reencodes() => {
                 a.extend(["-c", "copy", "-avoid_negative_ts", "make_zero"].map(String::from))
             }
             // Lossless video, new sound.
@@ -143,7 +219,7 @@ pub fn build_args(req: &ClipRequest, start: f64, measured: Option<&sound::Loudne
             a.push("-an".into());
         }
     }
-    if let Some(chain) = req.audio.chain(dur, measured) {
+    if let (Some(chain), None) = (chain, &mix) {
         a.extend(["-af".into(), chain]);
     }
     if measured.is_some() {

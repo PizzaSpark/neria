@@ -163,8 +163,20 @@ export global Watch {
 
 // Clip page → Sound (Clip track 1): what the saved clip sounds like. Never the listening
 // volume (that's `Watch.volume`), though the player plays the level so you hear it.
+// One of an instant replay's own sound tracks (Clip → Sound → Tracks).
+export struct ClipTrack {
+    name: string,
+    on: bool,
+    // 1 = as it is (0–2).
+    volume: float,
+}
+
 export global ClipSound {
     in-out property <bool> open;
+    // An instant replay's tracks after "Everything": mixed again into the first track as set.
+    in property <[ClipTrack]> tracks;
+    in-out property <bool> tracks-apart;
+    callback track-set(int, bool, float);
     // 0 as is, 1 louder or quieter, 2 even out, 3 mute
     in-out property <int> level;
     // Louder or quieter, in dB (-12..12, whole steps).
@@ -869,6 +881,27 @@ export struct CaptureSource {
     hint: string,
 }
 
+// A sound track the next save holds.
+export struct CaptureTrack {
+    // 1 = the first track.
+    n: int,
+    name: string,
+    // 0 Everything, 1 the game, 2 another app, 3 the mic.
+    kind: int,
+    // "mixed, what players play".
+    note: string,
+    // How loud it is now, 0–1 (apps only).
+    level: float,
+    // The app's file name: "Never record" adds it.
+    exe: string,
+}
+
+// An app in "Never record", or one that could be added.
+export struct CaptureApp {
+    exe: string,
+    name: string,
+}
+
 // A clip instant replay saved.
 export struct CaptureSaved {
     path: string,
@@ -895,10 +928,19 @@ export global Capture {
     in-out property <bool> show-all;
     // How much to keep: 0 30 s, 1 1 min, 2 2 min, 3 5 min.
     in-out property <int> keep: 1;
-    // Sound tracks.
-    in-out property <bool> pc: true;
-    in-out property <bool> chat-apart: true;
+    // Sound: a track for each app playing sound, the mic; what the next save holds.
+    in-out property <bool> per-app: true;
     in-out property <bool> mic: true;
+    in property <[CaptureTrack]> tracks;
+    // Under the tracks: "Brave started later: it's in Everything until you turn it off and on."
+    in property <string> tracks-note;
+    // Never recorded, on any track; what could be added (apps playing sound, open programs).
+    in property <[CaptureApp]> never;
+    in property <[CaptureApp]> never-choices;
+    callback never-add(string);
+    callback never-remove(string);
+    // The "+ Add an app" menu is opening: fill its choices.
+    callback never-menu();
     // "Windows' default", then the mics by name.
     in property <[string]> mics;
     in-out property <int> mic-index;

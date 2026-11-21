@@ -190,11 +190,10 @@ so they get built together.
 3. ✅ **"Clip that" by voice** (built 2026-11-21, Capture 5): in the live player, with Test it,
    voice samples in named sets, "undo that", the mark's menu. Left: the friend's accent
    re-tested with his own set
-4. **Capture track's UI** (moved up, user's call 2026-11-21; Capture 4, its own session): turn
-   instant replay on and off, pick a game, a window or a monitor (which one, by name), how
-   much to keep, the sound tracks and the key; a plain status and the tray; a saved clip as a
-   toast with Open in clipper. Voice comes with it: "clip that" while gaming saves like F8
-   (the same listener, sets and Settings → Voice)
+4. ✅ **Capture track's UI** (built 2026-11-21, Capture 4; mocks `design/capture.html`,
+   `design/capture-tracks.html`): the Capture page, Automatic, a track per app, Never record,
+   the clipper's Tracks, voice. Left: a real game session with F8 and "clip that" (only
+   checked headlessly and with sample screens)
 5. **Phone track**: connecting by QR first, then the quick mirror, then the mirror in Neria's
    own page with its own replay buffer and "Clip the last" (shared with Capture), Sound only,
    Present the phone
@@ -953,10 +952,25 @@ last minute is always kept, and saving turns it into a file that opens in the cl
    clock
 3. [x] **Hotkey (prototype).** `RegisterHotKey` (no hook, nothing for anti-cheat to object to),
    F8 by default, a "saved" sound
-4. [ ] **UI.** Turn it on and off, what to capture (a game, a window, a monitor), how much to
-   keep, which sound tracks, the key; a plain status ("Keeping the last 60 s of
-   Valorant") and the tray; a saved clip as a toast with Open in clipper. Resizing (1440p is
-   kept as 1440p today)
+4. [x] **UI.** Built 2026-11-21 (mock `design/capture.html`, picks 1A · 2A · 3A · 4A): a
+   Capture page in the rail (red dot while on): a plain status ("Keeping the last 1 min of
+   VALORANT", "Waiting for VALORANT to open", why it couldn't), Turn on / Save now / Turn off;
+   what to record by name (games first, other windows on request, monitors by their own name
+   on every graphics chip: a laptop's second screen on the NVIDIA chip didn't record before);
+   how much (30 s – 5 min); the save key (press it; one another program holds is refused);
+   Turn on when Neria starts; the clips saved, with Open in clipper. A save plays the "saved"
+   sound, Neria's toast when it's in front, else a Windows notification with Open in clipper.
+   Tray: the status, Save the last, Turn on / off; closing while on goes to the tray. Voice:
+   "clip that" saves while it runs, "undo that" deletes it.
+   Then (user's ask, mock `design/capture-tracks.html`, picks 1A · 2A · 3A): **Automatic**
+   (the game in front, else the screen in use; moves to the next game, not to the desktop),
+   **a track per app** (track 1 Everything, then the game and each app playing sound, the
+   mic), **Never record** (one app: left out of what the PC plays; two or more: Everything
+   built app by app, a new app taken in at a quiet restart), and the clipper's Sound →
+   **Tracks** (each on/off and 0–200%, mixed again into the first track, or kept apart too;
+   heard in the player). Not in the mock's plan: an "Everything else" track (Windows can't
+   subtract several apps at once), so an app that starts later is in Everything only until
+   the next start. Left: resizing (1440p is kept as 1440p), a real game session
 5. [ ] **"Hey Neria, clip that".** Listener prototype built 2026-11-21 (`voice.rs`,
    `--example voice`): the phrase is whatever the user types (default "clip that"), several
    allowed. Checked: live on the user's mic 6 of 6 heard, nothing in between, ~2–3% of one
@@ -985,7 +999,8 @@ last minute is always kept, and saving turns it into a file that opens in the cl
    Each Test it adds a **named set** ("Me", "Jake"; up to 5, each forgotten on its own), so
    several people or ways of saying it all count. Test it no longer raises Sensitivity by
    itself (user's call: more false alarms for everyone); voice samples are the accent fix.
-   Not yet: Capture's save; the friend's accent re-tested with samples.
+   Capture's save by voice: built with Capture 4. Not yet: the friend's accent re-tested with
+   samples.
    Off until turned on; the mic is only listened to on the PC,
    nothing is sent anywhere. A small always-on wake-word listener (around 1% CPU, never the
    large whisper model) that presses the same save as the hotkey, with the same "saved"

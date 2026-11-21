@@ -9,6 +9,8 @@
 //! `--in-place <file>`: apply the sound and picture to a whole file instead (a link clip).
 //! Make a GIF: `--gif <gif|webp|mp4> [--width <px, 0 = as is>] [--fps <n, 0 = as is>] [--once]`
 //! (prints the size estimate first, then makes it).
+//! An instant replay's tracks: `--mix <n:vol|off,…>` (n counts from 1 after "Everything",
+//! e.g. `2:off,3:1.5`), `--apart` keeps them as tracks of their own too.
 //! The clip list: `--clips <a-b,c-d,…> [--names A,B,…] [--join]` instead of <start> <end>
 //! (pass `0 0` for them).
 
@@ -121,6 +123,29 @@ fn main() -> anyhow::Result<()> {
         req.audio_only = flag("--audio-only");
         req.picture = picture;
         req.name = name;
+        if let Some(mix) = flag("--mix") {
+            // Every track after the first ("Everything"), as it is unless named.
+            req.tracks = (1..info.audio_tracks)
+                .map(|i| neria_core::clip::TrackMix {
+                    index: i,
+                    name: info.audio_titles.get(i as usize).cloned().unwrap_or_default(),
+                    on: true,
+                    volume: 1.0,
+                })
+                .collect();
+            for part in mix.split(',') {
+                let (n, v) = part.split_once(':').expect("n:vol");
+                let n: u32 = n.parse().expect("track number");
+                if let Some(t) = req.tracks.iter_mut().find(|t| t.index == n) {
+                    if v == "off" {
+                        t.on = false;
+                    } else {
+                        t.volume = v.parse().expect("volume");
+                    }
+                }
+            }
+            req.tracks_apart = has("--apart");
+        }
         req
     };
     if let Some(list) = flag("--clips") {

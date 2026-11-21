@@ -2075,6 +2075,7 @@ fn main() -> anyhow::Result<()> {
     live_ui::install(&ui, &queue);
     voice_ui::install(&ui, settings.clone(), queue.clone());
     capture_ui::install(&ui, settings.clone());
+    sound_ui::install(&ui);
     let _gone_timer = watch_gone(&ui);
     ui.on_retry_setup({
         let (weak, settings, queue) = (ui.as_weak(), settings.clone(), queue.clone());

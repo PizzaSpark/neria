@@ -66,6 +66,16 @@ $history = @($samples | ForEach-Object -Begin { $i = 0 } -Process {
 })
 $history | ConvertTo-Json | Set-Content -Encoding ascii (Join-Path $home_ "history.json")
 $video = Join-Path $media "sample.mp4"
+# An instant replay: "Everything", then each app and the mic on a named track of its own.
+$replay = Join-Path $media "replay.mp4"
+if (-not (Test-Path $replay)) {
+  $in = @("-f","lavfi","-i","testsrc2=size=1280x720:rate=30")
+  $map = @("-map","0:v")
+  $names = @("Everything","VALORANT","Discord","Mic")
+  for ($k = 0; $k -lt 4; $k++) { $in += "-f","lavfi","-i","sine=frequency=$(220 + 110 * $k)"; $map += "-map","$($k + 1):a" }
+  $meta = @(); for ($k = 0; $k -lt 4; $k++) { $meta += "-metadata:s:a:$k","title=$($names[$k])","-metadata:s:a:$k","handler_name=$($names[$k])" }
+  & $ff -loglevel error -y @in @map -t 12 -c:v libx264 -pix_fmt yuv420p -c:a aac @meta $replay
+}
 # The same video with chapter marks, for the clipper's chapter strip.
 $chaptered = Join-Path $media "chapters.mp4"
 if (-not (Test-Path $chaptered)) {
@@ -179,6 +189,7 @@ $states = [ordered]@{
   "names"      = @{ NERIA_DIALOG = "names" }
   "clip-ch"    = @{ NERIA_OPEN = $chaptered; NERIA_CLIP_IN = "5"; NERIA_CLIP_OUT = "10" }
   "sound"      = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound" }
+  "sound-tracks" = @{ NERIA_OPEN = $replay; NERIA_DIALOG = "sound" }
   "sound-gain" = @{ NERIA_OPEN = $video; NERIA_DIALOG = "sound-gain" }
   "gif"        = @{ NERIA_OPEN = $video; NERIA_DIALOG = "gif"; NERIA_CLIP_IN = "3"; NERIA_CLIP_OUT = "9" }
   "clip-gif"   = @{ NERIA_OPEN = $gifFile }
