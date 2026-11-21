@@ -197,7 +197,11 @@ so they get built together.
 5. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
    (starts ~1 s faster on every download and every Spotify candidate check, Music 4)
 6. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
-   live and Kick's chat (Livestreams 11); Speech to text extras (burned-in captions,
+   live and Kick's chat (Livestreams 11); **both chats of a multi-stream by themselves**
+   (asked for 2026-11-21): a streamer live on YouTube and Twitch at once is spotted (links in
+   the stream's description or the channel's, the same name live elsewhere with a matching
+   title) and the other chat is offered with one click ("Also live on Twitch · Add its
+   chat"), using the "+" that reads a second chat today; Speech to text extras (burned-in captions,
    translate); Spotify's own-key path and playlists over 100 songs (Music 4)
 7. **Capture track's UI** (later, user's call 2026-11-21; Capture 4). The engine, sound,
    hotkey and voice trigger are built by then
