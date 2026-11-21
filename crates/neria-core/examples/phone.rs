@@ -241,6 +241,7 @@ fn main() -> Result<()> {
             let began = Instant::now();
             let mut done = (false, false, false, false);
             let mut last = Instant::now();
+            let mut last_frames = 0u64;
             while began.elapsed() < Duration::from_secs(secs) && session.running() {
                 let t = began.elapsed().as_secs();
                 if let (Some((s, at)), false) = (clip, done.0) {
@@ -283,12 +284,15 @@ fn main() -> Result<()> {
                     last = Instant::now();
                     let l = session.live.lock().unwrap().clone();
                     let el = session.started.elapsed().as_secs_f64();
+                    // Frames in the last 2 s (a stall shows as 0).
+                    let fps = (l.frames - last_frames) as f64 / 2.0;
+                    last_frames = l.frames;
                     println!(
                         "{:>4.0}s  {}×{}  {:.0} fps  {:.1} Mbit/s  readers v{} a{}{}",
                         el,
                         l.width,
                         l.height,
-                        l.frames as f64 / el,
+                        fps,
                         l.bytes as f64 * 8.0 / el / 1e6,
                         session.video.as_ref().map(|v| v.readers()).unwrap_or(0),
                         session.audio.as_ref().map(|v| v.readers()).unwrap_or(0),

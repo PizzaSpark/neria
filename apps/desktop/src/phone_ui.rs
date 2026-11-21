@@ -854,7 +854,17 @@ fn live(ui: &AppWindow) {
         if let Some(log) = std::env::var_os("NERIA_PHONE_DEBUG") {
             use std::io::Write as _;
             if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(log) {
-                let _ = writeln!(f, "frames {frames} pos {pos:?} idle {idle} stalled {stalled} readers {}", v.readers());
+                let l = s.live.lock().unwrap().clone();
+                let _ = writeln!(
+                    f,
+                    "{} frames {frames} pos {pos:?} idle {idle} stalled {stalled} readers {} | last video {:?} ago, sound packets {}, controls {} (slowest {} ms)",
+                    chrono::Local::now().format("%H:%M:%S"),
+                    v.readers(),
+                    l.last_packet.map(|t| t.elapsed().as_millis()),
+                    l.audio_packets,
+                    l.controls,
+                    l.slowest_control_ms
+                );
             }
         }
         if (idle || stalled || v.readers() == 0) && UI.with(|u| u.borrow().renderer.is_some()) {

@@ -1290,6 +1290,14 @@ pub struct Live {
     pub bytes: u64,
     /// When the last key frame came.
     pub last_key: Option<Instant>,
+    /// When the last video packet came; sound packets so far (a stall that hits the picture
+    /// only shows here).
+    pub last_packet: Option<Instant>,
+    pub audio_packets: u64,
+    /// Control messages sent, and the slowest send (ms): a phone that stops reading them
+    /// shows here.
+    pub controls: u64,
+    pub slowest_control_ms: u64,
 }
 
 /// Neria's own mirror of one phone (or its sound alone).
@@ -1310,7 +1318,9 @@ pub struct Session {
     pub no_sound: String,
     pub live: Arc<Mutex<Live>>,
     pub started: Instant,
-    control: Arc<Mutex<Option<TcpStream>>>,
+    /// Control messages go out from a thread of their own: a phone that stops reading them
+    /// must never hold up the caller (the UI thread, for taps).
+    control: Mutex<Option<SyncSender<Vec<u8>>>>,
     stop: Arc<AtomicBool>,
     /// Why it stopped by itself ("" while running).
     pub problem: Arc<Mutex<String>>,
@@ -1436,7 +1446,7 @@ impl Session {
             no_sound: String::new(),
             live: live.clone(),
             started: Instant::now(),
-            control: Arc::new(Mutex::new(None)),
+            control: Mutex::new(None),
             stop: stop.clone(),
             problem: problem.clone(),
             server: Mutex::new(server),
@@ -1506,6 +1516,7 @@ impl Session {
                                 if key && !config {
                                     g.last_key = Some(Instant::now());
                                 }
+                                g.last_packet = Some(Instant::now());
                             }
                             f.send(&data, config, key);
                             for x in &m {
@@ -1534,13 +1545,14 @@ impl Session {
         if let Some(s) = audio_sock {
             let f = session.audio.as_ref().unwrap().feed();
             let m = mkvs.clone();
-            let (st, pr, video) = (stop.clone(), problem.clone(), has_v);
+            let (st, pr, video, la) = (stop.clone(), problem.clone(), has_v, live.clone());
             s.set_read_timeout(None)?;
             std::thread::spawn(move || {
                 let mut r = BufReader::with_capacity(1 << 16, s);
                 loop {
                     match read_packet(&mut r) {
                         Ok(Packet::Media { config: false, pts, data, .. }) => {
+                            la.lock().unwrap().audio_packets += 1;
                             f.send(&data, false, false);
                             for x in &m {
                                 x.mkv_audio(&data, pts);
@@ -1573,7 +1585,21 @@ impl Session {
                 let mut buf = [0u8; 4096];
                 while matches!(r.read(&mut buf), Ok(n) if n > 0) {}
             });
-            *session.control.lock().unwrap() = Some(s);
+            let (tx, rx) = sync_channel::<Vec<u8>>(512);
+            let (mut w, lc) = (s, live.clone());
+            std::thread::spawn(move || {
+                while let Ok(b) = rx.recv() {
+                    let began = Instant::now();
+                    if w.write_all(&b).is_err() {
+                        break;
+                    }
+                    let ms = began.elapsed().as_millis() as u64;
+                    let mut l = lc.lock().unwrap();
+                    l.controls += 1;
+                    l.slowest_control_ms = l.slowest_control_ms.max(ms);
+                }
+            });
+            *session.control.lock().unwrap() = Some(tx);
             if options.screen_off {
                 session.send(Control::ScreenPower(false));
             }
@@ -1592,8 +1618,9 @@ impl Session {
     /// Send a control message (dropped when there's no control socket).
     pub fn send(&self, c: Control) {
         let mut g = self.control.lock().unwrap();
-        if let Some(s) = g.as_mut() {
-            if s.write_all(&c.bytes()).is_err() {
+        // Dropped when 512 are waiting (the phone stopped reading): better than a hung window.
+        if let Some(tx) = g.as_ref() {
+            if let Err(std::sync::mpsc::TrySendError::Disconnected(_)) = tx.try_send(c.bytes()) {
                 *g = None;
             }
         }
