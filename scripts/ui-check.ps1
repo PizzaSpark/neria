@@ -167,6 +167,8 @@ $states = [ordered]@{
   "ph-land"    = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "landscape" }
   "ph-rec"     = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "rec" }
   "ph-sound"   = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "sound" }
+  # The real way with a pretend phone: relay, the page's mpv, the replay buffer.
+  "ph-fake"    = @{ NERIA_PAGE = "capture"; NERIA_PHONE_FAKE = "1" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-voice-off" = @{ NERIA_SETTINGS = "voice" }

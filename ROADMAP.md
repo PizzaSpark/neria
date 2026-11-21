@@ -194,9 +194,11 @@ so they get built together.
    `design/capture-tracks.html`): the Capture page, Automatic, a track per app, Never record,
    the clipper's Tracks, voice. Left: a real game session with F8 and "clip that" (only
    checked headlessly and with sample screens)
-5. **Phone track**: connecting by QR first, then the quick mirror, then the mirror in Neria's
-   own page with its own replay buffer and "Clip the last" (shared with Capture), Sound only,
-   Present the phone
+5. **Phone track** (built 2026-11-22, mock `design/phone.html`): the Capture page's Phone tab:
+   connecting by QR, the mirror in the page with its own replay buffer and "Clip the last 30 s",
+   Record, Screenshot, Sound only, Present (scrcpy's bare window). Checked headlessly and with a
+   fake phone (`--example phone -- mirror fake`, `NERIA_PHONE_FAKE`). Left: a real phone end to
+   end (QR scan, taps, sound, turning it, Present); Extras (camera, APK, files, clipboard)
 6. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
    (starts ~1 s faster on every download and every Spotify candidate check, Music 4)
 7. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
@@ -1018,7 +1020,7 @@ instant replay prototype (`capture.rs`). Not a general phone manager. A desktop 
 the Android hold doesn't apply. Comes before Capture's UI (user's call, 2026-11-21).
 Tools: `adb` (platform-tools) and scrcpy (Apache 2.0) fetched into `bin/` like the others,
 one pinned scrcpy version (its server and client protocol must match), updated on purpose.
-1. [ ] **Connecting, the real fix.** Wireless first: Neria shows a QR code, the phone scans it
+1. [x] **Connecting, the real fix.** (built 2026-11-22: QR, pairing code, USB hint, steps noticed from mDNS, phones remembered in `phones.json`; adb on its own port 5038) Wireless first: Neria shows a QR code, the phone scans it
    in Developer options → Wireless debugging → "Pair device with QR code" (Android 11+,
    adb's mDNS pairing, as Android Studio does), and it's connected: no IP, port or code to
    type. Pairing code as the fallback; USB too. A guided one-time setup with pictures (turn on
@@ -1026,19 +1028,19 @@ one pinned scrcpy version (its server and client protocol must match), updated o
    list that remembers phones and reconnects on its own. Plain problems: "Tap Allow on your
    phone", "Wireless debugging turned off (it does after a restart)", "This phone needs its
    maker's USB driver: use wireless instead"
-2. [ ] **Mirror, quick version.** Neria starts scrcpy with the right flags: sound (Android
+2. [x] **Mirror, quick version.** (built: `phone::open_window`, now what Present uses) Neria starts scrcpy with the right flags: sound (Android
    11+), phone screen off while mirroring, stay awake, Record to the Videos folder, the
    finished file opening in the clipper. The mirror is scrcpy's own window for now
-3. [ ] **Mirror in Neria's own page.** Only `scrcpy-server.jar`: pushed with adb, it streams
+3. [x] **Mirror in Neria's own page.** (built: our own scrcpy client, mpv draws raw H.264, Matroska with the phone's times feeds the 2 s pieces; the buffer starts again when the phone turns) Only `scrcpy-server.jar`: pushed with adb, it streams
    H.264/H.265 and Opus over a socket; Neria decodes and draws it (low-latency mpv or
    FFmpeg), and sends touches, keys and scrolling back over scrcpy's control protocol. A
    Studio + Play page (`docs/DESIGN.md`) with Record, a screenshot, and **Clip the last 30 s**
    from a replay buffer shared with Capture
-4. [ ] **Sound only** (asked for 2026-11-21): the phone's sound on the PC with no picture
+4. [x] **Sound only** (built: WASAPI speaker, volume, Record as M4A) (asked for 2026-11-21): the phone's sound on the PC with no picture
    (music, a call, a game's sound while the screen stays off): scrcpy's sound forwarding
    (Android 11+) without its video, a small "Playing from Pixel 7" strip with its volume and
    Stop; Record saves it as a sound file
-5. [ ] **Present the phone** (asked for 2026-11-21): a window of its own with only the phone's
+5. [x] **Present the phone** (built: scrcpy's borderless window "Phone screen · Pixel 7", on top, show taps) (asked for 2026-11-21): a window of its own with only the phone's
    screen in it (no Neria around it, no bars), named "Phone screen · Pixel 7" so it's easy to
    pick when sharing a window in Discord, Teams, Meet or OBS, or to put on a projector for a
    class. Keeps the phone's shape as it's resized, turns when the phone turns, can stay on
@@ -1048,8 +1050,9 @@ one pinned scrcpy version (its server and client protocol must match), updated o
    install it, drop files to send them to the phone; copy and paste between PC and phone
 Watch out: only one adb server runs per PC (port 5037); another adb at a different version
 (Android Studio's) kills ours and the other way round: notice it and use theirs or say so
-plainly. Portable rule: adb's keys live in `%USERPROFILE%\.android` by default; check
-which variable adb honours to keep them (and the pairings) next to the exe instead.
+plainly (done: ours runs on 5038). Portable rule: checked 2026-11-22: on Windows adb keeps its
+key and pairings in `<profile>\.android` and no variable moves them (`docs/UPSTREAM.md`), so
+that's an exception, written only once the Phone tab is used.
 
 ## Later: bigger ideas (keep UX simple)
 - **Browser extension (Chrome, Edge, Firefox)**: a Neria button on video pages and posts, and

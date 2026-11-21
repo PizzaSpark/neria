@@ -222,6 +222,10 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
     });
     UI.with(|u| u.borrow_mut().timer = Some(timer));
 
+    if std::env::var_os("NERIA_PHONE_FAKE").is_some() {
+        fake(ui);
+        return;
+    }
     if let Ok(demo) = std::env::var("NERIA_PHONE_DEMO") {
         UI.with(|u| u.borrow_mut().demo = true);
         show_demo(ui, &demo);
@@ -1110,6 +1114,37 @@ pub fn shutdown() {
     }
     if UI.with(|u| u.borrow().server) {
         phone::stop_server();
+    }
+}
+
+/// `NERIA_PHONE_FAKE`: mirror `phone::fake` (a test picture and a tone) through the real
+/// way: relay, mpv, buffer, Clip the last. No adb, no phone.
+fn fake(ui: &AppWindow) {
+    let p = ui.global::<Phone>();
+    p.set_tab(1);
+    let f = std::env::temp_dir().join("neria-fake-phone.h264");
+    if !f.is_file() {
+        let _ = proc::command(paths::tool("ffmpeg"))
+            .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=540x1200:rate=30", "-t", "6"])
+            .args(["-c:v", "libx264", "-preset", "veryfast", "-bf", "0", "-g", "60", "-pix_fmt", "yuv420p", "-x264-params", "aud=1", "-f", "h264"])
+            .arg(&f)
+            .status();
+    }
+    let started = std::fs::read(&f).map_err(anyhow::Error::from).and_then(|h264| {
+        let stop = Arc::new(AtomicBool::new(false));
+        std::mem::forget(stop.clone());
+        let port = phone::fake::serve(h264, (540, 1200), 30, true, stop)?;
+        let s = Arc::new(Session::connect(port, "fake", Options::default(), None, None)?);
+        let b = Arc::new(PhoneBuffer::start(&s, prefs().keep)?);
+        Ok((s, b))
+    });
+    match started {
+        Ok((s, b)) => {
+            UI.with(|u| u.borrow_mut().serial = "fake".into());
+            set_state(ui, st::STARTING);
+            running(ui, s, Some(b), false);
+        }
+        Err(e) => crate::show_toast(ui, &format!("Fake phone: {e}")),
     }
 }
 
