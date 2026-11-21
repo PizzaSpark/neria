@@ -207,15 +207,20 @@ pub fn parse_devices(text: &str) -> Vec<Device> {
     text.lines()
         .filter(|l| !l.starts_with("List of") && !l.starts_with('*') && !l.trim().is_empty())
         .filter_map(|l| {
-            let mut parts = l.split_whitespace();
-            let serial = parts.next()?.to_string();
-            let state = match parts.next()? {
+            // A serial can hold a space ("adb-…-shbQqu (2)._adb-tls-connect._tcp" when the
+            // phone announced itself twice): it runs up to the state word.
+            const STATES: [&str; 10] =
+                ["device", "unauthorized", "offline", "authorizing", "connecting", "recovery", "sideload", "bootloader", "host", "unknown"];
+            let words: Vec<&str> = l.split_whitespace().collect();
+            let at = words.iter().skip(1).position(|w| STATES.contains(w) || *w == "no").map(|i| i + 1).unwrap_or(1);
+            let serial = words[..at].join(" ");
+            let state = match *words.get(at)? {
                 "device" => State::Ready,
                 "unauthorized" => State::Unauthorized,
                 "offline" => State::Offline,
                 s => State::Other(s.to_string()),
             };
-            let model = parts.find_map(|p| p.strip_prefix("model:")).unwrap_or("").replace('_', " ");
+            let model = words[at..].iter().find_map(|p| p.strip_prefix("model:")).unwrap_or("").replace('_', " ");
             let wifi = serial.contains("._adb-tls-connect.") || serial.contains(':');
             Some(Device { serial, state, model, wifi })
         })
@@ -379,7 +384,8 @@ pub fn services() -> Result<Vec<Service>> {
 pub fn parse_services(text: &str) -> Vec<Service> {
     text.lines()
         .filter_map(|l| {
-            let mut p = l.split_whitespace();
+            // Tab-separated: a name can have spaces ("adb-…-shbQqu (2)" when announced twice).
+            let mut p = l.split(['\t']).map(str::trim).filter(|x| !x.is_empty());
             let instance = p.next()?.to_string();
             let kind = match p.next()? {
                 t if t.starts_with("_adb-tls-pairing.") => Kind::Pairing,
@@ -919,6 +925,12 @@ impl Feed {
     fn close(&self) {
         self.0.lock().unwrap().clients.clear();
     }
+
+    /// (readers, readers still waiting for a key frame)
+    fn readers(&self) -> (usize, bool) {
+        let f = self.0.lock().unwrap();
+        (f.clients.len(), f.clients.iter().any(|c| c.need_key))
+    }
 }
 
 /// Milliseconds since the stream's first time.
@@ -1200,6 +1212,8 @@ pub struct Live {
     pub height: u32,
     pub frames: u64,
     pub bytes: u64,
+    /// When the last key frame came.
+    pub last_key: Option<Instant>,
 }
 
 /// Neria's own mirror of one phone (or its sound alone).
@@ -1220,7 +1234,7 @@ pub struct Session {
     pub no_sound: String,
     pub live: Arc<Mutex<Live>>,
     pub started: Instant,
-    control: Mutex<Option<TcpStream>>,
+    control: Arc<Mutex<Option<TcpStream>>>,
     stop: Arc<AtomicBool>,
     /// Why it stopped by itself ("" while running).
     pub problem: Arc<Mutex<String>>,
@@ -1273,7 +1287,13 @@ impl Session {
             });
         }
         match Session::connect(port, serial, options, Some(child), Some(port)) {
-            Ok(s) => Ok(s),
+            Ok(mut s) => {
+                // The server sends the model code ("2412DPC0AG"); the phone's own name is nicer.
+                if let Ok(i) = info(serial) {
+                    s.name = i.name;
+                }
+                Ok(s)
+            }
             Err(e) => {
                 let _ = adb_out(&["-s", serial, "forward", "--remove", &format!("tcp:{port}")], Duration::from_secs(5));
                 let lines = log.lock().unwrap().clone();
@@ -1305,15 +1325,18 @@ impl Session {
         let Some(mut first) = first else {
             bail!("The phone didn't answer. Unlock it and try again.");
         };
+        // Every socket first: the server sends the name once all are connected.
+        let wanted = [options.video, options.audio, options.control].iter().filter(|w| **w).count();
+        let mut rest = Vec::new();
+        while rest.len() + 1 < wanted {
+            rest.push(TcpStream::connect_timeout(&addr, Duration::from_secs(5))?);
+        }
+        first.set_read_timeout(Some(Duration::from_secs(10)))?;
         let mut name = [0u8; 64];
         first.read_exact(&mut name)?;
         let name = String::from_utf8_lossy(&name).trim_end_matches('\0').trim().to_string();
         let mut sockets = vec![first];
-        let wanted = [options.video, options.audio, options.control].iter().filter(|w| **w).count();
-        while sockets.len() < wanted {
-            let s = TcpStream::connect_timeout(&addr, Duration::from_secs(5))?;
-            sockets.push(s);
-        }
+        sockets.extend(rest);
         for s in &sockets {
             s.set_read_timeout(Some(Duration::from_secs(10)))?;
             let _ = s.set_nodelay(true);
@@ -1337,7 +1360,7 @@ impl Session {
             no_sound: String::new(),
             live: live.clone(),
             started: Instant::now(),
-            control: Mutex::new(None),
+            control: Arc::new(Mutex::new(None)),
             stop: stop.clone(),
             problem: problem.clone(),
             server: Mutex::new(server),
@@ -1403,6 +1426,9 @@ impl Session {
                                 g.bytes += data.len() as u64;
                                 if !config {
                                     g.frames += 1;
+                                }
+                                if key && !config {
+                                    g.last_key = Some(Instant::now());
                                 }
                             }
                             f.send(&data, config, key);
@@ -1475,6 +1501,36 @@ impl Session {
             if options.screen_off {
                 session.send(Control::ScreenPower(false));
             }
+            // Key frames on demand. Android counts the key frame interval in frames at an
+            // assumed 60 fps, so a quiet screen (3–10 fps) sends one every 20 s or so: too few
+            // for 2 s pieces, and whoever joins (a recording, a screenshot) would wait. Ask
+            // for one ("reset video") when a reader waits, or when none came for 3 s.
+            if has_v {
+                let feeds: Vec<Feed> = [&session.video, &session.mkv, &session.mkv_turn].into_iter().flatten().map(|f| f.feed()).collect();
+                let (ctl, l, st) = (session.control.clone(), live.clone(), stop.clone());
+                std::thread::spawn(move || {
+                    let mut asked = Instant::now();
+                    while !st.load(Ordering::SeqCst) {
+                        std::thread::sleep(Duration::from_millis(250));
+                        let (mut readers, mut waiting) = (0, false);
+                        for f in &feeds {
+                            let (n, w) = f.readers();
+                            readers += n;
+                            waiting |= w;
+                        }
+                        let stale = l.lock().unwrap().last_key.is_none_or(|t| t.elapsed() > Duration::from_secs(3));
+                        if readers > 0 && (waiting || stale) && asked.elapsed() > Duration::from_millis(1500) {
+                            asked = Instant::now();
+                            let mut g = ctl.lock().unwrap();
+                            if let Some(s) = g.as_mut() {
+                                if s.write_all(&Control::ResetVideo.bytes()).is_err() {
+                                    *g = None;
+                                }
+                            }
+                        }
+                    }
+                });
+            }
         }
         session.sockets = sockets;
         Ok(session)
@@ -1525,7 +1581,10 @@ impl Session {
     pub fn screenshot(&self, out: &Path) -> Result<()> {
         let Some(v) = &self.video else { bail!("No picture to take.") };
         let res = proc::command(paths::tool("ffmpeg"))
-            .args(["-hide_banner", "-v", "error", "-y", "-f", "h264", "-i", &v.url(), "-frames:v", "1", "-update", "1"])
+            // A still screen sends little: don't wait to read megabytes first (the reader
+            // starts at a key frame with its SPS, which is all there is to know).
+            .args(["-hide_banner", "-v", "error", "-y", "-probesize", "32", "-analyzeduration", "0", "-f", "h264", "-i", &v.url()])
+            .args(["-frames:v", "1", "-update", "1"])
             .arg(out)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
@@ -2035,12 +2094,13 @@ pub mod fake {
         let port = listener.local_addr()?.port();
         std::thread::spawn(move || {
             let Ok((mut video, _)) = listener.accept() else { return };
+            // As the real server: the dummy byte at once, the name once every socket is there.
             let _ = video.write_all(&[0]);
+            let audio = if sound { listener.accept().ok().map(|a| a.0) } else { None };
+            let control = listener.accept().ok().map(|c| c.0);
             let mut name = [0u8; 64];
             name[..10].copy_from_slice(b"Fake Phone");
             let _ = video.write_all(&name);
-            let audio = if sound { listener.accept().ok().map(|a| a.0) } else { None };
-            let control = listener.accept().ok().map(|c| c.0);
             if let Some(mut c) = control {
                 std::thread::spawn(move || {
                     let mut b = [0u8; 256];
@@ -2105,9 +2165,12 @@ mod tests {
         let text = "List of devices attached\n\
             R58M12345      device usb:1-1 product:beyond1 model:SM_G973F device:beyond1 transport_id:1\n\
             adb-2B121FDH200ABC-x9Yq._adb-tls-connect._tcp device product:panther model:Pixel_7 device:panther transport_id:3\n\
-            192.168.1.5:5555 unauthorized transport_id:2\n";
+            192.168.1.5:5555 unauthorized transport_id:2\n\
+            adb-VOUSK-shbQqu (2)._adb-tls-connect._tcp device product:rodin_global model:2412DPC0AG transport_id:1\n";
         let d = parse_devices(text);
-        assert_eq!(d.len(), 3);
+        assert_eq!(d.len(), 4);
+        assert_eq!(d[3].serial, "adb-VOUSK-shbQqu (2)._adb-tls-connect._tcp");
+        assert!(d[3].wifi && d[3].state == State::Ready && d[3].model == "2412DPC0AG");
         assert_eq!(d[0], Device { serial: "R58M12345".into(), state: State::Ready, model: "SM G973F".into(), wifi: false });
         assert!(d[1].wifi && d[1].model == "Pixel 7");
         assert_eq!(d[2].state, State::Unauthorized);

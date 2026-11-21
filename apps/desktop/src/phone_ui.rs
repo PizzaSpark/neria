@@ -60,6 +60,8 @@ struct Ui {
     down: bool,
     hotkey: Option<hotkey::Listener>,
     saving: bool,
+    /// When pairing last failed (its note stays a while).
+    pair_failed: Option<Instant>,
     /// Pair with the next phone found asking for a code.
     timer: Option<Timer>,
     // The picture.
@@ -233,6 +235,11 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
     }
     set_state(ui, if phone::ready() { st::PHONES } else { st::NO_TOOLS });
     show_phones(ui);
+    // `NERIA_PHONE_TAB`: open on the Phone tab (with `NERIA_PAGE=capture`).
+    if std::env::var_os("NERIA_PHONE_TAB").is_some() {
+        p.set_tab(1);
+        shown(ui, true);
+    }
 }
 
 fn set_state(ui: &AppWindow, s: i32) {
@@ -417,7 +424,9 @@ fn look(ui: &AppWindow) {
                 u.devices = devices;
                 u.infos.extend(infos);
             });
-            if let Some(seen) = seen {
+            // A failed pairing's note stays until the next scan.
+            let failed = UI.with(|u| u.borrow().pair_failed.is_some_and(|t| t.elapsed() < Duration::from_secs(20)));
+            if let Some(seen) = seen.filter(|s| !failed || s.scanned.is_some()) {
                 let p = ui.global::<Phone>();
                 p.set_step(if seen.scanned.is_some() { 4 } else if seen.wireless_on { 3 } else { 1 });
                 p.set_qr_note(
@@ -442,6 +451,7 @@ fn look(ui: &AppWindow) {
                 Some(Err(e)) => {
                     // A new code for another try (a password works once).
                     connect_screen(&ui);
+                    UI.with(|u| u.borrow_mut().pair_failed = Some(Instant::now()));
                     ui.global::<Phone>().set_qr_note(format!("{e} Scan the new code.").into());
                     return;
                 }
@@ -591,7 +601,7 @@ fn pair_code(ui: &AppWindow, code: String) {
 // Mirroring and Sound only
 
 fn name_of(serial: &str) -> String {
-    UI.with(|u| u.borrow().infos.get(serial).map(|i| i.name.clone())).unwrap_or_else(|| "your phone".into())
+    UI.with(|u| u.borrow().infos.get(serial).map(|i| i.name.clone())).unwrap_or_else(|| "the phone".into())
 }
 
 /// Mirror the phone (or play its sound alone), replacing what runs.
@@ -618,6 +628,15 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
     let keep = pr.keep;
     let weak = ui.as_weak();
     std::thread::spawn(move || {
+        // Its name before anything else, for the tab and the status line.
+        if let Ok(i) = phone::info(&serial) {
+            let (w, sr) = (weak.clone(), serial.clone());
+            let _ = w.upgrade_in_event_loop(move |ui| {
+                ui.global::<Phone>().set_name(i.name.as_str().into());
+                ui.global::<Phone>().set_status(format!("Connecting to {}…", i.name).into());
+                UI.with(|u| u.borrow_mut().infos.insert(sr, i));
+            });
+        }
         let res = Session::start(&serial, opts).and_then(|s| {
             let s = Arc::new(s);
             let buffer = if s.video.is_some() { Some(Arc::new(PhoneBuffer::start(&s, keep)?)) } else { None };

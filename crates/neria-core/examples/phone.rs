@@ -84,7 +84,15 @@ fn main() -> Result<()> {
     let serial = || -> Result<String> {
         match free.get(1).map(|s| s.as_str()) {
             Some("-") | None => {
-                let ready: Vec<_> = phone::devices()?.into_iter().filter(|d| d.state == phone::State::Ready).collect();
+                // A paired phone reconnects a few seconds after the server starts.
+                let mut ready = Vec::new();
+                for _ in 0..20 {
+                    ready = phone::devices()?.into_iter().filter(|d| d.state == phone::State::Ready).collect::<Vec<_>>();
+                    if !ready.is_empty() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(500));
+                }
                 match ready.as_slice() {
                     [one] => Ok(one.serial.clone()),
                     [] => bail!("no phone connected (try `devices` or `qr`)"),
@@ -330,7 +338,8 @@ fn main() -> Result<()> {
         }
         other => bail!("unknown: {other} (devices, qr, pair, connect, mirror, sound, window)"),
     }
-    if !fake {
+    // Neria's adb is left running (the app stops it on quit; `--stop-adb` here).
+    if has("--stop-adb") {
         phone::stop_server();
     }
     Ok(())
