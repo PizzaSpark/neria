@@ -203,14 +203,65 @@ pub struct Options {
     pub mbps: u32,
     /// `None`: tried at start (`Route::pick`).
     pub route: Option<Route>,
-    /// Sound tracks, in order (AAC, named after each: "Game & PC (no Discord)", "Discord", "Mic").
+    /// Sound recorded, in order (AAC, named after each: "Game & PC (no Discord)", "Discord", "Mic").
     pub sounds: Vec<Sound>,
+    /// What each of `sounds` is for (in the "Everything" mix, a track of its own, both) and
+    /// its track's name. Empty: each is both, named after itself.
+    pub tracks: Vec<Track>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { source: Source::Monitor(0), fps: 60, keep: 60, mbps: 16, route: None, sounds: default_sounds(None) }
+        Options {
+            source: Source::Monitor(0),
+            fps: 60,
+            keep: 60,
+            mbps: 16,
+            route: None,
+            sounds: default_sounds(None),
+            tracks: Vec::new(),
+        }
     }
+}
+
+impl Options {
+    /// The saved file's sound tracks, in order.
+    pub fn titles(&self) -> Vec<String> {
+        titles_for(&self.sounds, &self.tracks)
+    }
+}
+
+/// Where a recorded sound goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Role {
+    /// In the "Everything" mix and a track of its own (the mic, an app when everything is
+    /// built app by app).
+    Both,
+    /// Only in the mix (what the PC plays: the apps' own tracks would repeat it).
+    MixOnly,
+    /// Only a track of its own (an app also heard in "what the PC plays").
+    ApartOnly,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Track {
+    pub role: Role,
+    /// The track's name ("VALORANT", "Discord", "Mic").
+    pub name: String,
+}
+
+/// What to record for sound, worked out from the Capture page's choices.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct SoundPlan {
+    pub sounds: Vec<Sound>,
+    pub tracks: Vec<Track>,
+    /// Two or more apps are never recorded: "Everything" is the other apps one by one, so an
+    /// app that starts later isn't in it until a restart.
+    pub by_app: bool,
+}
+
+fn same_exe(a: &str, b: &str) -> bool {
+    a.eq_ignore_ascii_case(b)
 }
 
 /// Instant replay's choices (the Capture page), saved in `settings.json`.
@@ -231,9 +282,10 @@ pub struct Prefs {
     pub label: String,
     /// Seconds kept (`KEEPS`).
     pub keep: u32,
-    /// Sound tracks: the game & PC, a voice-chat app on its own (when it runs), the mic.
-    pub pc: bool,
-    pub chat_apart: bool,
+    /// A track for each app playing sound (track 1 is always everything mixed).
+    pub per_app: bool,
+    /// Apps never recorded, on any track (file names, `Spotify.exe`).
+    pub never: Vec<String>,
     pub mic: bool,
     /// Part of the mic's name; empty for Windows' default.
     pub mic_name: String,
@@ -262,8 +314,8 @@ impl Default for Prefs {
             monitor_index: 0,
             label: String::new(),
             keep: 60,
-            pc: true,
-            chat_apart: true,
+            per_app: true,
+            never: Vec::new(),
             mic: true,
             mic_name: String::new(),
             key: crate::hotkey::DEFAULT.into(),
@@ -275,7 +327,13 @@ impl Default for Prefs {
 }
 
 impl Prefs {
-    /// The source, the monitor found by its name when it's still there.
+    /// Recording whatever game is in front (the desktop decides what that is right now).
+    pub fn automatic(&self) -> bool {
+        self.kind == "auto"
+    }
+
+    /// The source, the monitor found by its name when it's still there (Automatic: the
+    /// picked monitor, until a game is in front).
     pub fn source(&self, monitors: &[crate::capture_pick::Monitor]) -> Source {
         if self.kind == "window" && !self.exe.is_empty() {
             return Source::Window(self.exe.clone());
@@ -288,23 +346,56 @@ impl Prefs {
         Source::Monitor(i)
     }
 
-    /// The tracks to record now (the chat app split off only while it runs).
-    pub fn sounds(&self) -> Vec<Sound> {
-        let mut v = Vec::new();
-        let chat = self.chat_apart && capture_sound::app_running(CHAT_APP);
-        match (self.pc, chat) {
-            (true, true) => {
-                v.push(Sound::PcExcept(CHAT_APP.into()));
-                v.push(Sound::App(CHAT_APP.into()));
+    pub fn is_never(&self, exe: &str) -> bool {
+        self.never.iter().any(|n| same_exe(n, exe))
+    }
+
+    /// The sound to record now: the apps playing sound asked Windows for.
+    pub fn sound_plan(&self, game: Option<(&str, &str)>) -> SoundPlan {
+        self.plan_from(game, &capture_sound::playing_apps())
+    }
+
+    /// Track 1 "Everything": what the PC plays (but the one app never recorded), mixed with
+    /// the mic; then the game (`(exe, name)`) and every other app playing sound, each on its
+    /// own; the mic last. Two or more apps never recorded: Windows can leave out only one, so
+    /// "Everything" is built from the other apps one by one.
+    pub fn plan_from(&self, game: Option<(&str, &str)>, playing: &[capture_sound::AppSound]) -> SoundPlan {
+        let mut apps: Vec<(String, String)> = Vec::new();
+        if let Some((exe, name)) = game {
+            if !self.is_never(exe) {
+                apps.push((exe.to_string(), name.to_string()));
             }
-            (true, false) => v.push(Sound::Pc),
-            (false, true) => v.push(Sound::App(CHAT_APP.into())),
-            (false, false) => {}
+        }
+        for a in playing {
+            if !self.is_never(&a.exe) && !apps.iter().any(|(e, _)| same_exe(e, &a.exe)) {
+                apps.push((a.exe.clone(), a.name.clone()));
+            }
+        }
+        let by_app = self.never.len() >= 2;
+        let mut plan = SoundPlan { by_app, ..Default::default() };
+        if !by_app {
+            plan.sounds.push(match self.never.first() {
+                Some(n) => Sound::PcExcept(n.clone()),
+                None => Sound::Pc,
+            });
+            plan.tracks.push(Track { role: Role::MixOnly, name: "Everything".into() });
+        }
+        if self.per_app || by_app {
+            for (exe, name) in apps {
+                let role = match (by_app, self.per_app) {
+                    (true, true) => Role::Both,
+                    (true, false) => Role::MixOnly,
+                    _ => Role::ApartOnly,
+                };
+                plan.sounds.push(Sound::App(exe));
+                plan.tracks.push(Track { role, name });
+            }
         }
         if self.mic {
-            v.push(Sound::Mic(Some(self.mic_name.clone()).filter(|m| !m.is_empty())));
+            plan.sounds.push(Sound::Mic(Some(self.mic_name.clone()).filter(|m| !m.is_empty())));
+            plan.tracks.push(Track { role: Role::Both, name: "Mic".into() });
         }
-        v
+        plan
     }
 
     /// What's recorded, for the status ("Valorant", "DELL U2720Q").
@@ -425,7 +516,7 @@ impl ScreenBuffer {
 
     /// The last `seconds` (up to a piece more) as an MP4 in `out_dir`, while recording goes on.
     pub fn save(&self, seconds: u32, out_dir: &Path) -> Result<PathBuf> {
-        save_from(&self.dir, seconds, out_dir, &track_titles(&self.options.sounds), "Replay")
+        save_from(&self.dir, seconds, out_dir, &self.options.titles(), "Replay")
     }
 
     pub fn stop(&self) {
@@ -454,9 +545,27 @@ impl Drop for ScreenBuffer {
 /// The saved file's sound tracks, in order: "Everything" (the mix) first when there are two
 /// or more, then each on its own.
 pub fn track_titles(sounds: &[Sound]) -> Vec<String> {
-    let mut t: Vec<String> = sounds.iter().map(Sound::title).collect();
-    if t.len() >= 2 {
-        t.insert(0, "Everything".into());
+    titles_for(sounds, &[])
+}
+
+/// Which sounds are in the mix and which are tracks of their own, as indices into `sounds`.
+fn layout(sounds: &[Sound], tracks: &[Track]) -> (Vec<usize>, Vec<usize>) {
+    let role = |i: usize| tracks.get(i).map(|t| t.role).unwrap_or(Role::Both);
+    let mix: Vec<usize> = (0..sounds.len()).filter(|&i| role(i) != Role::ApartOnly).collect();
+    let apart: Vec<usize> = (0..sounds.len()).filter(|&i| role(i) != Role::MixOnly).collect();
+    // One sound that's a track of its own anyway: no mix of it alone.
+    let mixed = mix.len() >= 2 || mix.iter().any(|&i| role(i) == Role::MixOnly);
+    (if mixed { mix } else { Vec::new() }, apart)
+}
+
+fn titles_for(sounds: &[Sound], tracks: &[Track]) -> Vec<String> {
+    let (mix, apart) = layout(sounds, tracks);
+    let mut t = Vec::new();
+    if !mix.is_empty() {
+        t.push("Everything".to_string());
+    }
+    for i in apart {
+        t.push(tracks.get(i).map(|t| t.name.clone()).unwrap_or_else(|| sounds[i].title()));
     }
     t
 }
@@ -572,24 +681,34 @@ fn record(
     if in_graph {
         graphs.push(format!("{graph}[v]"));
     }
-    // Most players (and Discord, browsers) play only the first track: make it all of them
-    // mixed, the separate ones after it for editing.
-    if feeds.len() >= 2 {
-        let ins: String = (first..first + feeds.len()).map(|i| format!("[{i}:a]")).collect();
+    // Most players (and Discord, browsers) play only the first track: make it everything
+    // mixed, the separate ones after it for editing. A sound used twice (in the mix and on
+    // its own) is split first.
+    let (mix, apart) = layout(&o.sounds, &o.tracks);
+    let twice = |i: usize| mix.contains(&i) && apart.contains(&i);
+    for i in 0..feeds.len() {
+        if twice(i) {
+            graphs.push(format!("[{}:a]asplit=2[s{i}m][s{i}t]", first + i));
+        }
+    }
+    if !mix.is_empty() {
+        let ins: String =
+            mix.iter().map(|&i| if twice(i) { format!("[s{i}m]") } else { format!("[{}:a]", first + i) }).collect();
         graphs.push(format!(
             "{ins}amix=inputs={}:normalize=0:dropout_transition=0,alimiter=limit=0.97[mix]",
-            feeds.len()
+            mix.len()
         ));
     }
     if !graphs.is_empty() {
         cmd.args(["-filter_complex", &graphs.join(";")]);
     }
     cmd.args(["-map", if in_graph { "[v]" } else { "0:v" }]);
-    if feeds.len() >= 2 {
+    if !mix.is_empty() {
         cmd.args(["-map", "[mix]"]);
     }
-    for i in 0..feeds.len() {
-        cmd.args(["-map", &format!("{}:a", first + i)]);
+    for &i in &apart {
+        let m = if twice(i) { format!("[s{i}t]") } else { format!("{}:a", first + i) };
+        cmd.args(["-map", &m]);
     }
     if feeds.is_empty() {
         cmd.arg("-an");
@@ -666,6 +785,36 @@ mod tests {
         );
         // Quotes and backslashes can't break out of the filter argument.
         assert!(!Source::Window("a'b\\c.exe".into()).filter(30).contains("a'"));
+    }
+
+    #[test]
+    fn sound_plans() {
+        use capture_sound::AppSound;
+        let app = |e: &str| AppSound { exe: e.into(), name: e.trim_end_matches(".exe").into(), peak: 0.1 };
+        let playing = [app("Discord.exe"), app("Spotify.exe")];
+        let mut p = Prefs::default();
+        // Everything (the PC, mixed with the mic), the game, each app, the mic.
+        let plan = p.plan_from(Some(("VALORANT.exe", "VALORANT")), &playing);
+        assert!(!plan.by_app);
+        let o = Options { sounds: plan.sounds.clone(), tracks: plan.tracks.clone(), ..Options::default() };
+        assert_eq!(o.titles(), ["Everything", "VALORANT", "Discord", "Spotify", "Mic"]);
+        assert_eq!(plan.sounds[0], Sound::Pc);
+        // One app never recorded: left out of what the PC plays.
+        p.never = vec!["spotify.exe".into()];
+        let plan = p.plan_from(None, &playing);
+        assert_eq!(plan.sounds[0], Sound::PcExcept("spotify.exe".into()));
+        assert!(!plan.sounds.contains(&Sound::App("Spotify.exe".into())));
+        // Two: everything built app by app.
+        p.never.push("Discord.exe".into());
+        let plan = p.plan_from(Some(("g.exe", "Game")), &playing);
+        assert!(plan.by_app && !plan.sounds.contains(&Sound::Pc));
+        let o = Options { sounds: plan.sounds.clone(), tracks: plan.tracks.clone(), ..Options::default() };
+        assert_eq!(o.titles(), ["Everything", "Game", "Mic"]);
+        // No mic, no apps apart: the PC alone is still "Everything".
+        let q = Prefs { mic: false, per_app: false, ..Prefs::default() };
+        let plan = q.plan_from(None, &playing);
+        let o = Options { sounds: plan.sounds, tracks: plan.tracks, ..Options::default() };
+        assert_eq!(o.titles(), ["Everything"]);
     }
 
     #[test]

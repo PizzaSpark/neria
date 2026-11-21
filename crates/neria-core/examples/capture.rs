@@ -13,8 +13,10 @@
 //!   Enter saves the last `--keep` seconds, `q` + Enter stops.
 //! - `--hotkey <key>` (F8; e.g. `Alt+F10`): saves the last `--keep` seconds from anywhere,
 //!   even inside a game, with a short sound; `--no-hotkey`.
-//! - `--list`: the monitors (by name) and programs with a window open (games first), as the
-//!   Capture page lists them, then stop.
+//! - `--list`: the monitors (by name), programs with a window open (games first), what's in
+//!   front and the apps playing sound, as the Capture page sees them, then stop.
+//! - `--tracks`: sound as the Capture page plans it (Everything, the game when recording one,
+//!   each app playing sound, the mic); `--never a.exe,b.exe` leaves those apps out.
 //! - `--out <dir>` (default: the current folder).
 //!
 //! While it runs it prints how it keeps up every 2 s: play a game with it and compare the
@@ -63,6 +65,11 @@ fn main() -> anyhow::Result<()> {
         for p in neria_core::capture_pick::programs() {
             println!("{} {} ({})", if p.game { "game  " } else { "window" }, p.name, p.exe);
         }
+        let f = neria_core::capture_pick::front();
+        println!("in front: game {:?}, monitor {:?}", f.game.map(|g| g.name), f.monitor);
+        for a in neria_core::capture_sound::playing_apps() {
+            println!("sound  {} ({}) peak {:.2}", a.name, a.exe, a.peak);
+        }
         return Ok(());
     }
     if args.iter().any(|a| a == "--mics") {
@@ -89,6 +96,21 @@ fn main() -> anyhow::Result<()> {
             })
             .collect::<anyhow::Result<_>>()?;
     }
+    if args.iter().any(|a| a == "--tracks") {
+        let prefs = neria_core::capture::Prefs {
+            never: val("--never").map(|n| n.split(',').map(String::from).collect()).unwrap_or_default(),
+            mic_name: val("--mic").unwrap_or_default(),
+            ..Default::default()
+        };
+        let game = match &o.source {
+            Source::Window(exe) => Some(exe.clone()),
+            _ => None,
+        };
+        let plan = prefs.sound_plan(game.as_deref().map(|g| (g, g.trim_end_matches(".exe"))));
+        o.sounds = plan.sounds;
+        o.tracks = plan.tracks;
+        println!("tracks: {}{}", o.titles().join(" · "), if plan.by_app { " (everything built app by app)" } else { "" });
+    }
 
     if args.iter().any(|a| a == "--routes") {
         for r in Route::ALL {
@@ -103,7 +125,7 @@ fn main() -> anyhow::Result<()> {
     let t = Instant::now();
     let buffer = ScreenBuffer::start(o.clone())?;
     println!("recording {:?} through {} (picked in {:.1}s), keeping {} s", o.source, buffer.route.label(), t.elapsed().as_secs_f64(), o.keep);
-    let titles = neria_core::capture::track_titles(&o.sounds);
+    let titles = o.titles();
     println!("sound tracks: {}", if titles.is_empty() { "none".into() } else { titles.join(" · ") });
 
     // The hotkey, working while a game has focus: a sound at once, the save in the background
@@ -114,7 +136,7 @@ fn main() -> anyhow::Result<()> {
     } else {
         let key = neria_core::hotkey::Hotkey::parse(&key_text)?;
         let (dir, keep, out) = (buffer.dir.clone(), o.keep, out.clone());
-        let titles = neria_core::capture::track_titles(&o.sounds);
+        let titles = o.titles();
         let busy = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let l = neria_core::hotkey::listen(key, move || {
             if busy.swap(true, std::sync::atomic::Ordering::SeqCst) {

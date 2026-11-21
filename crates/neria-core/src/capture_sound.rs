@@ -44,7 +44,7 @@ impl Sound {
 }
 
 /// `discord.exe` → `Discord`.
-fn app_name(exe: &str) -> String {
+pub fn app_name(exe: &str) -> String {
     let stem = exe.strip_suffix(".exe").or_else(|| exe.strip_suffix(".EXE")).unwrap_or(exe);
     let mut c = stem.chars();
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
@@ -155,6 +155,22 @@ fn pump(mut source: imp::Source, mut out: TcpStream, stop: &AtomicBool) -> Resul
 /// Sound inputs (mics), by name.
 pub fn mics() -> Vec<String> {
     imp::mics().unwrap_or_default()
+}
+
+/// An app playing sound now (its process's file name), and how loud it is, 0–1.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppSound {
+    pub exe: String,
+    pub name: String,
+    pub peak: f32,
+}
+
+/// Apps playing sound now on the default output (one each, however many processes), loudest
+/// first. Windows' own sounds aren't one.
+pub fn playing_apps() -> Vec<AppSound> {
+    let mut v = imp::sessions().unwrap_or_default();
+    v.sort_by(|a, b| b.peak.total_cmp(&a.peak).then_with(|| a.name.cmp(&b.name)));
+    v
 }
 
 /// Is `exe` running (for "split Discord off" only when it's there).
@@ -325,6 +341,62 @@ mod imp {
         Ok(unsafe { dev.Activate(CLSCTX_ALL, None)? })
     }
 
+    /// Each process's file name, by id.
+    fn exe_names() -> std::collections::HashMap<u32, String> {
+        let mut out = std::collections::HashMap::new();
+        unsafe {
+            let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return out };
+            let mut e = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+            if Process32FirstW(snap, &mut e).is_ok() {
+                loop {
+                    let len = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+                    out.insert(e.th32ProcessID, String::from_utf16_lossy(&e.szExeFile[..len]));
+                    if Process32NextW(snap, &mut e).is_err() {
+                        break;
+                    }
+                }
+            }
+            let _ = CloseHandle(snap);
+        }
+        out
+    }
+
+    pub fn sessions() -> Result<Vec<AppSound>> {
+        use windows::Win32::Media::Audio::Endpoints::IAudioMeterInformation;
+        com();
+        let names = exe_names();
+        let mut out: Vec<AppSound> = Vec::new();
+        unsafe {
+            let dev = enumerator()?.GetDefaultAudioEndpoint(eRender, eConsole)?;
+            let manager: IAudioSessionManager2 = dev.Activate(CLSCTX_ALL, None)?;
+            let list = manager.GetSessionEnumerator()?;
+            for i in 0..list.GetCount()? {
+                let Ok(control) = list.GetSession(i) else { continue };
+                if control.GetState().ok() != Some(AudioSessionStateActive) {
+                    continue;
+                }
+                let Ok(c2) = control.cast::<IAudioSessionControl2>() else { continue };
+                if c2.IsSystemSoundsSession() == windows_core::HRESULT(0) {
+                    continue;
+                }
+                let pid = c2.GetProcessId().unwrap_or(0);
+                let Some(exe) = names.get(&pid).cloned().filter(|_| pid != 0) else { continue };
+                // Windows' own (shared services, the audio engine): not an app.
+                if ["svchost.exe", "audiodg.exe", "system", "lsass.exe", "services.exe"]
+                    .contains(&exe.to_ascii_lowercase().as_str())
+                {
+                    continue;
+                }
+                let peak = control.cast::<IAudioMeterInformation>().and_then(|m| m.GetPeakValue()).unwrap_or(0.0);
+                match out.iter_mut().find(|a| a.exe.eq_ignore_ascii_case(&exe)) {
+                    Some(a) => a.peak = a.peak.max(peak),
+                    None => out.push(AppSound { name: app_name(&exe), exe, peak }),
+                }
+            }
+        }
+        Ok(out)
+    }
+
     /// The first process of `exe` whose parent isn't one too (Discord runs several).
     pub fn root_pid(exe: &str) -> Option<u32> {
         let mut procs = Vec::new();
@@ -427,6 +499,9 @@ mod imp {
     }
     pub fn root_pid(_: &str) -> Option<u32> {
         None
+    }
+    pub fn sessions() -> Result<Vec<AppSound>> {
+        Ok(Vec::new())
     }
 }
 

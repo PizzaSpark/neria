@@ -20,6 +20,8 @@ pub struct Monitor {
     pub height: u32,
     /// Windows' main screen (top-left at 0, 0).
     pub main: bool,
+    /// Windows' handle for it (`HMONITOR`), to find the screen a window is on.
+    pub handle: isize,
 }
 
 impl Monitor {
@@ -109,6 +111,18 @@ pub fn programs() -> Vec<Program> {
     out
 }
 
+/// What's in front now, for Automatic: the game (if the window in front is one) and the
+/// monitor that window is on (`Monitor::index`).
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Front {
+    pub game: Option<Program>,
+    pub monitor: Option<u32>,
+}
+
+pub fn front() -> Front {
+    imp::front()
+}
+
 /// Whether `exe` has a visible window now (a game waited for has opened).
 pub fn window_open(exe: &str) -> bool {
     imp::windows().iter().any(|w| w.exe.eq_ignore_ascii_case(exe))
@@ -170,6 +184,25 @@ mod imp {
         let out = unsafe { &mut *(lp.0 as *mut Vec<HWND>) };
         out.push(hwnd);
         BOOL(1)
+    }
+
+    pub fn front() -> Front {
+        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        let _real = RealPixels::new();
+        let hwnd = unsafe { GetForegroundWindow() };
+        if hwnd.is_invalid() {
+            return Front::default();
+        }
+        let mon = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL) };
+        let monitor = monitors().into_iter().find(|m| m.handle == mon.0 as isize).map(|m| m.index);
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        let game = (pid != std::process::id())
+            .then(|| windows().into_iter().find(|w| w.pid == pid && w.covers_screen || w.pid == pid && in_games_folder(&w.path)))
+            .flatten()
+            .filter(|w| !SKIP.contains(&w.exe.to_ascii_lowercase().as_str()))
+            .map(|w| Program { name: tidy(&w.title, &w.exe), exe: w.exe, game: true });
+        Front { game, monitor }
     }
 
     pub fn windows() -> Vec<Win> {
@@ -316,6 +349,7 @@ mod imp {
                         let n = out.len() as u32;
                         let name = names.get(&gdi).cloned().unwrap_or_else(|| format!("Screen {}", n + 1));
                         out.push(Monitor {
+                            handle: d.Monitor.0 as isize,
                             index: n,
                             adapter: a,
                             output: i,
@@ -356,6 +390,9 @@ mod imp {
     }
     pub fn monitors() -> Vec<Monitor> {
         Vec::new()
+    }
+    pub fn front() -> Front {
+        Front::default()
     }
 }
 
