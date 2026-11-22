@@ -209,7 +209,12 @@ so they get built together.
    the stream's description or the channel's, the same name live elsewhere with a matching
    title) and the other chat is offered with one click ("Also live on Twitch · Add its
    chat"), using the "+" that reads a second chat today; Speech to text extras (burned-in captions,
-   translate); Spotify's own-key path and playlists over 100 songs (Music 4)
+   translate); Spotify's own-key path and playlists over 100 songs (Music 4); **a Quality
+   choice for capture** (asked about 2026-11-22, instead of OBS-style CBR / rate-control
+   knobs): Smaller files / Standard / Best on both Capture tabs (This PC and Phone), Neria
+   picking bit rate, size and frame rate under it; an Advanced fold with bit rate and frame
+   rate as numbers. The phone only takes bit rate, size, frame rate and codec through scrcpy
+   (forcing CBR means pushing its encoder, which some phones choke on). Mock first
 8. **Bigger ideas** (section "Later"), in this order: browser extension, Library page,
    command palette, Audio tools page, saved workflows, external tools
 9. **Before the mobile build**, once everything above is done:
@@ -1111,6 +1116,13 @@ On hold until the desktop app has every feature we want; no Android work before 
   same picker for posts and playlists). "Download now" skips the app and queues it with your
   defaults, progress in a notification
 - APK via GitHub / F-Droid (Play Store bans downloaders)
+- **The phone as a capture source without adb** (talked about 2026-11-22): the Neria app on
+  the phone shares its screen and sound to the desktop app (Android's screen sharing with
+  one "Start sharing?" tap; no Developer options, no pairing with adb), feeding the same
+  Phone tab: mirror, replay buffer, Clip the last, Present. Android won't let that route
+  control the phone from the PC (no taps or typing), and apps may keep their sound out
+  (Spotify does), so adb stays the way for control and every app's sound. `phone.rs` is
+  already written to be shared with that app
 
 ## Not planned
 - Zotify-style downloading of Spotify's own encrypted streams, or streamrip-style downloading
