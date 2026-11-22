@@ -194,11 +194,13 @@ so they get built together.
    `design/capture-tracks.html`): the Capture page, Automatic, a track per app, Never record,
    the clipper's Tracks, voice. Left: a real game session with F8 and "clip that" (only
    checked headlessly and with sample screens)
-5. **Phone track** (built 2026-11-22, mock `design/phone.html`): the Capture page's Phone tab:
-   connecting by QR, the mirror in the page with its own replay buffer and "Clip the last 30 s",
-   Record, Screenshot, Sound only, Present (scrcpy's own window, named "Phone screen · …"; a plain frame, since a borderless one can't be moved). Checked headlessly and with a
-   fake phone (`--example phone -- mirror fake`, `NERIA_PHONE_FAKE`). Left: a real phone end to
-   end (QR scan, taps, sound, turning it, Present); Extras (camera, APK, files, clipboard)
+5. ✅ **Phone track** (built 2026-11-22, mocks `design/phone.html`, `design/phone-present.html`):
+   the Capture page's Phone tab: connecting by QR, the mirror in the page at the phone's full
+   size with its own replay buffer and "Clip the last 30 s", Record, Screenshot, Sound only,
+   where its sound plays, Present in a window of Neria's own (with the sound), cable and Wi-Fi
+   handing over. Checked end to end on a POCO X7 Pro. Left: a Discord viewer hearing a shared
+   Present window; turning the phone (landscape) on the real phone; Extras (camera, APK,
+   files, clipboard)
 6. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
    (starts ~1 s faster on every download and every Spotify candidate check, Music 4)
 7. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
