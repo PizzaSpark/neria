@@ -210,7 +210,11 @@ so they get built together.
    ("Updating yt-dlp… 19 / 23 MB" on the start screen); the one-file exe stays the fallback
    when the onedir build can't be had. Measured: start-up 1.3 → 0.45 s, a short YouTube
    download 10.9 → 7.3 s, a Spotify candidate check 10.1 → 8.6 s. Checked headless (move
-   over, update from an older release while it runs, two updates at once) and in the window
+   over, update from an older release while it runs, two updates at once) and in the window:
+   moving over, and "Update tools" landing 30 s into a 233 MB download, which finished on
+   the release it began with; the next start removed that release and ran the new one.
+   The tools check no longer lets one tool's failed check (GitHub's API limit) hide the
+   others' updates; yt-dlp's check doesn't use the API
 7. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
    live and Kick's chat (Livestreams 11); **both chats of a multi-stream by themselves**
    (asked for 2026-11-21): a streamer live on YouTube and Twitch at once is spotted (links in

@@ -168,6 +168,18 @@ pub fn check(ui: &AppWindow, by_hand: bool) {
                 Ok(list) => {
                     let labels: Vec<&str> = list.iter().map(|t| t.label).collect();
                     ui.set_tools_outdated(labels.join("\n").into());
+                    // Dev hook: press "Update tools" (after that many seconds, if a number).
+                    if let Ok(v) = std::env::var("NERIA_TOOLS_UPDATE")
+                        && !labels.is_empty()
+                    {
+                        let secs = v.parse::<f32>().unwrap_or(0.0).max(0.0);
+                        let weak = ui.as_weak();
+                        slint::Timer::single_shot(std::time::Duration::from_secs_f32(secs), move || {
+                            if let Some(ui) = weak.upgrade() {
+                                ui.invoke_tools_update();
+                            }
+                        });
+                    }
                     ui.set_tools_status(match list.len() {
                         0 => "".into(),
                         _ => format!(

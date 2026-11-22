@@ -185,28 +185,38 @@ pub fn check_tools() -> Result<Vec<ToolUpdate>> {
 
 /// [`check_tools`] with another age limit (0 = any newer build counts).
 pub fn check_tools_older_than(max_age_days: u64) -> Result<Vec<ToolUpdate>> {
+    // One tool's failed check (GitHub's API limits checks per hour; yt-dlp's doesn't use
+    // the API) never hides another's update: the error counts only when nothing was found.
     let mut out = Vec::new();
+    let mut failed = None;
     for spec in tools::TOOLS {
-        if matches!(spec.url, tools::Source::YtdlpOnedir) {
-            if let Some(u) = ytdlp_update(spec)? {
-                out.push(u);
-            }
-            continue;
-        }
-        let Some((repo, tag)) = spec.release else { continue };
-        let Some(local) = file_secs(&paths::bin_dir().join(spec.files[0])) else { continue };
-        let url = match tag {
-            Some(t) => format!("https://api.github.com/repos/{repo}/releases/tags/{t}"),
-            None => format!("https://api.github.com/repos/{repo}/releases/latest"),
-        };
-        let release = api_get(&url).with_context(|| format!("checking {}", spec.label))?;
-        let Some(remote) = remote_secs(spec, &release) else { continue };
-        let age = report_now().saturating_sub(local) / 86_400;
-        if remote > local + 86_400 && age >= max_age_days {
-            out.push(ToolUpdate { label: spec.label, behind_days: (remote - local) / 86_400 });
+        match check_tool(spec, max_age_days) {
+            Ok(Some(u)) => out.push(u),
+            Ok(None) => {}
+            Err(e) => failed = failed.or(Some(e)),
         }
     }
-    Ok(out)
+    match failed {
+        Some(e) if out.is_empty() => Err(e),
+        _ => Ok(out),
+    }
+}
+
+fn check_tool(spec: &'static tools::ToolSpec, max_age_days: u64) -> Result<Option<ToolUpdate>> {
+    if matches!(spec.url, tools::Source::YtdlpOnedir) {
+        return ytdlp_update(spec);
+    }
+    let Some((repo, tag)) = spec.release else { return Ok(None) };
+    let Some(local) = file_secs(&paths::bin_dir().join(spec.files[0])) else { return Ok(None) };
+    let url = match tag {
+        Some(t) => format!("https://api.github.com/repos/{repo}/releases/tags/{t}"),
+        None => format!("https://api.github.com/repos/{repo}/releases/latest"),
+    };
+    let release = api_get(&url).with_context(|| format!("checking {}", spec.label))?;
+    let Some(remote) = remote_secs(spec, &release) else { return Ok(None) };
+    let age = report_now().saturating_sub(local) / 86_400;
+    Ok((remote > local + 86_400 && age >= max_age_days)
+        .then(|| ToolUpdate { label: spec.label, behind_days: (remote - local) / 86_400 }))
 }
 
 /// yt-dlp's update, if a newer release than ours is out (or we only have the one-file
