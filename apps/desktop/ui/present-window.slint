@@ -1,0 +1,88 @@
+// Present (Capture page → Phone → "Present in a window"; mock: design/phone-present.html):
+// only the phone's screen in a window of its own, named "Phone screen · Pixel 7" so it's easy
+// to pick when sharing a window. Neria's own window, so a window share carries Neria's sound
+// (the phone's, played here) and nothing pulls the phone's sound a second time. The picture
+// is drawn by its own mpv from the same stream as the page (`present_ui.rs`); taps, drags,
+// scrolling and typing on it go to the phone.
+
+import { Theme } from "theme.slint";
+
+export component PresentWindow inherits Window {
+    // "Phone screen · Pixel 7"
+    in property <string> name: "Phone screen";
+    in property <image> frame;
+    // Goes up with every new frame drawn into the same texture (see Phone.frame-tick).
+    in property <int> frame-tick;
+    in property <int> frame-w: 1080;
+    in property <int> frame-h: 2400;
+    in property <bool> has-frame;
+    in property <bool> on-top: true;
+    // x, y: 0–1 across the picture itself (not the black bars). 0 down, 1 up, 2 moved.
+    callback touch(int, float, float);
+    callback scroll(float, float, float);
+    callback typed(string);
+    callback press(int);
+
+    title: root.name;
+    icon: @image-url("../assets/neria-256.png");
+    always-on-top: root.on-top;
+    background: Theme.video;
+    min-width: 160px;
+    min-height: 160px;
+
+    // Where the picture sits inside the window (kept to its shape, bars around it).
+    property <float> aspect: root.frame-h > 0 ? root.frame-w / root.frame-h : 0.45;
+    property <length> pic-w: min(root.width, root.height * root.aspect);
+    property <length> pic-h: root.pic-w / root.aspect;
+    property <length> pic-x: (root.width - root.pic-w) / 2;
+    property <length> pic-y: (root.height - root.pic-h) / 2;
+
+    Image {
+        x: root.pic-x;
+        y: root.pic-y;
+        width: root.pic-w;
+        height: root.pic-h;
+        source: root.frame-tick >= 0 ? root.frame : root.frame;
+        image-fit: fill;
+    }
+    if !root.has-frame: Text {
+        text: "Waiting for the picture…";
+        color: Theme.muted;
+        font-family: Theme.body;
+        font-size: 13px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                root.press(4);
+                return accept;
+            }
+            root.typed(e.text);
+            accept
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        property <float> px: max(0, min(1, (self.mouse-x - root.pic-x) / root.pic-w));
+        property <float> py: max(0, min(1, (self.mouse-y - root.pic-y) / root.pic-h));
+        pointer-event(e) => {
+            if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                fs.focus();
+                root.touch(0, self.px, self.py);
+            } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.up {
+                root.touch(1, self.px, self.py);
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.touch(2, self.px, self.py);
+            }
+        }
+        scroll-event(e) => {
+            root.scroll(self.px, self.py, e.delta-y / 1px);
+            accept
+        }
+    }
+}

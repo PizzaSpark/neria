@@ -1052,12 +1052,12 @@ one pinned scrcpy version (its server and client protocol must match), updated o
    class. Keeps the phone's shape as it's resized, turns when the phone turns, can stay on
    top; optional: show taps (scrcpy's `--show-touches`) so people see what you press, and keep
    the phone awake while presenting. Opened from the mirror page ("Present in a window")
-   - [x] With its sound (asked for 2026-11-22; mock `design/phone-present.html`): the window
-     plays the phone's sound itself, so a window share in Discord carries it; the page's
-     picture and sound step aside meanwhile (a card, Bring it to front), Clip the last keeps
-     its sound (two captures of the phone's sound work at once).
-     Picture: Smooth (1600 px, 4 Mbit/s, the default) or Full quality. Smooth was better on
-     the POCO but still stuttered; then 300 ms of sound in hand and 20 ms chunks to Windows
+   - [x] With its sound (asked for 2026-11-22; mock `design/phone-present.html`): Present is
+     a window of Neria's own now (`present_ui.rs`), drawing the picture Neria already gets;
+     the sound plays from Neria, so a window share in Discord carries it. scrcpy's window was a
+     second session: its sound stuttered (even over USB), closing it handed the sound back to
+     the phone's speaker, and its picture was a second stream over the Wi-Fi. The page's
+     picture steps aside meanwhile (a card, Bring it to front); Clip the last keeps its sound
    - [x] One choice of where the phone's sound plays, for Mirror, Sound only and Present: this
      PC (everything; the phone quiet, its buttons set the level) / this PC and the phone (apps
      may refuse: Spotify does) / the phone only; Volume on this PC always; applied at once

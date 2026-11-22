@@ -1,6 +1,6 @@
 import { ScrollView, Slider } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, LinkField, ChoiceRow, ChoiceChips } from "../widgets.slint";
+import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, LinkField, ChoiceRow } from "../widgets.slint";
 import { Phone, PhoneRow, Capture } from "../globals.slint";
 import { SavedList } from "../components/saved-list.slint";
 
@@ -827,28 +827,6 @@ component MirrorChoices inherits VerticalLayout {
         text: "Show taps (people see what you press)";
         checked <=> Phone.show-taps;
         toggled => { Phone.changed(); }
-    }
-    HorizontalLayout {
-        padding-top: 6px;
-        spacing: 10px;
-        Text {
-            horizontal-stretch: 0;
-            text: "Picture";
-            color: Theme.ink;
-            font-family: Theme.body;
-            font-size: 13px;
-            vertical-alignment: center;
-        }
-        ChoiceChips {
-            options: ["Smooth", "Full quality"];
-            current <=> Phone.present-quality;
-            changed => { Phone.changed(); }
-        }
-    }
-    Hint {
-        text: Phone.present-quality == 0
-            ? "Smaller and lighter for the Wi-Fi, so the window's sound stays steady. Plenty for a share."
-            : "The phone's full size. Best on strong Wi-Fi or a USB cable.";
     }
     if !Screen.compact: HorizontalLayout {
         padding-top: 10px;
