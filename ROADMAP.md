@@ -1057,7 +1057,9 @@ one pinned scrcpy version (its server and client protocol must match), updated o
      the sound plays from Neria, so a window share in Discord carries it. scrcpy's window was a
      second session: its sound stuttered (even over USB), closing it handed the sound back to
      the phone's speaker, and its picture was a second stream over the Wi-Fi. The page's
-     picture steps aside meanwhile (a card, Bring it to front); Clip the last keeps its sound
+     picture steps aside meanwhile (a card, Bring it to front); Clip the last keeps its sound.
+     Checked on the POCO over Wi-Fi: smooth sound, taps work, closing keeps the sound here.
+     Not yet checked: a Discord viewer hearing the shared window
    - [x] One choice of where the phone's sound plays, for Mirror, Sound only and Present: this
      PC (everything; the phone quiet, its buttons set the level) / this PC and the phone (apps
      may refuse: Spotify does) / the phone only; Volume on this PC always; applied at once
