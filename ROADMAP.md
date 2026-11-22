@@ -1065,6 +1065,9 @@ one pinned scrcpy version (its server and client protocol must match), updated o
      may refuse: Spotify does) / the phone only; Volume on this PC always; applied at once
    - [x] The screen comes back on after "Turn the phone's screen off" (HyperOS left the
      backlight at zero: the brightness setting is nudged a step and back)
+   - [x] Cable and Wi-Fi hand over (asked for 2026-11-22): mirroring by cable carries on over
+     Wi-Fi when the cable comes out; mirroring over Wi-Fi offers the cable when it's plugged in
+     (asked, since switching starts again). Checked both ways on the POCO
 6. [ ] **Extras, if wanted.** The phone's camera as a source (Android 12+); drop an APK to
    install it, drop files to send them to the phone; copy and paste between PC and phone
 Watch out: only one adb server runs per PC (port 5037); another adb at a different version
