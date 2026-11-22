@@ -882,6 +882,37 @@ component SoundOnly inherits VerticalLayout {
     SoundChoices { sound-only: true; }
 }
 
+// Mirroring over Wi-Fi, and the same phone was plugged in: the cable, if you like (switching
+// starts mirroring again, so it's asked, not done).
+component UsbOffer inherits VerticalLayout {
+    spacing: 8px;
+    Notice {
+        icon: "\u{E88E}";
+        text: Phone.name + " is plugged in. Switch to the cable for a steadier picture? Mirroring starts again, and what's kept so far is cleared.";
+        color: Theme.ink;
+        icon-color: Theme.ok;
+        font-size: 12.5px;
+        wrap: true;
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        GhostButton {
+            compact: true;
+            text: "Switch to the cable";
+            icon: "\u{E88E}";
+            clicked => { Phone.switch-usb(); }
+        }
+        VerticalLayout {
+            alignment: center;
+            TextLink {
+                text: "Not now";
+                clicked => { Phone.keep-wifi(); }
+            }
+        }
+    }
+}
+
 export component PhonePane inherits Rectangle {
     // The picture's own shape, and whether it stands (a phone) or lies (a landscape game).
     property <float> aspect: Phone.frame-h > 0 ? Phone.frame-w / Phone.frame-h : 0.45;
@@ -919,6 +950,7 @@ export component PhonePane inherits Rectangle {
                 spacing: 14px;
                 alignment: start;
                 PhoneStatus { }
+                if Phone.usb-offer: UsbOffer { }
                 MirrorActions { }
                 MirrorChoices { }
                 if Capture.saved.length > 0: SavedList { }
@@ -950,6 +982,7 @@ export component PhonePane inherits Rectangle {
                 PhoneKeys { }
             }
             if root.showing || Phone.state == 6: PhoneStatus { }
+            if (root.showing || Phone.state == 6) && Phone.usb-offer: UsbOffer { }
             if root.showing: MirrorActions { }
             if root.showing: MirrorChoices { }
             if Phone.state == 6: SoundOnly { }

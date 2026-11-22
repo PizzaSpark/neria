@@ -560,6 +560,18 @@ pub fn disconnect(serials: &[String]) {
     }
 }
 
+/// The phone `id` (its serial number) connected over Wi-Fi (`wifi`) or by cable, by adb's name
+/// for it. A cable's name is the serial number; Wi-Fi's mDNS name holds it ("adb-<id>-…");
+/// an `ip:port` is asked. Blocking (adb).
+pub fn other_way(devices: &[Device], id: &str, wifi: bool) -> Option<String> {
+    if id.is_empty() {
+        return None;
+    }
+    let mut ready = devices.iter().filter(|d| d.state == State::Ready && d.wifi == wifi);
+    ready.find(|d| d.serial == id || d.serial.starts_with(&format!("adb-{id}-")) || (wifi && info(&d.serial).is_ok_and(|i| i.id == id)))
+        .map(|d| d.serial.clone())
+}
+
 /// Remembered phones Neria can see on the Wi-Fi now (Wireless debugging on), by id.
 pub fn visible_ids() -> Vec<String> {
     services().unwrap_or_default().iter().filter(|s| s.kind == Kind::Connect).filter_map(|s| s.phone_id().map(str::to_string)).collect()

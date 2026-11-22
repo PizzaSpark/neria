@@ -55,6 +55,14 @@ struct Ui {
     recording: Option<Arc<Recording>>,
     /// Open Present again once mirroring starts again (the sound's place changed meanwhile).
     represent: bool,
+    /// Mirroring over Wi-Fi and the phone was plugged in: its cable name (offered, not used).
+    usb_offer: Option<String>,
+    /// "Not now" to the cable, for this time mirroring.
+    usb_declined: bool,
+    /// Looking at what adb sees while mirroring (off the UI thread).
+    watching: bool,
+    /// Said once mirroring starts again ("Cable unplugged: mirroring over Wi-Fi now").
+    note: Option<String>,
     serial: String,
     /// A finger down on the picture (moves are sent only then).
     down: bool,
@@ -220,6 +228,26 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         move || present(&weak.unwrap())
     });
     p.on_front(|| crate::present_ui::bring_to_front());
+    p.on_switch_usb({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            let Some(usb) = UI.with(|u| u.borrow_mut().usb_offer.take()) else { return };
+            ui.global::<Phone>().set_usb_offer(false);
+            restart_on(&ui, usb, "Switched to the cable");
+        }
+    });
+    p.on_keep_wifi({
+        let weak = ui.as_weak();
+        move || {
+            UI.with(|u| {
+                let mut u = u.borrow_mut();
+                u.usb_offer = None;
+                u.usb_declined = true;
+            });
+            weak.unwrap().global::<Phone>().set_usb_offer(false);
+        }
+    });
     p.on_changed({
         let weak = ui.as_weak();
         move || changed(&weak.unwrap())
@@ -423,6 +451,9 @@ fn tick(ui: &AppWindow) {
     let s = state(ui);
     if s == st::MIRROR || s == st::SOUND || s == st::STARTING {
         live(ui);
+    }
+    if s == st::MIRROR || s == st::SOUND {
+        watch_cable(ui);
     }
     // Dev hook NERIA_PHONE_MIRROR: mirror the first phone that's ready, once, with no click.
     static AUTO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -795,7 +826,13 @@ fn running(ui: &AppWindow, s: Arc<Session>, buffer: Option<Arc<PhoneBuffer>>, so
         u.session = Some(s.clone());
         u.buffer = buffer;
         u.speaker = speaker;
+        u.usb_offer = None;
+        u.usb_declined = false;
     });
+    p.set_usb_offer(false);
+    if let Some(n) = UI.with(|u| u.borrow_mut().note.take()) {
+        p.set_detail(n.into());
+    }
     if let Some(url) = url {
         load_picture(ui, &url);
     }
@@ -854,6 +891,12 @@ fn live(ui: &AppWindow) {
     let Some(s) = session else { return };
     if !s.running() {
         let why = s.problem.lock().unwrap().clone();
+        // The cable came out: carry on over Wi-Fi when the phone is there too.
+        if !s.serial.contains(':') && !s.serial.contains("._adb-tls-connect.") {
+            if fall_back_to_wifi(ui, &s, &why) {
+                return;
+            }
+        }
         stop(ui, None);
         p.set_status(format!("{} stopped", s.name).into());
         p.set_detail(why.into());
@@ -1106,6 +1149,98 @@ fn taps_after_present(serial: Option<String>) {
             let _ = phone::set_show_touches(&serial, false);
         });
     }
+}
+
+/// The id (serial number) of the phone mirrored now.
+fn current_id(s: &Session) -> String {
+    UI.with(|u| u.borrow().infos.get(&s.serial).map(|i| i.id.clone())).unwrap_or_default()
+}
+
+/// Mirror (or play) the same phone again on `serial`, Present with it if it was open, and say
+/// `note` once it runs.
+fn restart_on(ui: &AppWindow, serial: String, note: &str) {
+    let sound_only = state(ui) == st::SOUND;
+    let presenting = crate::present_ui::is_open();
+    UI.with(|u| u.borrow_mut().note = Some(note.to_string()));
+    start(ui, serial, sound_only);
+    UI.with(|u| u.borrow_mut().represent = presenting);
+}
+
+/// Mirroring over Wi-Fi: has the same phone been plugged in? Then offer the cable.
+fn watch_cable(ui: &AppWindow) {
+    let Some(s) = UI.with(|u| u.borrow().session.clone()) else { return };
+    let busy = UI.with(|u| {
+        let u = u.borrow();
+        u.watching || u.usb_declined || u.usb_offer.is_some()
+    });
+    let wifi = s.serial.contains(':') || s.serial.contains("._adb-tls-connect.");
+    if busy || !wifi {
+        return;
+    }
+    let id = current_id(&s);
+    UI.with(|u| u.borrow_mut().watching = true);
+    let weak = ui.as_weak();
+    std::thread::spawn(move || {
+        let devices = phone::devices().unwrap_or_default();
+        let usb = phone::other_way(&devices, &id, false);
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            UI.with(|u| u.borrow_mut().watching = false);
+            if let Some(usb) = usb {
+                if UI.with(|u| u.borrow().session.as_ref().is_some_and(|x| Arc::ptr_eq(x, &s))) {
+                    UI.with(|u| u.borrow_mut().usb_offer = Some(usb));
+                    ui.global::<Phone>().set_usb_offer(true);
+                }
+            }
+        });
+    });
+}
+
+/// Mirroring by cable stopped by itself: is the phone there over Wi-Fi (connected, or with
+/// Wireless debugging on)? Then mirror on over Wi-Fi. False when it isn't (stop as before).
+fn fall_back_to_wifi(ui: &AppWindow, s: &Arc<Session>, why: &str) -> bool {
+    let id = current_id(s);
+    if id.is_empty() {
+        return false;
+    }
+    let sound_only = state(ui) == st::SOUND;
+    let presenting = crate::present_ui::is_open();
+    let name = s.name.clone();
+    let why = why.to_string();
+    // What ran stops now; the page says what's happening meanwhile.
+    stop(ui, Some(st::STARTING));
+    let p = ui.global::<Phone>();
+    p.set_status(format!("Cable unplugged: finding {name} on the Wi-Fi…").into());
+    p.set_detail("".into());
+    let weak = ui.as_weak();
+    std::thread::spawn(move || {
+        let mut devices = phone::devices().unwrap_or_default();
+        let mut wifi = phone::other_way(&devices, &id, true);
+        if wifi.is_none() && phone::connect_id(&id).is_ok() {
+            devices = phone::devices().unwrap_or_default();
+            wifi = phone::other_way(&devices, &id, true);
+        }
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            if state(&ui) != st::STARTING {
+                return;
+            }
+            match wifi {
+                Some(serial) => {
+                    UI.with(|u| u.borrow_mut().note = Some("Cable unplugged: mirroring over Wi-Fi now".into()));
+                    start(&ui, serial, sound_only);
+                    UI.with(|u| u.borrow_mut().represent = presenting);
+                }
+                None => {
+                    set_state(&ui, st::PHONES);
+                    let p = ui.global::<Phone>();
+                    p.set_status(format!("{name} stopped").into());
+                    p.set_detail(format!("{why} Turn on Wireless debugging and Neria can carry on over Wi-Fi next time.").into());
+                    p.set_problem(true);
+                    show_phones(&ui);
+                }
+            }
+        });
+    });
+    true
 }
 
 /// A wheel turn on a picture (the page's or Present's), at `x`, `y` across it.
@@ -1533,6 +1668,10 @@ fn show_demo(ui: &AppWindow, what: &str) {
             p.set_recording(true);
             p.set_rec_time("2:14".into());
             p.set_presenting(true);
+        }
+        "switch" => {
+            mirror(false);
+            p.set_usb_offer(true);
         }
         "present" => {
             mirror(false);

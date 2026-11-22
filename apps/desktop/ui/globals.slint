@@ -1030,6 +1030,8 @@ export global Phone {
     in property <string> code-target;
     in property <string> code-problem;
     in property <bool> usb-open;
+    // While mirroring over Wi-Fi the same phone was plugged in: offer the cable.
+    in property <bool> usb-offer;
     in property <[PhoneRow]> phones;
     // The phone mirrored (or played).
     in property <string> name;
@@ -1072,6 +1074,9 @@ export global Phone {
     callback record();
     callback screenshot();
     callback present();
+    // The offer: switch to the cable now / stay on Wi-Fi.
+    callback switch-usb();
+    callback keep-wifi();
     // The presenting window in front of everything.
     callback front();
     callback show-picture();
