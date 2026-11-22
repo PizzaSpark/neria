@@ -478,7 +478,8 @@ component Picture inherits Rectangle {
         y: 3px;
         width: parent.width - 6px;
         height: parent.height - 6px;
-        source: Phone.frame;
+        // Reads frame-tick so the clip's cached layer is drawn again for each new frame.
+        source: Phone.frame-tick >= 0 ? Phone.frame : Phone.frame;
         image-fit: contain;
     }
     if !Phone.has-frame: Text {

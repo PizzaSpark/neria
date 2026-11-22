@@ -866,9 +866,15 @@ fn live(ui: &AppWindow) {
                 let l = s.live.lock().unwrap().clone();
                 let _ = writeln!(
                     f,
-                    "{} frames {frames} pos {pos:?} idle {idle} stalled {stalled} readers {} | last video {:?} ago, sound packets {}, controls {} (slowest {} ms)",
+                    "{} frames {frames} pos {pos:?} idle {idle} stalled {stalled} readers {} | hooks {} updates {} draws {} | has-frame {} image {:?} target {:?} | last video {:?} ago, sound packets {}, controls {} (slowest {} ms)",
                     chrono::Local::now().format("%H:%M:%S"),
                     v.readers(),
+                    HOOKS.swap(0, std::sync::atomic::Ordering::Relaxed),
+                    UPDATES.swap(0, std::sync::atomic::Ordering::Relaxed),
+                    DRAWS.swap(0, std::sync::atomic::Ordering::Relaxed),
+                    p.get_has_frame(),
+                    p.get_frame().size(),
+                    UI.with(|u| u.borrow().target.as_ref().map(|t| (t.w, t.h))),
                     l.last_packet.map(|t| t.elapsed().as_millis()),
                     l.audio_packets,
                     l.controls,
@@ -1189,8 +1195,14 @@ fn stop_picture(ui: &AppWindow) {
     ui.global::<Phone>().set_has_frame(false);
 }
 
+/// Debug counts between two picture checks: rendering hooks, mpv's "new frame" calls, draws.
+static HOOKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static UPDATES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DRAWS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// From the window's rendering hook: draw the phone's newest frame.
 pub fn render(ui: &AppWindow, gl: &glow::Context) {
+    HOOKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     UI.with(|u| {
         let mut u = u.borrow_mut();
         if u.mpv.is_none() || u.session.as_ref().is_none_or(|s| s.video.is_none()) {
@@ -1199,9 +1211,14 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
         if u.renderer.is_none() {
             let weak = ui.as_weak();
             let redraw = move || {
+                UPDATES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let weak = weak.clone();
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = weak.upgrade() {
+                        // A new frame in the same texture: the page's cached clip layer must
+                        // be drawn again, or it keeps showing the first frame.
+                        let p = ui.global::<Phone>();
+                        p.set_frame_tick(p.get_frame_tick().wrapping_add(1) & 0x3fff_ffff);
                         ui.window().request_redraw();
                     }
                 });
@@ -1269,6 +1286,7 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
                 // Never wait for a frame's time: the raw stream's times are guesses (25 fps),
                 // ahead of the clock whenever the phone sends faster, and this is the UI thread.
                 r.render_with(target.fbo.0.get() as i32, w, h, false, false);
+                DRAWS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
             gl.bind_framebuffer(glow::FRAMEBUFFER, NonZeroU32::new(prev_fbo as u32).map(glow::NativeFramebuffer));
             gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);

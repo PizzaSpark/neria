@@ -1035,6 +1035,9 @@ export global Phone {
     in property <image> frame;
     // The picture is drawn (a GL texture's size isn't a sure sign).
     in property <bool> has-frame;
+    // Goes up with every new frame mpv draws into the same texture: the picture's rounded
+    // clip is drawn into a layer Slint keeps until a property changes, so this tells it to.
+    in property <int> frame-tick;
     in property <int> frame-w: 1080;
     in property <int> frame-h: 2400;
     in property <bool> recording;
