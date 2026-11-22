@@ -997,6 +997,8 @@ export struct PhoneRow {
     // "Wi-Fi · Android 15".
     hint: string,
     here: bool,
+    // Connected over Wi-Fi (Disconnect drops that; a cable is unplugged instead).
+    wifi: bool,
     // Not connected, but on this Wi-Fi with Wireless debugging on: Connect.
     visible: bool,
     // "Tap Allow on your phone", "" when ready.

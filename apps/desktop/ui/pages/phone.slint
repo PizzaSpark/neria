@@ -418,7 +418,7 @@ component PhoneItem inherits VerticalLayout {
                 }
             }
         }
-        if root.item.here && !Screen.compact: VerticalLayout {
+        if root.item.here && root.item.wifi && !Screen.compact: VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
             TextLink {

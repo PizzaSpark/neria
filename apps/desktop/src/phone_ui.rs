@@ -561,6 +561,10 @@ fn show_phones(ui: &AppWindow) {
             }
             ids.push(i.id.clone());
         }
+        // The same phone by cable and over Wi-Fi at once.
+        let same = |x: &Device| info.is_some_and(|i| !i.id.is_empty() && infos.get(&x.serial).is_some_and(|j| j.id == i.id));
+        let wifi = d.wifi || devices.iter().any(|x| x.wifi && same(x));
+        let usb = !d.wifi || devices.iter().any(|x| !x.wifi && same(x));
         rows.push(PhoneRow {
             serial: d.serial.as_str().into(),
             id: info.map(|i| i.id.clone()).unwrap_or_default().into(),
@@ -568,12 +572,18 @@ fn show_phones(ui: &AppWindow) {
                 if d.model.is_empty() { "Android phone".into() } else { d.model.clone() }
             }).into(),
             hint: format!(
-                "{}{}",
-                if d.wifi { "Wi-Fi" } else { "USB" },
-                info.map(|i| format!(" · Android {}", i.android)).unwrap_or_default()
+                "{}{}{}",
+                match (usb, wifi) {
+                    (true, true) => "USB and Wi-Fi",
+                    (false, _) => "Wi-Fi",
+                    _ => "USB",
+                },
+                info.map(|i| format!(" · Android {}", i.android)).unwrap_or_default(),
+                if wifi { "" } else { " · unplug the cable to disconnect" }
             )
             .into(),
             here: true,
+            wifi,
             visible: false,
             problem: phone::problem(d).unwrap_or("").into(),
         });
@@ -601,6 +611,7 @@ fn show_phones(ui: &AppWindow) {
             )
             .into(),
             here: false,
+            wifi: false,
             visible: seen,
             problem: "".into(),
         });
@@ -1475,6 +1486,7 @@ fn show_demo(ui: &AppWindow, what: &str) {
             name: "Pixel 7".into(),
             hint: "Wi-Fi · Android 15".into(),
             here: true,
+            wifi: true,
             visible: false,
             problem: "".into(),
         },
@@ -1484,6 +1496,7 @@ fn show_demo(ui: &AppWindow, what: &str) {
             name: "Galaxy Tab S9".into(),
             hint: "USB · Android 14 · plug it in".into(),
             here: false,
+            wifi: false,
             visible: false,
             problem: "".into(),
         },
