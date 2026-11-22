@@ -281,12 +281,12 @@ impl Info {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
-    /// While mirroring: the phone's sound here, its screen off, kept awake.
-    pub sound: bool,
+    /// Where the phone's sound plays (Mirror, Sound only and Present alike).
+    pub place: Place,
+    /// While mirroring: its screen off, kept awake.
     pub screen_off: bool,
     pub awake: bool,
-    /// Sound only: keep playing on the phone too; the volume here.
-    pub keep_on_phone: bool,
+    /// The volume on this PC (Neria's own, after the phone's).
     pub volume: f32,
     /// Present: on top, taps shown.
     pub on_top: bool,
@@ -299,16 +299,53 @@ pub struct Prefs {
 impl Default for Prefs {
     fn default() -> Self {
         Prefs {
-            sound: true,
+            place: Place::Pc,
             screen_off: false,
             awake: true,
-            keep_on_phone: true,
             volume: 1.0,
             on_top: true,
             show_taps: false,
             clip: 30,
             keep: 60,
         }
+    }
+}
+
+/// Where the phone's sound plays.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Place {
+    /// All of it, here; the phone goes quiet and its volume buttons set the level here too
+    /// (Android's whole output, after its volume: no app can keep out).
+    #[default]
+    Pc,
+    /// Here and on the phone: each app's sound, before the phone's volume. Apps may refuse
+    /// to be captured this way (Spotify does) and stay quiet here.
+    Both,
+    /// Nothing comes here (not for Sound only).
+    Phone,
+}
+
+impl Place {
+    pub fn from_index(i: i32) -> Place {
+        match i {
+            1 => Place::Both,
+            2 => Place::Phone,
+            _ => Place::Pc,
+        }
+    }
+
+    pub fn index(self) -> i32 {
+        match self {
+            Place::Pc => 0,
+            Place::Both => 1,
+            Place::Phone => 2,
+        }
+    }
+
+    /// Sound comes to this PC.
+    pub fn here(self) -> bool {
+        self != Place::Phone
     }
 }
 
@@ -602,8 +639,8 @@ pub struct WindowOptions {
     pub show_touches: bool,
     pub stay_awake: bool,
     pub screen_off: bool,
-    /// Play the phone's sound here too.
-    pub sound: bool,
+    /// Where the window's sound plays (the window plays it itself, so a window share carries it).
+    pub sound: Place,
     /// Record to this file while it's open.
     pub record: Option<PathBuf>,
 }
@@ -630,8 +667,14 @@ pub fn open_window(serial: &str, o: &WindowOptions) -> Result<Child> {
     if o.screen_off {
         cmd.arg("--turn-screen-off");
     }
-    if !o.sound {
-        cmd.arg("--no-audio");
+    match o.sound {
+        Place::Phone => {
+            cmd.arg("--no-audio");
+        }
+        Place::Both => {
+            cmd.args(["--audio-source=playback", "--audio-dup"]);
+        }
+        Place::Pc => {}
     }
     if let Some(f) = &o.record {
         cmd.arg("--record").arg(f);
@@ -1400,6 +1443,8 @@ pub struct Session {
     /// Control messages go out from a thread of their own: a phone that stops reading them
     /// must never hold up the caller (the UI thread, for taps).
     control: Mutex<Option<SyncSender<Vec<u8>>>>,
+    /// Neria turned the phone's screen off (at the start or later): on again when it stops.
+    screen_off: AtomicBool,
     stop: Arc<AtomicBool>,
     /// Why it stopped by itself ("" while running).
     pub problem: Arc<Mutex<String>>,
@@ -1533,6 +1578,7 @@ impl Session {
             live: live.clone(),
             started: Instant::now(),
             control: Mutex::new(None),
+            screen_off: AtomicBool::new(false),
             stop: stop.clone(),
             problem: problem.clone(),
             server: Mutex::new(server),
@@ -1703,6 +1749,9 @@ impl Session {
 
     /// Send a control message (dropped when there's no control socket).
     pub fn send(&self, c: Control) {
+        if let Control::ScreenPower(on) = c {
+            self.screen_off.store(!on, Ordering::SeqCst);
+        }
         let mut g = self.control.lock().unwrap();
         // Dropped when 512 are waiting (the phone stopped reading): better than a hung window.
         if let Some(tx) = g.as_ref() {
@@ -1761,8 +1810,10 @@ impl Session {
         if self.stop.swap(true, Ordering::SeqCst) && self.server.lock().unwrap().is_none() {
             return;
         }
-        if self.options.screen_off {
+        if self.screen_off.load(Ordering::SeqCst) {
             self.send(Control::ScreenPower(true));
+            // Give the control thread a moment to send it before the sockets close.
+            std::thread::sleep(Duration::from_millis(150));
         }
         for s in &self.sockets {
             let _ = s.shutdown(Shutdown::Both);

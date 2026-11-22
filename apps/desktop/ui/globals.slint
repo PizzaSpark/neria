@@ -1043,13 +1043,13 @@ export global Phone {
     in property <bool> recording;
     in property <string> rec-time;
     in property <bool> presenting;
-    // While mirroring: the phone's sound here, its screen off, kept awake.
-    in-out property <bool> sound: true;
+    // Where the phone's sound plays (Mirror, Sound only, Present): 0 this PC, 1 this PC and the
+    // phone, 2 the phone only. The volume on this PC (0–1).
+    in-out property <int> sound-place;
+    in-out property <float> volume: 1.0;
+    // While mirroring: the phone's screen off, kept awake.
     in-out property <bool> screen-off;
     in-out property <bool> awake: true;
-    // Sound only: keep playing on the phone too; the volume here (0–1).
-    in-out property <bool> keep-on-phone: true;
-    in-out property <float> volume: 1.0;
     // Present: on top, taps shown, kept awake.
     in-out property <bool> on-top: true;
     in-out property <bool> show-taps;
@@ -1070,8 +1070,10 @@ export global Phone {
     callback record();
     callback screenshot();
     callback present();
+    // The presenting window in front of everything.
+    callback front();
     callback show-picture();
-    // A tick changed (sound, screen off, awake, keep on phone, present's).
+    // A choice changed (where the sound plays, screen off, awake, present's).
     callback changed();
     callback volume-changed();
     // On the picture: 0 down, 1 up, 2 move; where, 0–1 across and down the picture.

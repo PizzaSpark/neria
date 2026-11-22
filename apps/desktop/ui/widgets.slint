@@ -1430,6 +1430,9 @@ export component ChoiceRow inherits Rectangle {
     in property <bool> selected;
     // The hint is a problem (too long, already fits): warn colour.
     in property <bool> warn;
+    // The hint under the title at every width (it must be read whole, not cut short).
+    in property <bool> stacked;
+    property <bool> below: Screen.compact || root.stacked;
     callback clicked();
     min-height: col.preferred-height;
     accessible-role: radio-button;
@@ -1487,7 +1490,7 @@ export component ChoiceRow inherits Rectangle {
                     vertical-alignment: center;
                     horizontal-stretch: 0;
                 }
-                if !Screen.compact && root.hint != "": Text {
+                if !root.below && root.hint != "": Text {
                     text: root.hint;
                     color: root.warn ? Theme.warn : Theme.muted;
                     font-family: Theme.body;
@@ -1497,7 +1500,7 @@ export component ChoiceRow inherits Rectangle {
                     horizontal-stretch: 1;
                 }
             }
-            if Screen.compact && (root.hint != "" || root.value != ""): Text {
+            if root.below && (root.hint != "" || root.value != ""): Text {
                 // A warning says it all ("already under 20 MB"): no value after it.
                 text: root.hint == "" ? root.value : root.value == "" || root.warn ? root.hint : root.hint + " · " + root.value;
                 color: root.warn ? Theme.warn : Theme.muted;

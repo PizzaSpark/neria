@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use glow::HasContext;
-use neria_core::phone::{self, Control, Device, Info, Options, Pairing, PhoneBuffer, Recording, Session, Speaker, State, Touch};
+use neria_core::phone::{self, Control, Device, Info, Options, Pairing, PhoneBuffer, Place, Recording, Session, Speaker, State, Touch};
 use neria_core::settings::Settings;
 use neria_core::{folders, fmt, hotkey, paths, proc};
 use neria_player::{GlRenderer, Mpv};
@@ -55,6 +55,8 @@ struct Ui {
     speaker: Option<Speaker>,
     recording: Option<Arc<Recording>>,
     presenting: Option<Child>,
+    /// Open Present again once mirroring starts again (the sound's place changed meanwhile).
+    represent: bool,
     serial: String,
     /// A finger down on the picture (moves are sent only then).
     down: bool,
@@ -219,6 +221,7 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         let weak = ui.as_weak();
         move || present(&weak.unwrap())
     });
+    p.on_front(|| bring_to_front());
     p.on_changed({
         let weak = ui.as_weak();
         move || changed(&weak.unwrap())
@@ -290,10 +293,9 @@ fn set_state(ui: &AppWindow, s: i32) {
 fn show_prefs(ui: &AppWindow) {
     let pr = prefs();
     let p = ui.global::<Phone>();
-    p.set_sound(pr.sound);
+    p.set_sound_place(pr.place.index());
     p.set_screen_off(pr.screen_off);
     p.set_awake(pr.awake);
-    p.set_keep_on_phone(pr.keep_on_phone);
     p.set_volume(pr.volume);
     p.set_on_top(pr.on_top);
     p.set_show_taps(pr.show_taps);
@@ -302,13 +304,12 @@ fn show_prefs(ui: &AppWindow) {
 
 fn changed(ui: &AppWindow) {
     let p = ui.global::<Phone>();
-    let (sound, off) = (p.get_sound(), p.get_screen_off());
+    let (place, off) = (Place::from_index(p.get_sound_place()), p.get_screen_off());
     let old = prefs();
     save_prefs(|x| {
-        x.sound = sound;
+        x.place = place;
         x.screen_off = off;
         x.awake = p.get_awake();
-        x.keep_on_phone = p.get_keep_on_phone();
         x.on_top = p.get_on_top();
         x.show_taps = p.get_show_taps();
     });
@@ -330,18 +331,15 @@ fn changed(ui: &AppWindow) {
     if off != old.screen_off {
         with_session(|s| s.send(Control::ScreenPower(!off)));
     }
-    if sound != old.sound && state(ui) == st::MIRROR {
-        let session = UI.with(|u| u.borrow().session.clone());
-        if let Some(s) = session {
-            if sound {
-                match Speaker::start(&s, prefs().volume) {
-                    Ok(sp) => UI.with(|u| u.borrow_mut().speaker = Some(sp)),
-                    Err(e) => crate::capture_ui::toast(ui, "No sound", &e.to_string(), false, None),
-                }
-            } else {
-                UI.with(|u| u.borrow_mut().speaker = None);
-            }
-        }
+    // Where the sound plays: now, not the next time. The phone only takes it at the start, so
+    // what runs starts again (a second or so); Present comes back with it.
+    let effective = |p: Place, sound_only: bool| if sound_only && p == Place::Phone { Place::Pc } else { p };
+    let now = state(ui);
+    if (now == st::MIRROR || now == st::SOUND) && effective(place, now == st::SOUND) != effective(old.place, now == st::SOUND) {
+        let serial = UI.with(|u| u.borrow().serial.clone());
+        let presenting = UI.with(|u| u.borrow().presenting.is_some());
+        start(ui, serial, now == st::SOUND);
+        UI.with(|u| u.borrow_mut().represent = presenting);
     }
 }
 
@@ -719,7 +717,7 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
     p.set_frame(slint::Image::default());
     UI.with(|u| u.borrow_mut().serial = serial.clone());
     let opts = if sound_only {
-        Options { keep_on_phone: pr.keep_on_phone, ..Options::sound_only() }
+        Options { keep_on_phone: pr.place == Place::Both, ..Options::sound_only() }
     } else {
         // NERIA_PHONE_PLAIN: what Present asks the phone for (no sound, the encoder left alone).
         let plain = std::env::var_os("NERIA_PHONE_PLAIN").is_some();
@@ -728,7 +726,8 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
             stay_awake: pr.awake,
             show_touches: pr.show_taps,
             plain,
-            audio: !plain,
+            audio: !plain && pr.place.here(),
+            keep_on_phone: pr.place == Place::Both,
             ..Options::default()
         }
     };
@@ -773,7 +772,7 @@ fn running(ui: &AppWindow, s: Arc<Session>, buffer: Option<Arc<PhoneBuffer>>, so
     let pr = prefs();
     let p = ui.global::<Phone>();
     p.set_name(s.name.as_str().into());
-    let speaker = if (sound_only || pr.sound) && s.audio.is_some() {
+    let speaker = if (sound_only || pr.place.here()) && s.audio.is_some() {
         match Speaker::start(&s, pr.volume) {
             Ok(sp) => Some(sp),
             Err(e) => {
@@ -784,7 +783,7 @@ fn running(ui: &AppWindow, s: Arc<Session>, buffer: Option<Arc<PhoneBuffer>>, so
     } else {
         None
     };
-    if !s.no_sound.is_empty() && (sound_only || pr.sound) {
+    if !s.no_sound.is_empty() && (sound_only || pr.place.here()) {
         p.set_detail(s.no_sound.as_str().into());
     }
     let url = s.video.as_ref().map(|v| v.url());
@@ -800,6 +799,10 @@ fn running(ui: &AppWindow, s: Arc<Session>, buffer: Option<Arc<PhoneBuffer>>, so
     set_state(ui, if sound_only { st::SOUND } else { st::MIRROR });
     live(ui);
     take_key(ui);
+    // Present was open when the sound's place changed: open it again.
+    if !sound_only && UI.with(|u| std::mem::take(&mut u.borrow_mut().represent)) {
+        present(ui);
+    }
 }
 
 /// Stop what runs (mirror, sound, recording, presenting); `then` the state to show (the
@@ -909,6 +912,7 @@ fn live(ui: &AppWindow) {
     if closed {
         UI.with(|u| u.borrow_mut().presenting = None);
         p.set_presenting(false);
+        presenting_ended(ui);
     }
     let l = s.live.lock().unwrap().clone();
     if l.width > 0 {
@@ -1053,6 +1057,7 @@ fn present(ui: &AppWindow) {
     if let Some(mut c) = open {
         proc::kill_tree(&mut c);
         p.set_presenting(false);
+        presenting_ended(ui);
         return;
     }
     let Some(s) = UI.with(|u| u.borrow().session.clone()) else { return };
@@ -1066,16 +1071,53 @@ fn present(ui: &AppWindow) {
         show_touches: pr.show_taps,
         stay_awake: pr.awake,
         screen_off: false,
-        // The page already plays the sound.
-        sound: false,
+        // The window plays the sound itself, so sharing the window carries it.
+        sound: pr.place,
         record: None,
     };
     match phone::open_window(&s.serial, &o) {
         Ok(c) => {
-            UI.with(|u| u.borrow_mut().presenting = Some(c));
+            // One picture and one sound at a time: the page's step aside while it shows (its
+            // own copy goes on for Clip the last, Record and Screenshot).
+            UI.with(|u| {
+                let mut u = u.borrow_mut();
+                u.presenting = Some(c);
+                u.speaker = None;
+            });
+            stop_picture(ui);
             p.set_presenting(true);
         }
         Err(e) => crate::capture_ui::toast(ui, "Can't present", &e.to_string(), false, None),
+    }
+}
+
+/// Present closed (Stop presenting, or the window closed by hand): the page's picture and
+/// sound come back.
+fn presenting_ended(ui: &AppWindow) {
+    let Some(s) = UI.with(|u| u.borrow().session.clone()) else { return };
+    let pr = prefs();
+    if pr.place.here() && s.audio.is_some() && UI.with(|u| u.borrow().speaker.is_none()) {
+        if let Ok(sp) = Speaker::start(&s, pr.volume) {
+            UI.with(|u| u.borrow_mut().speaker = Some(sp));
+        }
+    }
+    if let Some(v) = &s.video {
+        load_picture(ui, &v.url());
+    }
+}
+
+/// The presenting window in front (it has the phone's name as its title).
+fn bring_to_front() {
+    let Some(name) = UI.with(|u| u.borrow().session.as_ref().map(|s| s.name.clone())) else { return };
+    let title: Vec<u16> = phone::present_title(&name).encode_utf16().chain(Some(0)).collect();
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow};
+    unsafe {
+        if let Ok(h) = FindWindowW(None, windows::core::PCWSTR(title.as_ptr())) {
+            if IsIconic(h).as_bool() {
+                let _ = ShowWindow(h, SW_RESTORE);
+            }
+            let _ = SetForegroundWindow(h);
+        }
     }
 }
 
@@ -1478,6 +1520,12 @@ fn show_demo(ui: &AppWindow, what: &str) {
             mirror(true);
             p.set_recording(true);
             p.set_rec_time("2:14".into());
+            p.set_presenting(true);
+        }
+        "present" => {
+            mirror(false);
+            p.set_status("Presenting Pixel 7".into());
+            p.set_detail("Keeping the last 1 min · sound in the window".into());
             p.set_presenting(true);
         }
         "sound" => {

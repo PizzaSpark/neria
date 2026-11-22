@@ -1,12 +1,14 @@
 import { ScrollView, Slider } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, LinkField } from "../widgets.slint";
+import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, LinkField, ChoiceRow } from "../widgets.slint";
 import { Phone, PhoneRow, Capture } from "../globals.slint";
 import { SavedList } from "../components/saved-list.slint";
 
 // Capture page → Phone (mock: design/phone.html, picks 1A · 2A · 3A · 4A · 5A): connect your
 // Android phone by QR, mirror it with its own replay buffer and "Clip the last 30 s", record
-// it, hear it alone (Sound only), present it in a bare window. The picture is drawn by mpv
+// it, hear it alone (Sound only), present it in a window of its own with its sound (mock:
+// design/phone-present.html, 1A · 3A: the picture steps aside meanwhile; one choice of where
+// the sound plays, and a volume here, for all three). The picture is drawn by mpv
 // (`phone_ui.rs`); taps, scrolling and typing on it go to the phone.
 
 component Head inherits Text {
@@ -525,6 +527,130 @@ component Picture inherits Rectangle {
 }
 
 // Back, Home, Recent apps, turn: under the picture.
+// In the picture's place while it shows in its own window (Present).
+component PresentCard inherits Rectangle {
+    border-radius: 16px;
+    border-width: 2px;
+    border-color: Theme.line-strong;
+    background: Theme.panel;
+    accessible-role: groupbox;
+    accessible-label: Phone.name + " is showing in its own window";
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: 12px;
+                background: Theme.raised;
+                Icon {
+                    text: "\u{E7F4}";
+                    font-size: 20px;
+                }
+            }
+        }
+        Text {
+            text: "Showing in its own window";
+            color: Theme.ink;
+            font-family: Theme.body;
+            font-size: 14px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        Hint {
+            text: (Phone.sound-place == 2 ? "" : "With the phone's sound. ") + "Pick \"Phone screen · " + Phone.name + "\" in Discord, OBS or Meet.";
+            horizontal-alignment: center;
+        }
+        HorizontalLayout {
+            alignment: center;
+            padding-top: 4px;
+            GhostButton {
+                compact: true;
+                text: "Bring it to front";
+                icon: "\u{E8A7}";
+                clicked => { Phone.front(); }
+            }
+        }
+    }
+}
+
+// The phone's sound: where it plays (Sound only leaves out "the phone only") and the volume here.
+component SoundChoices inherits VerticalLayout {
+    in property <bool> sound-only;
+    spacing: 0px;
+    Head { text: "The phone's sound"; }
+    ChoiceRow {
+        title: "On this PC";
+        stacked: !Screen.wide;
+        hint: Screen.compact ? "Everything; the phone stays quiet" : "Everything, Spotify too · the phone stays quiet, its buttons set the level";
+        selected: Phone.sound-place == 0;
+        clicked => { Phone.sound-place = 0; Phone.changed(); }
+    }
+    ChoiceRow {
+        title: "On this PC and the phone";
+        stacked: !Screen.wide;
+        hint: "Some apps, like Spotify, stay quiet here";
+        selected: Phone.sound-place == 1;
+        clicked => { Phone.sound-place = 1; Phone.changed(); }
+    }
+    if !root.sound-only: ChoiceRow {
+        title: "On the phone only";
+        stacked: !Screen.wide;
+        hint: "Nothing comes to this PC";
+        selected: Phone.sound-place == 2;
+        clicked => { Phone.sound-place = 2; Phone.changed(); }
+    }
+    HorizontalLayout {
+        padding-top: 10px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Icon {
+                text: "\u{E767}";
+                font-size: 15px;
+                color: Theme.dim;
+            }
+        }
+        Text {
+            horizontal-stretch: 0;
+            text: Screen.compact ? "Here" : "Volume on this PC";
+            color: Phone.sound-place == 2 && !root.sound-only ? Theme.muted : Theme.ink;
+            font-family: Theme.body;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+        Slider {
+            horizontal-stretch: 1;
+            max-width: 260px;
+            enabled: Phone.sound-place != 2 || root.sound-only;
+            minimum: 0;
+            maximum: 100;
+            step: 5;
+            value: Phone.volume * 100;
+            accessible-label: "Volume on this PC, in percent";
+            changed(v) => {
+                Phone.volume = v / 100;
+                Phone.volume-changed();
+            }
+        }
+        Text {
+            horizontal-stretch: 0;
+            min-width: 40px;
+            text: Math.round(Phone.volume * 100) + "%";
+            color: Theme.muted;
+            font-family: Theme.mono;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+        if !Screen.compact: Rectangle { horizontal-stretch: 1; }
+    }
+}
+
 component PhoneKeys inherits HorizontalLayout {
     alignment: center;
     spacing: 8px;
@@ -677,12 +803,9 @@ component MirrorChoices inherits VerticalLayout {
         text: "Click and drag on the picture to use the phone; scroll and type work too. " + Phone.save-key + " clips here as well.";
     }
     Rectangle { height: 8px; }
+    SoundChoices { }
+    Rectangle { height: 12px; }
     Head { text: "While mirroring"; }
-    Tick {
-        text: "Phone's sound on this PC (Android 11+)";
-        checked <=> Phone.sound;
-        toggled => { Phone.changed(); }
-    }
     Tick {
         text: "Turn the phone's screen off (it keeps running)";
         checked <=> Phone.screen-off;
@@ -728,41 +851,6 @@ component MirrorChoices inherits VerticalLayout {
 component SoundOnly inherits VerticalLayout {
     spacing: 10px;
     HorizontalLayout {
-        spacing: 12px;
-        VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            Icon {
-                text: "\u{E767}";
-                font-size: 15px;
-                color: Theme.dim;
-            }
-        }
-        Slider {
-            horizontal-stretch: 1;
-            max-width: 300px;
-            minimum: 0;
-            maximum: 100;
-            step: 5;
-            value: Phone.volume * 100;
-            accessible-label: "Volume here, in percent";
-            changed(v) => {
-                Phone.volume = v / 100;
-                Phone.volume-changed();
-            }
-        }
-        Text {
-            horizontal-stretch: 0;
-            min-width: 40px;
-            text: Math.round(Phone.volume * 100) + "%";
-            color: Theme.muted;
-            font-family: Theme.mono;
-            font-size: 12px;
-            vertical-alignment: center;
-        }
-        if !Screen.compact: Rectangle { horizontal-stretch: 1; }
-    }
-    HorizontalLayout {
         spacing: 8px;
         alignment: Screen.compact ? stretch : start;
         GhostButton {
@@ -791,14 +879,7 @@ component SoundOnly inherits VerticalLayout {
             clicked => { Phone.stop(); }
         }
     }
-    Tick {
-        text: "Keep playing on the phone too";
-        checked <=> Phone.keep-on-phone;
-        toggled => { Phone.changed(); }
-    }
-    Hint {
-        text: "Off: the phone goes quiet while it plays here (Android's way of sending all of its sound). Takes effect the next time it starts.";
-    }
+    SoundChoices { sound-only: true; }
 }
 
 export component PhonePane inherits Rectangle {
@@ -820,7 +901,11 @@ export component PhonePane inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 0;
             spacing: 10px;
-            Picture {
+            if !Phone.presenting: Picture {
+                width: root.side-w;
+                height: root.side-w / root.aspect;
+            }
+            if Phone.presenting: PresentCard {
                 width: root.side-w;
                 height: root.side-w / root.aspect;
             }
@@ -853,9 +938,13 @@ export component PhonePane inherits Rectangle {
                 spacing: 10px;
                 HorizontalLayout {
                     alignment: center;
-                    Picture {
+                    if !Phone.presenting: Picture {
                         width: root.top-w;
                         height: root.top-h;
+                    }
+                    if Phone.presenting: PresentCard {
+                        width: Screen.compact ? root.width - Theme.lane : root.top-w;
+                        height: Screen.compact ? self.preferred-height : root.top-h;
                     }
                 }
                 PhoneKeys { }

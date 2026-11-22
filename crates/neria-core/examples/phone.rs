@@ -12,7 +12,7 @@
 //!   so the whole way (relay → buffer → save) can be checked without one.
 //!   `--clip <s>@<t>` saves the last s seconds at t; `--record` records the whole run;
 //!   `--shot <t>` a screenshot at t; `--no-sound`, `--mute` (sound kept, not played),
-//!   `--screen-off`, `--keep <s>` (60); `--tap x,y@t`, `--key back|home|apps@t`;
+//!   `--screen-off` (`--screen-on <t>`: on again at t), `--keep <s>` (60); `--tap x,y@t`, `--key back|home|apps@t`;
 //!   `--out <dir>` (else `target/phone-out`).
 //! - `sound <serial|fake> <seconds> [--record] [--volume 0.5]`: Sound only.
 //! - `window <serial> [--present] [--seconds <n>]`: scrcpy's own window (the quick mirror;
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
                 continue;
             }
             if a.starts_with("--") {
-                skip = ["--clip", "--shot", "--keep", "--out", "--volume", "--seconds", "--tap", "--key"].contains(&a.as_str());
+                skip = ["--clip", "--shot", "--keep", "--out", "--volume", "--seconds", "--tap", "--key", "--screen-on"].contains(&a.as_str());
                 continue;
             }
             out.push(a);
@@ -238,8 +238,10 @@ fn main() -> Result<()> {
                 };
                 Some((code, at.parse::<u64>().ok()?))
             });
+            let screen_on: Option<u64> = val("--screen-on").and_then(|s| s.parse().ok());
             let began = Instant::now();
             let mut done = (false, false, false, false);
+            let mut screen_done = false;
             let mut last = Instant::now();
             let mut last_frames = 0u64;
             while began.elapsed() < Duration::from_secs(secs) && session.running() {
@@ -278,6 +280,13 @@ fn main() -> Result<()> {
                         done.3 = true;
                         session.press(code);
                         println!("pressed key {code}");
+                    }
+                }
+                if let (Some(at), false) = (screen_on, screen_done) {
+                    if t >= at {
+                        screen_done = true;
+                        session.send(phone::Control::ScreenPower(true));
+                        println!("asked the phone to turn its screen on");
                     }
                 }
                 if last.elapsed() >= Duration::from_secs(2) {
@@ -328,7 +337,7 @@ fn main() -> Result<()> {
                 show_touches: present,
                 stay_awake: true,
                 screen_off: false,
-                sound: !present,
+                sound: if present { phone::Place::Phone } else { phone::Place::Pc },
                 record: None,
             };
             let mut child = phone::open_window(&s, &o)?;
