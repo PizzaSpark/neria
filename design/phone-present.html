@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Present With Sound</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --live:#ff6b6f; --livebg:#3d1719;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; position: relative; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25 } }
+  .ghost { height: 34px; padding: 0 12px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; flex: none; background: none; }
+  .ghost.sm { height: 30px; padding: 0 10px; }
+  .btn { height: 38px; padding: 0 16px; border-radius: 9px; background: var(--pop); color: var(--onpop); font: 700 14px "Space Grotesk", sans-serif;
+         border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; flex: none; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  svg.i { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; flex: none; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 4px 0 10px; }
+  .tick { display: flex; gap: 10px; align-items: center; font-size: 13px; margin: 8px 0; }
+  .box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--edge); flex: none; display: grid; place-items: center; }
+  .box.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-size: 13px; font-weight: 700; }
+  .select { background: var(--panel); border: 2px solid var(--ls); border-radius: 9px; height: 34px; display: flex; align-items: center; padding: 0 10px; gap: 8px; font-size: 12.5px; min-width: 0; }
+  .setrow { display: flex; align-items: center; gap: 12px; margin: 10px 0; font-size: 13px; }
+  .setrow > span:first-child { width: 110px; flex: none; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .key { font: 500 11px "JetBrains Mono", monospace; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--ink); }
+  .h5 { font: 700 14px "Space Grotesk", sans-serif; margin: 18px 0 8px; }
+  .h5:first-child { margin-top: 0; }
+  .hl { font: 700 30px/1.1 "Space Grotesk", sans-serif; }
+
+  /* app frame */
+  .app { display: flex; }
+  .rail { width: 80px; border-right: 1px solid var(--line); padding: 18px 10px; flex: none; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+  .rail .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--pop); border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); margin: 0 auto 14px; }
+  .rail .n { height: 54px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--dim); border: 2px solid transparent; }
+  .rail .n.on { color: var(--ink); border-color: var(--ls); background: var(--panel); }
+  .main { flex: 1; min-width: 0; padding: 24px 26px; }
+  .tabbar { display: flex; border-top: 1px solid var(--line); padding: 6px 5px 5px; }
+  .tabbar .n { flex: 1; height: 54px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--dim); border: 2px solid transparent; }
+  .tabbar .n.on { color: var(--ink); border-color: var(--ls); background: var(--panel); }
+
+  /* capture page */
+  .state { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 0; margin: 18px 0 6px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .state .big { font: 600 17px "Inter Tight", sans-serif; }
+  .src { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .src .rad { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--edge); flex: none; }
+  .src .rad.on { border: 6px solid var(--ink); }
+  .src .ic { width: 28px; height: 28px; border-radius: 6px; background: var(--raised); flex: none; display: grid; place-items: center; color: var(--dim); }
+  .saved { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .thumb { width: 64px; height: 36px; border-radius: 6px; background: linear-gradient(140deg, #3a1f4a, #c44569 60%, #f8b500); flex: none; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .listen { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border-radius: 9px; border: 2px solid var(--ls); font-size: 12px; color: var(--ink); white-space: nowrap; }
+
+  .toast { background: var(--panel); border: 1px solid var(--ls); border-radius: 12px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; font-size: 12.5px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.7); }
+  .wtoast { width: 364px; background: #202020; color: #fff; border-radius: 8px; padding: 14px 16px; font-family: "Segoe UI", sans-serif; font-size: 13px; box-shadow: 0 20px 40px -10px rgba(0,0,0,.6); }
+  .wtoast .btns { display: flex; gap: 8px; margin-top: 12px; }
+  .wtoast .btns span { flex: 1; background: #2d2d2d; border-radius: 4px; padding: 7px; text-align: center; }
+  .menu { width: 250px; background: #2b2b2b; color: #fff; border-radius: 8px; padding: 4px; font-family: "Segoe UI", sans-serif; font-size: 13px; }
+  .menu div { padding: 7px 12px; border-radius: 4px; }
+  .menu hr { border: 0; border-top: 1px solid #444; margin: 4px 0; }
+  .menu .dis { color: #999; }
+
+  .w1000 { width: 1000px; } .w400 { width: 400px; } .w760 { width: 760px; }
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 880px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+</style>
+<style>
+  .tabs { display: flex; gap: 22px; margin-top: 14px; border-bottom: 1px solid var(--line); }
+  .tabs span { padding: 8px 0; font-size: 13.5px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; gap: 6px; align-items: center; }
+  .tabs span.on { color: var(--ink); border-color: var(--ink); }
+  .phone { border-radius: 18px; border: 2px solid var(--ls); background: #0b0b0c; padding: 6px; flex: none; position: relative; }
+  .scr { border-radius: 12px; height: 100%; background: linear-gradient(170deg, #1d3557 0%, #457b9d 38%, #e9c46a 75%, #f4a261 100%); position: relative; overflow: hidden; }
+  .scr .bar { position: absolute; left: 0; right: 0; top: 0; height: 16px; background: rgba(0,0,0,.25); }
+  .scr .ap { position: absolute; left: 10%; right: 10%; top: 22%; height: 34%; border-radius: 10px; background: rgba(255,255,255,.18); }
+  .scr .ap2 { position: absolute; left: 10%; right: 10%; top: 60%; height: 12%; border-radius: 10px; background: rgba(0,0,0,.18); }
+  .nav3 { display: flex; justify-content: center; gap: 8px; margin-top: 10px; }
+  .qr { width: 196px; height: 196px; background: #fff; border-radius: 10px; padding: 12px; flex: none; }
+  .qr svg { width: 100%; height: 100%; display: block; }
+  .step { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; align-items: flex-start; }
+  .step .num { width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--ls); display: grid; place-items: center; font: 600 12px "JetBrains Mono", monospace; color: var(--muted); flex: none; }
+  .step .num.done { background: var(--okbg); color: var(--ok); border-color: transparent; }
+  .step .num.now { border-color: var(--pop); color: var(--ink); }
+  .pic { width: 92px; height: 56px; border-radius: 6px; background: var(--raised); flex: none; display: grid; place-items: center; color: var(--dim); font-size: 10px; text-align: center; line-height: 1.2; }
+  .dev { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .dev .ic { width: 28px; height: 28px; border-radius: 6px; background: var(--raised); flex: none; display: grid; place-items: center; color: var(--dim); }
+  .slider { height: 6px; border-radius: 3px; background: var(--line); position: relative; flex: 1; min-width: 60px; }
+  .slider b { position: absolute; left: 0; top: 0; bottom: 0; width: 64%; background: var(--ink); border-radius: 3px; }
+  .slider i { position: absolute; left: 64%; top: -5px; width: 16px; height: 16px; border-radius: 50%; background: var(--ink); margin-left: -8px; }
+  .desk { background: linear-gradient(135deg, #0e2a47, #1f4e79 60%, #3a6ea5); border-radius: 10px; padding: 26px; position: relative; flex: none; }
+  .share { width: 330px; background: #313338; color: #dbdee1; border-radius: 8px; padding: 14px; font-family: "Segoe UI", sans-serif; font-size: 13px; }
+  .share .g { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .share .g div { background: #2b2d31; border-radius: 6px; padding: 6px; font-size: 11.5px; }
+  .share .g div span { display: block; height: 54px; border-radius: 4px; background: #1e1f22; margin-bottom: 5px; }
+  .share .g div.sel { outline: 2px solid #5865f2; }
+  .w560 { width: 560px; }
+</style>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="rec" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.5"/></symbol>
+  <symbol id="ph" viewBox="0 0 16 16"><rect x="4" y="1.5" width="8" height="13" rx="1.6"/><path d="M7 12.5h2"/></symbol>
+  <symbol id="mon" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M6 14h4M8 11v3"/></symbol>
+  <symbol id="cam" viewBox="0 0 16 16"><path d="M2 5h2.5l1.2-1.8h4.6L11.5 5H14v8H2z"/><circle cx="8" cy="9" r="2.4"/></symbol>
+  <symbol id="spk" viewBox="0 0 16 16"><path d="M2.5 6h2.5l3.5-3v10l-3.5-3H2.5z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></symbol>
+  <symbol id="win" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M1.5 5.5h13"/></symbol>
+  <symbol id="qrc" viewBox="0 0 29 29"><path fill="#000" d="M0 0h7v7H0zM1 1v5h5V1zM2 2h3v3H2zM22 0h7v7h-7zM23 1v5h5V1zM24 2h3v3h-3zM0 22h7v7H0zM1 23v5h5v-5zM2 24h3v3H2zM9 0h1v2H9zM11 1h2v1h-2zM14 0h1v3h-1zM16 2h2v1h-2zM19 0h1v2h-1zM9 4h3v1H9zM13 5h3v2h-3zM17 4h1v3h-1zM10 8h2v2h-2zM0 9h3v1H0zM4 8h2v3H4zM14 9h4v1h-4zM20 8h1v3h-1zM23 9h3v1h-3zM27 8h2v2h-2zM8 11h1v4H8zM11 12h3v1h-3zM16 11h2v3h-2zM22 12h2v2h-2zM25 11h1v4h-1zM1 13h3v1H1zM5 14h2v2H5zM10 15h2v2h-2zM13 14h1v4h-1zM19 15h3v1h-3zM27 14h2v1h-2zM0 17h2v2H0zM3 18h3v1H3zM8 18h1v3H8zM15 17h3v1h-3zM20 18h2v2h-2zM24 17h3v1h-3zM10 20h3v1h-3zM16 20h1v3h-1zM18 21h3v1h-3zM23 20h1v3h-1zM26 21h3v1h-3zM9 23h2v2H9zM12 24h3v1h-3zM19 23h2v2h-2zM25 24h2v3h-2zM9 26h1v3H9zM11 27h4v1h-4zM16 26h2v1h-2zM20 27h3v2h-3zM28 26h1v3h-1z"/></symbol>
+</svg>
+
+<style>
+  .stand { border: 2px dashed var(--ls); border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 18px; flex: none; }
+  .stand .ic { width: 44px; height: 44px; border-radius: 12px; background: var(--raised); display: grid; place-items: center; color: var(--ink); }
+  .stand .ic svg { width: 22px; height: 22px; }
+  .radio { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; margin: 10px 0; }
+  .radio .rad { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--edge); flex: none; margin-top: 1px; }
+  .radio .rad.on { border: 6px solid var(--ink); }
+  .radio small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.4; }
+  .sw { display: flex; gap: 14px; align-items: center; }
+  .win { width: 230px; background: #202020; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 40px -12px rgba(0,0,0,.7); }
+  .win .tb { height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; color: #ddd; font: 12px "Segoe UI", sans-serif; }
+  .win .tb span.x { margin-left: auto; letter-spacing: 10px; color: #aaa; }
+</style>
+<div class="page">
+  <h1>Present with sound</h1>
+  <p class="lead">Today <b>Present in a window</b> opens scrcpy's window with no sound, while the in-app picture keeps
+  running next to it. Sharing that window in Discord with sound sends silence, because Discord takes a window's sound
+  from its own program. Below: the window carries the phone's sound, the page steps aside while it shows, and
+  <b>one sound choice</b> covers Mirror, Sound only and Present, so the phone's volume buttons behave the same everywhere.
+  Picks are marked <b style="background:#151412;color:#ffd23f;padding:0 5px;border-radius:4px;font:500 11px 'JetBrains Mono'">PICK</b>.</p>
+
+  <section>
+    <div class="label"><span>1 · The page while presenting</span><h2>One picture at a time</h2></div>
+    <p class="why">Checked on a POCO X7 Pro (Android 16): Neria and the window can both take the phone's sound at the same
+    time, so <b>Clip the last 30 s keeps its sound</b> while you present. Neria stops playing the sound itself, or you'd
+    hear it twice.</p>
+    <div class="opt">
+      <h3>1A · The picture steps aside, everything else stays <span class="rec">PICK</span></h3>
+      <p>Where the phone was: a dashed card, <b>Showing in its own window</b>, with <b>Bring it to front</b>. The status
+      line says <b>Presenting POCO X7 Pro</b>. Clip, Record and Screenshot still work (they come from Neria's own copy).
+      <b>Stop presenting</b> brings the picture back; closing the window by hand does the same.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide · 1000 · presenting</div>
+          <div class="q w1000"><div class="app">
+            <div class="rail"><div class="logo"></div><div class="n">Download</div><div class="n">Clip</div><div class="n">Compress</div><div class="n on">Capture</div></div>
+            <div class="main">
+              <div class="hl">Keep the moment.</div>
+              <div class="tabs"><span><svg class="i"><use href="#mon"/></svg>This PC</span><span class="on"><svg class="i"><use href="#ph"/></svg>POCO X7 Pro</span></div>
+              <div class="row" style="align-items:flex-start;gap:26px;margin-top:18px">
+                <div>
+                  <div class="stand" style="width:220px;height:440px">
+                    <div class="ic"><svg class="i"><use href="#win"/></svg></div>
+                    <div style="font-weight:600">Showing in its own window</div>
+                    <div class="mut" style="font-size:12px;line-height:1.45">"Phone screen · POCO X7 Pro", with the phone's sound. Pick it in Discord, OBS or Meet.</div>
+                    <button class="ghost sm" style="margin-top:6px">Bring it to front</button>
+                  </div>
+                </div>
+                <div class="grow">
+                  <div class="state" style="margin-top:0"><span class="tag live"><span class="dot pulse"></span>LIVE</span><div class="grow"><div class="big">Presenting POCO X7 Pro</div><div class="mut">Keeping the last 1 min · sound in the window</div><div class="mut mono">1220 × 2712 · 58 fps · Wi-Fi</div></div></div>
+                  <div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn">✂ Clip the last 30 s</button><button class="ghost"><svg class="i"><use href="#rec"/></svg>Record</button><button class="ghost"><svg class="i"><use href="#cam"/></svg>Screenshot</button><button class="ghost" style="border-color:var(--pop)"><svg class="i"><use href="#win"/></svg>Stop presenting</button></div>
+                  <div class="h5" style="margin-top:22px">The phone's sound</div>
+                  <div class="radio"><span class="rad on"></span><div>On this PC only<small>The phone goes quiet; its volume buttons set how loud it is here, in the window and in what you share.</small></div></div>
+                  <div class="radio"><span class="rad"></span><div>On this PC and the phone<small>Both play. Here it's always full, so set it with Volume.</small></div></div>
+                  <div class="h5">Present in a window</div>
+                  <div class="tick"><span class="box on">✓</span>Stay on top</div>
+                  <div class="tick"><span class="box">&nbsp;</span>Show taps (people see what you press)</div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+        <div>
+          <div class="cap">Compact · 400 · presenting</div>
+          <div class="q w400" style="padding:16px">
+            <div class="tabs" style="margin-top:0"><span><svg class="i"><use href="#mon"/></svg>This PC</span><span class="on"><svg class="i"><use href="#ph"/></svg>POCO X7 Pro</span></div>
+            <div class="stand" style="margin-top:12px;padding:14px">
+              <div class="sw"><div class="ic"><svg class="i"><use href="#win"/></svg></div><div style="text-align:left"><div style="font-weight:600">Showing in its own window</div><div class="mut" style="font-size:12px">With the phone's sound</div></div></div>
+              <button class="ghost sm">Bring it to front</button>
+            </div>
+            <div class="state"><span class="tag live"><span class="dot pulse"></span>LIVE</span><div class="grow"><div class="big" style="font-size:15px">Presenting POCO X7 Pro</div><div class="mut mono">Keeping 1 min · Wi-Fi</div></div></div>
+            <button class="btn" style="width:100%">✂ Clip the last 30 s</button>
+            <div class="row" style="margin-top:10px"><button class="ghost sm grow"><svg class="i"><use href="#rec"/></svg>Record</button><button class="ghost sm grow">Stop presenting</button><button class="ghost sm" aria-label="More">⋯</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>1B · Both pictures at once (today)</h3>
+      <p>Two copies of the phone moving side by side, two sounds to keep apart, and more for the phone and the Wi-Fi
+      to carry. Nothing gained: what you share is the window. Not mocked further.</p>
+    </div>
+    <div class="opt">
+      <h3>1C · Present stops Neria's own copy</h3>
+      <p>Lightest for the phone, but Clip the last, Record and Screenshot stop working while you present, which is
+      when you'd most want a clip. Not mocked further.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>2 · Sharing it</span><h2>What Discord sees</h2></div>
+    <div class="opt">
+      <h3>The window, with its sound <span class="rec">PICK</span></h3>
+      <p>The window is named for the phone, so it's easy to find. Discord, OBS and Meet take a window's sound from its
+      own program, and now that program plays the phone's sound. With <b>On this PC only</b>, the phone's volume buttons
+      set how loud your viewers hear it.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">The window (framed: drag it, resize it)</div>
+          <div class="desk" style="width:330px;height:430px">
+            <div class="win" style="margin:0 auto"><div class="tb"><svg class="i"><use href="#ph"/></svg>Phone screen · POCO X7 Pro<span class="x">–□×</span></div>
+              <div style="padding:0 6px 6px"><div class="scr" style="height:340px;border-radius:4px"><div class="bar"></div><div class="ap"></div><div class="ap2"></div></div></div></div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Picking it in Discord</div>
+          <div class="share"><b>Screen share</b><div class="g"><div><span></span>Neria</div><div class="sel"><span></span>Phone screen · POCO X7 Pro</div><div><span></span>Discord</div><div><span></span>Valorant</div></div>
+            <div style="margin-top:12px;display:flex;gap:8px;align-items:center"><span class="box on" style="border-color:#5865f2;background:#5865f2;color:#fff">✓</span>Sound</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>3 · The phone's sound</span><h2>One choice for Mirror, Sound only and Present</h2></div>
+    <p class="why">Today Mirror mutes the phone and follows its volume buttons, while Sound only keeps the phone playing
+    and sends full level here (in that mode Android hands Neria each app's sound before the phone's volume). Same app,
+    two behaviours, and nothing on screen says why.</p>
+    <div class="opt">
+      <h3>3A · Two plain choices, shared by all three <span class="rec">PICK</span></h3>
+      <p>Replaces "Keep playing on the phone too" (Sound only) and Mirror's fixed behaviour. <b>On this PC only</b> is the
+      default: the phone's buttons work as people expect, also for what viewers hear. Neria's Volume slider matters only
+      with the second choice, so it's dimmed with the first. Saved like the other phone settings.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide and medium (under "While mirroring")</div>
+          <div class="q" style="width:470px;padding:18px">
+            <div class="h5">The phone's sound</div>
+            <div class="radio"><span class="rad on"></span><div>On this PC only<small>The phone goes quiet; its volume buttons set how loud it is here.</small></div></div>
+            <div class="radio"><span class="rad"></span><div>On this PC and the phone<small>Both play. Here it's always full, so set it below.</small></div></div>
+            <div class="row" style="gap:12px;margin-top:8px;opacity:.45"><svg class="i"><use href="#spk"/></svg><span style="width:60px">Volume</span><div class="slider" style="max-width:220px"><b></b><i></i></div><span class="mono">64%</span></div>
+            <div class="hint">Volume is for the second choice.</div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Compact · 400 (in the ⋯ menu's sheet)</div>
+          <div class="q w400" style="padding:16px">
+            <div class="h5">The phone's sound</div>
+            <div class="radio"><span class="rad"></span><div>On this PC only<small>The phone's volume buttons set it.</small></div></div>
+            <div class="radio"><span class="rad on"></span><div>On this PC and the phone<small>Always full here.</small></div></div>
+            <div class="row" style="gap:10px;margin-top:6px"><svg class="i"><use href="#spk"/></svg><div class="slider"><b></b><i></i></div><span class="mono mut">64%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>3B · Keep them different, explain it in a hint</h3>
+      <p>No new choice, but the difference stays a surprise until you read the hint, and Present would need its own
+      rule. Not mocked further.</p>
+    </div>
+    <div class="opt">
+      <h3>Not possible</h3>
+      <p>The phone's volume buttons can't set the level here while the phone also plays: Android hands over the sound
+      before its volume in that mode. That's why the second choice needs Neria's slider.</p>
+    </div>
+  </section>
+</div>
+</body>
+</html>

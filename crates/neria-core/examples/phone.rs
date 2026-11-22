@@ -288,12 +288,13 @@ fn main() -> Result<()> {
                     let fps = (l.frames - last_frames) as f64 / 2.0;
                     last_frames = l.frames;
                     println!(
-                        "{:>4.0}s  {}×{}  {:.0} fps  {:.1} Mbit/s  readers v{} a{}{}",
+                        "{:>4.0}s  {}×{}  {:.0} fps  {:.1} Mbit/s  sound packets {}  readers v{} a{}{}",
                         el,
                         l.width,
                         l.height,
                         fps,
                         l.bytes as f64 * 8.0 / el / 1e6,
+                        l.audio_packets,
                         session.video.as_ref().map(|v| v.readers()).unwrap_or(0),
                         session.audio.as_ref().map(|v| v.readers()).unwrap_or(0),
                         buffer.as_ref().filter(|b| !b.running()).map(|b| format!("  buffer stopped: {}", b.problem())).unwrap_or_default()
