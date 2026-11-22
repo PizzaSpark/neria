@@ -1052,6 +1052,16 @@ Watch out: only one adb server runs per PC (port 5037); another adb at a differe
 (Android Studio's) kills ours and the other way round: notice it and use theirs or say so
 plainly (done: ours runs on 5038). Portable rule: checked 2026-11-22: on Windows adb keeps its
 key and pairings in `<profile>\.android` and no variable moves them (`docs/UPSTREAM.md`), so
+   - [x] With its sound (asked for 2026-11-22; mock `design/phone-present.html`): the window
+     plays the phone's sound itself, so a window share in Discord carries it; the page's
+     picture and sound step aside meanwhile (a card, Bring it to front), Clip the last keeps
+     its sound (two captures of the phone's sound work at once). 200 ms of sound in hand.
+     Still lags now and then over Wi-Fi (two video streams at once)
+   - [x] One choice of where the phone's sound plays, for Mirror, Sound only and Present: this
+     PC (everything; the phone quiet, its buttons set the level) / this PC and the phone (apps
+     may refuse: Spotify does) / the phone only; Volume on this PC always; applied at once
+   - [x] The screen comes back on after "Turn the phone's screen off" (HyperOS left the
+     backlight at zero: the brightness setting is nudged a step and back)
 that's an exception, written only once the Phone tab is used.
 
 ## Later: bigger ideas (keep UX simple)
