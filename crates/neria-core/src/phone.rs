@@ -688,6 +688,25 @@ pub fn open_window(serial: &str, o: &WindowOptions) -> Result<Child> {
     Ok(child)
 }
 
+/// Some phones (a POCO X7 Pro, HyperOS) turn the panel back on after "screen on" but leave
+/// its backlight at zero: the screen stays dark although Android says it's on. Moving the
+/// brightness setting a step and back makes the phone light it again (automatic brightness:
+/// manual for a moment, then automatic again). The setting ends as it was.
+pub fn wake_backlight(serial: &str) -> Result<()> {
+    let get = |k: &str| -> Option<i32> {
+        adb_out(&["-s", serial, "shell", "settings", "get", "system", k], Duration::from_secs(5)).ok()?.trim().parse().ok()
+    };
+    let level = get("screen_brightness").unwrap_or(128);
+    let auto = get("screen_brightness_mode") == Some(1);
+    let step = if level >= 255 { level - 1 } else { level + 1 };
+    let mut cmd = format!("settings put system screen_brightness {step}; settings put system screen_brightness {level}");
+    if auto {
+        cmd = format!("settings put system screen_brightness_mode 0; {cmd}; settings put system screen_brightness_mode 1");
+    }
+    adb_out(&["-s", serial, "shell", &cmd], Duration::from_secs(5))?;
+    Ok(())
+}
+
 /// Show taps on the phone now (Android's "Show taps"), not only the next time something starts.
 pub fn set_show_touches(serial: &str, on: bool) -> Result<()> {
     adb_out(&["-s", serial, "shell", "settings", "put", "system", "show_touches", if on { "1" } else { "0" }], Duration::from_secs(5))?;
@@ -1756,6 +1775,13 @@ impl Session {
     pub fn send(&self, c: Control) {
         if let Control::ScreenPower(on) = c {
             self.screen_off.store(!on, Ordering::SeqCst);
+            if on {
+                let serial = self.serial.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(400));
+                    let _ = wake_backlight(&serial);
+                });
+            }
         }
         let mut g = self.control.lock().unwrap();
         // Dropped when 512 are waiting (the phone stopped reading): better than a hung window.
