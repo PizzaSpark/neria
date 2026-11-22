@@ -299,6 +299,7 @@ fn show_prefs(ui: &AppWindow) {
     p.set_volume(pr.volume);
     p.set_on_top(pr.on_top);
     p.set_show_taps(pr.show_taps);
+    p.set_present_quality(if pr.present_smooth { 0 } else { 1 });
     p.set_save_key(crate::capture_ui::save_key().into());
 }
 
@@ -311,6 +312,7 @@ fn changed(ui: &AppWindow) {
         x.screen_off = off;
         x.awake = p.get_awake();
         x.on_top = p.get_on_top();
+        x.present_smooth = p.get_present_quality() == 0;
         x.show_taps = p.get_show_taps();
     });
     if UI.with(|u| u.borrow().demo) {
@@ -326,6 +328,15 @@ fn changed(ui: &AppWindow) {
                 let _ = phone::set_show_touches(&serial, taps);
             });
         }
+    }
+    // Present's picture: the window opens again with it (it only takes it at the start).
+    let smooth = p.get_present_quality() == 0;
+    if smooth != old.present_smooth && UI.with(|u| u.borrow().presenting.is_some()) {
+        let c = UI.with(|u| u.borrow_mut().presenting.take());
+        if let Some(mut c) = c {
+            proc::kill_tree(&mut c);
+        }
+        present(ui);
     }
     // Now, while mirroring: the screen off / on, the sound on / off.
     if off != old.screen_off {
@@ -1074,6 +1085,8 @@ fn present(ui: &AppWindow) {
         // The window plays the sound itself, so sharing the window carries it.
         sound: pr.place,
         record: None,
+        max_size: if pr.present_smooth { phone::WindowOptions::SMOOTH.0 } else { 0 },
+        bit_rate: if pr.present_smooth { phone::WindowOptions::SMOOTH.1 } else { 0 },
     };
     match phone::open_window(&s.serial, &o) {
         Ok(c) => {

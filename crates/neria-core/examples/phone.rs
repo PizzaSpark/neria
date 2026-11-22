@@ -339,6 +339,8 @@ fn main() -> Result<()> {
                 screen_off: false,
                 sound: if present { phone::Place::Phone } else { phone::Place::Pc },
                 record: None,
+                max_size: 0,
+                bit_rate: 0,
             };
             let mut child = phone::open_window(&s, &o)?;
             println!("scrcpy's window is open: \"{}\"", o.title);

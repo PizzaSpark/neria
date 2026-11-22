@@ -288,9 +288,10 @@ pub struct Prefs {
     pub awake: bool,
     /// The volume on this PC (Neria's own, after the phone's).
     pub volume: f32,
-    /// Present: on top, taps shown.
+    /// Present: on top, taps shown, its picture smaller and lighter for the Wi-Fi ("Smooth").
     pub on_top: bool,
     pub show_taps: bool,
+    pub present_smooth: bool,
     /// Seconds "Clip the last" saves, and how much is kept.
     pub clip: u32,
     pub keep: u32,
@@ -305,6 +306,7 @@ impl Default for Prefs {
             volume: 1.0,
             on_top: true,
             show_taps: false,
+            present_smooth: true,
             clip: 30,
             keep: 60,
         }
@@ -643,6 +645,15 @@ pub struct WindowOptions {
     pub sound: Place,
     /// Record to this file while it's open.
     pub record: Option<PathBuf>,
+    /// Its picture: the longer side (0 = as the phone is) and bit rate (0 = scrcpy's 8 Mbit/s).
+    pub max_size: u32,
+    pub bit_rate: u32,
+}
+
+impl WindowOptions {
+    /// "Smooth": what a shared window needs, and a third less for the Wi-Fi to carry next to
+    /// Neria's own copy (the sound stuttered with two full streams).
+    pub const SMOOTH: (u32, u32) = (1600, 4_000_000);
 }
 
 /// scrcpy's window for `serial`. Ends when the window is closed (or `proc::kill_tree`).
@@ -683,6 +694,12 @@ pub fn open_window(serial: &str, o: &WindowOptions) -> Result<Child> {
     }
     if let Some(f) = &o.record {
         cmd.arg("--record").arg(f);
+    }
+    if o.max_size > 0 {
+        cmd.arg(format!("--max-size={}", o.max_size));
+    }
+    if o.bit_rate > 0 {
+        cmd.arg(format!("--video-bit-rate={}", o.bit_rate));
     }
     let child = cmd.stdout(Stdio::null()).stderr(Stdio::piped()).spawn().context("couldn't start scrcpy")?;
     Ok(child)
