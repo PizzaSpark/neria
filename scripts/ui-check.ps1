@@ -156,6 +156,7 @@ $states = [ordered]@{
   "cap-stop"   = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "stopped" }
   "cap-toast"  = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "toast"; NERIA_VOICE_DEMO = "listening" }
   "cap-key"    = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "key" }
+  "cap-custom" = @{ NERIA_PAGE = "capture"; NERIA_CAPTURE_DEMO = "custom" }
   # Capture page → Phone (NERIA_PHONE_DEMO: sample data, nothing connects).
   "ph-tools"   = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "tools" }
   "ph-get"     = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "getting" }
@@ -170,6 +171,7 @@ $states = [ordered]@{
   # The real way with a pretend phone: relay, the page's mpv, the replay buffer.
   "ph-present" = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "present" }
   "ph-switch"  = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "switch" }
+  "ph-stalled" = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "stalled" }
   "ph-fake"    = @{ NERIA_PAGE = "capture"; NERIA_PHONE_FAKE = "1" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }

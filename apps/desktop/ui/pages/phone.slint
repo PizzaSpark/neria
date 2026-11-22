@@ -3,6 +3,7 @@ import { Theme, Screen } from "../theme.slint";
 import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, LinkField, ChoiceRow } from "../widgets.slint";
 import { Phone, PhoneRow, Capture } from "../globals.slint";
 import { SavedList } from "../components/saved-list.slint";
+import { QualityChoice } from "../components/quality-choice.slint";
 
 // Capture page → Phone (mock: design/phone.html, picks 1A · 2A · 3A · 4A · 5A): connect your
 // Android phone by QR, mirror it with its own replay buffer and "Clip the last 30 s", record
@@ -797,6 +798,32 @@ component MirrorActions inherits VerticalLayout {
 }
 
 // While mirroring: the ticks, Present's own, Sound only / Stop.
+// The picture's Quality (as This PC's): the mirror, its replay and Record. Present keeps its
+// own lighter picture.
+component PhoneQuality inherits VerticalLayout {
+    spacing: 6px;
+    Head { text: "Quality"; }
+    QualityChoice {
+        rows: Phone.quality-rows;
+        current: Phone.quality;
+        note: Phone.quality-note;
+        note-warn: Phone.quality-warn;
+        open <=> Phone.quality-open;
+        summary: "size, frame rate, bit rate";
+        custom: Phone.quality-custom;
+        sizes: Phone.q-sizes;
+        size: Phone.q-size;
+        rates: Phone.q-rates;
+        rate: Phone.q-rate;
+        mbps: Phone.q-mbps;
+        pick(i) => { Phone.quality-pick(i); }
+        size-picked(i) => { Phone.quality-size(i); }
+        rate-picked(i) => { Phone.quality-rate(i); }
+        mbps-step(d) => { Phone.quality-mbps(d); }
+        back => { Phone.quality-back(); }
+    }
+}
+
 component MirrorChoices inherits VerticalLayout {
     spacing: 2px;
     if !Screen.compact: Hint {
@@ -816,6 +843,8 @@ component MirrorChoices inherits VerticalLayout {
         checked <=> Phone.awake;
         toggled => { Phone.changed(); }
     }
+    Rectangle { height: 8px; }
+    PhoneQuality { }
     Rectangle { height: 8px; }
     Head { text: "Present in a window"; }
     Tick {
@@ -966,6 +995,7 @@ export component PhonePane inherits Rectangle {
             if Phone.state == 2: Connect { }
             if Phone.state == 3 && Phone.detail != "": PhoneStatus { }
             if Phone.state == 3: PhoneList { }
+            if Phone.state == 3 && Phone.phones.length > 0: PhoneQuality { }
             if root.showing: VerticalLayout {
                 spacing: 10px;
                 HorizontalLayout {

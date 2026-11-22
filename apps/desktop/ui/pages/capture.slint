@@ -3,6 +3,7 @@ import { Theme, Screen } from "../theme.slint";
 import { Menu, MenuItem, PrimaryButton, GhostButton, IconButton, TextLink, ChoiceChips, PageTitle, Notice, Divider, Thumb, Tick, Tag, Icon, KeyPress, SectionTitle, FilterTab } from "../widgets.slint";
 import { Capture, CaptureSource, CaptureTrack, CaptureApp, Voice, Phone } from "../globals.slint";
 import { SavedList } from "../components/saved-list.slint";
+import { QualityChoice } from "../components/quality-choice.slint";
 import { PhonePane } from "phone.slint";
 
 // The Capture page (mock: design/capture.html, picks 1A · 2A · 3A · 4A): instant replay of a
@@ -516,6 +517,32 @@ component Choices inherits VerticalLayout {
         changed => { Capture.changed(); }
     }
     Rectangle { height: 8px; }
+    Head { text: "Quality"; }
+    QualityChoice {
+        rows: Capture.quality-rows;
+        current: Capture.quality;
+        note: Capture.quality-note;
+        note-warn: Capture.quality-warn;
+        open <=> Capture.quality-open;
+        summary: "size, frame rate, bit rate, encoder";
+        custom: Capture.quality-custom;
+        sizes: Capture.q-sizes;
+        size: Capture.q-size;
+        rates: Capture.q-rates;
+        rate: Capture.q-rate;
+        mbps: Capture.q-mbps;
+        pick(i) => { Capture.quality-pick(i); }
+        size-picked(i) => { Capture.quality-size(i); }
+        rate-picked(i) => { Capture.quality-rate(i); }
+        mbps-step(d) => { Capture.quality-mbps(d); }
+        back => { Capture.quality-back(); }
+        // The encoder: Automatic picks the fastest that works, so it lives in here.
+        encoders: Capture.encoders;
+        encoder <=> Capture.encoder;
+        encoder-hint: Capture.encoder-hint;
+        encoder-picked => { Capture.changed(); }
+    }
+    Rectangle { height: 8px; }
     Head { text: "Sound"; }
     Tick {
         text: "A track for each app playing sound";
@@ -565,16 +592,6 @@ component Choices inherits VerticalLayout {
     }
     Hint {
         text: "Works inside games." + (Capture.voice-hint != "" ? " " + Capture.voice-hint : " Saying \"clip that\" can save too: Settings → Voice.");
-    }
-    Rectangle { height: 8px; }
-    Head { text: "Encoder"; }
-    ChoiceChips {
-        options: Capture.encoders;
-        current <=> Capture.encoder;
-        changed => { Capture.changed(); }
-    }
-    if Capture.encoder-hint != "": Hint {
-        text: Capture.encoder-hint;
     }
     Rectangle { height: 8px; }
     Tick {

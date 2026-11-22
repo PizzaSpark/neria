@@ -49,7 +49,9 @@ impl Source {
     /// `chip` (the one whose encoder is used, so the frames needn't cross over).
     fn device_args(&self, chip: Option<u32>) -> Vec<String> {
         let on = match self {
-            Source::Monitor(i) => crate::capture_pick::monitors().into_iter().find(|m| m.index == *i).map(|m| m.adapter),
+            Source::Monitor(i) => {
+                crate::capture_pick::monitors().into_iter().find(|m| m.index == *i).map(|m| m.adapter)
+            }
             Source::Window(_) => chip,
         };
         match on {
@@ -60,24 +62,55 @@ impl Source {
         }
     }
 
-    fn filter(&self, fps: u32) -> String {
+    /// The picture's size as it's grabbed, and how often its screen shows a new picture.
+    pub fn size(&self) -> Option<((u32, u32), u32)> {
         match self {
             Source::Monitor(i) => {
-                let output =
-                    crate::capture_pick::monitors().into_iter().find(|m| m.index == *i).map(|m| m.output).unwrap_or(*i);
-                format!("ddagrab=output_idx={output}:framerate={fps}")
+                crate::capture_pick::monitors().into_iter().find(|m| m.index == *i).map(|m| ((m.width, m.height), m.hz))
+            }
+            Source::Window(exe) => crate::capture_pick::window_size(exe),
+        }
+    }
+
+    /// The source in ffmpeg's words, at `fps`, scaled to `size` when given (Smaller files):
+    /// Windows' own capture scales on the graphics card (ffmpeg's `scale_d3d11` won't take
+    /// `ddagrab`'s frames, and CUDA can't be reached from them), so a scaled monitor is grabbed
+    /// that way too.
+    fn filter(&self, fps: u32, size: Option<(u32, u32)>) -> String {
+        let fit = |s: Option<(u32, u32)>| match s {
+            Some((w, h)) => format!(":width={w}:height={h}:resize_mode=scale_aspect"),
+            None => String::new(),
+        };
+        match self {
+            Source::Monitor(i) => {
+                let m = crate::capture_pick::monitors().into_iter().find(|m| m.index == *i);
+                match (size, &m) {
+                    (Some(_), Some(m)) => {
+                        format!("gfxcapture=hmonitor={}:max_framerate=240{},fps={fps}", m.handle as usize, fit(size))
+                    }
+                    _ => {
+                        let output = m.map(|m| m.output).unwrap_or(*i);
+                        format!("ddagrab=output_idx={output}:framerate={fps}")
+                    }
+                }
             }
             Source::Window(exe) => {
                 // A regex inside a quoted filter argument: dots as `[.]`, no backslashes needed.
                 let exe: String = exe
                     .chars()
                     .filter(|c| !matches!(c, '\'' | '\\'))
-                    .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' ' { c.to_string() } else { format!("[{c}]") })
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' ' {
+                            c.to_string()
+                        } else {
+                            format!("[{c}]")
+                        }
+                    })
                     .collect();
                 // Grab as fast as the game draws (up to 240), then keep the frame nearest each
                 // 1/fps tick. Capped at `fps`, the capture itself bunched frames (a late one,
                 // then one on top of it, ~6 times a second in Valorant): visible stutter.
-                format!("gfxcapture=window_exe='(?i){exe}$':max_framerate=240,fps={fps}")
+                format!("gfxcapture=window_exe='(?i){exe}$':max_framerate=240{},fps={fps}", fit(size))
             }
         }
     }
@@ -141,12 +174,12 @@ impl Route {
 
     /// The first route that gets frames from `source` into an encoder on this machine.
     pub fn pick(source: &Source, fps: u32) -> Result<Route> {
-        Ok(pick_way(source, fps, Encoder::Auto)?.0)
+        Ok(pick_way(source, fps, None, Encoder::Auto)?.0)
     }
 
     /// Half a second through this route into nothing; why not, if it fails.
-    pub fn check(self, source: &Source, fps: u32) -> std::result::Result<(), String> {
-        try_route(source, fps, self, None)
+    pub fn check(self, source: &Source, fps: u32, size: Option<(u32, u32)>) -> std::result::Result<(), String> {
+        try_route(source, fps, size, self, None)
     }
 
     /// Whose encoder it is.
@@ -253,10 +286,10 @@ fn ways(encoder: Encoder) -> Vec<(Route, Option<u32>)> {
 
 /// The first way `encoder` gets frames from `source` here: the route and the chip a window
 /// is grabbed on. One picked by name that doesn't work here says why.
-pub fn pick_way(source: &Source, fps: u32, encoder: Encoder) -> Result<(Route, Option<u32>)> {
+pub fn pick_way(source: &Source, fps: u32, size: Option<(u32, u32)>, encoder: Encoder) -> Result<(Route, Option<u32>)> {
     let mut last = String::new();
     for (r, chip) in ways(encoder) {
-        match try_route(source, fps, r, chip) {
+        match try_route(source, fps, size, r, chip) {
             Ok(()) => return Ok((r, chip)),
             Err(e) => last = e,
         }
@@ -267,8 +300,14 @@ pub fn pick_way(source: &Source, fps: u32, encoder: Encoder) -> Result<(Route, O
     bail!("{}'s encoder couldn't record this ({last}). Pick Automatic.", encoder.label())
 }
 
-fn try_route(source: &Source, fps: u32, route: Route, chip: Option<u32>) -> std::result::Result<(), String> {
-    let graph = format!("{}{}", source.filter(fps), route.chain());
+fn try_route(
+    source: &Source,
+    fps: u32,
+    size: Option<(u32, u32)>,
+    route: Route,
+    chip: Option<u32>,
+) -> std::result::Result<(), String> {
+    let graph = format!("{}{}", source.filter(fps, size), route.chain());
     let dev = source.device_args(chip);
     // A screen on another graphics chip: ddagrab only takes that chip inside -filter_complex.
     let input: Vec<String> = if dev.is_empty() {
@@ -310,6 +349,9 @@ pub struct Options {
     pub keep: u32,
     /// Video bitrate in Mbit/s.
     pub mbps: u32,
+    /// Scaled down to this on the graphics card (`None`: as it's grabbed). Dropped at start
+    /// when no route can scale it here.
+    pub size: Option<(u32, u32)>,
     /// `None`: tried at start (`pick_way` with `encoder`).
     pub route: Option<Route>,
     /// The chip a window is grabbed on (with `route`; `None`: Windows' default).
@@ -329,6 +371,7 @@ impl Default for Options {
             fps: 60,
             keep: 60,
             mbps: 16,
+            size: None,
             route: None,
             chip: None,
             encoder: Encoder::Auto,
@@ -407,10 +450,115 @@ pub struct Prefs {
     pub key: String,
     /// Which encoder records: "auto", "nvidia", "amd", "intel", "cpu" (`Encoder`).
     pub encoder: String,
+    /// "smaller", "standard", "best" or "custom" (`Quality`). Custom records `height`, `fps`
+    /// and `mbps` as they are; the others work them out for what's recorded.
+    pub quality: String,
+    /// Custom's picture height (0: as it's grabbed).
+    pub height: u32,
     pub fps: u32,
     pub mbps: u32,
     /// The clips saved, newest first (up to `SAVED_MAX`).
     pub saved: Vec<PathBuf>,
+}
+
+/// The Capture page's Quality: what instant replay records, in plain words.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Quality {
+    Smaller,
+    #[default]
+    Standard,
+    Best,
+    /// Size, frame rate and bit rate set by hand (Advanced).
+    Custom,
+}
+
+impl Quality {
+    pub const ALL: [Quality; 4] = [Quality::Smaller, Quality::Standard, Quality::Best, Quality::Custom];
+
+    pub fn from_name(s: &str) -> Quality {
+        match s {
+            "smaller" => Quality::Smaller,
+            "best" => Quality::Best,
+            "custom" => Quality::Custom,
+            _ => Quality::Standard,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Quality::Smaller => "smaller",
+            Quality::Standard => "standard",
+            Quality::Best => "best",
+            Quality::Custom => "custom",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Quality::Smaller => "Smaller files",
+            Quality::Standard => "Standard",
+            Quality::Best => "Best",
+            Quality::Custom => "Custom",
+        }
+    }
+}
+
+/// What a Quality records: the picture's height (0: as it's grabbed), frames a second and
+/// the video's bit rate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Look {
+    pub height: u32,
+    pub fps: u32,
+    pub mbps: u32,
+}
+
+impl Look {
+    /// The size recorded from a source of `size`: scaled down to `height` (never up), even
+    /// numbers as encoders want them.
+    pub fn size(&self, size: (u32, u32)) -> (u32, u32) {
+        let (w, h) = size;
+        if self.height == 0 || h <= self.height || h == 0 {
+            return (w, h);
+        }
+        let nw = (w as u64 * self.height as u64 / h as u64) as u32;
+        (nw & !1, self.height & !1)
+    }
+
+    /// The scaled size when it's scaled at all (`Options::size`).
+    pub fn scale(&self, size: (u32, u32)) -> Option<(u32, u32)> {
+        let s = self.size(size);
+        (s != size).then_some(s)
+    }
+
+    /// About how many MB a minute takes (the picture, plus `tracks` sound tracks at 160k),
+    /// rounded to 5.
+    pub fn mb_per_min(&self, tracks: u32) -> u32 {
+        let mb = self.mbps as f64 * 7.5 + tracks as f64 * 1.2;
+        ((mb / 5.0).round() * 5.0).max(5.0) as u32
+    }
+}
+
+/// The frame rates a screen of `hz` can show: 30, 60, and 120 on a 120 Hz screen or faster.
+pub fn frame_rates(hz: u32) -> Vec<u32> {
+    if hz >= 120 { vec![30, 60, 120] } else { vec![30, 60] }
+}
+
+/// What `q` records from a source of `size` on a screen of `hz`. The bit rate follows the
+/// pixels a second, so a 1080p screen and a 1440p one look alike on the same choice: Standard
+/// is 16 Mbit/s at 1440p60 (what instant replay always recorded), Best about 2.5 times that,
+/// Smaller files 1080p at about 6. Twice the frames are closer together, so 120 fps takes
+/// about 1.4 times 60's (the square root), not twice.
+pub fn look(q: Quality, size: (u32, u32), hz: u32) -> Look {
+    let (height, fps, bits, lo, hi) = match q {
+        Quality::Smaller => (1080, 60, 0.045, 5.0, 20.0),
+        Quality::Best => (0, if hz >= 120 { 120 } else { 60 }, 0.18, 30.0, 80.0),
+        _ => (0, 60, 0.072, 12.0, 40.0),
+    };
+    let mut l = Look { height, fps, mbps: 0 };
+    let (w, h) = l.size(size);
+    let per_sec = 60.0 * (fps as f64 / 60.0).sqrt();
+    l.mbps = (w as f64 * h as f64 * per_sec * bits / 1e6).clamp(lo, hi).round() as u32;
+    l
 }
 
 /// How much can be kept: the Capture page's chips, in seconds.
@@ -436,6 +584,8 @@ impl Default for Prefs {
             mic_name: String::new(),
             key: crate::hotkey::DEFAULT.into(),
             encoder: "auto".into(),
+            quality: "standard".into(),
+            height: 0,
             fps: 60,
             mbps: 16,
             saved: Vec::new(),
@@ -444,6 +594,14 @@ impl Default for Prefs {
 }
 
 impl Prefs {
+    /// What's recorded for a source of `size` on a screen of `hz` (Custom: as set).
+    pub fn look(&self, size: (u32, u32), hz: u32) -> Look {
+        match Quality::from_name(&self.quality) {
+            Quality::Custom => Look { height: self.height, fps: self.fps.max(1), mbps: self.mbps.max(1) },
+            q => look(q, size, hz),
+        }
+    }
+
     /// Recording whatever game is in front (the desktop decides what that is right now).
     pub fn automatic(&self) -> bool {
         self.kind == "auto"
@@ -578,7 +736,15 @@ impl ScreenBuffer {
         let route = match options.route {
             Some(r) => r,
             None => {
-                let (r, chip) = pick_way(&options.source, options.fps, options.encoder)?;
+                let (r, chip) = match pick_way(&options.source, options.fps, options.size, options.encoder) {
+                    Ok(w) => w,
+                    // No way to scale it here: at its own size rather than not at all.
+                    Err(_) if options.size.is_some() => {
+                        options.size = None;
+                        pick_way(&options.source, options.fps, None, options.encoder)?
+                    }
+                    Err(e) => return Err(e),
+                };
                 options.chip = chip;
                 r
             }
@@ -724,26 +890,27 @@ pub fn save_from(dir: &Path, seconds: u32, out_dir: &Path, titles: &[String], na
     }
     std::fs::create_dir_all(out_dir)?;
     let name = crate::music::sanitize(name);
-    let out = crate::clip::unique_path(out_dir, &format!("{name} (last {})", crate::clip::stamp(seconds as f64)), "mp4");
+    let out =
+        crate::clip::unique_path(out_dir, &format!("{name} (last {})", crate::clip::stamp(seconds as f64)), "mp4");
     let list = dir.join(format!("save-{}.txt", std::process::id()));
     let lines: Vec<String> =
         pieces.iter().map(|p| format!("file '{}'", p.to_string_lossy().replace('\'', "'\\''"))).collect();
     std::fs::write(&list, lines.join("\n"))?;
     let mut cmd = proc::command(paths::tool("ffmpeg"));
-    cmd.args(["-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i"])
-        .arg(&list)
-        .args(["-map", "0", "-c", "copy", "-movflags", "+faststart"]);
+    cmd.args(["-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i"]).arg(&list).args([
+        "-map",
+        "0",
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+    ]);
     for (i, t) in titles.iter().enumerate() {
         // MP4 keeps a track's name as its handler name; players show either.
         cmd.arg(format!("-metadata:s:a:{i}")).arg(format!("title={t}"));
         cmd.arg(format!("-metadata:s:a:{i}")).arg(format!("handler_name={t}"));
     }
-    let result = cmd
-        .arg(&out)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output();
+    let result = cmd.arg(&out).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).output();
     let _ = std::fs::remove_file(&list);
     let result = result?;
     if !result.status.success() || !out.is_file() {
@@ -764,7 +931,7 @@ fn record(
     stats: &Mutex<Stats>,
 ) -> Result<()> {
     let wrap = o.keep / PIECE_SECS + 3;
-    let graph = format!("{}{}", o.source.filter(o.fps), route.chain());
+    let graph = format!("{}{}", o.source.filter(o.fps, o.size), route.chain());
     let mut cmd = proc::command(paths::tool("ffmpeg"));
     cmd.args(["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y"]);
     let dev = o.source.device_args(o.chip);
@@ -816,10 +983,8 @@ fn record(
     if !mix.is_empty() {
         let ins: String =
             mix.iter().map(|&i| if twice(i) { format!("[s{i}m]") } else { format!("[{}:a]", first + i) }).collect();
-        graphs.push(format!(
-            "{ins}amix=inputs={}:normalize=0:dropout_transition=0,alimiter=limit=0.97[mix]",
-            mix.len()
-        ));
+        graphs
+            .push(format!("{ins}amix=inputs={}:normalize=0:dropout_transition=0,alimiter=limit=0.97[mix]", mix.len()));
     }
     if !graphs.is_empty() {
         cmd.args(["-filter_complex", &graphs.join(";")]);
@@ -902,11 +1067,43 @@ mod tests {
     #[test]
     fn window_names_become_safe_patterns() {
         assert_eq!(
-            Source::Window("Game-1.exe".into()).filter(60),
+            Source::Window("Game-1.exe".into()).filter(60, None),
             "gfxcapture=window_exe='(?i)Game-1[.]exe$':max_framerate=240,fps=60"
         );
+        // Scaled on the graphics card by Windows' own capture.
+        assert_eq!(
+            Source::Window("g.exe".into()).filter(60, Some((1920, 1080))),
+            "gfxcapture=window_exe='(?i)g[.]exe$':max_framerate=240:width=1920:height=1080:resize_mode=scale_aspect,fps=60"
+        );
         // Quotes and backslashes can't break out of the filter argument.
-        assert!(!Source::Window("a'b\\c.exe".into()).filter(30).contains("a'"));
+        assert!(!Source::Window("a'b\\c.exe".into()).filter(30, None).contains("a'"));
+    }
+
+    #[test]
+    fn quality_looks() {
+        let q1440 = (2560, 1440);
+        // Standard is what instant replay always recorded at 1440p60.
+        assert_eq!(look(Quality::Standard, q1440, 60), Look { height: 0, fps: 60, mbps: 16 });
+        assert_eq!(look(Quality::Standard, q1440, 60).mb_per_min(0), 120);
+        // Smaller files: 1080p, about 6 Mbit/s; never scaled up.
+        let s = look(Quality::Smaller, q1440, 60);
+        assert_eq!((s.size(q1440), s.mbps), ((1920, 1080), 6));
+        assert_eq!(s.scale((1280, 720)), None);
+        assert_eq!(s.mb_per_min(0), 45);
+        // Best: 120 fps on a fast screen, capped bit rate.
+        assert_eq!(look(Quality::Best, q1440, 60).mbps, 40);
+        assert_eq!(look(Quality::Best, q1440, 144).fps, 120);
+        assert_eq!(look(Quality::Best, q1440, 144).mbps, 56);
+        assert_eq!(look(Quality::Best, (3840, 2160), 144).mbps, 80);
+        // A 1080p screen still gets enough on Standard.
+        assert_eq!(look(Quality::Standard, (1920, 1080), 60).mbps, 12);
+        // Odd sizes become even.
+        assert_eq!(Look { height: 1080, fps: 60, mbps: 6 }.size((3440, 1441)), (2578, 1080));
+        // Custom keeps what was set; old settings without a quality are Standard.
+        let p = Prefs { quality: "custom".into(), height: 720, fps: 30, mbps: 9, ..Prefs::default() };
+        assert_eq!(p.look(q1440, 60), Look { height: 720, fps: 30, mbps: 9 });
+        let old: Prefs = serde_json::from_str(r#"{"fps": 60}"#).unwrap();
+        assert_eq!(Quality::from_name(&old.quality), Quality::Standard);
     }
 
     #[test]

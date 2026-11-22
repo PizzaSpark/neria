@@ -6,7 +6,10 @@
 //! - Sound, a track each: the game & PC, Discord on its own when it's running, the mic.
 //!   `--mic <part of its name>` (else Windows' default; `--mics` lists them), `--no-sound`,
 //!   or exactly `--sound pc,mic,mic:fifine,app:Discord.exe,except:Discord.exe`.
-//! - `--keep <s>` (60), `--fps <n>` (60), `--mbps <n>` (16).
+//! - `--keep <s>` (60), `--fps <n>` (60), `--mbps <n>` (16), `--height <px>` (scaled down on
+//!   the graphics card).
+//! - `--quality smaller|standard|best`: as the Capture page's Quality (size, frame rate and bit
+//!   rate worked out for the source; prints them).
 //! - `--route nvenc|amf|qsv|nvenc-copy|cpu`: force a route instead of trying them.
 //! - `--routes`: only say which routes work here, then stop.
 //! - `--encoder auto|nvidia|amd|intel|cpu`: as the Capture page's Encoder (a window is grabbed
@@ -48,6 +51,27 @@ fn main() -> anyhow::Result<()> {
     }
     if let Some(v) = val("--mbps") {
         o.mbps = v.parse()?;
+    }
+    if let Some(h) = val("--height") {
+        let size = o.source.size().map(|s| s.0).unwrap_or((1920, 1080));
+        let l = neria_core::capture::Look { height: h.parse()?, fps: o.fps, mbps: o.mbps };
+        o.size = l.scale(size);
+    }
+    if let Some(q) = val("--quality") {
+        let (size, hz) = o.source.size().unwrap_or(((1920, 1080), 60));
+        let l = neria_core::capture::look(neria_core::capture::Quality::from_name(&q), size, hz);
+        o.fps = l.fps;
+        o.mbps = l.mbps;
+        o.size = l.scale(size);
+        let (w, h) = l.size(size);
+        println!(
+            "{q}: {w} × {h} (from {} × {}, {hz} Hz) · {} fps · {} Mbit/s · ≈ {} MB a minute",
+            size.0,
+            size.1,
+            l.fps,
+            l.mbps,
+            l.mb_per_min(0)
+        );
     }
     if let Some(r) = val("--route") {
         o.chip = val("--chip").map(|c| c.parse()).transpose()?;
@@ -118,12 +142,16 @@ fn main() -> anyhow::Result<()> {
         let plan = prefs.sound_plan(game.as_deref().map(|g| (g, g.trim_end_matches(".exe"))));
         o.sounds = plan.sounds;
         o.tracks = plan.tracks;
-        println!("tracks: {}{}", o.titles().join(" · "), if plan.by_app { " (everything built app by app)" } else { "" });
+        println!(
+            "tracks: {}{}",
+            o.titles().join(" · "),
+            if plan.by_app { " (everything built app by app)" } else { "" }
+        );
     }
 
     if args.iter().any(|a| a == "--routes") {
         for r in Route::ALL {
-            match r.check(&o.source, o.fps) {
+            match r.check(&o.source, o.fps, o.size) {
                 Ok(()) => println!("{:<40} works", r.label()),
                 Err(e) => println!("{:<40} no: {e}", r.label()),
             }
@@ -133,7 +161,14 @@ fn main() -> anyhow::Result<()> {
 
     let t = Instant::now();
     let buffer = ScreenBuffer::start(o.clone())?;
-    println!("recording {:?} through {} on chip {:?} (picked in {:.1}s), keeping {} s", o.source, buffer.route.label(), buffer.options.chip, t.elapsed().as_secs_f64(), o.keep);
+    println!(
+        "recording {:?} through {} on chip {:?} (picked in {:.1}s), keeping {} s",
+        o.source,
+        buffer.route.label(),
+        buffer.options.chip,
+        t.elapsed().as_secs_f64(),
+        o.keep
+    );
     let titles = o.titles();
     println!("sound tracks: {}", if titles.is_empty() { "none".into() } else { titles.join(" · ") });
 
@@ -165,7 +200,11 @@ fn main() -> anyhow::Result<()> {
         });
         match l {
             Ok(l) => {
-                println!("{}: save the last {} s, from anywhere", val("--hotkey").unwrap_or_else(|| neria_core::hotkey::DEFAULT.into()), o.keep);
+                println!(
+                    "{}: save the last {} s, from anywhere",
+                    val("--hotkey").unwrap_or_else(|| neria_core::hotkey::DEFAULT.into()),
+                    o.keep
+                );
                 Some(l)
             }
             Err(e) => {

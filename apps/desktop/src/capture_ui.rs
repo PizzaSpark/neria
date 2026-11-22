@@ -16,13 +16,15 @@ use neria_core::capture::{self, KEEPS, Options, Prefs, Route, ScreenBuffer, Sour
 use neria_core::capture_pick::{self, Monitor, Program};
 use neria_core::hotkey::{self, Hotkey};
 use neria_core::settings::Settings;
-use neria_core::{folders, fmt, history, media};
+use neria_core::{fmt, folders, history, media};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
 use neria_core::capture::Role;
 use neria_core::capture_sound::{self, AppSound};
 
-use crate::{AppWindow, Capture, CaptureApp, CaptureSaved, CaptureSource, CaptureTrack, Voice};
+use neria_core::capture::{Look, Quality};
+
+use crate::{AppWindow, Capture, CaptureApp, CaptureSaved, CaptureSource, CaptureTrack, QualityRow, Voice};
 
 #[derive(Clone, Debug, PartialEq)]
 enum Phase {
@@ -79,6 +81,8 @@ struct State {
     asking_apps: bool,
     /// Frames and lengths of saved clips, worked out once.
     probed: Vec<(PathBuf, Option<f64>, Option<PathBuf>)>,
+    /// The size being recorded (after Quality's scaling), for the status line.
+    recorded: Option<(u32, u32)>,
     /// Sample screens for design checks (`NERIA_CAPTURE_DEMO`): nothing records.
     demo: bool,
     _timer: Option<Timer>,
@@ -222,6 +226,41 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
     c.on_changed({
         let weak = ui.as_weak();
         move || changed(&weak.unwrap())
+    });
+    c.on_quality_pick({
+        let weak = ui.as_weak();
+        move |i| {
+            let q = Quality::ALL.get(i.max(0) as usize).copied().unwrap_or_default();
+            save_prefs(|p| p.quality = q.name().into());
+            quality_changed(&weak.unwrap());
+        }
+    });
+    c.on_quality_size({
+        let weak = ui.as_weak();
+        move |i| {
+            let (size, _, _) = quality_source();
+            let h = size_choices(size).get(i.max(0) as usize).copied().unwrap_or(0);
+            set_custom(&weak.unwrap(), |l| l.height = h);
+        }
+    });
+    c.on_quality_rate({
+        let weak = ui.as_weak();
+        move |i| {
+            let (_, hz, _) = quality_source();
+            let fps = capture::frame_rates(hz).get(i.max(0) as usize).copied().unwrap_or(60);
+            set_custom(&weak.unwrap(), |l| l.fps = fps);
+        }
+    });
+    c.on_quality_mbps({
+        let weak = ui.as_weak();
+        move |d| set_custom(&weak.unwrap(), |l| l.mbps = step_mbps(l.mbps, d))
+    });
+    c.on_quality_back({
+        let weak = ui.as_weak();
+        move || {
+            save_prefs(|p| p.quality = Quality::Standard.name().into());
+            quality_changed(&weak.unwrap());
+        }
     });
     c.on_key_pick_start({
         let weak = ui.as_weak();
@@ -393,7 +432,11 @@ fn begin(ui: &AppWindow) {
     }
     set_phase(Phase::Starting);
     show(ui);
-    let key = format!("{} {}", source_key(&source), p.encoder);
+    // The Quality for what's recorded: its size and screen worked out now.
+    let (grab, hz) = source.size().unwrap_or(((1920, 1080), 60));
+    let look = p.look(grab, hz);
+    let scale = look.scale(grab);
+    let key = format!("{} {} {:?}", source_key(&source), p.encoder, scale);
     let (started_n, cached) = ST.with(|s| {
         let mut s = s.borrow_mut();
         s.started_n += 1;
@@ -405,9 +448,10 @@ fn begin(ui: &AppWindow) {
         let by_app = plan.by_app;
         let options = Options {
             source,
-            fps: p.fps,
+            fps: look.fps,
             keep: p.keep,
-            mbps: p.mbps,
+            mbps: look.mbps,
+            size: scale,
             route: cached.map(|c| c.0),
             chip: cached.and_then(|c| c.1),
             encoder: capture::Encoder::from_name(&p.encoder),
@@ -422,6 +466,7 @@ fn begin(ui: &AppWindow) {
                     ST.with(|s| {
                         let mut s = s.borrow_mut();
                         s.route = Some((key, b.route, b.options.chip));
+                        s.recorded = Some(b.options.size.unwrap_or(grab));
                         s.buffer = Some(Arc::new(b));
                         s.by_app = by_app;
                         s.since = Some(Instant::now());
@@ -444,9 +489,12 @@ fn explain(problem: &str, _p: &Prefs) -> String {
     let what = what();
     let low = problem.to_lowercase();
     if low.contains("no window") || low.contains("window not found") {
-        format!("{what}'s window isn't there. If it's in exclusive fullscreen, pick Borderless in the game, or record the monitor.")
+        format!(
+            "{what}'s window isn't there. If it's in exclusive fullscreen, pick Borderless in the game, or record the monitor."
+        )
     } else if low.contains("driver") {
-        "The graphics driver is too old for Neria's ffmpeg. Update it, or Neria records on the CPU after Try again.".into()
+        "The graphics driver is too old for Neria's ffmpeg. Update it, or Neria records on the CPU after Try again."
+            .into()
     } else if low.contains("mic") {
         format!("{problem}. Pick another mic, or untick Mic.")
     } else if problem.trim().is_empty() {
@@ -492,10 +540,13 @@ fn tick(ui: &AppWindow) {
             }
         }
         Phase::On => {
-            let stopped = ST.with(|s| s.borrow().buffer.as_ref().filter(|b| !b.running()).map(|b| b.problem.lock().unwrap().clone()));
+            let stopped = ST.with(|s| {
+                s.borrow().buffer.as_ref().filter(|b| !b.running()).map(|b| b.problem.lock().unwrap().clone())
+            });
             if let Some(problem) = stopped {
                 halt();
-                let game_gone = ST.with(|s| s.borrow().target.as_ref().and_then(|t| t.1.clone()))
+                let game_gone = ST
+                    .with(|s| s.borrow().target.as_ref().and_then(|t| t.1.clone()))
                     .is_some_and(|exe| !capture_pick::window_open(&exe));
                 if p.automatic() && game_gone {
                     // The game closed: back to the screen until the next game.
@@ -533,17 +584,25 @@ fn show(ui: &AppWindow) {
                 format!("Will keep the last {keep} of {what}")
             },
         ),
-        Phase::Starting => (1, format!("Starting instant replay of {what}…"), "Finding the quickest way on this PC".into()),
+        Phase::Starting => {
+            (1, format!("Starting instant replay of {what}…"), "Finding the quickest way on this PC".into())
+        }
         Phase::On => (2, format!("Keeping the last {keep} of {what}"), {
             if p.automatic() {
                 let game = ST.with(|s| s.borrow().target.as_ref().is_some_and(|t| t.1.is_some()));
-                let follows = if game { "Automatic: moves to the next game you open." } else { "Automatic: no game in front yet." };
+                let follows = if game {
+                    "Automatic: moves to the next game you open."
+                } else {
+                    "Automatic: no game in front yet."
+                };
                 format!("{follows} {}", how_to_save(&p))
             } else {
                 how_to_save(&p)
             }
         }),
-        Phase::Waiting => (3, format!("Waiting for {what} to open"), "It starts by itself when the game's window shows.".into()),
+        Phase::Waiting => {
+            (3, format!("Waiting for {what} to open"), "It starts by itself when the game's window shows.".into())
+        }
         Phase::Stopped(why) => (4, format!("Couldn't record {what}"), why.clone()),
     };
     c.set_state(state);
@@ -559,6 +618,10 @@ fn show(ui: &AppWindow) {
             parts.push(format!("{} kept so far", fmt::duration(kept)));
         } else {
             parts.push(fmt::bytes(bytes as f64));
+        }
+        parts.push(Quality::from_name(&p.quality).label().to_string());
+        if let Some((_, h)) = s.recorded {
+            parts.push(format!("{h}p"));
         }
         parts.push(format!("{} fps", b.options.fps));
         parts.push(route_short(b.route).to_string());
@@ -599,7 +662,9 @@ fn show_prefs(ui: &AppWindow) {
     all.extend(list);
     let names: Vec<SharedString> = all
         .iter()
-        .map(|e| if *e == capture::Encoder::Auto { format!("Automatic ({})", auto.label()).into() } else { e.label().into() })
+        .map(|e| {
+            if *e == capture::Encoder::Auto { format!("Automatic ({})", auto.label()).into() } else { e.label().into() }
+        })
         .collect();
     c.set_encoders(ModelRc::new(VecModel::from(names)));
     let picked = capture::Encoder::from_name(&p.encoder);
@@ -618,6 +683,7 @@ fn show_prefs(ui: &AppWindow) {
         .into(),
     );
     ST.with(|s| s.borrow_mut().encoders = all);
+    show_quality(ui);
     c.set_mic(p.mic);
     show_never(ui);
     c.set_key(p.key.clone().into());
@@ -679,6 +745,161 @@ fn changed(ui: &AppWindow) {
     }
     if after.encoder != before.encoder {
         show_prefs(ui);
+    } else if after.keep != before.keep {
+        show_quality(ui);
+    }
+    show(ui);
+}
+
+/// What the Quality rows are worked out for: the size grabbed (the game's window, else the
+/// screen), its screen's refresh rate, and whether it's a game.
+fn quality_source() -> ((u32, u32), u32, bool) {
+    let p = prefs();
+    let cached = ST.with(|s| s.borrow().monitors.clone());
+    let monitors = if cached.is_empty() { capture_pick::monitors() } else { cached };
+    let screen = |m: &Monitor| ((m.width, m.height), m.hz);
+    let main = monitors.iter().find(|m| m.main).or(monitors.first()).map(screen).unwrap_or(((1920, 1080), 60));
+    let source = match ST.with(|s| s.borrow().buffer.as_ref().map(|b| b.options.source.clone())) {
+        Some(s) => s,
+        None if p.automatic() => match ST.with(|s| s.borrow().target.as_ref().and_then(|t| t.1.clone())) {
+            Some(exe) => Source::Window(exe),
+            None => return (main.0, main.1, false),
+        },
+        None => p.source(&monitors),
+    };
+    match source {
+        // A game not open yet: as big as the screen, as games mostly are.
+        Source::Window(exe) => {
+            let (size, hz) = capture_pick::window_size(&exe).unwrap_or(main);
+            (size, hz, true)
+        }
+        Source::Monitor(i) => {
+            let (size, hz) = monitors.iter().find(|m| m.index == i).map(screen).unwrap_or(main);
+            (size, hz, false)
+        }
+    }
+}
+
+/// Advanced's Size chips, as heights: as it's grabbed, then 1080p and 720p when smaller.
+fn size_choices(size: (u32, u32)) -> Vec<u32> {
+    let mut v = vec![0];
+    v.extend([1080, 720].into_iter().filter(|h| *h < size.1));
+    v
+}
+
+/// The bit rate a step up or down: finer when it's low.
+pub fn step_mbps(mbps: u32, d: i32) -> u32 {
+    let step = if mbps < 10 || (mbps == 10 && d < 0) {
+        1
+    } else if mbps < 30 || (mbps == 30 && d < 0) {
+        2
+    } else {
+        5
+    };
+    (mbps as i32 + d.signum() * step).clamp(2, 120) as u32
+}
+
+/// "1440p, as the screen · 60 fps" (Best: "· sharpest"; Custom: its bit rate). Short: the
+/// row cuts a hint that doesn't fit.
+fn quality_hint(q: Quality, l: &Look, size: (u32, u32), game: bool) -> String {
+    let (_, h) = l.size(size);
+    let mut parts = vec![if l.scale(size).is_none() && q != Quality::Best {
+        format!("{h}p, as the {}", if game { "game" } else { "screen" })
+    } else {
+        format!("{h}p")
+    }];
+    parts.push(format!("{} fps", l.fps));
+    match q {
+        Quality::Best => parts.push("sharpest".into()),
+        Quality::Custom => parts.push(format!("{} Mbit/s", l.mbps)),
+        _ => {}
+    }
+    parts.join(" · ")
+}
+
+/// The Quality rows and Advanced, for a source of `size` on a screen of `hz`.
+fn quality_view(c: &Capture, p: &Prefs, size: (u32, u32), hz: u32, game: bool, tracks: u32) {
+    let picked = Quality::from_name(&p.quality);
+    let mut rows = Vec::new();
+    for q in Quality::ALL {
+        if q == Quality::Custom && picked != Quality::Custom {
+            continue;
+        }
+        let l = if q == Quality::Custom { p.look(size, hz) } else { capture::look(q, size, hz) };
+        rows.push(QualityRow {
+            name: q.label().into(),
+            hint: quality_hint(q, &l, size, game).into(),
+            value: format!("≈ {} MB/min", l.mb_per_min(tracks)).into(),
+        });
+    }
+    c.set_quality_rows(ModelRc::new(VecModel::from(rows)));
+    c.set_quality(Quality::ALL.iter().position(|q| *q == picked).unwrap_or(1) as i32);
+    c.set_quality_custom(picked == Quality::Custom);
+    let l = p.look(size, hz);
+    // Round: "about 190 MB", "about 1.5 GB".
+    let mb = l.mb_per_min(tracks) as f64 * p.keep as f64 / 60.0;
+    let kept = if mb >= 1000.0 {
+        format!("{:.1} GB", mb / 1000.0)
+    } else {
+        format!("{} MB", ((mb / 10.0).round() * 10.0).max(10.0))
+    };
+    c.set_quality_note(
+        format!("While it runs, Neria keeps about {kept} next to itself, deleted when it stops.").into(),
+    );
+    c.set_quality_warn(false);
+    let heights = size_choices(size);
+    let sizes: Vec<SharedString> =
+        heights
+            .iter()
+            .map(|h| {
+                if *h == 0 {
+                    (if game { "As the game" } else { "As the screen" }).into()
+                } else {
+                    format!("{h}p").into()
+                }
+            })
+            .collect();
+    c.set_q_sizes(ModelRc::new(VecModel::from(sizes)));
+    let h = l.size(size).1;
+    let at = heights.iter().position(|x| if *x == 0 { l.scale(size).is_none() } else { *x == h });
+    c.set_q_size(at.unwrap_or(0) as i32);
+    let rates = capture::frame_rates(hz);
+    let names: Vec<SharedString> = rates.iter().map(|r| SharedString::from(r.to_string())).collect();
+    c.set_q_rates(ModelRc::new(VecModel::from(names)));
+    c.set_q_rate(rates.iter().position(|r| *r >= l.fps).unwrap_or(rates.len() - 1) as i32);
+    c.set_q_mbps(l.mbps as i32);
+}
+
+fn show_quality(ui: &AppWindow) {
+    if ST.with(|s| s.borrow().demo) {
+        return;
+    }
+    let c = ui.global::<Capture>();
+    let (size, hz, game) = quality_source();
+    let tracks = slint::Model::row_count(&c.get_tracks()) as u32;
+    quality_view(&c, &prefs(), size, hz, game, tracks);
+}
+
+/// A number in Advanced changed: Custom, starting from what was picked.
+fn set_custom(ui: &AppWindow, f: impl FnOnce(&mut Look)) {
+    let (size, hz, _) = quality_source();
+    let mut l = prefs().look(size, hz);
+    f(&mut l);
+    save_prefs(|p| {
+        p.quality = Quality::Custom.name().into();
+        p.height = l.height;
+        p.fps = l.fps;
+        p.mbps = l.mbps;
+    });
+    quality_changed(ui);
+}
+
+/// The Quality changed: shown, and recording starts again with it.
+fn quality_changed(ui: &AppWindow) {
+    show_quality(ui);
+    if on() && phase() != Phase::Waiting {
+        halt();
+        begin(ui);
     }
     show(ui);
 }
@@ -692,7 +913,9 @@ fn picked_id(p: &Prefs, monitors: &[Monitor]) -> String {
         return format!("w:{}", p.exe);
     }
     match p.source(monitors) {
-        Source::Monitor(i) => monitors.iter().find(|m| m.index == i).map(|m| format!("m:{}", m.name)).unwrap_or_default(),
+        Source::Monitor(i) => {
+            monitors.iter().find(|m| m.index == i).map(|m| format!("m:{}", m.name)).unwrap_or_default()
+        }
         Source::Window(exe) => format!("w:{exe}"),
     }
 }
@@ -768,7 +991,12 @@ fn show_sources(ui: &AppWindow) {
         );
     }
     for m in &monitors {
-        rows.push(CaptureSource { id: format!("m:{}", m.name).into(), kind: 2, name: m.name.clone().into(), hint: m.detail().into() });
+        rows.push(CaptureSource {
+            id: format!("m:{}", m.name).into(),
+            kind: 2,
+            name: m.name.clone().into(),
+            hint: m.detail().into(),
+        });
     }
     c.set_sources(ModelRc::new(VecModel::from(rows)));
     c.set_picked(picked_id(&p, &monitors).into());
@@ -838,7 +1066,8 @@ fn register_key(ui: &AppWindow) {
             c.set_key_problem("".into());
         }
         Err(_) => c.set_key_problem(
-            format!("{} is already used by another program (Medal, ShadowPlay, Discord?). Pick another key.", p.key).into(),
+            format!("{} is already used by another program (Medal, ShadowPlay, Discord?). Pick another key.", p.key)
+                .into(),
         ),
     }
 }
@@ -892,7 +1121,9 @@ fn key_picked(ui: &AppWindow, text: &str, ctrl: bool, alt: bool, shift: bool, wi
     };
     // A bare letter or number would stop it being typed anywhere else.
     if name.len() == 1 && !(ctrl || alt || win) {
-        c.set_key_problem(format!("{name} alone couldn't be typed anywhere else then. Add Ctrl or Alt, or pick an F key.").into());
+        c.set_key_problem(
+            format!("{name} alone couldn't be typed anywhere else then. Add Ctrl or Alt, or pick an F key.").into(),
+        );
         register_key(ui);
         return;
     }
@@ -907,7 +1138,8 @@ fn key_picked(ui: &AppWindow, text: &str, ctrl: bool, alt: bool, shift: bool, wi
         Ok(l) => drop(l),
         Err(_) => {
             c.set_key_problem(
-                format!("{text} is already used by another program (Medal, ShadowPlay, Discord?). Pick another key.").into(),
+                format!("{text} is already used by another program (Medal, ShadowPlay, Discord?). Pick another key.")
+                    .into(),
             );
             register_key(ui);
             return;
@@ -1186,7 +1418,9 @@ fn new_apps() -> Vec<AppSound> {
         s.apps
             .iter()
             .filter(|a| !p.is_never(&a.exe))
-            .filter(|a| !b.options.sounds.iter().any(|x| matches!(x, capture::Sound::App(e) if e.eq_ignore_ascii_case(&a.exe))))
+            .filter(|a| {
+                !b.options.sounds.iter().any(|x| matches!(x, capture::Sound::App(e) if e.eq_ignore_ascii_case(&a.exe)))
+            })
             .cloned()
             .collect()
     })
@@ -1251,11 +1485,19 @@ fn show_tracks(ui: &AppWindow) {
             _ => (2, String::new(), 0.0),
         };
         let name = if kind == 2 { app_label(&exe) } else { name };
-        rows.push(CaptureTrack { n: rows.len() as i32 + 1, name: name.into(), kind, note: "".into(), level: lvl, exe: exe.into() });
+        rows.push(CaptureTrack {
+            n: rows.len() as i32 + 1,
+            name: name.into(),
+            kind,
+            note: "".into(),
+            level: lvl,
+            exe: exe.into(),
+        });
     }
     let c = ui.global::<Capture>();
     c.set_tracks(ModelRc::new(VecModel::from(rows)));
-    let later: Vec<String> = if phase() == Phase::On { new_apps().iter().map(|a| app_label(&a.exe)).collect() } else { Vec::new() };
+    let later: Vec<String> =
+        if phase() == Phase::On { new_apps().iter().map(|a| app_label(&a.exe)).collect() } else { Vec::new() };
     let by_app = ST.with(|s| s.borrow().by_app);
     c.set_tracks_note(match (later.is_empty(), by_app) {
         (true, _) => "".into(),
@@ -1264,7 +1506,9 @@ fn show_tracks(ui: &AppWindow) {
             later.join(", ")
         )
         .into(),
-        (false, true) => format!("{} started later: Neria takes it in at the next quiet moment.", later.join(", ")).into(),
+        (false, true) => {
+            format!("{} started later: Neria takes it in at the next quiet moment.", later.join(", ")).into()
+        }
     });
 }
 
@@ -1320,7 +1564,9 @@ fn show_demo(ui: &AppWindow, what: &str) {
         "Intel".into(),
         "CPU".into(),
     ])));
-    c.set_encoder_hint("NVIDIA's encoder is the sharpest here, and it leaves the processor's power to the game.".into());
+    c.set_encoder_hint(
+        "NVIDIA's encoder is the sharpest here, and it leaves the processor's power to the game.".into(),
+    );
     let tr = |n: i32, name: &str, kind: i32, note: &str, level: f32, exe: &str| CaptureTrack {
         n,
         name: name.into(),
@@ -1337,6 +1583,15 @@ fn show_demo(ui: &AppWindow, what: &str) {
         tr(5, "Mic", 3, "", 0.0, ""),
     ])));
     c.set_never(ModelRc::new(VecModel::from(vec![CaptureApp { exe: "Spotify.exe".into(), name: "Spotify".into() }])));
+    // Quality as on a 1440p 60 Hz screen recording a game; `custom`: a bit rate changed, the
+    // fold open.
+    let mut qp = Prefs::default();
+    if what == "custom" {
+        qp.quality = "custom".into();
+        qp.mbps = 25;
+        c.set_quality_open(true);
+    }
+    quality_view(&c, &qp, (2560, 1440), 60, true, 3);
     let saved = vec![
         CaptureSaved {
             path: "C:\\Videos\\VALORANT 2026-11-21 21-04 (last 1m00s).mp4".into(),
@@ -1355,7 +1610,7 @@ fn show_demo(ui: &AppWindow, what: &str) {
         c.set_state(2);
         c.set_status("Keeping the last 1 min of VALORANT".into());
         c.set_detail("Press F8 or say \"clip that\" to save it.".into());
-        c.set_tech("1.2 GB · 60 fps · NVIDIA · 3 sound tracks".into());
+        c.set_tech("1.2 GB · Standard · 1440p · 60 fps · NVIDIA · 3 sound tracks".into());
         c.set_voice_hint("Saying \"clip that\" saves too (Settings → Voice).".into());
     };
     let v = ui.global::<Voice>();
@@ -1390,7 +1645,9 @@ fn show_demo(ui: &AppWindow, what: &str) {
         "key" => {
             on(&c);
             c.set_picking_key(true);
-            c.set_key_problem("Alt+F10 is already used by another program (Medal, ShadowPlay, Discord?). Pick another key.".into());
+            c.set_key_problem(
+                "Alt+F10 is already used by another program (Medal, ShadowPlay, Discord?). Pick another key.".into(),
+            );
         }
         _ => {
             c.set_state(0);

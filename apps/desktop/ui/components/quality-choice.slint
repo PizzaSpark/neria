@@ -1,0 +1,200 @@
+// The Quality choice on the Capture page, both tabs (mock: design/capture-quality.html, 1A
+// + 2A): Smaller files / Standard / Best (and Custom once a number is changed) as rows you
+// compare, each with what it records and MB a minute; an Advanced fold with the size, frame
+// rate and bit rate as numbers, and whatever the page adds after them (This PC's Encoder).
+// Rust works out every text; this only shows them and says what was pressed.
+import { Theme, Screen } from "../theme.slint";
+import { ChoiceRow, ChoiceChips, GhostButton, Icon, KeyPress, TextLink } from "../widgets.slint";
+import { QualityRow } from "../globals.slint";
+
+component Label inherits Text {
+    color: Theme.ink;
+    font-family: Theme.body;
+    font-size: 13px;
+    vertical-alignment: center;
+}
+
+export component QualityChoice inherits VerticalLayout {
+    in property <[QualityRow]> rows;
+    in property <int> current;
+    // Under the rows: the disk space it keeps while running, or why it stepped back (warn).
+    in property <string> note;
+    in property <bool> note-warn;
+    in-out property <bool> open;
+    // Beside "Advanced" while it's shut: "size, frame rate, bit rate, encoder".
+    in property <string> summary;
+    // Custom is picked: "Back to Standard" shows.
+    in property <bool> custom;
+    in property <[string]> sizes;
+    in property <int> size;
+    in property <[string]> rates;
+    in property <int> rate;
+    in property <int> mbps;
+    // This PC's Encoder chips (none on the Phone tab), and the line under them.
+    in property <[string]> encoders;
+    in-out property <int> encoder;
+    in property <string> encoder-hint;
+    callback encoder-picked();
+    callback pick(int);
+    callback size-picked(int);
+    callback rate-picked(int);
+    // −1 / +1: a step down or up.
+    callback mbps-step(int);
+    callback back();
+    spacing: 0px;
+    alignment: start;
+
+    for r[i] in root.rows: ChoiceRow {
+        title: r.name;
+        hint: r.hint;
+        value: r.value;
+        // The hint whole, under the name: it's what tells the choices apart.
+        stacked: true;
+        selected: root.current == i;
+        clicked => { root.pick(i); }
+    }
+    if root.note != "": VerticalLayout {
+        padding-top: 6px;
+        Text {
+            text: root.note;
+            color: root.note-warn ? Theme.warn : Theme.muted;
+            font-family: Theme.body;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+    }
+    Rectangle { height: 8px; }
+    HorizontalLayout {
+        spacing: 8px;
+        head := Rectangle {
+            horizontal-stretch: 1;
+            height: 30px;
+            accessible-role: button;
+            accessible-label: (root.open ? "Hide" : "Show") + " advanced quality options";
+            accessible-action-default => { root.open = !root.open; }
+            KeyPress {
+                radius: 6px;
+                activated => { root.open = !root.open; }
+            }
+            ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.open = !root.open; }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Icon {
+                    horizontal-stretch: 0;
+                    text: root.open ? "\u{E70E}" : "\u{E70D}";
+                    font-size: 11px;
+                    color: ta.has-hover ? Theme.ink : Theme.muted;
+                }
+                Text {
+                    horizontal-stretch: 0;
+                    text: "Advanced";
+                    color: ta.has-hover ? Theme.ink : Theme.muted;
+                    font-size: 13px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.open || Screen.compact ? "" : root.summary;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+        if root.custom: TextLink {
+            horizontal-stretch: 0;
+            text: "Back to Standard";
+            clicked => { root.back(); }
+        }
+    }
+    if root.open: HorizontalLayout {
+        padding-left: 5px;
+        padding-top: 4px;
+        spacing: 14px;
+        Rectangle {
+            width: 2px;
+            background: Theme.line;
+        }
+        VerticalLayout {
+            spacing: 10px;
+            padding-top: 2px;
+            padding-bottom: 2px;
+            VerticalLayout {
+                spacing: 6px;
+                Label { text: "Size"; }
+                ChoiceChips {
+                    options: root.sizes;
+                    current: root.size;
+                    changed => { root.size-picked(self.current); }
+                }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                Label { text: "Frame rate"; }
+                ChoiceChips {
+                    options: root.rates;
+                    current: root.rate;
+                    changed => { root.rate-picked(self.current); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Label {
+                    text: "Bit rate";
+                    width: 70px;
+                }
+                GhostButton {
+                    compact: true;
+                    icon: "\u{E738}";
+                    label: "Lower bit rate";
+                    clicked => { root.mbps-step(-1); }
+                }
+                Text {
+                    text: root.mbps;
+                    color: Theme.ink;
+                    font-family: Theme.mono;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    min-width: 26px;
+                    accessible-role: text;
+                    accessible-label: "Bit rate " + root.mbps + " megabits a second";
+                }
+                GhostButton {
+                    compact: true;
+                    icon: "\u{E710}";
+                    label: "Higher bit rate";
+                    clicked => { root.mbps-step(1); }
+                }
+                Text {
+                    text: "Mbit/s";
+                    color: Theme.muted;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+            if root.encoders.length > 0: VerticalLayout {
+                spacing: 6px;
+                Label { text: "Encoder"; }
+                ChoiceChips {
+                    options: root.encoders;
+                    current <=> root.encoder;
+                    changed => { root.encoder-picked(); }
+                }
+            }
+            if root.encoders.length > 0 && root.encoder-hint != "": Text {
+                text: root.encoder-hint;
+                color: Theme.muted;
+                font-family: Theme.body;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+        }
+    }
+}

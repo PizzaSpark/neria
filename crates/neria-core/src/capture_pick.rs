@@ -18,6 +18,8 @@ pub struct Monitor {
     pub name: String,
     pub width: u32,
     pub height: u32,
+    /// How many times a second it shows a new picture (60, 144…; 60 when Windows won't say).
+    pub hz: u32,
     /// Windows' main screen (top-left at 0, 0).
     pub main: bool,
     /// Windows' handle for it (`HMONITOR`), to find the screen a window is on.
@@ -151,6 +153,14 @@ pub fn window_open(exe: &str) -> bool {
     imp::windows().iter().any(|w| w.exe.eq_ignore_ascii_case(exe))
 }
 
+/// The size of `exe`'s biggest window in real pixels, and the refresh rate of the screen it's
+/// on (what the Quality choice works from when a game is recorded).
+pub fn window_size(exe: &str) -> Option<((u32, u32), u32)> {
+    let w = imp::windows().into_iter().filter(|w| w.exe.eq_ignore_ascii_case(exe)).max_by_key(|w| w.area)?;
+    let hz = imp::monitors().into_iter().find(|m| m.handle == w.monitor).map(|m| m.hz).unwrap_or(60);
+    Some((w.size, hz))
+}
+
 /// The monitors `ddagrab` can record, in its order.
 pub fn monitors() -> Vec<Monitor> {
     imp::monitors()
@@ -162,6 +172,9 @@ struct Win {
     title: String,
     pid: u32,
     area: i64,
+    /// Its size, and the screen it's on (`Monitor::handle`).
+    size: (u32, u32),
+    monitor: isize,
     covers_screen: bool,
 }
 
@@ -221,7 +234,11 @@ mod imp {
         let mut pid = 0u32;
         unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
         let game = (pid != std::process::id())
-            .then(|| windows().into_iter().find(|w| w.pid == pid && w.covers_screen || w.pid == pid && in_games_folder(&w.path)))
+            .then(|| {
+                windows()
+                    .into_iter()
+                    .find(|w| w.pid == pid && w.covers_screen || w.pid == pid && in_games_folder(&w.path))
+            })
             .flatten()
             .filter(|w| !SKIP.contains(&w.exe.to_ascii_lowercase().as_str()))
             .map(|w| Program { name: tidy(&w.title, &w.exe), exe: w.exe, game: true });
@@ -274,7 +291,16 @@ mod imp {
                     && rect.top <= info.rcMonitor.top
                     && rect.right >= info.rcMonitor.right
                     && rect.bottom >= info.rcMonitor.bottom;
-                out.push(Win { exe, path, title: wide(&title[..n as usize]), pid, area: w * h, covers_screen });
+                out.push(Win {
+                    exe,
+                    path,
+                    title: wide(&title[..n as usize]),
+                    pid,
+                    area: w * h,
+                    size: (w as u32, h as u32),
+                    monitor: mon.0 as isize,
+                    covers_screen,
+                });
             }
         }
         out
@@ -335,6 +361,14 @@ mod imp {
             }
         }
         names
+    }
+
+    /// The screen's refresh rate, from its GDI name (`\.\DISPLAY1`).
+    fn refresh(device: &[u16; 32]) -> u32 {
+        use windows::Win32::Graphics::Gdi::{DEVMODEW, ENUM_CURRENT_SETTINGS, EnumDisplaySettingsW};
+        let mut dm = DEVMODEW { dmSize: std::mem::size_of::<DEVMODEW>() as u16, ..Default::default() };
+        let ok = unsafe { EnumDisplaySettingsW(windows_core::PCWSTR(device.as_ptr()), ENUM_CURRENT_SETTINGS, &mut dm) };
+        if ok.as_bool() && dm.dmDisplayFrequency > 1 { dm.dmDisplayFrequency } else { 60 }
     }
 
     /// Coordinates in real pixels whatever the process says about its DPI; back after.
@@ -403,6 +437,7 @@ mod imp {
                             name,
                             width: (r.right - r.left).max(0) as u32,
                             height: (r.bottom - r.top).max(0) as u32,
+                            hz: refresh(&d.DeviceName),
                             main: r.left == 0 && r.top == 0,
                         });
                     }

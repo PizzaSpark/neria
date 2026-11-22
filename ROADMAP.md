@@ -221,12 +221,18 @@ so they get built together.
    the stream's description or the channel's, the same name live elsewhere with a matching
    title) and the other chat is offered with one click ("Also live on Twitch · Add its
    chat"), using the "+" that reads a second chat today; Speech to text extras (burned-in captions,
-   translate); Spotify's own-key path and playlists over 100 songs (Music 4); **a Quality
-   choice for capture** (asked about 2026-11-22, instead of OBS-style CBR / rate-control
-   knobs): Smaller files / Standard / Best on both Capture tabs (This PC and Phone), Neria
-   picking bit rate, size and frame rate under it; an Advanced fold with bit rate and frame
-   rate as numbers. The phone only takes bit rate, size, frame rate and codec through scrcpy
-   (forcing CBR means pushing its encoder, which some phones choke on). Mock first
+   translate); Spotify's own-key path and playlists over 100 songs (Music 4).
+   ✅ **A Quality choice for capture** (built 2026-11-23, mock `design/capture-quality.html`,
+   instead of OBS-style CBR / rate-control knobs): Smaller files / Standard / Best as rows on
+   both Capture tabs, each with what it records and MB a minute for what's picked; Advanced
+   with size, frame rate, bit rate (Custom, Back to Standard) and This PC's Encoder moved in.
+   Standard is what recorded before (16 Mbit/s at 1440p60; the phone 8 Mbit/s at 60 fps);
+   Smaller files scales to 1080p on the graphics card (Windows' own capture, `gfxcapture`:
+   `scale_d3d11` won't take `ddagrab`'s frames); Best is 120 fps on a 120 Hz+ screen; the
+   phone steps back from Best to Standard when its picture stalls. Checked headless on the
+   laptop's 1440p 165 Hz screen (1920 × 1080 / 2560 × 1440 / 1440p120). Left: the sizes
+   compared on the same game moment at each choice, a real game, AMD (untested here; a route
+   that can't scale records full size), the phone on Best
 8. **Bigger ideas** (section "Later"), in this order: browser extension, Library page,
    command palette, Audio tools page, saved workflows, external tools
 9. **Before the mobile build**, once everything above is done:

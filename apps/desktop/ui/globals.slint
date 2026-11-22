@@ -875,6 +875,14 @@ export global Voice {
     callback show();
 }
 
+// One Quality choice (Capture page, both tabs): "Smaller files", what it records
+// ("1080p · 60 fps"), what a minute takes ("≈ 45 MB / min").
+export struct QualityRow {
+    name: string,
+    hint: string,
+    value: string,
+}
+
 // Something instant replay can record: a game or another program's window, or a monitor.
 export struct CaptureSource {
     // "w:VALORANT-Win64-Shipping.exe" or "m:DELL U2720Q".
@@ -954,6 +962,24 @@ export global Capture {
     in property <bool> picking-key;
     in property <string> key-problem;
     in-out property <bool> at-start;
+    // Quality (components/quality-choice.slint): the rows (Custom only once set), the picked
+    // one, the line under them, the Advanced fold's size / frame rate chips and bit rate.
+    in property <[QualityRow]> quality-rows;
+    in property <int> quality;
+    in property <string> quality-note;
+    in property <bool> quality-warn;
+    in-out property <bool> quality-open;
+    in property <bool> quality-custom;
+    in property <[string]> q-sizes;
+    in property <int> q-size;
+    in property <[string]> q-rates;
+    in property <int> q-rate;
+    in property <int> q-mbps;
+    callback quality-pick(int);
+    callback quality-size(int);
+    callback quality-rate(int);
+    callback quality-mbps(int);
+    callback quality-back();
     // Which encoder records: "Automatic (NVIDIA)", then this PC's chips, "CPU".
     in property <[string]> encoders;
     in-out property <int> encoder;
@@ -1059,6 +1085,24 @@ export global Phone {
     in-out property <bool> show-taps;
     // "F8": the save key clips here too.
     in property <string> save-key: "F8";
+    // Quality (components/quality-choice.slint): the rows (Custom only once set), the picked
+    // one, the line under them, the Advanced fold's size / frame rate chips and bit rate.
+    in property <[QualityRow]> quality-rows;
+    in property <int> quality;
+    in property <string> quality-note;
+    in property <bool> quality-warn;
+    in-out property <bool> quality-open;
+    in property <bool> quality-custom;
+    in property <[string]> q-sizes;
+    in property <int> q-size;
+    in property <[string]> q-rates;
+    in property <int> q-rate;
+    in property <int> q-mbps;
+    callback quality-pick(int);
+    callback quality-size(int);
+    callback quality-rate(int);
+    callback quality-mbps(int);
+    callback quality-back();
     callback get-tools();
     callback add-phone();
     callback back();

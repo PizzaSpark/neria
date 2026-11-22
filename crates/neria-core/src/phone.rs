@@ -169,7 +169,8 @@ pub fn start_server() -> Result<()> {
 /// Stop Neria's adb server (on quit and before replacing the tools). Never touches another
 /// adb's server.
 pub fn stop_server() {
-    if adb_exe().is_file() && TcpStream::connect_timeout(&([127, 0, 0, 1], ADB_PORT).into(), Duration::from_millis(200)).is_ok()
+    if adb_exe().is_file()
+        && TcpStream::connect_timeout(&([127, 0, 0, 1], ADB_PORT).into(), Duration::from_millis(200)).is_ok()
     {
         let _ = adb_out(&["kill-server"], Duration::from_secs(5));
     }
@@ -213,8 +214,18 @@ pub fn parse_devices(text: &str) -> Vec<Device> {
         .filter_map(|l| {
             // A serial can hold a space ("adb-…-shbQqu (2)._adb-tls-connect._tcp" when the
             // phone announced itself twice): it runs up to the state word.
-            const STATES: [&str; 10] =
-                ["device", "unauthorized", "offline", "authorizing", "connecting", "recovery", "sideload", "bootloader", "host", "unknown"];
+            const STATES: [&str; 10] = [
+                "device",
+                "unauthorized",
+                "offline",
+                "authorizing",
+                "connecting",
+                "recovery",
+                "sideload",
+                "bootloader",
+                "host",
+                "unknown",
+            ];
             let words: Vec<&str> = l.split_whitespace().collect();
             let at = words.iter().skip(1).position(|w| STATES.contains(w) || *w == "no").map(|i| i + 1).unwrap_or(1);
             let serial = words[..at].join(" ");
@@ -255,7 +266,8 @@ pub fn info(serial: &str) -> Result<Info> {
 
 impl Info {
     fn from_props(market: &str, marketing: &str, model: &str, android: &str, sdk: &str, id: &str, maker: &str) -> Info {
-        let mut name = [market, marketing, model].into_iter().find(|s| !s.is_empty()).unwrap_or("Android phone").to_string();
+        let mut name =
+            [market, marketing, model].into_iter().find(|s| !s.is_empty()).unwrap_or("Android phone").to_string();
         // "SM-S911B" says nothing; "Samsung SM-S911B" a little more.
         let codey = name.chars().any(|c| c.is_ascii_digit()) && !name.contains(' ');
         if codey && !maker.is_empty() && !name.to_lowercase().starts_with(&maker.to_lowercase()) {
@@ -295,6 +307,55 @@ pub struct Prefs {
     /// Seconds "Clip the last" saves, and how much is kept.
     pub clip: u32,
     pub keep: u32,
+    /// The picture's Quality: "smaller", "standard", "best" or "custom" (`capture::Quality`,
+    /// the same words as This PC). Custom asks for `max_size`, `fps` and `mbps` as they are.
+    pub quality: String,
+    pub max_size: u32,
+    pub fps: u32,
+    pub mbps: u32,
+}
+
+/// What the phone is asked for: its picture's longer side (0: as the phone is), frames a
+/// second and Mbit/s. Only these reach a phone through scrcpy (no rate control: pushing a
+/// phone's encoder to a constant rate stalls some).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Look {
+    pub max_size: u32,
+    pub fps: u32,
+    pub mbps: u32,
+}
+
+impl Look {
+    /// About how many MB a minute a recording or a save takes, rounded to 5.
+    pub fn mb_per_min(&self) -> u32 {
+        let mb = self.mbps as f64 * 7.5 + 1.2;
+        ((mb / 5.0).round() * 5.0).max(5.0) as u32
+    }
+}
+
+/// The phone's picture for each Quality: Standard is what the mirror always asked for.
+pub fn quality_look(q: crate::capture::Quality) -> Look {
+    use crate::capture::Quality;
+    match q {
+        Quality::Smaller => Look { max_size: 1280, fps: 30, mbps: 3 },
+        Quality::Best => Look { max_size: 0, fps: 120, mbps: 16 },
+        _ => Look { max_size: 0, fps: 60, mbps: 8 },
+    }
+}
+
+impl Prefs {
+    pub fn quality(&self) -> crate::capture::Quality {
+        crate::capture::Quality::from_name(&self.quality)
+    }
+
+    pub fn look(&self) -> Look {
+        match self.quality() {
+            crate::capture::Quality::Custom => {
+                Look { max_size: self.max_size, fps: self.fps.max(1), mbps: self.mbps.max(1) }
+            }
+            q => quality_look(q),
+        }
+    }
 }
 
 impl Default for Prefs {
@@ -309,6 +370,10 @@ impl Default for Prefs {
             present_smooth: true,
             clip: 30,
             keep: 60,
+            quality: "standard".into(),
+            max_size: 0,
+            fps: 60,
+            mbps: 8,
         }
     }
 }
@@ -500,7 +565,8 @@ pub fn qr(text: &str) -> Result<(usize, Vec<bool>)> {
 /// Pair with a phone (`adb pair`): the QR's password, or the 6 digits it shows.
 pub fn pair(addr: &str, code: &str) -> Result<()> {
     let code: String = code.chars().filter(|c| !c.is_whitespace()).collect();
-    let out = adb_out(&["pair", addr, &code], Duration::from_secs(30)).map_err(|e| anyhow::anyhow!(explain_pair(&e.to_string())))?;
+    let out = adb_out(&["pair", addr, &code], Duration::from_secs(30))
+        .map_err(|e| anyhow::anyhow!(explain_pair(&e.to_string())))?;
     if !out.contains("Successfully paired") {
         bail!("{}", explain_pair(&out));
     }
@@ -521,11 +587,7 @@ fn explain_pair(out: &str) -> String {
 /// Connect to a paired phone's Wireless debugging (`adb connect`), when adb hasn't by itself.
 pub fn connect(addr: &str) -> Result<()> {
     let out = adb_out(&["connect", addr], Duration::from_secs(8))?;
-    if out.contains("connected to") {
-        Ok(())
-    } else {
-        bail!("{}", out.trim())
-    }
+    if out.contains("connected to") { Ok(()) } else { bail!("{}", out.trim()) }
 }
 
 /// Connect each remembered phone that has Wireless debugging on, once, unless it's `held`
@@ -540,7 +602,9 @@ pub fn reconnect(devices: &[Device], held: &[String]) -> Vec<String> {
     let mut done = Vec::new();
     for s in services().unwrap_or_default().into_iter().filter(|s| s.kind == Kind::Connect) {
         let Some(id) = s.phone_id().map(str::to_string) else { continue };
-        let here = devices.iter().any(|d| d.serial.starts_with(&format!("adb-{id}-")) || d.serial.starts_with(&format!("{}:", s.ip())));
+        let here = devices
+            .iter()
+            .any(|d| d.serial.starts_with(&format!("adb-{id}-")) || d.serial.starts_with(&format!("{}:", s.ip())));
         if !known.contains(&id) || held.contains(&id) || here || done.contains(&id) || refused.contains(&id) {
             continue;
         }
@@ -568,13 +632,23 @@ pub fn other_way(devices: &[Device], id: &str, wifi: bool) -> Option<String> {
         return None;
     }
     let mut ready = devices.iter().filter(|d| d.state == State::Ready && d.wifi == wifi);
-    ready.find(|d| d.serial == id || d.serial.starts_with(&format!("adb-{id}-")) || (wifi && info(&d.serial).is_ok_and(|i| i.id == id)))
+    ready
+        .find(|d| {
+            d.serial == id
+                || d.serial.starts_with(&format!("adb-{id}-"))
+                || (wifi && info(&d.serial).is_ok_and(|i| i.id == id))
+        })
         .map(|d| d.serial.clone())
 }
 
 /// Remembered phones Neria can see on the Wi-Fi now (Wireless debugging on), by id.
 pub fn visible_ids() -> Vec<String> {
-    services().unwrap_or_default().iter().filter(|s| s.kind == Kind::Connect).filter_map(|s| s.phone_id().map(str::to_string)).collect()
+    services()
+        .unwrap_or_default()
+        .iter()
+        .filter(|s| s.kind == Kind::Connect)
+        .filter_map(|s| s.phone_id().map(str::to_string))
+        .collect()
 }
 
 /// Connect one remembered phone now (its Connect button).
@@ -582,7 +656,9 @@ pub fn connect_id(id: &str) -> Result<()> {
     let svc = services()?.into_iter().find(|s| s.kind == Kind::Connect && s.phone_id() == Some(id));
     match svc {
         Some(s) => connect(&s.addr).map_err(|_| {
-            anyhow::anyhow!("The phone didn't let Neria in. If this PC was removed on the phone, pair it again: Add a phone.")
+            anyhow::anyhow!(
+                "The phone didn't let Neria in. If this PC was removed on the phone, pair it again: Add a phone."
+            )
         }),
         None => bail!("The phone isn't on this Wi-Fi with Wireless debugging on."),
     }
@@ -598,7 +674,8 @@ pub fn wait_connected(ip: &str, timeout: Duration) -> Result<Device> {
         let connect = svcs.iter().find(|s| s.kind == Kind::Connect && s.ip() == ip);
         if let Some(d) = devs.iter().find(|d| {
             d.state == State::Ready
-                && (d.serial.starts_with(&format!("{ip}:")) || connect.is_some_and(|c| d.serial.starts_with(&c.instance)))
+                && (d.serial.starts_with(&format!("{ip}:"))
+                    || connect.is_some_and(|c| d.serial.starts_with(&c.instance)))
         }) {
             return Ok(d.clone());
         }
@@ -635,7 +712,9 @@ pub fn problem(d: &Device) -> Option<&'static str> {
     match d.state {
         State::Ready => None,
         State::Unauthorized => Some("Tap \"Allow\" on your phone (tick \"Always allow from this computer\")."),
-        State::Offline => Some("The phone stopped answering. Unplug it and plug it back in, or turn Wireless debugging off and on."),
+        State::Offline => {
+            Some("The phone stopped answering. Unplug it and plug it back in, or turn Wireless debugging off and on.")
+        }
         State::Other(_) => Some("The phone isn't ready yet. Unlock it and wait a moment."),
     }
 }
@@ -724,14 +803,21 @@ pub fn open_window(serial: &str, o: &WindowOptions) -> Result<Child> {
 /// manual for a moment, then automatic again). The setting ends as it was.
 pub fn wake_backlight(serial: &str) -> Result<()> {
     let get = |k: &str| -> Option<i32> {
-        adb_out(&["-s", serial, "shell", "settings", "get", "system", k], Duration::from_secs(5)).ok()?.trim().parse().ok()
+        adb_out(&["-s", serial, "shell", "settings", "get", "system", k], Duration::from_secs(5))
+            .ok()?
+            .trim()
+            .parse()
+            .ok()
     };
     let level = get("screen_brightness").unwrap_or(128);
     let auto = get("screen_brightness_mode") == Some(1);
     let step = if level >= 255 { level - 1 } else { level + 1 };
-    let mut cmd = format!("settings put system screen_brightness {step}; settings put system screen_brightness {level}");
+    let mut cmd =
+        format!("settings put system screen_brightness {step}; settings put system screen_brightness {level}");
     if auto {
-        cmd = format!("settings put system screen_brightness_mode 0; {cmd}; settings put system screen_brightness_mode 1");
+        cmd = format!(
+            "settings put system screen_brightness_mode 0; {cmd}; settings put system screen_brightness_mode 1"
+        );
     }
     adb_out(&["-s", serial, "shell", &cmd], Duration::from_secs(5))?;
     Ok(())
@@ -739,7 +825,10 @@ pub fn wake_backlight(serial: &str) -> Result<()> {
 
 /// Show taps on the phone now (Android's "Show taps"), not only the next time something starts.
 pub fn set_show_touches(serial: &str, on: bool) -> Result<()> {
-    adb_out(&["-s", serial, "shell", "settings", "put", "system", "show_touches", if on { "1" } else { "0" }], Duration::from_secs(5))?;
+    adb_out(
+        &["-s", serial, "shell", "settings", "put", "system", "show_touches", if on { "1" } else { "0" }],
+        Duration::from_secs(5),
+    )?;
     Ok(())
 }
 
@@ -792,6 +881,11 @@ impl Default for Options {
 }
 
 impl Options {
+    /// The picture a Quality asks for.
+    pub fn with_look(self, l: Look) -> Options {
+        Options { max_size: l.max_size, max_fps: l.fps, bit_rate: l.mbps * 1_000_000, ..self }
+    }
+
     /// Sound only: no picture, no control.
     pub fn sound_only() -> Options {
         Options { video: false, control: false, keep_on_phone: true, ..Options::default() }
@@ -847,8 +941,16 @@ impl Options {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Packet {
     /// A new capture session (start, rotation): the picture's size.
-    Session { width: u32, height: u32 },
-    Media { config: bool, key: bool, pts: u64, data: Vec<u8> },
+    Session {
+        width: u32,
+        height: u32,
+    },
+    Media {
+        config: bool,
+        key: bool,
+        pts: u64,
+        data: Vec<u8>,
+    },
 }
 
 /// Read one packet (the 12-byte header, then the payload).
@@ -1113,9 +1215,10 @@ impl Feed {
             return;
         }
         let header = if key && fan.clients.iter().any(|c| c.need_key) {
-            fan.mkv.as_ref().zip(fan.config.as_deref().and_then(mkv::avcc)).map(|(m, avcc)| {
-                Arc::from(mkv::header(Some((&avcc, m.width, m.height)), m.audio)) as Chunk
-            })
+            fan.mkv
+                .as_ref()
+                .zip(fan.config.as_deref().and_then(mkv::avcc))
+                .map(|(m, avcc)| Arc::from(mkv::header(Some((&avcc, m.width, m.height)), m.audio)) as Chunk)
         } else {
             None
         };
@@ -1154,7 +1257,6 @@ impl Feed {
     fn close(&self) {
         self.0.lock().unwrap().clients.clear();
     }
-
 }
 
 /// Milliseconds since the stream's first time.
@@ -1390,10 +1492,27 @@ pub mod key {
 
 /// A control message (big-endian, scrcpy's `ControlMessageReader`).
 pub enum Control {
-    Key { down: bool, code: i32, meta: i32 },
+    Key {
+        down: bool,
+        code: i32,
+        meta: i32,
+    },
     Text(String),
-    Touch { action: Touch, x: i32, y: i32, w: u16, h: u16 },
-    Scroll { x: i32, y: i32, w: u16, h: u16, dx: f32, dy: f32 },
+    Touch {
+        action: Touch,
+        x: i32,
+        y: i32,
+        w: u16,
+        h: u16,
+    },
+    Scroll {
+        x: i32,
+        y: i32,
+        w: u16,
+        h: u16,
+        dx: f32,
+        dy: f32,
+    },
     /// The phone's screen on or off (mirroring goes on).
     ScreenPower(bool),
     Rotate,
@@ -1536,9 +1655,12 @@ impl Session {
         proc::end_with_neria(&child);
         // The server's own lines: kept for a plain error when it fails.
         let log = Arc::new(Mutex::new(Vec::<String>::new()));
-        for out in [child.stdout.take().map(|o| Box::new(o) as Box<dyn Read + Send>), child.stderr.take().map(|e| Box::new(e) as _)]
-            .into_iter()
-            .flatten()
+        for out in [
+            child.stdout.take().map(|o| Box::new(o) as Box<dyn Read + Send>),
+            child.stderr.take().map(|e| Box::new(e) as _),
+        ]
+        .into_iter()
+        .flatten()
         {
             let log = log.clone();
             std::thread::spawn(move || {
@@ -1578,7 +1700,13 @@ impl Session {
 
     /// Connect to a server listening (through a tunnel) on `port`: the sockets in order,
     /// the dummy byte and the name on the first. Also used with the fake phone.
-    pub fn connect(port: u16, serial: &str, options: Options, server: Option<Child>, forward: Option<u16>) -> Result<Session> {
+    pub fn connect(
+        port: u16,
+        serial: &str,
+        options: Options,
+        server: Option<Child>,
+        forward: Option<u16>,
+    ) -> Result<Session> {
         let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
         // The server takes a moment to listen; until then adb accepts and closes at once.
         let mut first = None;
@@ -1855,14 +1983,30 @@ impl Session {
         let res = proc::command(paths::tool("ffmpeg"))
             // A still screen sends little: don't wait to read megabytes first (the reader
             // starts at a key frame with its SPS, which is all there is to know).
-            .args(["-hide_banner", "-v", "error", "-y", "-probesize", "32", "-analyzeduration", "0", "-f", "h264", "-i", &v.url()])
+            .args([
+                "-hide_banner",
+                "-v",
+                "error",
+                "-y",
+                "-probesize",
+                "32",
+                "-analyzeduration",
+                "0",
+                "-f",
+                "h264",
+                "-i",
+                &v.url(),
+            ])
             .args(["-frames:v", "1", "-update", "1"])
             .arg(out)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .output()?;
         if !res.status.success() || !out.is_file() {
-            bail!("Couldn't take the screenshot: {}", String::from_utf8_lossy(&res.stderr).lines().last().unwrap_or(""));
+            bail!(
+                "Couldn't take the screenshot: {}",
+                String::from_utf8_lossy(&res.stderr).lines().last().unwrap_or("")
+            );
         }
         Ok(())
     }
@@ -1932,7 +2076,12 @@ struct Ffmpeg {
 
 impl Ffmpeg {
     fn spawn(mut cmd: Command) -> Result<Ffmpeg> {
-        let mut child = cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().context("failed to start ffmpeg")?;
+        let mut child = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("failed to start ffmpeg")?;
         proc::end_with_neria(&child);
         let errors = Arc::new(Mutex::new(String::new()));
         if let Some(mut e) = child.stderr.take() {
@@ -2232,7 +2381,12 @@ mod imp {
     const RATE: u32 = 48_000;
     const FRAME: usize = 4;
 
-    pub fn play(rx: Receiver<Chunk>, vol: Arc<AtomicU32>, stop: Arc<AtomicBool>, ok: &std::sync::mpsc::Sender<std::result::Result<(), String>>) -> Result<()> {
+    pub fn play(
+        rx: Receiver<Chunk>,
+        vol: Arc<AtomicU32>,
+        stop: Arc<AtomicBool>,
+        ok: &std::sync::mpsc::Sender<std::result::Result<(), String>>,
+    ) -> Result<()> {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
             let en: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
@@ -2294,7 +2448,12 @@ mod imp {
 #[cfg(not(windows))]
 mod imp {
     use super::*;
-    pub fn play(_: Receiver<Chunk>, _: Arc<AtomicU32>, _: Arc<AtomicBool>, _: &std::sync::mpsc::Sender<std::result::Result<(), String>>) -> Result<()> {
+    pub fn play(
+        _: Receiver<Chunk>,
+        _: Arc<AtomicU32>,
+        _: Arc<AtomicBool>,
+        _: &std::sync::mpsc::Sender<std::result::Result<(), String>>,
+    ) -> Result<()> {
         bail!("not on this system")
     }
 }
@@ -2416,7 +2575,9 @@ pub mod fake {
             while !stop.load(Ordering::SeqCst) {
                 let (key, unit) = &units[(n as usize) % units.len()];
                 let pts = n * 1_000_000 / fps as u64;
-                if write_packet(&mut video, &Packet::Media { config: false, key: *key, pts, data: unit.clone() }).is_err() {
+                if write_packet(&mut video, &Packet::Media { config: false, key: *key, pts, data: unit.clone() })
+                    .is_err()
+                {
                     return;
                 }
                 n += 1;
@@ -2445,7 +2606,10 @@ mod tests {
         assert_eq!(d.len(), 4);
         assert_eq!(d[3].serial, "adb-VOUSK-shbQqu (2)._adb-tls-connect._tcp");
         assert!(d[3].wifi && d[3].state == State::Ready && d[3].model == "2412DPC0AG");
-        assert_eq!(d[0], Device { serial: "R58M12345".into(), state: State::Ready, model: "SM G973F".into(), wifi: false });
+        assert_eq!(
+            d[0],
+            Device { serial: "R58M12345".into(), state: State::Ready, model: "SM G973F".into(), wifi: false }
+        );
         assert!(d[1].wifi && d[1].model == "Pixel 7");
         assert_eq!(d[2].state, State::Unauthorized);
         assert!(problem(&d[2]).unwrap().contains("Allow"));
@@ -2514,6 +2678,12 @@ mod tests {
 
     #[test]
     fn server_args() {
+        // Standard is what the mirror always asked for.
+        let std = Options::default().with_look(quality_look(crate::capture::Quality::Standard));
+        assert_eq!((std.max_size, std.max_fps, std.bit_rate), (0, 60, 8_000_000));
+        let small = Options::default().with_look(quality_look(crate::capture::Quality::Smaller)).server_args(1);
+        assert!(small.contains(&"max_size=1280".to_string()) && small.contains(&"max_fps=30".to_string()));
+        assert_eq!(quality_look(crate::capture::Quality::Best).mb_per_min(), 120);
         let a = Options::default().server_args(0x1234);
         assert!(a.contains(&"scid=00001234".to_string()));
         assert!(a.contains(&"audio_codec=raw".to_string()));
@@ -2552,7 +2722,10 @@ mod tests {
         let got: Vec<Vec<u8>> = rx.try_iter().map(|c| c.to_vec()).collect();
         assert_eq!(got, vec![b"cfg".to_vec(), b"k1".to_vec(), b"p1".to_vec(), b"p2".to_vec()]);
         let a = Options { plain: true, audio: false, ..Options::default() }.server_args(1);
-        assert!(!a.iter().any(|x| x.starts_with("video_codec_options") || x.starts_with("max_size") || x.starts_with("max_fps")));
+        assert!(
+            !a.iter()
+                .any(|x| x.starts_with("video_codec_options") || x.starts_with("max_size") || x.starts_with("max_fps"))
+        );
         stop.store(true, Ordering::SeqCst);
     }
 

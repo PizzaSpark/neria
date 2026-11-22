@@ -17,14 +17,17 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use glow::HasContext;
-use neria_core::phone::{self, Control, Device, Info, Options, Pairing, PhoneBuffer, Place, Recording, Session, Speaker, State, Touch};
+use neria_core::phone::{
+    self, Control, Device, Info, Options, Pairing, PhoneBuffer, Place, Recording, Session, Speaker, State, Touch,
+};
 use neria_core::settings::Settings;
-use neria_core::{folders, fmt, hotkey, paths, proc};
+use neria_core::{fmt, folders, hotkey, paths, proc};
 use neria_player::{GlRenderer, Mpv};
-use slint::{ComponentHandle, Model, ModelRc, SharedPixelBuffer, Timer, TimerMode, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel};
 
 use crate::clipper::{Target, make_target};
-use crate::{AppWindow, Phone, PhoneRow};
+use crate::{AppWindow, Phone, PhoneRow, QualityRow};
+use neria_core::capture::Quality;
 
 /// The Phone tab's states (`Phone.state`).
 mod st {
@@ -59,6 +62,10 @@ struct Ui {
     usb_offer: Option<String>,
     /// "Not now" to the cable, for this time mirroring.
     usb_declined: bool,
+    /// Mirroring started on Best (watched for the phone's picture stalling), and Best was too
+    /// much for this phone this time (mirroring on Standard until the next start by hand).
+    on_best: bool,
+    stepped_back: bool,
     /// Looking at what adb sees while mirroring (off the UI thread).
     watching: bool,
     /// Said once mirroring starts again ("Cable unplugged: mirroring over Wi-Fi now").
@@ -252,6 +259,39 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         let weak = ui.as_weak();
         move || changed(&weak.unwrap())
     });
+    p.on_quality_pick({
+        let weak = ui.as_weak();
+        move |i| {
+            let q = Quality::ALL.get(i.max(0) as usize).copied().unwrap_or_default();
+            save_prefs(|p| p.quality = q.name().into());
+            quality_changed(&weak.unwrap());
+        }
+    });
+    p.on_quality_size({
+        let weak = ui.as_weak();
+        move |i| {
+            let h = SIZES.get(i.max(0) as usize).copied().unwrap_or(0);
+            set_custom(&weak.unwrap(), |l| l.max_size = h);
+        }
+    });
+    p.on_quality_rate({
+        let weak = ui.as_weak();
+        move |i| {
+            let fps = RATES.get(i.max(0) as usize).copied().unwrap_or(60);
+            set_custom(&weak.unwrap(), |l| l.fps = fps);
+        }
+    });
+    p.on_quality_mbps({
+        let weak = ui.as_weak();
+        move |d| set_custom(&weak.unwrap(), |l| l.mbps = crate::capture_ui::step_mbps(l.mbps, d))
+    });
+    p.on_quality_back({
+        let weak = ui.as_weak();
+        move || {
+            save_prefs(|p| p.quality = Quality::Standard.name().into());
+            quality_changed(&weak.unwrap());
+        }
+    });
     p.on_volume_changed({
         let weak = ui.as_weak();
         move || {
@@ -320,6 +360,91 @@ fn show_prefs(ui: &AppWindow) {
     p.set_on_top(pr.on_top);
     p.set_show_taps(pr.show_taps);
     p.set_save_key(crate::capture_ui::save_key().into());
+    show_quality(ui);
+}
+
+/// Advanced's Size chips (the picture's longer side, 0: as the phone is) and frame rates.
+const SIZES: [u32; 3] = [0, 1920, 1280];
+const RATES: [u32; 3] = [30, 60, 120];
+
+/// "1280 tall · 30 fps · for slow Wi-Fi".
+fn quality_hint(q: Quality, l: &phone::Look) -> String {
+    let mut parts = vec![if l.max_size == 0 { "As the phone".to_string() } else { format!("{} tall", l.max_size) }];
+    parts.push(format!("{} fps", l.fps));
+    match q {
+        Quality::Smaller => parts.push("for slow Wi-Fi".into()),
+        Quality::Best => parts.push("for games".into()),
+        Quality::Custom => parts.push(format!("{} Mbit/s", l.mbps)),
+        Quality::Standard => {}
+    }
+    parts.join(" · ")
+}
+
+fn show_quality(ui: &AppWindow) {
+    let pr = prefs();
+    let p = ui.global::<Phone>();
+    let picked = pr.quality();
+    let mut rows = Vec::new();
+    for q in Quality::ALL {
+        if q == Quality::Custom && picked != Quality::Custom {
+            continue;
+        }
+        let l = if q == Quality::Custom { pr.look() } else { phone::quality_look(q) };
+        rows.push(QualityRow {
+            name: q.label().into(),
+            hint: quality_hint(q, &l).into(),
+            value: format!("≈ {} MB/min", l.mb_per_min()).into(),
+        });
+    }
+    p.set_quality_rows(ModelRc::new(VecModel::from(rows)));
+    p.set_quality(Quality::ALL.iter().position(|q| *q == picked).unwrap_or(1) as i32);
+    p.set_quality_custom(picked == Quality::Custom);
+    let stepped = UI.with(|u| u.borrow().stepped_back);
+    p.set_quality_warn(stepped);
+    p.set_quality_note(
+        if stepped {
+            "The phone's picture stalled on Best, so it's mirroring on Standard. Best is tried again next time."
+        } else {
+            "For the mirror, its replay and Record; changing it starts the mirror again. Present keeps its own lighter picture."
+        }
+        .into(),
+    );
+    let l = pr.look();
+    p.set_q_sizes(ModelRc::new(VecModel::from(vec![SharedString::from("As the phone"), "1920".into(), "1280".into()])));
+    p.set_q_size(SIZES.iter().position(|x| *x == l.max_size).unwrap_or(0) as i32);
+    p.set_q_rates(ModelRc::new(VecModel::from(
+        RATES.iter().map(|r| SharedString::from(r.to_string())).collect::<Vec<_>>(),
+    )));
+    p.set_q_rate(RATES.iter().position(|r| *r >= l.fps).unwrap_or(RATES.len() - 1) as i32);
+    p.set_q_mbps(l.mbps as i32);
+}
+
+/// A number in Advanced changed: Custom, starting from what was picked.
+fn set_custom(ui: &AppWindow, f: impl FnOnce(&mut phone::Look)) {
+    let mut l = prefs().look();
+    f(&mut l);
+    save_prefs(|p| {
+        p.quality = Quality::Custom.name().into();
+        p.max_size = l.max_size;
+        p.fps = l.fps;
+        p.mbps = l.mbps;
+    });
+    quality_changed(ui);
+}
+
+/// The Quality changed: shown, and the mirror starts again with it (Present comes back).
+fn quality_changed(ui: &AppWindow) {
+    UI.with(|u| u.borrow_mut().stepped_back = false);
+    show_quality(ui);
+    if UI.with(|u| u.borrow().demo) {
+        return;
+    }
+    if state(ui) == st::MIRROR {
+        let serial = UI.with(|u| u.borrow().serial.clone());
+        let presenting = crate::present_ui::is_open();
+        start(ui, serial, false);
+        UI.with(|u| u.borrow_mut().represent = presenting);
+    }
 }
 
 fn changed(ui: &AppWindow) {
@@ -355,7 +480,9 @@ fn changed(ui: &AppWindow) {
     // what runs starts again (a second or so); Present comes back with it.
     let effective = |p: Place, sound_only: bool| if sound_only && p == Place::Phone { Place::Pc } else { p };
     let now = state(ui);
-    if (now == st::MIRROR || now == st::SOUND) && effective(place, now == st::SOUND) != effective(old.place, now == st::SOUND) {
+    if (now == st::MIRROR || now == st::SOUND)
+        && effective(place, now == st::SOUND) != effective(old.place, now == st::SOUND)
+    {
         let serial = UI.with(|u| u.borrow().serial.clone());
         let presenting = crate::present_ui::is_open();
         start(ui, serial, now == st::SOUND);
@@ -391,7 +518,12 @@ fn get_tools(ui: &AppWindow) {
             }
             last = Instant::now();
             let text = match t {
-                Some(t) => format!("Downloading scrcpy {}  ·  {} / {}", phone::VERSION, fmt::bytes(d as f64), fmt::bytes(t as f64)),
+                Some(t) => format!(
+                    "Downloading scrcpy {}  ·  {} / {}",
+                    phone::VERSION,
+                    fmt::bytes(d as f64),
+                    fmt::bytes(t as f64)
+                ),
                 None => format!("Downloading scrcpy {}  ·  {}", phone::VERSION, fmt::bytes(d as f64)),
             };
             let f = t.map(|t| d as f32 / t.max(1) as f32).unwrap_or(0.0);
@@ -457,7 +589,10 @@ fn tick(ui: &AppWindow) {
     }
     // Dev hook NERIA_PHONE_MIRROR: mirror the first phone that's ready, once, with no click.
     static AUTO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if s == st::PHONES && std::env::var_os("NERIA_PHONE_MIRROR").is_some() && !AUTO.load(std::sync::atomic::Ordering::Relaxed) {
+    if s == st::PHONES
+        && std::env::var_os("NERIA_PHONE_MIRROR").is_some()
+        && !AUTO.load(std::sync::atomic::Ordering::Relaxed)
+    {
         let first = UI.with(|u| u.borrow().devices.iter().find(|d| d.state == State::Ready).map(|d| d.serial.clone()));
         if let Some(serial) = first {
             AUTO.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -496,7 +631,10 @@ fn look(ui: &AppWindow) {
         // Scanned: pair and connect here, then mirror.
         let mut paired = None;
         if let (Some(p), Some(Some(svc))) = (&pairing, seen.as_ref().map(|s| s.scanned.clone())) {
-            paired = Some(phone::pair(&svc.addr, &p.password).and_then(|_| phone::wait_connected(svc.ip(), Duration::from_secs(20))));
+            paired = Some(
+                phone::pair(&svc.addr, &p.password)
+                    .and_then(|_| phone::wait_connected(svc.ip(), Duration::from_secs(20))),
+            );
         }
         let _ = weak.upgrade_in_event_loop(move |ui| {
             UI.with(|u| {
@@ -510,7 +648,13 @@ fn look(ui: &AppWindow) {
             let failed = UI.with(|u| u.borrow().pair_failed.is_some_and(|t| t.elapsed() < Duration::from_secs(20)));
             if let Some(seen) = seen.filter(|s| !failed || s.scanned.is_some()) {
                 let p = ui.global::<Phone>();
-                p.set_step(if seen.scanned.is_some() { 4 } else if seen.wireless_on { 3 } else { 1 });
+                p.set_step(if seen.scanned.is_some() {
+                    4
+                } else if seen.wireless_on {
+                    3
+                } else {
+                    1
+                });
                 p.set_qr_note(
                     if seen.scanned.is_some() {
                         "Scanned: pairing…"
@@ -560,7 +704,8 @@ fn show_phones(ui: &AppWindow) {
     if UI.with(|u| u.borrow().demo) {
         return;
     }
-    let (devices, infos, visible) = UI.with(|u| (u.borrow().devices.clone(), u.borrow().infos.clone(), u.borrow().visible.clone()));
+    let (devices, infos, visible) =
+        UI.with(|u| (u.borrow().devices.clone(), u.borrow().infos.clone(), u.borrow().visible.clone()));
     let mut rows = Vec::new();
     let mut ids = Vec::new();
     for d in &devices {
@@ -574,15 +719,18 @@ fn show_phones(ui: &AppWindow) {
             ids.push(i.id.clone());
         }
         // The same phone by cable and over Wi-Fi at once.
-        let same = |x: &Device| info.is_some_and(|i| !i.id.is_empty() && infos.get(&x.serial).is_some_and(|j| j.id == i.id));
+        let same =
+            |x: &Device| info.is_some_and(|i| !i.id.is_empty() && infos.get(&x.serial).is_some_and(|j| j.id == i.id));
         let wifi = d.wifi || devices.iter().any(|x| x.wifi && same(x));
         let usb = !d.wifi || devices.iter().any(|x| !x.wifi && same(x));
         rows.push(PhoneRow {
             serial: d.serial.as_str().into(),
             id: info.map(|i| i.id.clone()).unwrap_or_default().into(),
-            name: info.map(|i| i.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| {
-                if d.model.is_empty() { "Android phone".into() } else { d.model.clone() }
-            }).into(),
+            name: info
+                .map(|i| i.name.clone())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| if d.model.is_empty() { "Android phone".into() } else { d.model.clone() })
+                .into(),
             hint: format!(
                 "{}{}{}",
                 match (usb, wifi) {
@@ -636,7 +784,11 @@ fn show_phones(ui: &AppWindow) {
         connect_screen(ui);
         return;
     }
-    if state(ui) == st::PHONES && p.get_detail().is_empty() && phone::other_adb_running() && !devices.iter().any(|d| !d.wifi) {
+    if state(ui) == st::PHONES
+        && p.get_detail().is_empty()
+        && phone::other_adb_running()
+        && !devices.iter().any(|d| !d.wifi)
+    {
         p.set_status("Android Studio's adb is running".into());
         p.set_detail("A phone on a USB cable may be taken by it. Close Android Studio, or use Wi-Fi.".into());
     }
@@ -647,7 +799,12 @@ fn show_phones(ui: &AppWindow) {
 fn let_go(ui: &AppWindow, id: &str) {
     let serials: Vec<String> = UI.with(|u| {
         let u = u.borrow();
-        u.infos.iter().filter(|(_, i)| i.id == id).map(|(s, _)| s.clone()).filter(|s| u.devices.iter().any(|d| d.serial == *s && d.wifi)).collect()
+        u.infos
+            .iter()
+            .filter(|(_, i)| i.id == id)
+            .map(|(s, _)| s.clone())
+            .filter(|s| u.devices.iter().any(|d| d.serial == *s && d.wifi))
+            .collect()
     });
     if UI.with(|u| serials.contains(&u.borrow().serial)) && state(ui) >= st::STARTING {
         stop(ui, None);
@@ -692,9 +849,13 @@ fn qr_image(text: &str) -> Option<slint::Image> {
 fn find_code_target(ui: &AppWindow) {
     let weak = ui.as_weak();
     std::thread::spawn(move || {
-        let svc = phone::services().unwrap_or_default().into_iter().find(|s| s.kind == phone::Kind::Pairing && !s.instance.starts_with("neria-"));
+        let svc = phone::services()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|s| s.kind == phone::Kind::Pairing && !s.instance.starts_with("neria-"));
         let _ = weak.upgrade_in_event_loop(move |ui| {
-            ui.global::<Phone>().set_code_target(svc.map(|s| format!("a phone at {}", s.ip())).unwrap_or_default().into());
+            ui.global::<Phone>()
+                .set_code_target(svc.map(|s| format!("a phone at {}", s.ip())).unwrap_or_default().into());
         });
     });
 }
@@ -708,9 +869,14 @@ fn pair_code(ui: &AppWindow, code: String) {
     p.set_code_problem("Pairing…".into());
     let weak = ui.as_weak();
     std::thread::spawn(move || {
-        let svc = phone::services().unwrap_or_default().into_iter().find(|s| s.kind == phone::Kind::Pairing && !s.instance.starts_with("neria-"));
+        let svc = phone::services()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|s| s.kind == phone::Kind::Pairing && !s.instance.starts_with("neria-"));
         let res = match svc {
-            None => Err(anyhow::anyhow!("Neria doesn't see the phone asking for a code. Open \"Pair device with pairing code\" on it (same Wi-Fi).")),
+            None => Err(anyhow::anyhow!(
+                "Neria doesn't see the phone asking for a code. Open \"Pair device with pairing code\" on it (same Wi-Fi)."
+            )),
             Some(s) => phone::pair(&s.addr, &code).and_then(|_| phone::wait_connected(s.ip(), Duration::from_secs(20))),
         };
         let _ = weak.upgrade_in_event_loop(move |ui| match res {
@@ -741,6 +907,8 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
     }
     stop(ui, Some(st::STARTING));
     let pr = prefs();
+    // Best stalled on this phone earlier while mirroring: Standard until it's picked again.
+    let look = if UI.with(|u| u.borrow().stepped_back) { phone::quality_look(Quality::Standard) } else { pr.look() };
     let name = name_of(&serial);
     let p = ui.global::<Phone>();
     p.set_name(name.as_str().into());
@@ -764,7 +932,11 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
             keep_on_phone: pr.place == Place::Both,
             ..Options::default()
         }
+        .with_look(look)
     };
+    // Best is watched for the phone not keeping up; Standard to fall back on.
+    let best = !sound_only && look != phone::quality_look(Quality::Standard) && pr.quality() == Quality::Best;
+    let standard = opts.clone().with_look(phone::quality_look(Quality::Standard));
     let keep = pr.keep;
     let weak = ui.as_weak();
     std::thread::spawn(move || {
@@ -777,7 +949,16 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
                 UI.with(|u| u.borrow_mut().infos.insert(sr, i));
             });
         }
-        let res = Session::start(&serial, opts).and_then(|s| {
+        // Best the phone can't start: Standard instead.
+        let mut stepped = false;
+        let session = match Session::start(&serial, opts) {
+            Err(_) if best => {
+                stepped = true;
+                Session::start(&serial, standard)
+            }
+            r => r,
+        };
+        let res = session.and_then(|s| {
             let s = Arc::new(s);
             let buffer = if s.video.is_some() { Some(Arc::new(PhoneBuffer::start(&s, keep)?)) } else { None };
             Ok((s, buffer))
@@ -786,12 +967,19 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
             if state(&ui) != st::STARTING {
                 return;
             }
+            if stepped {
+                UI.with(|u| u.borrow_mut().stepped_back = true);
+                show_quality(&ui);
+            }
+            UI.with(|u| u.borrow_mut().on_best = best && !stepped);
             match res {
                 Ok((s, buffer)) => running(&ui, s, buffer, sound_only),
                 Err(e) => {
                     set_state(&ui, st::PHONES);
                     let p = ui.global::<Phone>();
-                    p.set_status(format!("Couldn't mirror {}", name_of(&UI.with(|u| u.borrow().serial.clone()))).into());
+                    p.set_status(
+                        format!("Couldn't mirror {}", name_of(&UI.with(|u| u.borrow().serial.clone()))).into(),
+                    );
                     p.set_detail(e.to_string().into());
                     p.set_problem(true);
                     show_phones(&ui);
@@ -886,7 +1074,8 @@ fn stop(ui: &AppWindow, then: Option<i32>) {
 
 /// The status lines while it runs, and noticing it ended by itself.
 fn live(ui: &AppWindow) {
-    let (session, buffer, rec) = UI.with(|u| (u.borrow().session.clone(), u.borrow().buffer.clone(), u.borrow().recording.clone()));
+    let (session, buffer, rec) =
+        UI.with(|u| (u.borrow().session.clone(), u.borrow().buffer.clone(), u.borrow().recording.clone()));
     let p = ui.global::<Phone>();
     let Some(s) = session else { return };
     if !s.running() {
@@ -902,6 +1091,25 @@ fn live(ui: &AppWindow) {
         p.set_detail(why.into());
         p.set_problem(true);
         return;
+    }
+    // Best and the phone stopped sending its picture (some encoders can't keep up): mirror
+    // on Standard instead, and say so.
+    if s.video.is_some() && UI.with(|u| u.borrow().on_best) && s.started.elapsed() > Duration::from_secs(4) {
+        let l = s.live.lock().unwrap().clone();
+        let quiet = l.last_packet.map(|t| t.elapsed() > Duration::from_secs(3)).unwrap_or(true);
+        if quiet {
+            UI.with(|u| {
+                let mut u = u.borrow_mut();
+                u.on_best = false;
+                u.stepped_back = true;
+            });
+            show_quality(ui);
+            let serial = s.serial.clone();
+            let presenting = crate::present_ui::is_open();
+            start(ui, serial, false);
+            UI.with(|u| u.borrow_mut().represent = presenting);
+            return;
+        }
     }
     // The picture stopped (its player let go of the stream, or stalls while the phone goes
     // on): load it again.
@@ -998,7 +1206,9 @@ fn keep_text(secs: u32) -> String {
 /// Where saves go: the Videos folder (Audio for sound alone, Photos for screenshots).
 fn out_dir(kind: folders::Kind) -> PathBuf {
     let settings = UI.with(|u| u.borrow().settings.clone());
-    settings.map(|s| folders::for_kind(&s.lock().unwrap(), kind)).unwrap_or_else(|| folders::for_kind(&Settings::load(), kind))
+    settings
+        .map(|s| folders::for_kind(&s.lock().unwrap(), kind))
+        .unwrap_or_else(|| folders::for_kind(&Settings::load(), kind))
 }
 
 fn stamp_name(name: &str) -> String {
@@ -1072,7 +1282,9 @@ fn screenshot(ui: &AppWindow) {
     let _ = std::fs::create_dir_all(&dir);
     let file = neria_core::clip::unique_path(&dir, &neria_core::music::sanitize(&stamp_name(&s.name)), "png");
     // What the page shows, at the phone's full size, at once (mpv has the frame).
-    let shot = UI.with(|u| u.borrow().mpv.as_ref().map(|m| m.command(&["screenshot-to-file", &file.to_string_lossy(), "video"])));
+    let shot = UI.with(|u| {
+        u.borrow().mpv.as_ref().map(|m| m.command(&["screenshot-to-file", &file.to_string_lossy(), "video"]))
+    });
     if let Some(Ok(())) = shot {
         if file.is_file() {
             show_screenshot(ui, &file);
@@ -1090,7 +1302,13 @@ fn screenshot(ui: &AppWindow) {
 }
 
 fn show_screenshot(ui: &AppWindow, file: &Path) {
-    crate::capture_ui::toast(ui, "Saved", &format!("Screenshot: {}", file.file_name().unwrap_or_default().to_string_lossy()), false, None);
+    crate::capture_ui::toast(
+        ui,
+        "Saved",
+        &format!("Screenshot: {}", file.file_name().unwrap_or_default().to_string_lossy()),
+        false,
+        None,
+    );
     crate::background_ui::notify_saved(ui, "Saved a screenshot of the phone", file);
 }
 
@@ -1122,7 +1340,13 @@ fn present(ui: &AppWindow) {
             }
         }),
     };
-    let o = crate::present_ui::Open { title: phone::present_title(&s.name), url: &url, size: (w, h), on_top: pr.on_top, beside: ui.window() };
+    let o = crate::present_ui::Open {
+        title: phone::present_title(&s.name),
+        url: &url,
+        size: (w, h),
+        on_top: pr.on_top,
+        beside: ui.window(),
+    };
     match crate::present_ui::open(o, hooks) {
         Ok(()) => {
             // One picture at a time: the page's steps aside. The sound keeps playing from
@@ -1233,7 +1457,9 @@ fn fall_back_to_wifi(ui: &AppWindow, s: &Arc<Session>, why: &str) -> bool {
                     set_state(&ui, st::PHONES);
                     let p = ui.global::<Phone>();
                     p.set_status(format!("{name} stopped").into());
-                    p.set_detail(format!("{why} Turn on Wireless debugging and Neria can carry on over Wi-Fi next time.").into());
+                    p.set_detail(
+                        format!("{why} Turn on Wireless debugging and Neria can carry on over Wi-Fi next time.").into(),
+                    );
                     p.set_problem(true);
                     show_phones(&ui);
                 }
@@ -1266,7 +1492,6 @@ fn presenting_ended(ui: &AppWindow) {
         load_picture(ui, &v.url());
     }
 }
-
 
 fn touch(kind: i32, x: f32, y: f32) {
     let Some(s) = UI.with(|u| u.borrow().session.clone()) else { return };
@@ -1306,7 +1531,9 @@ fn typed(text: &str) {
     };
     with_session(|s| match code {
         Some(c) => s.press(c),
-        None if !text.is_empty() && text.chars().all(|c| !c.is_control() && !('\u{f700}'..='\u{f8ff}').contains(&c)) => {
+        None if !text.is_empty()
+            && text.chars().all(|c| !c.is_control() && !('\u{f700}'..='\u{f8ff}').contains(&c)) =>
+        {
             s.send(Control::Text(text.to_string()))
         }
         None => {}
@@ -1456,8 +1683,11 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
                 }
                 match make_target(gl, w, h) {
                     Ok(t) => {
-                        let image =
-                            slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(t.tex.0, [w as u32, h as u32].into()).build();
+                        let image = slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(
+                            t.tex.0,
+                            [w as u32, h as u32].into(),
+                        )
+                        .build();
                         let p = ui.global::<Phone>();
                         p.set_frame(image);
                         p.set_has_frame(true);
@@ -1473,7 +1703,9 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
             // Mirroring again at the same size: the texture is kept, but the page let go of it.
             if !u.shown_frame {
                 let t = u.target.as_ref().unwrap();
-                let image = slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(t.tex.0, [w as u32, h as u32].into()).build();
+                let image =
+                    slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(t.tex.0, [w as u32, h as u32].into())
+                        .build();
                 let p = ui.global::<Phone>();
                 p.set_frame(image);
                 p.set_has_frame(true);
@@ -1540,8 +1772,34 @@ fn fake(ui: &AppWindow) {
     let f = std::env::temp_dir().join("neria-fake-phone.h264");
     if !f.is_file() {
         let _ = proc::command(paths::tool("ffmpeg"))
-            .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=540x1200:rate=30", "-t", "6"])
-            .args(["-c:v", "libx264", "-preset", "veryfast", "-bf", "0", "-g", "60", "-pix_fmt", "yuv420p", "-x264-params", "aud=1", "-f", "h264"])
+            .args([
+                "-hide_banner",
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=540x1200:rate=30",
+                "-t",
+                "6",
+            ])
+            .args([
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-bf",
+                "0",
+                "-g",
+                "60",
+                "-pix_fmt",
+                "yuv420p",
+                "-x264-params",
+                "aud=1",
+                "-f",
+                "h264",
+            ])
             .arg(&f)
             .status();
     }
@@ -1584,7 +1842,13 @@ fn demo_frame(w: u32, h: u32) -> slint::Image {
             let card = (0.1..0.9).contains(&fx) && ((0.2..0.52).contains(&fy) || (0.58..0.68).contains(&fy));
             let bar = fy < 0.035;
             if card || bar {
-                let a = if bar { 0.75 } else if fy < 0.55 { 1.18 } else { 0.85 };
+                let a = if bar {
+                    0.75
+                } else if fy < 0.55 {
+                    1.18
+                } else {
+                    0.85
+                };
                 for v in c.iter_mut() {
                     *v = ((*v as f32) * a).min(255.0) as u8;
                 }
@@ -1686,6 +1950,12 @@ fn show_demo(ui: &AppWindow, what: &str) {
             p.set_tech("Sound only · Wi-Fi".into());
             p.set_volume(0.64);
             p.set_state(st::SOUND);
+        }
+        // Best was too much for the phone: the amber line under Quality.
+        "stalled" => {
+            mirror(false);
+            UI.with(|u| u.borrow_mut().stepped_back = true);
+            show_quality(ui);
         }
         _ => mirror(false),
     }

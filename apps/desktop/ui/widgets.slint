@@ -1509,7 +1509,8 @@ export component ChoiceRow inherits Rectangle {
                 wrap: word-wrap;
             }
         }
-        if !Screen.compact && root.value != "": Text {
+        // Stacked rows say their value under the name already.
+        if !root.below && root.value != "": Text {
             horizontal-stretch: 0;
             text: root.value;
             color: root.selected ? Theme.ink : Theme.muted;

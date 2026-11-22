@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria Capture Quality</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --live:#ff6b6f; --livebg:#3d1719; --accent:#ffd23f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px; padding: 20px 22px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; max-width: 100%; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .ghost { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; flex: none; background: none; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 6px 0 4px; }
+  .hint.warn { color: var(--warn); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; white-space: nowrap; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .h5 { font: 700 14px "Space Grotesk", sans-serif; margin: 20px 0 8px; }
+  .h5:first-child { margin-top: 0; }
+  .key { font: 500 11px "JetBrains Mono", monospace; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; }
+  .state { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 14px 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .state .big { font: 600 16px "Inter Tight", sans-serif; }
+
+  /* ChoiceRow, as Compress's goals */
+  .cr { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line); border-radius: 0; }
+  .cr:first-of-type { border-top: 1px solid var(--line); }
+  .cr .rad { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--edge); flex: none; }
+  .cr.on .rad { border: 6px solid var(--ink); }
+  .cr .nm { font-size: 13.5px; font-weight: 500; }
+  .cr .ht { color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.4; }
+  .cr .val { font: 500 11.5px "JetBrains Mono", monospace; color: var(--muted); text-align: right; white-space: nowrap; }
+  .cr.on .val { color: var(--ink); }
+  .cr.c .val { text-align: left; margin-top: 3px; }
+
+  /* Advanced fold */
+  .fold { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: var(--ink); }
+  .fold .chev { color: var(--dim); font-size: 15px; width: 14px; line-height: 1; }
+  .adv { border-left: 2px solid var(--line); margin: 10px 0 0 5px; padding: 2px 0 2px 16px; }
+  .setrow { display: flex; gap: 12px; align-items: center; margin: 10px 0; font-size: 13px; flex-wrap: wrap; }
+  .setrow > span:first-child { width: 86px; flex: none; color: var(--ink); }
+  .num { background: var(--panel); border: 2px solid var(--ls); border-radius: 9px; height: 30px; display: inline-flex; align-items: center; padding: 0 10px; gap: 6px; }
+  .num b { font: 500 12px "JetBrains Mono", monospace; min-width: 22px; text-align: right; }
+  .set { border-color: var(--accent) !important; }
+
+  .w460 { width: 460px; } .w400 { width: 400px; } .w1000 { width: 1000px; }
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 980px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+  table.cmp td.m { font: 500 12px "JetBrains Mono", monospace; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Capture: a Quality choice instead of knobs</h1>
+  <p class="lead">OBS asks for rate control, CBR, keyframe interval and a bit rate. Neria asks one thing: <b>how good
+  should it look, and how big may it get</b>. There are three choices, <b>Smaller files</b>, <b>Standard</b> and
+  <b>Best</b>, on both Capture tabs (This PC and Phone). Neria works out the size, frame rate and bit rate for what's
+  being recorded. An <b>Advanced</b> fold under them has the three as numbers (and the Encoder chips, moved there) for
+  anyone who wants them.</p>
+
+  <section>
+    <div class="label"><span>Ground rules</span><h2>What the choice does</h2></div>
+    <ul class="why">
+      <li><b>Standard is what records today</b> (the screen's own size, 60 fps, 16 Mbit/s; the phone at its own size,
+        60 fps, 8 Mbit/s), so nothing changes for anyone who never touches it.</li>
+      <li><b>Each choice says what it costs, in MB a minute</b>, worked out for what's picked now (a 1440p screen and a
+        1080p one get different bit rates for the same choice: Neria scales by pixels × frame rate).</li>
+      <li><b>Smaller files scales down on the graphics card</b> (<span class="mono">scale_d3d11</span>, in our ffmpeg)
+        so the game still hardly notices. Best never scales up.</li>
+      <li><b>No rate-control words anywhere.</b> Neria keeps its variable bit rate with a cap (what it does now). CBR only
+        matters for streaming, and pushing a phone's encoder to it makes some phones stall.</li>
+      <li><b>Changing it while it runs</b> applies at the next quiet restart (a second or two, like Never record);
+        the minute kept so far stays as it was.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="label"><span>1 · The choice</span><h2>Rows you compare, or chips with one line</h2></div>
+    <p class="why">On the Capture page it sits under "How much to keep", because those two together decide the size.</p>
+
+    <div class="opt">
+      <h3>1A · Choice rows, as Compress's goals <span class="rec">PICK</span></h3>
+      <p>The three are compared before picking, which is what <b>ChoiceRow</b> is for (DESIGN.md): name, a hint saying
+      what you get, MB a minute on the right. "How much to keep" gets a line for the disk space the kept minutes take
+      next to Neria while it runs, since 5 min at Best is over a gigabyte.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">This PC · right column at 1000 · DELL U2720Q, 2560 × 1440, 60 Hz</div>
+          <div class="q w460">
+            <div class="h5">How much to keep</div>
+            <div class="chips"><span class="chip">30 s</span><span class="chip on">1 min</span><span class="chip">2 min</span><span class="chip">5 min</span></div>
+            <div class="h5">Quality</div>
+            <div class="cr"><span class="rad"></span><div class="grow"><div class="nm">Smaller files</div><div class="ht">1080p · 60 fps · good for sharing on Discord</div></div><span class="val">≈ 45 MB / min</span></div>
+            <div class="cr on"><span class="rad"></span><div class="grow"><div class="nm">Standard</div><div class="ht">1440p, as the screen · 60 fps</div></div><span class="val">≈ 120 MB / min</span></div>
+            <div class="cr"><span class="rad"></span><div class="grow"><div class="nm">Best</div><div class="ht">1440p · 60 fps · fast motion stays sharp</div></div><span class="val">≈ 300 MB / min</span></div>
+            <div class="hint">While it runs, Neria keeps about 120 MB next to itself, deleted when it stops.</div>
+            <div class="fold"><span class="chev">▸</span>Advanced<span class="mut" style="font-size:12px">· size, frame rate, bit rate, encoder</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Compact · 400 · values under the names</div>
+          <div class="q w400" style="padding:16px">
+            <div class="h5">Quality</div>
+            <div class="cr c"><span class="rad"></span><div class="grow"><div class="nm">Smaller files</div><div class="ht">1080p · 60 fps</div><div class="val">≈ 45 MB / min</div></div></div>
+            <div class="cr c on"><span class="rad"></span><div class="grow"><div class="nm">Standard</div><div class="ht">1440p, as the screen · 60 fps</div><div class="val">≈ 120 MB / min</div></div></div>
+            <div class="cr c"><span class="rad"></span><div class="grow"><div class="nm">Best</div><div class="ht">1440p · 60 fps · fast motion stays sharp</div><div class="val">≈ 300 MB / min</div></div></div>
+            <div class="fold"><span class="chev">▸</span>Advanced</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>1B · Chips, with one line for the picked one</h3>
+      <p>Smaller, and it matches "How much to keep" just above. But you only see what the picked choice costs, so
+      you have to click through to compare, which is the reason ChoiceRow exists.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">This PC · right column at 1000</div>
+          <div class="q w460">
+            <div class="h5">How much to keep</div>
+            <div class="chips"><span class="chip">30 s</span><span class="chip on">1 min</span><span class="chip">2 min</span><span class="chip">5 min</span></div>
+            <div class="h5">Quality</div>
+            <div class="chips"><span class="chip">Smaller files</span><span class="chip on">Standard</span><span class="chip">Best</span></div>
+            <div class="hint">1440p, as the screen · 60 fps · about 120 MB a minute</div>
+            <div class="fold"><span class="chev">▸</span>Advanced</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>2 · Advanced</span><h2>The numbers, for anyone who wants them</h2></div>
+    <div class="opt">
+      <h3>2A · Size, frame rate and bit rate, then the encoder <span class="rec">PICK</span></h3>
+      <p>Open, it shows what the picked choice set. Changing any number picks <b>Custom</b> (a fourth row appears with
+      what you set) and the changed control gets the "set" outline. <b>Back to Standard</b> undoes it. The Encoder
+      chips move in here from the main column: hardly anyone needs them, and Automatic already picks the fastest one
+      that works. Frame rate only offers what the screen can show (120 on a 120 Hz+ screen).</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Open, on Standard</div>
+          <div class="q w460">
+            <div class="fold" style="margin-top:0"><span class="chev">▾</span>Advanced</div>
+            <div class="adv">
+              <div class="setrow"><span>Size</span><div class="chips"><span class="chip on">As the screen</span><span class="chip">1080p</span><span class="chip">720p</span></div></div>
+              <div class="setrow"><span>Frame rate</span><div class="chips"><span class="chip">30</span><span class="chip on">60</span></div></div>
+              <div class="setrow"><span>Bit rate</span><span class="num"><span class="mut">−</span><b>16</b><span class="mut">+</span></span><span class="mut">Mbit/s</span></div>
+              <div class="setrow"><span>Encoder</span><div class="chips"><span class="chip on">Automatic</span><span class="chip">NVIDIA</span><span class="chip">Processor</span></div></div>
+              <div class="hint">Automatic is using NVIDIA (NVENC).</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">After changing the bit rate: Custom</div>
+          <div class="q w460">
+            <div class="cr"><span class="rad"></span><div class="grow"><div class="nm">Smaller files</div><div class="ht">1080p · 60 fps · good for sharing on Discord</div></div><span class="val">≈ 45 MB / min</span></div>
+            <div class="cr"><span class="rad"></span><div class="grow"><div class="nm">Standard</div><div class="ht">1440p, as the screen · 60 fps</div></div><span class="val">≈ 120 MB / min</span></div>
+            <div class="cr"><span class="rad"></span><div class="grow"><div class="nm">Best</div><div class="ht">1440p · 60 fps · fast motion stays sharp</div></div><span class="val">≈ 300 MB / min</span></div>
+            <div class="cr on"><span class="rad"></span><div class="grow"><div class="nm">Custom</div><div class="ht">1440p · 60 fps · 25 Mbit/s</div></div><span class="val">≈ 190 MB / min</span></div>
+            <div class="fold"><span class="chev">▾</span>Advanced<span class="grow"></span><span class="lnk">Back to Standard</span></div>
+            <div class="adv">
+              <div class="setrow"><span>Size</span><div class="chips"><span class="chip on">As the screen</span><span class="chip">1080p</span><span class="chip">720p</span></div></div>
+              <div class="setrow"><span>Frame rate</span><div class="chips"><span class="chip">30</span><span class="chip on">60</span></div></div>
+              <div class="setrow"><span>Bit rate</span><span class="num set"><span class="mut">−</span><b>25</b><span class="mut">+</span></span><span class="mut">Mbit/s</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>3 · Phone</span><h2>The same three on the Phone tab</h2></div>
+    <div class="opt">
+      <h3>3A · Under "While mirroring", worded for a phone <span class="rec">PICK</span></h3>
+      <p>The phone takes only size, frame rate and bit rate (scrcpy's options), so Advanced has those three. Smaller
+      files is also the one for slow Wi-Fi. If Best makes the phone's picture stall (some encoders can't), Neria
+      steps back to Standard and says so in amber, instead of leaving a frozen mirror. It applies to the mirror, its
+      replay buffer and Record; Present keeps its own lighter picture, since it's already a second stream over the same Wi-Fi.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Phone tab · POCO X7 Pro, 2712 × 1220, 120 Hz</div>
+          <div class="q w460">
+            <div class="h5">Quality</div>
+            <div class="cr"><span class="rad"></span><div class="grow"><div class="nm">Smaller files</div><div class="ht">1280 tall · 30 fps · steadier on slow Wi-Fi</div></div><span class="val">≈ 25 MB / min</span></div>
+            <div class="cr on"><span class="rad"></span><div class="grow"><div class="nm">Standard</div><div class="ht">As the phone · 60 fps</div></div><span class="val">≈ 60 MB / min</span></div>
+            <div class="cr"><span class="rad"></span><div class="grow"><div class="nm">Best</div><div class="ht">As the phone · 120 fps · for games</div></div><span class="val">≈ 120 MB / min</span></div>
+            <div class="fold"><span class="chev">▸</span>Advanced<span class="mut" style="font-size:12px">· size, frame rate, bit rate</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Best was too much for this phone</div>
+          <div class="q w460">
+            <div class="h5">Quality</div>
+            <div class="cr"><span class="rad"></span><div class="grow"><div class="nm">Standard</div><div class="ht">As the phone · 60 fps</div></div><span class="val">≈ 60 MB / min</span></div>
+            <div class="cr on"><span class="rad"></span><div class="grow"><div class="nm">Best</div><div class="ht">As the phone · 120 fps · for games</div></div><span class="val">≈ 120 MB / min</span></div>
+            <div class="hint warn">The phone's picture stalled on Best, so it's mirroring on Standard. Best is tried again next time.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>4 · Where else it shows</span><h2>The status line says it</h2></div>
+    <div class="pair scroll">
+      <div>
+        <div class="cap">The On line (today: "1440p · 60 fps · NVIDIA · 3 sound tracks")</div>
+        <div class="q" style="width:760px">
+          <div class="state">
+            <span class="tag live"><span class="dot"></span>ON</span>
+            <div class="grow">
+              <div class="big">Keeping the last 1 min of Valorant</div>
+              <div class="mut" style="margin-top:3px">Press <span class="key">F8</span> to save it · <span class="mono">Standard · 1440p · 60 fps · 3 sound tracks</span></div>
+            </div>
+            <button class="ghost">Save now</button>
+            <button class="ghost">Turn off</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Summary</span><h2>The picks and the numbers</h2></div>
+    <table class="cmp">
+      <tr><th>Part</th><th>Pick</th><th>Why</th></tr>
+      <tr><td>The choice</td><td>1A · three ChoiceRows under "How much to keep", MB a minute on each</td><td>You compare them, so all three costs stay visible</td></tr>
+      <tr><td>Advanced</td><td>2A · size, frame rate, bit rate, encoder (moved in); Custom row; Back to Standard</td><td>Numbers for those who want them, out of everyone else's way</td></tr>
+      <tr><td>Phone</td><td>3A · the same rows; steps back from Best if the phone stalls</td><td>Same words on both tabs; no frozen mirror</td></tr>
+      <tr><td>Status</td><td>The choice's name leads the On line</td><td>What's recording, at a glance</td></tr>
+    </table>
+    <table class="cmp" style="margin-top:22px">
+      <tr><th>Choice</th><th>This PC</th><th>Phone</th></tr>
+      <tr><td>Smaller files</td><td class="m">≤ 1080p · 60 fps · ≈ 0.05 bit/px (6 Mbit/s at 1080p60)</td><td class="m">≤ 1280 · 30 fps · 3 Mbit/s</td></tr>
+      <tr><td>Standard</td><td class="m">as the screen · 60 fps · ≈ 0.07 bit/px (16 Mbit/s at 1440p60)</td><td class="m">as the phone · 60 fps · 8 Mbit/s</td></tr>
+      <tr><td>Best</td><td class="m">as the screen · up to 120 fps · ≈ 0.17 bit/px (40 Mbit/s at 1440p60)</td><td class="m">as the phone · up to 120 fps · 16 Mbit/s</td></tr>
+    </table>
+    <p class="why" style="margin-top:12px">Sound adds about 1 MB a minute per track. The numbers are a first guess,
+    to be checked by saving the same game moment at each choice and comparing them side by side.</p>
+  </section>
+</div>
+</body>
+</html>
