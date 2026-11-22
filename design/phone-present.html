@@ -196,8 +196,9 @@
                   <div class="state" style="margin-top:0"><span class="tag live"><span class="dot pulse"></span>LIVE</span><div class="grow"><div class="big">Presenting POCO X7 Pro</div><div class="mut">Keeping the last 1 min · sound in the window</div><div class="mut mono">1220 × 2712 · 58 fps · Wi-Fi</div></div></div>
                   <div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn">✂ Clip the last 30 s</button><button class="ghost"><svg class="i"><use href="#rec"/></svg>Record</button><button class="ghost"><svg class="i"><use href="#cam"/></svg>Screenshot</button><button class="ghost" style="border-color:var(--pop)"><svg class="i"><use href="#win"/></svg>Stop presenting</button></div>
                   <div class="h5" style="margin-top:22px">The phone's sound</div>
-                  <div class="radio"><span class="rad on"></span><div>On this PC only<small>The phone goes quiet; its volume buttons set how loud it is here, in the window and in what you share.</small></div></div>
-                  <div class="radio"><span class="rad"></span><div>On this PC and the phone<small>Both play. Here it's always full, so set it with Volume.</small></div></div>
+                  <div class="radio"><span class="rad on"></span><div>On this PC<small>Everything; the phone stays quiet. Its volume buttons set what viewers hear.</small></div></div>
+                  <div class="radio"><span class="rad"></span><div>On this PC and the phone<small>Some apps (Spotify) stay quiet here.</small></div></div>
+                  <div class="radio"><span class="rad"></span><div>On the phone only</div></div>
                   <div class="h5">Present in a window</div>
                   <div class="tick"><span class="box on">✓</span>Stay on top</div>
                   <div class="tick"><span class="box">&nbsp;</span>Show taps (people see what you press)</div>
@@ -238,7 +239,7 @@
     <div class="opt">
       <h3>The window, with its sound <span class="rec">PICK</span></h3>
       <p>The window is named for the phone, so it's easy to find. Discord, OBS and Meet take a window's sound from its
-      own program, and now that program plays the phone's sound. With <b>On this PC only</b>, the phone's volume buttons
+      own program, and now that program plays the phone's sound. With <b>On this PC</b>, the phone's volume buttons
       set how loud your viewers hear it.</p>
       <div class="pair scroll">
         <div>
@@ -258,33 +259,34 @@
   </section>
 
   <section>
-    <div class="label"><span>3 · The phone's sound</span><h2>One choice for Mirror, Sound only and Present</h2></div>
+    <div class="label"><span>3 · The phone's sound</span><h2>Where it plays, and how loud here</h2></div>
     <p class="why">Today Mirror mutes the phone and follows its volume buttons, while Sound only keeps the phone playing
     and sends full level here (in that mode Android hands Neria each app's sound before the phone's volume). Same app,
     two behaviours, and nothing on screen says why.</p>
     <div class="opt">
-      <h3>3A · Two plain choices, shared by all three <span class="rec">PICK</span></h3>
-      <p>Replaces "Keep playing on the phone too" (Sound only) and Mirror's fixed behaviour. <b>On this PC only</b> is the
-      default: the phone's buttons work as people expect, also for what viewers hear. Neria's Volume slider matters only
-      with the second choice, so it's dimmed with the first. Saved like the other phone settings.</p>
+      <h3>3A · Where it plays + a volume for this PC, shared by all three <span class="rec">PICK</span></h3>
+      <p>Replaces "Keep playing on the phone too" (which only took effect the next start) and Mirror's fixed behaviour.
+      A change applies at once (Mirror starts again for about a second). <b>Volume on this PC</b> is always there:
+      Neria's own level for listening here, in every mode. Saved like the other phone settings.</p>
       <div class="pair scroll">
         <div>
           <div class="cap">Wide and medium (under "While mirroring")</div>
-          <div class="q" style="width:470px;padding:18px">
+          <div class="q" style="width:500px;padding:18px">
             <div class="h5">The phone's sound</div>
-            <div class="radio"><span class="rad on"></span><div>On this PC only<small>The phone goes quiet; its volume buttons set how loud it is here.</small></div></div>
-            <div class="radio"><span class="rad"></span><div>On this PC and the phone<small>Both play. Here it's always full, so set it below.</small></div></div>
-            <div class="row" style="gap:12px;margin-top:8px;opacity:.45"><svg class="i"><use href="#spk"/></svg><span style="width:60px">Volume</span><div class="slider" style="max-width:220px"><b></b><i></i></div><span class="mono">64%</span></div>
-            <div class="hint">Volume is for the second choice.</div>
+            <div class="radio"><span class="rad on"></span><div>On this PC<small>Everything, Spotify too. The phone stays quiet; its volume buttons also set the level here.</small></div></div>
+            <div class="radio"><span class="rad"></span><div>On this PC and the phone<small>Both play. Some apps (Spotify, Netflix) don't allow it and stay quiet here. The phone's buttons only set the phone.</small></div></div>
+            <div class="radio"><span class="rad"></span><div>On the phone only<small>Nothing comes to this PC. (Not offered in Sound only.)</small></div></div>
+            <div class="row" style="gap:12px;margin-top:12px"><svg class="i"><use href="#spk"/></svg><span style="width:118px">Volume on this PC</span><div class="slider" style="max-width:200px"><b></b><i></i></div><span class="mono">64%</span></div>
           </div>
         </div>
         <div>
           <div class="cap">Compact · 400 (in the ⋯ menu's sheet)</div>
           <div class="q w400" style="padding:16px">
             <div class="h5">The phone's sound</div>
-            <div class="radio"><span class="rad"></span><div>On this PC only<small>The phone's volume buttons set it.</small></div></div>
-            <div class="radio"><span class="rad on"></span><div>On this PC and the phone<small>Always full here.</small></div></div>
-            <div class="row" style="gap:10px;margin-top:6px"><svg class="i"><use href="#spk"/></svg><div class="slider"><b></b><i></i></div><span class="mono mut">64%</span></div>
+            <div class="radio"><span class="rad on"></span><div>On this PC<small>Everything; the phone stays quiet.</small></div></div>
+            <div class="radio"><span class="rad"></span><div>On this PC and the phone<small>Some apps stay quiet here.</small></div></div>
+            <div class="radio"><span class="rad"></span><div>On the phone only</div></div>
+            <div class="row" style="gap:10px;margin-top:8px"><svg class="i"><use href="#spk"/></svg><span>Here</span><div class="slider"><b></b><i></i></div><span class="mono mut">64%</span></div>
           </div>
         </div>
       </div>
@@ -297,7 +299,7 @@
     <div class="opt">
       <h3>Not possible</h3>
       <p>The phone's volume buttons can't set the level here while the phone also plays: Android hands over the sound
-      before its volume in that mode. That's why the second choice needs Neria's slider.</p>
+      before its volume in that mode. That's why Neria keeps its own Volume on this PC.</p>
     </div>
   </section>
 </div>
