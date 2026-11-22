@@ -795,6 +795,12 @@ lecture; whisper large-v3 got it). Nothing is downloaded until someone uses it.
   first), a dropped file or several (Clip / Compress / Transcribe), Extras → Transcript on
   the Download page (after the download, "Writing the transcript…" on its row),
   Settings → Download → Speech to text (status, Remove, switch to the NVIDIA pack)
+- [ ] Pick the model (asked for 2026-11-22): Settings → Download → Speech to text and the
+  Transcribe… dialog let you choose **Fast** (`large-v3-turbo-q5_0`, 575 MB, today's default)
+  or **Best quality** (full `ggml-large-v3`, ~3 GB, slower; better on Taglish, accents, poor
+  audio). Each model is downloaded only when first picked, shown with its size, and can be
+  removed on its own. Replaces the separate Python faster-whisper large-v3 in
+  `D:\APPS\Tools\Whisper` (5.1 GB), which can be deleted once this ships
 - [ ] Later, if wanted: captions burned into a clip; translate to English (`--translate`);
   speaker names; a smaller model for slow PCs
 Dev hooks: `NERIA_TRANSCRIBE` (+ `_START`), `NERIA_TRANSCRIPT` (smoke), `NERIA_FAKE_NVIDIA`;
@@ -1046,22 +1052,23 @@ one pinned scrcpy version (its server and client protocol must match), updated o
    class. Keeps the phone's shape as it's resized, turns when the phone turns, can stay on
    top; optional: show taps (scrcpy's `--show-touches`) so people see what you press, and keep
    the phone awake while presenting. Opened from the mirror page ("Present in a window")
+   - [x] With its sound (asked for 2026-11-22; mock `design/phone-present.html`): the window
+     plays the phone's sound itself, so a window share in Discord carries it; the page's
+     picture and sound step aside meanwhile (a card, Bring it to front), Clip the last keeps
+     its sound (two captures of the phone's sound work at once).
+     Picture: Smooth (1600 px, 4 Mbit/s, the default) or Full quality. Smooth was better on
+     the POCO but still stuttered; then 300 ms of sound in hand and 20 ms chunks to Windows
+   - [x] One choice of where the phone's sound plays, for Mirror, Sound only and Present: this
+     PC (everything; the phone quiet, its buttons set the level) / this PC and the phone (apps
+     may refuse: Spotify does) / the phone only; Volume on this PC always; applied at once
+   - [x] The screen comes back on after "Turn the phone's screen off" (HyperOS left the
+     backlight at zero: the brightness setting is nudged a step and back)
 6. [ ] **Extras, if wanted.** The phone's camera as a source (Android 12+); drop an APK to
    install it, drop files to send them to the phone; copy and paste between PC and phone
 Watch out: only one adb server runs per PC (port 5037); another adb at a different version
 (Android Studio's) kills ours and the other way round: notice it and use theirs or say so
 plainly (done: ours runs on 5038). Portable rule: checked 2026-11-22: on Windows adb keeps its
 key and pairings in `<profile>\.android` and no variable moves them (`docs/UPSTREAM.md`), so
-   - [x] With its sound (asked for 2026-11-22; mock `design/phone-present.html`): the window
-     plays the phone's sound itself, so a window share in Discord carries it; the page's
-     picture and sound step aside meanwhile (a card, Bring it to front), Clip the last keeps
-     its sound (two captures of the phone's sound work at once). 200 ms of sound in hand.
-     Still lags now and then over Wi-Fi (two video streams at once)
-   - [x] One choice of where the phone's sound plays, for Mirror, Sound only and Present: this
-     PC (everything; the phone quiet, its buttons set the level) / this PC and the phone (apps
-     may refuse: Spotify does) / the phone only; Volume on this PC always; applied at once
-   - [x] The screen comes back on after "Turn the phone's screen off" (HyperOS left the
-     backlight at zero: the brightness setting is nudged a step and back)
 that's an exception, written only once the Phone tab is used.
 
 ## Later: bigger ideas (keep UX simple)
