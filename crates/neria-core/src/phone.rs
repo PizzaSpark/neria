@@ -669,6 +669,9 @@ pub struct Options {
     pub stay_awake: bool,
     /// Turn the phone's screen off once mirroring (it keeps running).
     pub screen_off: bool,
+    /// Ask the phone for exactly what scrcpy's own window does (its encoder left on its own
+    /// defaults: no size, frame rate or key frame settings), to compare with Present.
+    pub plain: bool,
 }
 
 impl Default for Options {
@@ -684,6 +687,7 @@ impl Default for Options {
             show_touches: false,
             stay_awake: true,
             screen_off: false,
+            plain: false,
         }
     }
 }
@@ -707,6 +711,8 @@ impl Options {
         if self.video {
             a.push("video_codec=h264".into());
             a.push(format!("video_bit_rate={}", self.bit_rate));
+        }
+        if self.video && !self.plain {
             if self.max_size > 0 {
                 a.push(format!("max_size={}", self.max_size));
             }
@@ -818,6 +824,9 @@ struct Fan {
     /// The newest SPS/PPS, sent before the first key frame to whoever joins.
     config: Option<Chunk>,
     mkv: Option<Mkv>,
+    /// Raw video: the packets since the last key frame, so a reader that joins (the page's
+    /// player) starts at once instead of waiting for the phone's next key frame.
+    gop: Vec<Chunk>,
 }
 
 /// One stream handed to everyone who wants it: local TCP clients (mpv, ffmpeg) on `port`,
@@ -946,6 +955,16 @@ impl Feed {
             fan.clients.retain_mut(|c| c.need_key || c.tx.try_send(chunk.clone()).is_ok());
             return;
         }
+        if key {
+            fan.gop.clear();
+            fan.gop.push(chunk.clone());
+        } else if !fan.gop.is_empty() {
+            if fan.gop.len() < BACKLOG {
+                fan.gop.push(chunk.clone());
+            } else {
+                fan.gop.clear();
+            }
+        }
         let header = if key { fan.config.clone() } else { None };
         deliver(&mut fan, &chunk, key, header);
     }
@@ -1017,8 +1036,20 @@ fn stamp(fan: &mut Fan, pts: u64) -> u64 {
 }
 
 fn add(fan: &Mutex<Fan>, video: bool) -> Receiver<Chunk> {
-    let (tx, rx) = sync_channel(BACKLOG);
     let mut f = fan.lock().unwrap();
+    if let (true, None, Some(cfg)) = (video, &f.mkv, f.config.clone()) {
+        if !f.gop.is_empty() {
+            // Joins mid-stream: SPS/PPS, then everything since the last key frame.
+            let (tx, rx) = sync_channel(BACKLOG + f.gop.len() + 1);
+            let _ = tx.try_send(cfg);
+            for c in &f.gop {
+                let _ = tx.try_send(c.clone());
+            }
+            f.clients.push(Client { tx, need_key: false });
+            return rx;
+        }
+    }
+    let (tx, rx) = sync_channel(BACKLOG);
     // Matroska of sound alone waits too: for its header.
     let need_key = video || f.mkv.is_some();
     f.clients.push(Client { tx, need_key });
@@ -1365,6 +1396,13 @@ impl Session {
             let log = log.clone();
             std::thread::spawn(move || {
                 for l in BufReader::new(out).lines().map_while(|l| l.ok()) {
+                    // Dev hook: the phone's own lines next to the app's picture checks.
+                    if let Some(f) = std::env::var_os("NERIA_PHONE_DEBUG") {
+                        use std::io::Write as _;
+                        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(f) {
+                            let _ = writeln!(f, "phone: {l}");
+                        }
+                    }
                     let mut g = log.lock().unwrap();
                     if g.len() < 200 {
                         g.push(l);
@@ -2340,6 +2378,22 @@ mod tests {
         let mut pcm = 1000i16.to_le_bytes().to_vec();
         apply_volume(&mut pcm, 0.5);
         assert_eq!(i16::from_le_bytes([pcm[0], pcm[1]]), 500);
+    }
+
+    #[test]
+    fn a_late_reader_starts_at_the_last_key_frame() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let f = Fanout::new(true, stop.clone()).unwrap();
+        f.send(b"cfg", true, false);
+        f.send(b"k1", false, true);
+        f.send(b"p1", false, false);
+        let rx = f.tap();
+        f.send(b"p2", false, false);
+        let got: Vec<Vec<u8>> = rx.try_iter().map(|c| c.to_vec()).collect();
+        assert_eq!(got, vec![b"cfg".to_vec(), b"k1".to_vec(), b"p1".to_vec(), b"p2".to_vec()]);
+        let a = Options { plain: true, audio: false, ..Options::default() }.server_args(1);
+        assert!(!a.iter().any(|x| x.starts_with("video_codec_options") || x.starts_with("max_size") || x.starts_with("max_fps")));
+        stop.store(true, Ordering::SeqCst);
     }
 
     #[test]

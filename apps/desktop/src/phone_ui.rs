@@ -712,7 +712,16 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
     let opts = if sound_only {
         Options { keep_on_phone: pr.keep_on_phone, ..Options::sound_only() }
     } else {
-        Options { screen_off: pr.screen_off, stay_awake: pr.awake, show_touches: pr.show_taps, ..Options::default() }
+        // NERIA_PHONE_PLAIN: what Present asks the phone for (no sound, the encoder left alone).
+        let plain = std::env::var_os("NERIA_PHONE_PLAIN").is_some();
+        Options {
+            screen_off: pr.screen_off,
+            stay_awake: pr.awake,
+            show_touches: pr.show_taps,
+            plain,
+            audio: !plain,
+            ..Options::default()
+        }
     };
     let keep = pr.keep;
     let weak = ui.as_weak();
