@@ -676,6 +676,11 @@ pub fn open_window(serial: &str, o: &WindowOptions) -> Result<Child> {
         }
         Place::Pc => {}
     }
+    if o.sound.here() {
+        // 200 ms of sound in hand instead of scrcpy's 50: over Wi-Fi the window's sound was
+        // choppy (scrcpy's own advice for wireless); it plays 0.15 s later.
+        cmd.arg("--audio-buffer=200");
+    }
     if let Some(f) = &o.record {
         cmd.arg("--record").arg(f);
     }
