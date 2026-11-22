@@ -1,4 +1,5 @@
 //! Auto-fetching of yt-dlp, ffmpeg and Deno into the portable `bin/` folder.
+//! yt-dlp's onedir build has its own module (`ytdlp.rs`): fetched, checked and swapped there.
 
 use std::fs::{self, File};
 use std::io::{BufWriter, Read, Write};
@@ -20,6 +21,8 @@ pub enum Source {
         suffix: &'static str,
         exclude: &'static str,
     },
+    /// yt-dlp's onedir build (`ytdlp.rs`), the one-file exe when that can't be had.
+    YtdlpOnedir,
 }
 
 pub struct ToolSpec {
@@ -30,10 +33,11 @@ pub struct ToolSpec {
     /// For archives: (entry path suffix inside the archive, output file name).
     /// `None` means the URL is the executable itself.
     pub archive: Option<&'static [(&'static str, &'static str)]>,
-    /// Files that must exist in `bin/` for this tool to count as installed.
+    /// Files that must exist in `bin/` for this tool to count as installed
+    /// (none for yt-dlp: `ytdlp::exe` decides).
     pub files: &'static [&'static str],
     /// GitHub repo (and tag, else the latest release) to check for newer builds.
-    /// `None` for yt-dlp, which updates itself.
+    /// `None` for yt-dlp, which `ytdlp.rs` checks by its version.
     pub release: Option<(&'static str, Option<&'static str>)>,
 }
 
@@ -42,9 +46,9 @@ pub static TOOLS: &[ToolSpec] = &[
     ToolSpec {
         label: "yt-dlp",
         purpose: "Downloads from YouTube and 1,000+ other sites",
-        url: Source::Url("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"),
+        url: Source::YtdlpOnedir,
         archive: None,
-        files: &["yt-dlp.exe"],
+        files: &[],
         release: None,
     },
     ToolSpec {
@@ -105,6 +109,7 @@ fn http() -> Result<reqwest::blocking::Client> {
 fn resolve(source: &Source) -> Result<String> {
     match source {
         Source::Url(u) => Ok(u.to_string()),
+        Source::YtdlpOnedir => bail!("yt-dlp is fetched by ytdlp.rs"),
         Source::GithubAsset { repo, prefix, suffix, exclude } => {
             let api = format!("https://api.github.com/repos/{repo}/releases/latest");
             let body =
@@ -146,6 +151,9 @@ impl ToolSpec {
     }
 
     pub fn installed(&self) -> bool {
+        if matches!(self.url, Source::YtdlpOnedir) {
+            return crate::ytdlp::exe().is_file();
+        }
         let bin = paths::bin_dir();
         self.files.iter().all(|f| bin.join(f).is_file())
     }
@@ -187,11 +195,15 @@ pub fn ensure_all(mut on: impl FnMut(Progress)) -> Result<()> {
 pub fn install(tool: &ToolSpec, step: usize, steps: usize, on: &mut impl FnMut(Progress)) -> Result<()> {
     let bin = paths::bin_dir();
     fs::create_dir_all(&bin).with_context(|| format!("cannot create {}", bin.display()))?;
-    let tmp = bin.join(format!("{}.download", tool.files[0]));
     let label = tool.label.to_string();
     let idx = TOOLS.iter().position(|t| std::ptr::eq(t, tool)).unwrap_or(0);
     let p = |label: String, downloaded, total| Progress { tool: idx, step, steps, label, downloaded, total };
     on(p(label.clone(), 0, None));
+    if matches!(tool.url, Source::YtdlpOnedir) {
+        return crate::ytdlp::first_install(|downloaded, total| on(p(label.clone(), downloaded, total)))
+            .with_context(|| format!("downloading {}", tool.label));
+    }
+    let tmp = bin.join(format!("{}.download", tool.files[0]));
     let url = resolve(&tool.url).with_context(|| format!("finding {}", tool.label))?;
     download_to(&url, &tmp, |downloaded, total| on(p(label.clone(), downloaded, total)))
         .with_context(|| format!("downloading {}", tool.label))?;
@@ -375,13 +387,10 @@ pub fn ytdlp_version() -> Option<String> {
     (!v.is_empty()).then_some(v)
 }
 
-/// Run `yt-dlp -U`. Must not run while downloads are active (it replaces itself).
+/// Get the newest yt-dlp if ours is older (`ytdlp::update`). Safe while downloads run:
+/// a new release lands in a folder of its own, the running ones keep theirs.
 pub fn update_ytdlp() -> Result<()> {
-    let status = proc::command(paths::tool("yt-dlp")).arg("-U").stdout(Stdio::null()).stderr(Stdio::null()).status()?;
-    if !status.success() {
-        bail!("yt-dlp update failed");
-    }
-    Ok(())
+    crate::ytdlp::update(|_, _| {}).map(|_| ())
 }
 
 #[cfg(test)]

@@ -5,7 +5,8 @@
 //! settings.json
 //! queue.json    unfinished downloads, brought back on the next start
 //! history.json  finished downloads, for "You downloaded this …"
-//! bin/  yt-dlp.exe, ffmpeg.exe, ffprobe.exe, deno.exe
+//! bin/  ffmpeg.exe, ffprobe.exe, deno.exe, gallery-dl.exe, libmpv-2.dll
+//! bin/yt-dlp/<version>/  yt-dlp's onedir build, kept current by Neria (ytdlp.rs)
 //! sounds/  done.wav, failed.wav: "Your own sound…" (Settings → General), once picked
 //! ```
 
@@ -24,8 +25,12 @@ pub fn bin_dir() -> PathBuf {
     app_dir().join("bin")
 }
 
-/// Full path of a bundled tool, e.g. `tool("yt-dlp")` -> `bin/yt-dlp.exe`.
+/// Full path of a bundled tool, e.g. `tool("ffmpeg")` -> `bin/ffmpeg.exe`.
+/// `tool("yt-dlp")` is the newest onedir release in `bin/yt-dlp/`, else `bin/yt-dlp.exe`.
 pub fn tool(name: &str) -> PathBuf {
+    if name == "yt-dlp" {
+        return crate::ytdlp::exe();
+    }
     bin_dir().join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
 }
 

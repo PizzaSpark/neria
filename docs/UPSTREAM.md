@@ -17,6 +17,7 @@ After porting anything (or re-reviewing upstream), move the baseline forward and
 | syncedlyrics | [moehmeni/syncedlyrics](https://github.com/moehmeni/syncedlyrics) | `main` | `3c8a318d9a8df26855bdc3a5d23f7fd2b99ade2e` | 2024-07-28 | n/a | MIT: code may be ported, with credit in the source |
 | HandBrake | [HandBrake/HandBrake](https://github.com/HandBrake/HandBrake) | `master` | `2ab11403ca9d44a1ea02252174153e0918fd5a09` (`preset/preset_builtin.json`) | 2026-10-29 | n/a | GPL-2.0: **numbers and ideas only, never copy code** (Neria is MIT) |
 | TTV-AB | [GosuDRM/TTV-AB](https://github.com/GosuDRM/TTV-AB) | `main` | `1825fa5` | 2026-11-15 | 26.0.3 | MIT with repository attribution: code may be ported, crediting GosuDRM with a link to the repo |
+| yt-dlp (its releases) | [yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp) | releases | read at release `2026.10.26` | 2026-11-22 | `2026.10.26` | Unlicense: its prebuilt onedir build is fetched as a tool (`ytdlp.rs`); only the release layout is relied on |
 | scrcpy | [Genymobile/scrcpy](https://github.com/Genymobile/scrcpy) | `master` | `a60891aea193d92e7e5c3942700eca63f9d19a5f` (tag `v5.0.1`) | 2026-10-08 | v5.0.1 | Apache-2.0: its prebuilt Windows release is fetched as a tool (adb + scrcpy + `scrcpy-server`); code may be ported with credit and the NOTICE kept |
 | adb (platform-tools) | [platform/packages/modules/adb](https://android.googlesource.com/platform/packages/modules/adb) | `main` | read 2026-11-22 | 2026-11-22 | the adb inside scrcpy's release | Apache-2.0: studied only (pairing, keys, mDNS) |
 | loopgif (our own) | [PizzaSpark/loopgif](https://github.com/PizzaSpark/loopgif) | `main` | `cf5c980ee120026feeaef370d4affba5023425ef` | 2026-11-07 | n/a | Ours: port freely |
@@ -247,6 +248,19 @@ server took it first.
 When the mirror breaks after a scrcpy update: the protocol has no compatibility promise, so
 re-read `doc/develop.md` → Protocol and `Streamer.java` at the new tag, then move the baseline.
 
+### yt-dlp's releases (Unlicense; its onedir build run as a tool: `ytdlp.rs`)
+| What Neria relies on | Where to look when it breaks |
+|---|---|
+| `https://github.com/yt-dlp/yt-dlp/releases/latest` answers 302 to `…/releases/tag/<version>`; versions are dates, `2026.10.26` (a same-day hotfix adds `.1`), compared number by number | GitHub's release pages |
+| Each release carries `yt-dlp_win.zip` (Windows x64 onedir: `yt-dlp.exe` + `_internal/` with Python 3.14, ~24 MB zipped, ~41 MB unpacked) next to the one-file `yt-dlp.exe`; also `_x86` / `_arm64` variants, unused | release assets; `bundle/pyinstaller.py`, `.github/workflows/build.yml` |
+| `SHA2-256SUMS` in each release (`<hex>  <name>` lines), signed by `SHA2-256SUMS.sig`; Neria checks the zip's SHA-256 against it (the signature isn't checked) | `.github/workflows/build.yml` ("Make SHA2-SUMS files") |
+| The onedir build refuses `-U` (only the one-file and pip builds update themselves), so Neria fetches each release itself; `_update_spec` (lock lines for old Windows versions) is yt-dlp's own updater's and unused | `yt_dlp/update.py` (`_get_variant_and_executable_path`, `_NON_UPDATEABLE_REASONS`) |
+
+Measured 2026-11-22 (this PC): `--version` 1.3 s → 0.45 s; a short YouTube download
+(`--example smoke`, "Me at the zoo") 10.9 s → 7.3 s; a Spotify candidate check
+(`--example verify`) 10.1 s → 8.6 s. The one-file build unpacks Python into a temp folder on
+every start; the onedir one starts straight away.
+
 ## How to check what changed since the baseline
 
 Quick look in the browser (replace the SHA with the baseline above):
@@ -285,3 +299,4 @@ Also skim both repos' open issues for the symptom (e.g. "429", "embed", "no matc
 | 2026-11-14 | spotify-lyrics-api | `e158b96` (still latest) | Now the idea behind the opt-in "Spotify's own synced lyrics" (user asked for it, with a spare-account warning). Our own Rust; secret read from Spotify's script, not from spot-secrets-go. No code copied. |
 | 2026-11-18 | whisper.cpp | n/a → `b5454` | Speech to text (`transcribe.rs`): its prebuilt `whisper-cli` + ggml models, run as a tool. No code copied; JSON output parsed. |
 | 2026-11-22 | scrcpy | n/a → `a60891a` (v5.0.1) | Phone track: the server's start, the wire (session packets are new in 4.0), control messages, codec options; adb's QR pairing, auto-connect and where it keeps its keys. Release fetched as a tool; our own Rust client (`phone.rs`), no code copied. |
+| 2026-11-22 | yt-dlp | n/a → release `2026.10.26` | Neria's own yt-dlp updater: the release layout (`releases/latest` redirect, `yt-dlp_win.zip`, `SHA2-256SUMS`), why onedir can't `-U` (`yt_dlp/update.py`). Fetched as a tool; no code copied. |

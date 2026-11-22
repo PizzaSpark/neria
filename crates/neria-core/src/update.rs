@@ -6,7 +6,10 @@
 //! - FFmpeg, Deno and libmpv: their GitHub releases are compared with the files
 //!   in `bin/`; a tool counts as outdated once a newer build exists and ours is
 //!   over [`TOOL_MAX_AGE_DAYS`] old (FFmpeg and libmpv publish builds daily, so
-//!   "newer exists" alone would nag every day). yt-dlp updates itself daily.
+//!   "newer exists" alone would nag every day).
+//! - yt-dlp: its onedir build, which can't update itself; `ytdlp.rs` fetches each new
+//!   release next to the one in use (checked daily, and when a site breaks it). A newer
+//!   release counts as an update here at any age, since sites change under it.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
@@ -155,6 +158,7 @@ pub fn cleanup() {
             });
         }
     }
+    crate::ytdlp::tidy();
     if let Ok(entries) = std::fs::read_dir(paths::bin_dir()) {
         for e in entries.flatten() {
             if e.path().extension().is_some_and(|x| x == "old") {
@@ -173,7 +177,8 @@ pub struct ToolUpdate {
     pub behind_days: u64,
 }
 
-/// Tools (other than yt-dlp) with a newer build than ours, ours being over a month old.
+/// Tools with a newer build than ours: yt-dlp at any age, the others once ours is over a
+/// month old.
 pub fn check_tools() -> Result<Vec<ToolUpdate>> {
     check_tools_older_than(TOOL_MAX_AGE_DAYS)
 }
@@ -182,6 +187,12 @@ pub fn check_tools() -> Result<Vec<ToolUpdate>> {
 pub fn check_tools_older_than(max_age_days: u64) -> Result<Vec<ToolUpdate>> {
     let mut out = Vec::new();
     for spec in tools::TOOLS {
+        if matches!(spec.url, tools::Source::YtdlpOnedir) {
+            if let Some(u) = ytdlp_update(spec)? {
+                out.push(u);
+            }
+            continue;
+        }
         let Some((repo, tag)) = spec.release else { continue };
         let Some(local) = file_secs(&paths::bin_dir().join(spec.files[0])) else { continue };
         let url = match tag {
@@ -198,6 +209,27 @@ pub fn check_tools_older_than(max_age_days: u64) -> Result<Vec<ToolUpdate>> {
     Ok(out)
 }
 
+/// yt-dlp's update, if a newer release than ours is out (or we only have the one-file
+/// build, which then moves over to the onedir one).
+fn ytdlp_update(spec: &tools::ToolSpec) -> Result<Option<ToolUpdate>> {
+    if !spec.installed() {
+        return Ok(None);
+    }
+    let latest = crate::ytdlp::latest().with_context(|| format!("checking {}", spec.label))?;
+    let ours = crate::ytdlp::current().map(|(v, _)| v);
+    let newer = ours.as_deref().is_none_or(|v| crate::ytdlp::is_newer(&latest.version, v));
+    let behind = |v: &str| crate::ytdlp::Latest { version: v.into(), sums: String::new() }.days_old();
+    Ok(newer.then(|| ToolUpdate {
+        label: spec.label,
+        behind_days: ours
+            .as_deref()
+            .and_then(behind)
+            .zip(latest.days_old())
+            .map(|(a, b)| a.saturating_sub(b))
+            .unwrap_or(0),
+    }))
+}
+
 /// Re-download the given tools (by label). Existing files are moved aside
 /// first (renaming works even while a tool runs), and put back on failure.
 pub fn update_tools(labels: &[&str], mut on: impl FnMut(tools::Progress)) -> Result<()> {
@@ -205,6 +237,19 @@ pub fn update_tools(labels: &[&str], mut on: impl FnMut(tools::Progress)) -> Res
     let todo: Vec<_> = tools::TOOLS.iter().filter(|t| labels.contains(&t.label)).collect();
     let steps = todo.len();
     for (step, spec) in todo.into_iter().enumerate() {
+        if matches!(spec.url, tools::Source::YtdlpOnedir) {
+            // A new release lands next to the one in use; nothing is moved aside.
+            let p = |downloaded, total| tools::Progress {
+                tool: tools::TOOLS.iter().position(|t| std::ptr::eq(t, spec)).unwrap_or(0),
+                step,
+                steps,
+                label: spec.label.to_string(),
+                downloaded,
+                total,
+            };
+            crate::ytdlp::update(|d, t| on(p(d, t)))?;
+            continue;
+        }
         let mut moved = Vec::new();
         for f in spec.files {
             let (cur, old) = (bin.join(f), bin.join(format!("{f}.old")));
@@ -267,6 +312,7 @@ fn remote_secs(spec: &tools::ToolSpec, release: &Value) -> Option<u64> {
         let name = a["name"].as_str().unwrap_or("");
         match &spec.url {
             tools::Source::Url(u) => u.rsplit('/').next() == Some(name),
+            tools::Source::YtdlpOnedir => false,
             tools::Source::GithubAsset { prefix, suffix, exclude, .. } => {
                 name.starts_with(prefix) && name.ends_with(suffix) && !name.contains(exclude)
             }
@@ -276,7 +322,7 @@ fn remote_secs(spec: &tools::ToolSpec, release: &Value) -> Option<u64> {
 }
 
 /// `2026-11-06T12:34:56Z` → Unix seconds.
-fn iso_secs(s: &str) -> Option<u64> {
+pub(crate) fn iso_secs(s: &str) -> Option<u64> {
     let num = |r: std::ops::Range<usize>| s.get(r)?.parse::<i64>().ok();
     let (y, m, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
     let (hh, mm, ss) = (num(11..13)?, num(14..16)?, num(17..19)?);

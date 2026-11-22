@@ -1163,10 +1163,30 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
         let _ = weak.upgrade_in_event_loop(|ui| setup_ui::finished(&ui));
 
         // Sites change constantly; keep yt-dlp fresh (once a day, before any download runs).
-        let due = now_secs().saturating_sub(settings.lock().unwrap().last_update_check) > 24 * 3600;
+        // An install that only has the one-file yt-dlp moves over to the onedir build now.
+        let due = now_secs().saturating_sub(settings.lock().unwrap().last_update_check) > 24 * 3600
+            || neria_core::ytdlp::current().is_none();
         if due {
             let _ = weak.upgrade_in_event_loop(|ui| ui.set_setup_label("Checking yt-dlp for updates…".into()));
-            let _ = tools::update_ytdlp();
+            let w = weak.clone();
+            let mut last = std::time::Instant::now();
+            let updated = neria_core::ytdlp::update(|done, total| {
+                if last.elapsed() < std::time::Duration::from_millis(200) {
+                    return;
+                }
+                last = std::time::Instant::now();
+                let amount = match total {
+                    Some(t) => format!("{} / {}", fmt::bytes(done as f64), fmt::bytes(t as f64)),
+                    None => fmt::bytes(done as f64),
+                };
+                let _ = w.upgrade_in_event_loop(move |ui| {
+                    ui.set_setup_label(format!("Updating yt-dlp…  {amount}").into());
+                });
+            });
+            if let Err(e) = updated {
+                // Downloads carry on with the yt-dlp there is; the next start tries again.
+                eprintln!("yt-dlp update: {e:#}");
+            }
             let mut s = settings.lock().unwrap();
             s.last_update_check = now_secs();
             let _ = s.save();

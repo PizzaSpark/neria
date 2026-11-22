@@ -201,8 +201,16 @@ so they get built together.
    handing over. Checked end to end on a POCO X7 Pro. Left: a Discord viewer hearing a shared
    Present window; turning the phone (landscape) on the real phone; Extras (camera, APK,
    files, clipboard)
-6. **Neria's own tool updater**: lets yt-dlp's onedir build replace the one-file exe
-   (starts ~1 s faster on every download and every Spotify candidate check, Music 4)
+6. ✅ **Neria's own tool updater** (built 2026-11-22, `ytdlp.rs`): yt-dlp's onedir build
+   (`yt-dlp_win.zip`) replaces the one-file exe. Each release goes in `bin/yt-dlp/<version>/`,
+   checked against the release's SHA2-256SUMS and by starting it, then the newest runs; an
+   older folder goes once nothing runs from it, so a download in progress keeps its yt-dlp.
+   Checked daily and when a site breaks (as `-U` was), and Settings → About offers a newer
+   one with the other tools. Installs with the one-file exe move over at their next start
+   ("Updating yt-dlp… 19 / 23 MB" on the start screen); the one-file exe stays the fallback
+   when the onedir build can't be had. Measured: start-up 1.3 → 0.45 s, a short YouTube
+   download 10.9 → 7.3 s, a Spotify candidate check 10.1 → 8.6 s. Checked headless (move
+   over, update from an older release while it runs, two updates at once) and in the window
 7. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
    live and Kick's chat (Livestreams 11); **both chats of a multi-stream by themselves**
    (asked for 2026-11-21): a streamer live on YouTube and Twitch at once is spotted (links in
@@ -485,8 +493,9 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
    - Faster candidate checks: measured, not changed. A check is ~8 s: yt-dlp start-up 1.3 s,
      YouTube page + JS challenge ~2.5 s, the audio ~4 s, and a smaller audio format doesn't
      help (1.5 MB took as long as 4 MB). The dialog already checks candidates in parallel.
-     The real win is yt-dlp's onedir build (`yt-dlp_win.zip`, starts faster) but it can't
-     `-U` itself, so it needs Neria's own tool updater: its own item, for every download
+     The real win was yt-dlp's onedir build (`yt-dlp_win.zip`, starts faster), which can't
+     `-U` itself: ✅ now Neria's own tool updater fetches it (Up next 6), a check went
+     10.1 → 8.6 s
    - ✅ No-preview-anywhere path exercised on a real track: a "Spotify Singles" recording with
      Spotify's preview set aside (`--no-spotify-preview`): Deezer and Apple rightly find
      nothing, the song downloads and says "no preview to check against"

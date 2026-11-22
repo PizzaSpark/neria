@@ -1448,7 +1448,7 @@ export component SettingsDrawer inherits Rectangle {
                                     font-size: 11.5px;
                                     wrap: word-wrap;
                                 }
-                                Hint { text: "yt-dlp updates itself daily. FFmpeg, Deno and libmpv are offered an update once a newer build exists and yours is over a month old."; }
+                                Hint { text: "Neria keeps yt-dlp current: it looks for a new one daily and whenever a site stops working. FFmpeg, Deno and libmpv are offered an update once a newer build exists and yours is over a month old."; }
                                 if root.tools-status != "": Text {
                                     text: root.tools-status;
                                     color: root.tools-outdated != "" ? Theme.accent-hi : Theme.muted;

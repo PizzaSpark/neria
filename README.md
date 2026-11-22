@@ -235,7 +235,7 @@ back to the public page automatically.
 |---|---|
 | "Setup hit a snag" on first start | Check your internet connection and press **Try again** |
 | "YouTube wants a sign-in" | Press **Sign in to YouTube** on the preview |
-| A site stopped working | Restart Neria: yt-dlp updates itself once a day |
+| A site stopped working | Restart Neria: it gets the newest yt-dlp once a day (and right away when a download breaks) |
 | A Spotify song is the wrong version | Press ⇄ on its row and pick the one marked ✓ Same recording |
 | A Spotify song failed with "Pick one yourself" | Press ⇄ and search for it in the box at the top |
 | The compressor's Compress button is greyed out | Wait a second: it's still checking your graphics card |

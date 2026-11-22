@@ -47,4 +47,5 @@ pub mod update;
 pub mod voice;
 pub mod voice_match;
 pub mod web;
+pub mod ytdlp;
 pub mod ytmusic;
