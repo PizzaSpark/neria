@@ -680,7 +680,9 @@ impl Default for Options {
             video: true,
             audio: true,
             control: true,
-            max_size: 1920,
+            // The phone's own size, as scrcpy's window gets it (its server steps down by itself
+            // when the phone's encoder can't do that size).
+            max_size: 0,
             bit_rate: 8_000_000,
             max_fps: 60,
             keep_on_phone: false,
@@ -826,7 +828,13 @@ struct Fan {
     mkv: Option<Mkv>,
     /// Raw video: the packets since the last key frame, so a reader that joins (the page's
     /// player) starts at once instead of waiting for the phone's next key frame.
-    gop: Vec<Chunk>,
+    gop: Vec<Kept>,
+}
+
+/// A packet kept since the last key frame (Matroska: sound blocks too).
+struct Kept {
+    chunk: Chunk,
+    audio: bool,
 }
 
 /// One stream handed to everyone who wants it: local TCP clients (mpv, ffmpeg) on `port`,
@@ -957,10 +965,10 @@ impl Feed {
         }
         if key {
             fan.gop.clear();
-            fan.gop.push(chunk.clone());
+            fan.gop.push(Kept { chunk: chunk.clone(), audio: false });
         } else if !fan.gop.is_empty() {
             if fan.gop.len() < BACKLOG {
-                fan.gop.push(chunk.clone());
+                fan.gop.push(Kept { chunk: chunk.clone(), audio: false });
             } else {
                 fan.gop.clear();
             }
@@ -985,14 +993,28 @@ impl Feed {
             if turned && fan.mkv.as_ref().is_some_and(|m| m.ends_on_turn) {
                 fan.clients.clear();
             }
+            if turned {
+                fan.gop.clear();
+            }
             fan.config = Some(Arc::from(data));
-            return;
-        }
-        if fan.clients.is_empty() {
             return;
         }
         let ms = stamp(&mut fan, pts);
         let block: Chunk = Arc::from(mkv::block(1, ms, key, &mkv::avcc_frame(data)));
+        // Kept from the last key frame, for a reader that joins later (see `add`).
+        if key {
+            fan.gop.clear();
+            fan.gop.push(Kept { chunk: block.clone(), audio: false });
+        } else if !fan.gop.is_empty() {
+            if fan.gop.iter().filter(|k| !k.audio).count() < BACKLOG {
+                fan.gop.push(Kept { chunk: block.clone(), audio: false });
+            } else {
+                fan.gop.clear();
+            }
+        }
+        if fan.clients.is_empty() {
+            return;
+        }
         let header = if key && fan.clients.iter().any(|c| c.need_key) {
             fan.mkv.as_ref().zip(fan.config.as_deref().and_then(mkv::avcc)).map(|(m, avcc)| {
                 Arc::from(mkv::header(Some((&avcc, m.width, m.height)), m.audio)) as Chunk
@@ -1006,13 +1028,23 @@ impl Feed {
     /// Matroska: one packet of sound (48 kHz stereo s16le).
     fn mkv_audio(&self, data: &[u8], pts: u64) {
         let mut fan = self.0.lock().unwrap();
-        if fan.clients.is_empty() {
+        let video = fan.mkv.as_ref().is_some_and(|m| m.video);
+        if fan.clients.is_empty() && (!video || fan.gop.is_empty()) {
             return;
         }
-        let video = fan.mkv.as_ref().is_some_and(|m| m.video);
         let ms = stamp(&mut fan, pts);
         let block: Chunk = Arc::from(mkv::block(if video { 2 } else { 1 }, ms, true, data));
         if video {
+            if !fan.gop.is_empty() {
+                // A still screen sends sound but no key frames: past the limit the oldest sound
+                // goes (the key frame stays), so a reader joining much later still can.
+                if fan.gop.len() >= 2 * BACKLOG {
+                    if let Some(i) = fan.gop.iter().skip(1).position(|c| c.audio) {
+                        fan.gop.remove(i + 1);
+                    }
+                }
+                fan.gop.push(Kept { chunk: block.clone(), audio: true });
+            }
             // Sound waits for the picture's first key frame (and its header).
             fan.clients.retain_mut(|c| c.need_key || c.tx.try_send(block.clone()).is_ok());
         } else {
@@ -1042,12 +1074,28 @@ fn add(fan: &Mutex<Fan>, video: bool) -> Receiver<Chunk> {
             // Joins mid-stream: SPS/PPS, then everything since the last key frame.
             let (tx, rx) = sync_channel(BACKLOG + f.gop.len() + 1);
             let _ = tx.try_send(cfg);
-            for c in &f.gop {
-                let _ = tx.try_send(c.clone());
+            for k in &f.gop {
+                let _ = tx.try_send(k.chunk.clone());
             }
             f.clients.push(Client { tx, need_key: false });
             return rx;
         }
+    }
+    // The replay buffer joining mid-stream: its header, then everything since the last key
+    // frame, so it needn't wait for the phone's next one (which never comes while the screen
+    // stays still). Not a recording: it starts when Record is pressed, not before.
+    let header = f.mkv.as_ref().filter(|m| m.video && m.ends_on_turn && !f.gop.is_empty()).and_then(|m| {
+        let avcc = f.config.as_deref().and_then(mkv::avcc)?;
+        Some(Arc::from(mkv::header(Some((&avcc, m.width, m.height)), m.audio)) as Chunk)
+    });
+    if let Some(h) = header {
+        let (tx, rx) = sync_channel(BACKLOG + f.gop.len() + 1);
+        let _ = tx.try_send(h);
+        for k in &f.gop {
+            let _ = tx.try_send(k.chunk.clone());
+        }
+        f.clients.push(Client { tx, need_key: false });
+        return rx;
     }
     let (tx, rx) = sync_channel(BACKLOG);
     // Matroska of sound alone waits too: for its header.
@@ -2393,6 +2441,31 @@ mod tests {
         assert_eq!(got, vec![b"cfg".to_vec(), b"k1".to_vec(), b"p1".to_vec(), b"p2".to_vec()]);
         let a = Options { plain: true, audio: false, ..Options::default() }.server_args(1);
         assert!(!a.iter().any(|x| x.starts_with("video_codec_options") || x.starts_with("max_size") || x.starts_with("max_fps")));
+        stop.store(true, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn the_replay_buffer_joining_on_a_still_screen_starts_at_once() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let f = Fanout::mkv(true, true, true, stop.clone()).unwrap();
+        let rec = Fanout::mkv(true, true, false, stop.clone()).unwrap();
+        // SPS + PPS, then a key frame (Annex B), then only sound: a screen that doesn't move.
+        let cfg = [0, 0, 0, 1, 0x67, 0x42, 0, 0x1f, 0, 0, 0, 1, 0x68, 0xce];
+        let idr = [0, 0, 0, 1, 0x65, 0x88, 0x84];
+        for x in [&f, &rec] {
+            let feed = x.feed();
+            feed.size(1220, 2712);
+            feed.mkv_video(&cfg, true, false, 0);
+            feed.mkv_video(&idr, false, true, 1000);
+            for i in 0..3000u64 {
+                feed.mkv_audio(&[0; 8], 2000 + i * 10_000);
+            }
+        }
+        let got: Vec<Chunk> = f.tap().try_iter().collect();
+        assert!(got.len() > 1000, "header, the key frame and the newest sound: {}", got.len());
+        assert!(got.len() <= 2 * BACKLOG + 1);
+        // A recording starts when Record is pressed: nothing from before.
+        assert!(rec.tap().try_iter().next().is_none());
         stop.store(true, Ordering::SeqCst);
     }
 

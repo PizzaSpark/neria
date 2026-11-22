@@ -2120,5 +2120,12 @@ fn main() -> anyhow::Result<()> {
     phone_ui::shutdown();
     queue.shutdown();
     neria_core::cookies::clear_run_copies();
+    // Everything of ours is saved and stopped: end here, as Task Manager would. A normal exit
+    // calls every loaded DLL once more on the way out, and a graphics driver's goodbye can
+    // hang forever (after mirroring a phone: one thread left, the window still up, the exe
+    // locked); ending the process skips those calls.
+    unsafe {
+        let _ = windows::Win32::System::Threading::TerminateProcess(windows::Win32::System::Threading::GetCurrentProcess(), 0);
+    }
     Ok(())
 }

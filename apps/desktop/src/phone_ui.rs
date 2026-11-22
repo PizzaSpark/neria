@@ -434,6 +434,15 @@ fn tick(ui: &AppWindow) {
     if s == st::MIRROR || s == st::SOUND || s == st::STARTING {
         live(ui);
     }
+    // Dev hook NERIA_PHONE_MIRROR: mirror the first phone that's ready, once, with no click.
+    static AUTO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if s == st::PHONES && std::env::var_os("NERIA_PHONE_MIRROR").is_some() && !AUTO.load(std::sync::atomic::Ordering::Relaxed) {
+        let first = UI.with(|u| u.borrow().devices.iter().find(|d| d.state == State::Ready).map(|d| d.serial.clone()));
+        if let Some(serial) = first {
+            AUTO.store(true, std::sync::atomic::Ordering::Relaxed);
+            start(ui, serial, false);
+        }
+    }
     if UI.with(|u| u.borrow().shown && u.borrow().server) && (s == st::CONNECT || s == st::PHONES) {
         look(ui);
     }
@@ -1161,6 +1170,12 @@ fn load_picture(ui: &AppWindow, url: &str) {
                 ("keep-open", "no"),
                 ("pause", "no"),
             ];
+            // Dev hook NERIA_PHONE_HWDEC: the decoder mpv uses for the phone ("no", "d3d11va"…).
+            let hwdec = std::env::var("NERIA_PHONE_HWDEC").ok();
+            let mut extra = extra.to_vec();
+            if let Some(h) = hwdec.as_deref() {
+                extra.push(("hwdec", h));
+            }
             match Mpv::new(&paths::bin_dir().join("libmpv-2.dll"), &extra) {
                 Ok(m) => u.mpv = Some(m),
                 Err(e) => return Err(e.to_string()),
