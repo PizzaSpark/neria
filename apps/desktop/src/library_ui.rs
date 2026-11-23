@@ -362,6 +362,7 @@ fn row_of(s: &mut State, it: &Item) -> LibRow {
         offline,
         place: place.into(),
         stats: if gone { String::new() } else { stats.join(" · ") }.into(),
+        size: it.size.filter(|b| *b > 0 && !gone).map(|b| fmt::mb(b as f64)).unwrap_or_default().into(),
         marks: marks(it).into(),
         length: if it.kind.is_sound() || it.kind.is_text() { String::new() } else { length.map(fmt::duration).unwrap_or_default() }
             .into(),

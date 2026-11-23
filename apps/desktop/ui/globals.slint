@@ -1178,8 +1178,9 @@ export struct LibRow {
     offline: bool,
     // "YouTube", "This PC", "from match-final.mp4", "was D:\Videos\Neria\".
     place: string,
-    // Mono: "2:14:08 · 3.1 GB".
+    // Mono: "2:14:08 · 3.1 GB"; compact rows only say the size ("3.1 GB").
     stats: string,
+    size: string,
     // What's attached, in words: "Chat", "Captions · Transcript"; "" for nothing.
     marks: string,
     // Over the thumbnail, bottom right: "2:14:08".

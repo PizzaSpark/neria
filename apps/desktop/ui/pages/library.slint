@@ -70,6 +70,7 @@ component KindThumb inherits Rectangle {
 
 // A menu button (Site / Date / Sort / Filter): its value, a ▾, the "set" outline when set.
 component MenuButton inherits GhostButton {
+    horizontal-stretch: 0;
     trail: "\u{E70D}";
 }
 
@@ -208,9 +209,9 @@ component DetailBody inherits VerticalLayout {
                 horizontal-stretch: 1;
                 text: d.values[i];
                 color: Theme.ink;
-                font-family: k == "File" || k == "Made from" || k == "Folder" ? Theme.mono : Theme.body;
-                font-size: k == "File" || k == "Made from" || k == "Folder" ? 11px : 12.5px;
-                wrap: k == "File" || k == "Made from" || k == "Folder" ? char-wrap : word-wrap;
+                font-family: k == "File" || k == "Made from" || k == "Folder" || k == "Was" ? Theme.mono : Theme.body;
+                font-size: k == "File" || k == "Made from" || k == "Folder" || k == "Was" ? 11px : 12.5px;
+                wrap: k == "File" || k == "Made from" || k == "Folder" || k == "Was" ? char-wrap : word-wrap;
             }
         }
     }
@@ -448,17 +449,13 @@ component OpenedRow inherits VerticalLayout {
 }
 
 // One saved thing (or a day heading).
-component LibRowView inherits Rectangle {
+component LibRowView inherits VerticalLayout {
     in property <LibRow> item;
     property <bool> selected: !root.item.heading && Library.selected == root.item.id;
     property <bool> opened: root.selected && !Screen.wide && !Screen.compact;
     property <bool> hover;
     // Wide: Watch and Clip on the hovered or picked row; narrower: one icon action and ⋯.
     property <bool> wide-acts: Screen.wide && (root.hover || root.selected || root.item.gone);
-    accessible-role: list-item;
-    accessible-label: root.item.heading ? root.item.day : root.item.title + ", " + root.item.tag;
-    accessible-item-selected: root.selected;
-    accessible-action-default => { root.pick(); }
     function pick() {
         Library.select(root.item.id);
         if Screen.compact {
@@ -486,6 +483,10 @@ component LibRowView inherits Rectangle {
         }
     }
     if !root.item.heading: Rectangle {
+        accessible-role: list-item;
+        accessible-label: root.item.title + ", " + root.item.tag;
+        accessible-item-selected: root.selected;
+        accessible-action-default => { root.pick(); }
         // The picked row: a quiet panel instead of the hairline.
         Rectangle {
             width: parent.width - Theme.lane;
@@ -555,7 +556,7 @@ component LibRowView inherits Rectangle {
                             text: root.item.tag;
                             kind: root.item.tag-kind;
                         }
-                        if root.item.place != "": Text {
+                        if root.item.place != "" && (!Screen.compact || root.item.gone): Text {
                             horizontal-stretch: 0;
                             max-width: self.preferred-width;
                             text: root.item.place;
@@ -564,10 +565,10 @@ component LibRowView inherits Rectangle {
                             vertical-alignment: center;
                             overflow: elide;
                         }
-                        if root.item.stats != "" && !(Screen.compact && root.item.gone): Text {
+                        if !root.item.gone && (Screen.compact ? root.item.size : root.item.stats) != "": Text {
                             horizontal-stretch: 0;
                             max-width: self.preferred-width;
-                            text: root.item.stats;
+                            text: Screen.compact ? root.item.size : root.item.stats;
                             color: Theme.muted;
                             font-family: Theme.mono;
                             font-size: 11px;
@@ -740,13 +741,16 @@ component SearchBox inherits Rectangle {
                 }
             }
         }
-        if Library.query != "": TextLink {
+        if Library.query != "": VerticalLayout {
+            alignment: center;
             horizontal-stretch: 0;
-            text: "Clear";
-            clicked => {
-                Library.query = "";
-                Library.changed();
-                input.focus();
+            TextLink {
+                text: "Clear";
+                clicked => {
+                    Library.query = "";
+                    Library.changed();
+                    input.focus();
+                }
             }
         }
         if Library.query == "" && Screen.wide: VerticalLayout {
@@ -762,19 +766,22 @@ component SearchBox inherits Rectangle {
 // Kind tabs with counts. Searching or filtering hides the empty ones; Gone only while any.
 component KindTabs inherits HorizontalLayout {
     property <bool> narrowed: Library.query != "" || Library.site != 0 || Library.date != 0;
-    spacing: Screen.compact ? 16px : 18px;
     alignment: start;
-    for t[i] in LibWords.tabs: FilterTab {
-        // ui-rules: hidden tabs take no room (a for can't skip items).
-        visible: i == Library.tab || (i == 6 ? Library.counts[6] > 0 : (!root.narrowed || Library.counts[i] > 0));
-        width: self.visible ? self.min-width : 0px;
-        text: t;
-        count: Library.counts[i];
-        active: Library.tab == i;
-        attention: i == 6;
-        clicked => {
-            Library.tab = i;
-            Library.changed();
+    // Hidden tabs take no room, their gap included (a `for` can't skip items).
+    for t[i] in LibWords.tabs: HorizontalLayout {
+        property <bool> shown: i == Library.tab || (i == 6 ? Library.counts[6] > 0 : (!root.narrowed || Library.counts[i] > 0));
+        padding-right: self.shown ? (Screen.compact ? 16px : 18px) : 0px;
+        FilterTab {
+            visible: parent.shown;
+            width: parent.shown ? self.min-width : 0px;
+            text: t;
+            count: Library.counts[i];
+            active: Library.tab == i;
+            attention: i == 6;
+            clicked => {
+                Library.tab = i;
+                Library.changed();
+            }
         }
     }
 }
@@ -947,29 +954,26 @@ component DetailSheet inherits Rectangle {
                     }
                 }
             }
-            body-scroll := ScrollView {
-                height: min(body.preferred-height, root.height * 0.42);
+            ScrollView {
+                height: min(body.preferred-height, root.height * 0.36);
                 body := VerticalLayout {
-                    spacing: 12px;
+                    padding-right: 12px;
                     DetailBody { }
-                    HorizontalLayout {
-                        spacing: 6px;
-                        alignment: start;
-                        VerticalLayout {
-                            alignment: start;
-                            MoreActions {
-                                with-clip: true;
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: start;
-                            GhostButton {
-                                compact: true;
-                                icon: "\u{E712}";
-                                label: "More actions";
-                                clicked => { more.show(); }
-                            }
-                        }
+                }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                MoreActions {
+                    with-clip: true;
+                }
+                VerticalLayout {
+                    alignment: start;
+                    horizontal-stretch: 0;
+                    GhostButton {
+                        compact: true;
+                        icon: "\u{E712}";
+                        label: "More actions";
+                        clicked => { more.show(); }
                     }
                 }
             }
