@@ -245,8 +245,8 @@ so they get built together.
    laptop's 1440p 165 Hz screen (1920 × 1080 / 2560 × 1440 / 1440p120). Left: the sizes
    compared on the same game moment at each choice, a real game, AMD (untested here; a route
    that can't scale records full size), the phone on Best
-8. **Bigger ideas** (section "Later"), in this order: ✅ Library page (built 2026-11-23, see
-   Later; left: its menus, Find it… and Delete tried in the real app), command palette, Audio
+8. **Bigger ideas** (section "Later"), in this order: ✅ Library page (built 2026-11-23, every
+   action tried in the real app the same day; left: the grid view, see Later), command palette, Audio
    tools page, saved workflows, external tools. Parked (user's call 2026-11-23): the browser
    extension (Chrome's store asks $5 once; Firefox / Edge are free) and a Tampermonkey
    userscript instead (free everywhere, but two installs and no cookies); the clipboard
@@ -1164,9 +1164,10 @@ that's an exception, written only once the Phone tab is used.
   at In / Out, Compress, Transcribe, Make a GIF, Copy file / Copy link (on the clipboard),
   Download again, Update playlist, Add lyrics, Go to the original, Pick another match + Use
   this, Get the missed bits back (a YouTube video with 10 s cut out: back, ~2.5 s overlap
-  from keyframe cuts, as when recording), Remove, Delete file…. Left: the grid view (2B) on
-  video kinds; checking by hand Find it… / Find them… (file pickers), Show in folder, pasting
-  a copied file into Explorer, and the Gone check with an unplugged drive; Pick another match
+  from keyframe cuts, as when recording), Remove, Delete file…. Checked by hand the same day:
+  Find it… (its neighbours found too), Find them…, Show in folder, a copied file pasted into
+  Explorer; Copy file is on every file now. Left: the grid view (2B) on video kinds; the Gone
+  check with an unplugged drive (no drive to hand); Pick another match
   marks no row as the current one (the Library doesn't know which match it was), and a song
   saved before in another format than Settings' leaves the old file next to the new one;
   Twitch keeps a stream's missed bits only while it's live
