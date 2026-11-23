@@ -199,8 +199,8 @@ so they get built together.
    size with its own replay buffer and "Clip the last 30 s", Record, Screenshot, Sound only,
    where its sound plays, Present in a window of Neria's own (with the sound), cable and Wi-Fi
    handing over. Checked end to end on a POCO X7 Pro. Left: a Discord viewer hearing a shared
-   Present window; turning the phone (landscape) on the real phone; Extras (camera, APK,
-   files, clipboard)
+   Present window; turning the phone (landscape) on the real phone; the Extras built
+   2026-11-23 (camera, APK, files, clipboard) checked on a phone
 6. ✅ **Neria's own tool updater** (built 2026-11-22, `ytdlp.rs`): yt-dlp's onedir build
    (`yt-dlp_win.zip`) replaces the one-file exe. Each release goes in `bin/yt-dlp/<version>/`,
    checked against the release's SHA2-256SUMS and by starting it, then the newest runs; an
@@ -245,8 +245,11 @@ so they get built together.
    laptop's 1440p 165 Hz screen (1920 × 1080 / 2560 × 1440 / 1440p120). Left: the sizes
    compared on the same game moment at each choice, a real game, AMD (untested here; a route
    that can't scale records full size), the phone on Best
-8. **Bigger ideas** (section "Later"), in this order: browser extension, Library page,
-   command palette, Audio tools page, saved workflows, external tools
+8. **Bigger ideas** (section "Later"), in this order: Library page, command palette, Audio
+   tools page, saved workflows, external tools. Parked (user's call 2026-11-23): the browser
+   extension (Chrome's store asks $5 once; Firefox / Edge are free) and a Tampermonkey
+   userscript instead (free everywhere, but two installs and no cookies); the clipboard
+   watcher covers handing links over for now
 9. **Before the mobile build**, once everything above is done:
    - **Code review** of the Clip track and the code from before the Download track (only the
      Download track has had one)
@@ -1119,7 +1122,9 @@ key and pairings in `<profile>\.android` and no variable moves them (`docs/UPSTR
 that's an exception, written only once the Phone tab is used.
 
 ## Later: bigger ideas (keep UX simple)
-- **Browser extension (Chrome, Edge, Firefox)**: a Neria button on video pages and posts, and
+- **Browser extension (Chrome, Edge, Firefox)**, parked 2026-11-23 (see Up next 8; a
+  Tampermonkey userscript talking to a loopback port with a per-install key is the free
+  alternative if it comes back): a Neria button on video pages and posts, and
   "Download with Neria" when right-clicking a link, image or video. It hands the link to the
   desktop app (a `neria://` link handler, or a localhost port only Neria listens on), which
   comes to the front with the preview ready; "Download now" queues it with your defaults. Can
