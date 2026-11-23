@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria Command Palette</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --badbg:#3a1a1a; --live:#ff6b6f; --livebg:#3d1719; --accent:#ffd23f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; overflow-x: hidden; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b, td b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+  .scroll > div { min-width: 0; }
+
+  /* app frame */
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; display: flex; }
+  .q.col { flex-direction: column; }
+  .w1000 { width: 1000px; } .w800 { width: 800px; } .w400 { width: 400px; } .w460 { width: 460px; } .w340 { width: 340px; }
+  .main { flex: 1; min-width: 0; padding: 22px 24px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .hd { font: 700 30px/1.1 "Space Grotesk", sans-serif; }
+  .hd.s { font-size: 24px; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.bad { background: var(--badbg); color: var(--bad); }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .ghost { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font: 500 12.5px "Inter Tight", sans-serif; white-space: nowrap; flex: none; background: none; }
+  .ghost.ic { width: 30px; padding: 0; }
+  .ghost.tall { height: 41px; padding: 0 14px; font-size: 13.5px; }
+  .primary { height: 41px; padding: 0 16px; background: var(--pop); color: var(--onpop); border: 2px solid var(--hard); border-radius: 10px;
+             box-shadow: 3px 3px 0 var(--popsh); font: 700 14px "Space Grotesk", sans-serif; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; flex: none; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; white-space: nowrap; gap: 6px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .chip .v { color: var(--dim); font-size: 10px; }
+  svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  svg.i.sm { width: 15px; height: 15px; }
+
+  /* rail */
+  .rail { width: 80px; flex: none; border-right: 1px solid var(--line); padding: 16px 8px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .logo { width: 38px; height: 38px; border-radius: 10px; background: var(--pop); border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); margin-bottom: 14px;
+          font: 700 19px "Space Grotesk", sans-serif; color: var(--onpop); display: flex; align-items: center; justify-content: center; }
+  .nav { width: 64px; padding: 8px 0 6px; border-radius: 10px; border: 2px solid transparent; color: var(--dim); display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; }
+  .nav.on { border-color: var(--ls); background: var(--panel); color: var(--ink); }
+  .nav.new { position: relative; }
+  .rail .sp { flex: 1; }
+
+  /* compact tab bar */
+  .tabbar { display: flex; border-top: 1px solid var(--line); padding: 6px 4px 8px; background: var(--bg); }
+  .tabbar .nav { flex: 1; width: auto; min-width: 0; padding: 6px 0 4px; font-size: 10.5px; }
+
+  /* filter tabs */
+  .ftabs { display: flex; gap: 18px; border-bottom: 1px solid var(--line); margin-top: 16px; flex-wrap: nowrap; overflow: hidden; }
+  .ftab { padding: 8px 0 9px; color: var(--muted); font-size: 13px; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .ftab .n { font: 500 11px "JetBrains Mono", monospace; color: var(--dim); margin-left: 5px; }
+  .ftab.on { color: var(--ink); border-color: var(--ink); }
+  .ftab.on .n { color: var(--ink); }
+  .ftab.warn .n { color: var(--warn); }
+
+  .search { height: 41px; flex: 1; min-width: 0; background: var(--panel); border: 2px solid var(--ls); border-radius: 10px; display: flex; align-items: center; gap: 9px; padding: 0 12px; color: var(--muted); font-size: 13.5px; }
+  .search .key { margin-left: auto; }
+  .key { font: 500 11px "JetBrains Mono", monospace; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--muted); }
+  .menu-btn { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); white-space: nowrap; flex: none; }
+  .menu-btn .v { color: var(--dim); font-size: 10px; }
+  .menu-btn.set { border-color: var(--accent); }
+
+  /* day heading + rows */
+  .day { font: 700 11px "Space Grotesk", sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; padding: 16px 0 6px; display: flex; gap: 8px; }
+  .day .mono { color: var(--dim); font-size: 10.5px; letter-spacing: 0; text-transform: none; font-weight: 400; }
+  .it { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  .it.sel { background: var(--panel); border-radius: 8px; border-bottom-color: transparent; box-shadow: inset 0 0 0 1px var(--ls); }
+  .it .tt { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .it .sub { display: flex; gap: 7px; align-items: center; margin-top: 4px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
+  .it .sub .mono { font-size: 11px; }
+  .att { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); font-size: 11.5px; }
+  .att svg { width: 13px; height: 13px; }
+  .it.gone .th { opacity: .35; filter: grayscale(1); }
+  .it.gone .tt { color: var(--muted); }
+  .acts { display: flex; gap: 6px; flex: none; }
+
+  /* thumbs */
+  .th { width: 64px; height: 36px; border-radius: 6px; flex: none; position: relative; overflow: hidden; }
+  .th.sq { width: 36px; height: 36px; margin: 0 14px; }
+  .th.stack { box-shadow: 4px -4px 0 -1px var(--bg), 4px -4px 0 0 var(--ls); margin-top: 4px; }
+  .th .d { position: absolute; right: 3px; bottom: 3px; font: 500 9px "JetBrains Mono", monospace; background: rgba(0,0,0,.72); color: #fff; padding: 0 3px; border-radius: 3px; }
+  .t1 { background: linear-gradient(135deg,#3b5bdb,#8e2de2 60%,#ff6b6f); }
+  .t2 { background: linear-gradient(160deg,#0f2027,#2c5364 55%,#7fd6a4); }
+  .t3 { background: radial-gradient(circle at 30% 40%,#ffe29f,#ffa99f 40%,#3a1c71); }
+  .t4 { background: linear-gradient(135deg,#ff9a3c,#ff5e62 50%,#2b1a3a); }
+  .t5 { background: linear-gradient(120deg,#1d2b64,#4b6cb7 50%,#f8cdda); }
+  .t6 { background: linear-gradient(145deg,#232526,#5a6a5a 60%,#c9d6a3); }
+  .t7 { background: linear-gradient(135deg,#f7971e,#ffd200); }
+  .t8 { background: linear-gradient(160deg,#41295a,#2f0743 50%,#ff6b6f); }
+  .t9 { background: linear-gradient(135deg,#355c7d,#6c5b7b 50%,#c06c84); }
+
+  /* detail column */
+  .detail { width: 320px; flex: none; border-left: 1px solid var(--line); padding: 22px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .detail .big { width: 100%; height: 158px; border-radius: 10px; position: relative; }
+  .detail .ttl { font: 600 17px/1.3 "Inter Tight", sans-serif; }
+  .kv { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; font-size: 12.5px; }
+  .kv > span:nth-child(odd) { color: var(--muted); }
+  .kv .mono { font-size: 11px; word-break: break-all; }
+  .h5 { font: 700 13px "Space Grotesk", sans-serif; margin-top: 4px; }
+  .attrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .attrow:first-of-type { border-top: 1px solid var(--line); }
+  .attrow .mono { font-size: 10.5px; color: var(--dim); }
+  .wrapacts { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 18px 14px; margin-top: 14px; }
+  .tile .pic { height: 99px; border-radius: 10px; position: relative; }
+  .tile .pic .d { position: absolute; right: 6px; bottom: 6px; font: 500 10px "JetBrains Mono", monospace; background: rgba(0,0,0,.72); color: #fff; padding: 1px 4px; border-radius: 4px; }
+  .tile .pic .k { position: absolute; left: 6px; top: 6px; }
+  .tile .tt { font-size: 13px; font-weight: 500; margin-top: 7px; line-height: 1.3; height: 34px; overflow: hidden; }
+  .tile .sub { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+
+  /* sheet, menu, banner, empty */
+  .sheet { background: var(--panel); border-top: 1px solid var(--ls); border-radius: 14px 14px 0 0; padding: 10px 16px 16px; }
+  .sheet .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--ls); margin: 0 auto 12px; }
+  .scrim { background: rgba(0,0,0,.5); }
+  .menu { background: var(--panel); border: 1px solid var(--ls); border-radius: 12px; padding: 6px; width: 230px; box-shadow: 0 14px 30px -10px rgba(0,0,0,.6); }
+  .mi { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 7px; font-size: 13px; }
+  .mi.hov { background: var(--raised); }
+  .mi .key { margin-left: auto; }
+  .mi.bad { color: var(--bad); }
+  .msep { height: 1px; background: var(--line); margin: 5px 4px; }
+  .banner { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .starts .s { display: flex; gap: 14px; align-items: center; padding: 14px 4px; border-bottom: 1px solid var(--line); }
+  .starts .s:first-child { border-top: 1px solid var(--line); }
+  .starts .ico { width: 36px; height: 36px; border-radius: 9px; border: 2px solid var(--ls); display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 1000px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+  table.cmp td.m, table.cmp code { font: 500 12px "JetBrains Mono", monospace; }
+  .tablewrap { overflow-x: auto; max-width: 100%; }
+  code { font: 500 12.5px "JetBrains Mono", monospace; }
+  @media (max-width: 600px) { body { padding: 28px 16px 60px; } h1 { font-size: 25px; } }
+  /* the palette */
+  .stage { position: relative; }
+  .dimmed { filter: brightness(.45); pointer-events: none; }
+  .over { position: absolute; inset: 0; display: flex; justify-content: center; align-items: flex-start; }
+  .pal { width: 560px; max-width: calc(100% - 32px); margin-top: 70px; background: var(--panel); border: 1px solid var(--ls); border-radius: 14px;
+         box-shadow: 0 24px 60px -16px rgba(0,0,0,.8); overflow: hidden; }
+  .pal .in { display: flex; align-items: center; gap: 10px; padding: 0 14px; height: 52px; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .pal .in .typed { color: var(--ink); }
+  .pal .in .ph { color: var(--dim); }
+  .pal .in .caret { width: 2px; height: 18px; background: var(--ink); margin-left: -8px; }
+  .pal .in .key { margin-left: auto; }
+  .pal .grp { font: 700 10.5px "Space Grotesk", sans-serif; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; padding: 10px 16px 4px; }
+  .pal .list { padding: 4px 6px 8px; }
+  .pr { display: flex; align-items: center; gap: 11px; padding: 7px 10px; border-radius: 8px; font-size: 13.5px; min-height: 40px; }
+  .pr.on { background: var(--raised); box-shadow: inset 0 0 0 1px var(--ls); }
+  .pr .ico { width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--ls); display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+  .pr .ico svg { width: 15px; height: 15px; }
+  .pr .th { width: 44px; height: 26px; border-radius: 5px; }
+  .pr .th.sq { width: 26px; height: 26px; margin: 0 9px; }
+  .pr .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pr .nm .m { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .pr .nm b { color: var(--pop); font-weight: 600; }
+  .pr .where { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
+  .pr .go { color: var(--muted); font: 500 11px "JetBrains Mono", monospace; white-space: nowrap; }
+  .pal .foot { display: flex; gap: 14px; padding: 9px 16px; border-top: 1px solid var(--line); color: var(--dim); font-size: 11.5px; flex-wrap: wrap; }
+  .pal .foot .key { margin-right: 4px; }
+  .crumb { display: inline-flex; align-items: center; gap: 6px; background: var(--raised); border: 1px solid var(--ls); border-radius: 7px; padding: 3px 8px; font-size: 12.5px; color: var(--ink); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  .railsearch { width: 64px; height: 40px; border-radius: 10px; border: 2px solid var(--ls); display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); gap: 1px; margin-bottom: 8px; }
+  .railsearch .key { font-size: 9px; padding: 0 4px; }
+  .topfield { height: 34px; border: 2px solid var(--ls); border-radius: 9px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--dim); font-size: 12.5px; background: var(--panel); }
+  .topfield .key { margin-left: auto; }
+  .mini { font-size: 12px; }
+  .note { position: absolute; font: 500 10.5px "JetBrains Mono", monospace; color: #151412; background: #ffd23f; border: 2px solid #000; border-radius: 6px; padding: 2px 6px; box-shadow: 2px 2px 0 #9a6f00; white-space: nowrap; }
+</style>
+</head>
+<body>
+<!-- icon sprites -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.5 8.5 20 18M8.5 15.5 20 6"/></symbol>
+  <symbol id="i-cmp" viewBox="0 0 24 24"><path d="M4 9h6V3M20 15h-6v6M10 9 3 2M14 15l7 7"/></symbol>
+  <symbol id="i-cap" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="16" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><path d="m16.5 5.2 3.6-1 3 15.4-3.7 1z"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6h14M5 11h14M5 16h9"/></symbol>
+  <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"/></symbol>
+  <symbol id="i-find" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/><circle cx="13" cy="13.5" r="2.5"/><path d="m15 15.5 2 2"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-rows" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-gif" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 10H6.5v4H8v-1.5M11 10v4M14 14v-4h3M14 12h2"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-cmd" viewBox="0 0 24 24"><path d="M4 7l5 5-5 5M12 18h8"/></symbol>
+</svg>
+
+<div class="page">
+  <h1>Command palette: Ctrl+K, type, Enter</h1>
+  <p class="lead">Neria has grown to five pages, a Settings drawer and a dozen dialogs. Most of it is a few clicks away,
+  but you have to know where: Make a GIF is on the Clip page, Transcribe is in Extras or a dropped file's choice,
+  "Add lyrics to songs I already have" is in Settings → Spotify. The palette is <b>one box that reaches all of it</b>:
+  press <b>Ctrl+K</b> anywhere, type a few letters of what you want to do or of something you saved, press Enter.
+  It adds no new features; it's a faster way to the ones there are, and to the Library's things.</p>
+  <p class="lead"><b>Not chosen yet.</b> Each section has a recommended pick (PICK); say which you want.</p>
+
+  <section>
+    <div class="label"><span>Ground rules</span><h2>What it is, and what it isn't</h2></div>
+    <ul class="why">
+      <li><b>It goes where the thing already is.</b> "Compress" opens the Compress page with the file in it, "Settings:
+        Voice" opens that section, a saved video opens in the player. Nothing happens in the palette itself, so
+        there's nothing new to learn: you land on the same screen a click would have taken you to.</li>
+      <li><b>Two kinds of rows: things to do and things you saved.</b> Actions (Download a link, Clip a file, Make a
+        GIF, Turn on instant replay, Settings sections…) and the Library's records (by title, site or file name).</li>
+      <li><b>The keyboard is enough.</b> Ctrl+K opens it, typing filters, ↑ ↓ move, Enter does it, Esc closes. The mouse
+        works too. It remembers what you pick, so the things you use come first next time.</li>
+      <li><b>Words you'd say, not our labels.</b> "extract audio", "mp3", "make smaller", "shrink", "discord" all find
+        Compress; "gif" finds Make a GIF; "record" finds Record a live stream and instant replay. Each action has a few
+        such words (the table at the end).</li>
+      <li><b>It's never in the way.</b> No button grows on a page for it except one small entry point (section 5), and
+        on compact it's the same box as a sheet.</li>
+    </ul>
+  </section>
+
+  <!-- ============ 1 · HOW IT LOOKS ============ -->
+  <section>
+    <div class="label"><span>1 · How it opens</span><h2>A box over the page, or a field that drops down</h2></div>
+    <p class="why">Where the box appears decides how it feels: a separate moment ("I'm telling Neria something") or part
+    of the page's header.</p>
+
+    <div class="opt">
+      <h3>1A · A box in the middle, over the dimmed page <span class="rec">PICK</span></h3>
+      <p>Like Raycast or VS Code. The page stays where it was behind it; Esc puts you back. The same box on every page,
+      so it's always in the same place. Typing goes straight in (the box has the keyboard).</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">1000 × 640 · on the Download page · nothing typed yet (see section 2)</div>
+          <div class="q w1000 stage" style="height:600px">
+            <div class="q dimmed" style="width:100%;box-shadow:none;border-radius:0">
+              <div class="rail">
+                <div class="logo">N</div>
+                <div class="nav on"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+                <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+                <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+                <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+                <div class="nav"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+                <div class="sp"></div>
+                <div class="nav"><svg class="i"><use href="#i-set"/></svg>Settings</div>
+              </div>
+              <div class="main">
+                <div class="hd">Grab anything.</div>
+                <div class="mut" style="margin-top:6px">YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.</div>
+                <div class="search" style="margin-top:16px;height:50px">Paste a link…</div>
+                <div class="row" style="margin-top:14px"><span class="chip on">Best quality</span><span class="chip">Compatible</span><span class="chip">Smallest file</span><span class="chip">Audio only</span></div>
+                <div class="h5" style="margin-top:26px">Queue</div>
+                <div class="it"><div class="th t2"></div><div class="grow"><div class="tt">How the James Webb telescope unfolds</div><div class="sub"><span class="tag ok">Saved</span> 240 MB</div></div></div>
+                <div class="it"><div class="th t4"></div><div class="grow"><div class="tt">ohnepixel · the knife reveal (clip)</div><div class="sub"><span class="tag ok">Saved</span> 1.6 MB</div></div></div>
+              </div>
+            </div>
+            <div class="over">
+              <div class="pal">
+                <div class="in"><svg class="i"><use href="#i-search"/></svg><span class="ph">What do you want to do?</span><span class="key">Esc</span></div>
+                <div class="grp">Copied link</div>
+                <div class="list">
+                  <div class="pr on"><span class="ico"><svg class="i"><use href="#i-dl"/></svg></span><span class="nm">Download the copied link <span class="m">youtube.com/watch?v=k3Tokyo</span></span><span class="go">Enter</span></div>
+                </div>
+                <div class="grp">Recent</div>
+                <div class="list">
+                  <div class="pr"><div class="th t1"></div><span class="nm">IShowSpeed · Day 3 in Tokyo (full stream)</span><span class="where">Recording · today</span></div>
+                  <div class="pr"><div class="th t3"></div><span class="nm">VALORANT · 14:32</span><span class="where">Replay · today</span></div>
+                  <div class="pr"><div class="th sq" style="background:var(--raised)"></div><span class="nm">a-ha - Take On Me</span><span class="where">Song · Saturday</span></div>
+                </div>
+                <div class="grp">Do something</div>
+                <div class="list">
+                  <div class="pr"><span class="ico"><svg class="i"><use href="#i-clip"/></svg></span><span class="nm">Clip a file…</span><span class="where">Clip</span></div>
+                  <div class="pr"><span class="ico"><svg class="i"><use href="#i-cmp"/></svg></span><span class="nm">Make a file smaller…</span><span class="where">Compress</span></div>
+                  <div class="pr"><span class="ico"><svg class="i"><use href="#i-rec"/></svg></span><span class="nm">Turn on instant replay</span><span class="where">Capture</span></div>
+                </div>
+                <div class="foot"><span><span class="key">↑↓</span>move</span><span><span class="key">Enter</span>do it</span><span><span class="key">→</span>its actions</span><span><span class="key">Esc</span>close</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="opt">
+      <h3>1B · A field at the top of every page that drops a list</h3>
+      <p>Always visible, so it's found without a shortcut, but it costs a row on every page (pages already have their
+      own search: the Library's, the Download page's link box). Two search fields one above the other on the Library is
+      confusing.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">1000 × 420 · the Library page, typed "comp"</div>
+          <div class="q w1000" style="height:420px">
+            <div class="rail">
+              <div class="logo">N</div>
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav on"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+            </div>
+            <div class="main" style="position:relative">
+              <div class="topfield"><svg class="i sm"><use href="#i-cmd"/></svg><span style="color:var(--ink)">comp</span><span class="key">Ctrl K</span></div>
+              <div class="hd" style="margin-top:16px">Library</div>
+              <div class="search" style="margin-top:12px"><svg class="i sm"><use href="#i-search"/></svg>Search titles, sites, file names…<span class="key">Ctrl F</span></div>
+              <div class="pal" style="position:absolute;left:24px;top:52px;margin:0;width:520px">
+                <div class="list">
+                  <div class="pr on"><span class="ico"><svg class="i"><use href="#i-cmp"/></svg></span><span class="nm"><b>Comp</b>ress a file…</span><span class="where">Compress</span></div>
+                  <div class="pr"><div class="th t5"></div><span class="nm">match-final (Discord).mp4 <span class="m"><b>Comp</b>ressed</span></span><span class="where">Clip · yesterday</span></div>
+                </div>
+              </div>
+              <div class="note" style="right:30px;top:96px">two search fields on one page</div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ============ 2 · BEFORE TYPING ============ -->
+  <section>
+    <div class="label"><span>2 · Before you type</span><h2>What the empty box shows</h2></div>
+    <div class="opt">
+      <h3>2A · A copied link, a few recent things, a few common actions <span class="rec">PICK</span></h3>
+      <p>As in 1A's picture: the <b>copied link</b> first when the clipboard has one (the clipboard watcher already
+      knows), then the <b>3 newest things</b> from the Library, then the <b>3 actions you use most</b> (common ones until
+      it has learnt). Short enough to read at a glance; typing replaces it all with matches.</p>
+    </div>
+    <div class="opt">
+      <h3>2B · Every action, grouped by page</h3>
+      <p>A menu of the whole app (Download: 6 · Clip: 9 · Compress: 5 · Capture: 7 · Library: 4 · Settings: 9…).
+      Good for discovering, but 40 rows is a list to scroll, not a box to type in, and it repeats the rail.</p>
+    </div>
+  </section>
+
+  <!-- ============ 3 · A THING AND AN ACTION ============ -->
+  <section>
+    <div class="label"><span>3 · Doing something to a file</span><h2>Thing first, action first, or both</h2></div>
+    <p class="why">"Compress the VALORANT replay" has two parts. The palette can take them in either order.</p>
+
+    <div class="opt">
+      <h3>3A + 3B · Both ways, each finishing the other <span class="rec">PICK</span></h3>
+      <p><b>Thing first:</b> type part of its name, then <span class="key">→</span> (or <span class="key">Tab</span>) shows
+      that thing's actions, the same list as its More menu (···) in the Library. Enter on the thing itself does its main action (Watch
+      / Play). <b>Action first:</b> type "compress", Enter: the Library's recent videos to pick from, and "Choose a
+      file…" last for anything else. Either way the second step is the same small list.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">3A · typed "valo", then →</div>
+          <div class="q col w460" style="background:transparent;box-shadow:none">
+            <div class="pal" style="margin:0;width:460px">
+              <div class="in"><svg class="i"><use href="#i-search"/></svg><span class="crumb"><div class="th t3" style="width:22px;height:13px;border-radius:3px"></div>VALORANT · 14:32</span><span class="ph">Do what?</span><span class="key">Esc</span></div>
+              <div class="list" style="padding-top:8px">
+                <div class="pr on"><span class="ico"><svg class="i"><use href="#i-play"/></svg></span><span class="nm">Watch</span><span class="go">Enter</span></div>
+                <div class="pr"><span class="ico"><svg class="i"><use href="#i-clip"/></svg></span><span class="nm">Clip</span></div>
+                <div class="pr"><span class="ico"><svg class="i"><use href="#i-cmp"/></svg></span><span class="nm">Compress</span></div>
+                <div class="pr"><span class="ico"><svg class="i"><use href="#i-gif"/></svg></span><span class="nm">Make a GIF</span></div>
+                <div class="pr"><span class="ico"><svg class="i"><use href="#i-text"/></svg></span><span class="nm">Transcribe</span></div>
+                <div class="pr"><span class="ico"><svg class="i"><use href="#i-folder"/></svg></span><span class="nm">Show in folder</span></div>
+                <div class="pr"><span class="ico"><svg class="i"><use href="#i-link"/></svg></span><span class="nm">Copy file</span></div>
+              </div>
+              <div class="foot"><span><span class="key">←</span>back</span><span><span class="key">Enter</span>do it</span></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">3B · typed "compress", Enter</div>
+          <div class="q col w460" style="background:transparent;box-shadow:none">
+            <div class="pal" style="margin:0;width:460px">
+              <div class="in"><svg class="i"><use href="#i-search"/></svg><span class="crumb"><svg class="i sm"><use href="#i-cmp"/></svg>Compress</span><span class="ph">Which file?</span><span class="key">Esc</span></div>
+              <div class="grp">From the Library</div>
+              <div class="list">
+                <div class="pr on"><div class="th t3"></div><span class="nm">VALORANT · 14:32</span><span class="where">Replay · 118 MB</span></div>
+                <div class="pr"><div class="th t1"></div><span class="nm">IShowSpeed · Day 3 in Tokyo (full stream)</span><span class="where">3.1 GB</span></div>
+                <div class="pr"><div class="th t2"></div><span class="nm">How the James Webb telescope unfolds</span><span class="where">240 MB</span></div>
+              </div>
+              <div class="list" style="border-top:1px solid var(--line)">
+                <div class="pr"><span class="ico"><svg class="i"><use href="#i-folder"/></svg></span><span class="nm">Choose a file…</span><span class="go">Ctrl O</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>3C · Only one order (thing first)</h3>
+      <p>Simpler to build, but "compress" would only open an empty Compress page: the most common way people think
+      ("I want to compress…") would stop halfway.</p>
+    </div>
+  </section>
+
+  <!-- ============ 4 · MATCHES ============ -->
+  <section>
+    <div class="label"><span>4 · While typing</span><h2>Mixed results, or actions and things apart</h2></div>
+    <div class="opt">
+      <h3>4A · Two groups, actions above things, 5 each at most <span class="rec">PICK</span></h3>
+      <p>The groups never mix, so a row's place says what Enter will do: go to a page or a dialog ("Do"), or open
+      something you saved ("Saved"). A group with no matches doesn't show ("tokyo" only finds Saved). A link pasted into
+      the box becomes "Download this link" at the top.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">typed "rec"</div>
+          <div class="q col w460" style="background:transparent;box-shadow:none">
+            <div class="pal" style="margin:0;width:460px">
+              <div class="in"><svg class="i"><use href="#i-search"/></svg><span class="typed">rec</span><span class="caret"></span><span class="key">Esc</span></div>
+              <div class="grp">Do</div>
+              <div class="list">
+                <div class="pr on"><span class="ico"><svg class="i"><use href="#i-rec"/></svg></span><span class="nm"><b>Rec</b>ord a live stream…</span><span class="where">Download</span></div>
+                <div class="pr"><span class="ico"><svg class="i"><use href="#i-cap"/></svg></span><span class="nm">Turn on instant replay <span class="m">records the last minute</span></span><span class="where">Capture</span></div>
+                <div class="pr"><span class="ico"><svg class="i"><use href="#i-phone"/></svg></span><span class="nm"><b>Rec</b>ord my phone</span><span class="where">Capture · Phone</span></div>
+              </div>
+              <div class="grp">Saved</div>
+              <div class="list">
+                <div class="pr"><div class="th t1"></div><span class="nm">IShowSpeed · Day 3 in Tokyo <span class="m"><b>Rec</b>ording</span></span><span class="where">today</span></div>
+                <div class="pr"><div class="th t8"></div><span class="nm">xQc · react stream <span class="m"><b>Rec</b>ording</span></span><span class="where">Tuesday</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>4B · One list, best match first</h3>
+      <p>Shorter, but a saved thing can sit between two actions and Enter's result is harder to guess.</p>
+    </div>
+  </section>
+
+  <!-- ============ 5 · FINDING IT ============ -->
+  <section>
+    <div class="label"><span>5 · How you find out it exists</span><h2>One small way in, and compact</h2></div>
+    <div class="opt">
+      <h3>5A · A search button at the top of the rail; on compact, next to the gear <span class="rec">PICK</span></h3>
+      <p>The rail gets a small button above the pages (magnifier, "Ctrl K" under it); clicking it opens the box. On
+      compact (400 px) the tab bar keeps its five pages and the header gets a magnifier next to the Settings gear; the
+      box opens as a sheet from the top, the keyboard up.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">the rail (wide and medium)</div>
+          <div class="q" style="height:330px">
+            <div class="rail">
+              <div class="logo">N</div>
+              <div class="railsearch"><svg class="i sm"><use href="#i-search"/></svg><span class="key">Ctrl K</span></div>
+              <div class="nav on"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">400 × 600 · compact: the magnifier, then the sheet</div>
+          <div class="q col w400" style="height:600px">
+            <div style="padding:14px 16px;display:flex;align-items:center;gap:10px">
+              <div class="logo" style="width:30px;height:30px;margin:0;font-size:15px">N</div>
+              <div class="hd s grow">Grab anything.</div>
+              <span class="ghost ic" style="border-color:var(--accent)"><svg class="i sm"><use href="#i-search"/></svg></span>
+              <span class="ghost ic"><svg class="i sm"><use href="#i-set"/></svg></span>
+            </div>
+            <div class="scrim" style="flex:1;position:relative">
+              <div class="pal" style="margin:0;width:100%;max-width:100%;border-radius:0 0 14px 14px;border-top:none">
+                <div class="in"><svg class="i"><use href="#i-search"/></svg><span class="typed">gif</span><span class="caret"></span><span class="key">Esc</span></div>
+                <div class="grp">Do</div>
+                <div class="list">
+                  <div class="pr on"><span class="ico"><svg class="i"><use href="#i-gif"/></svg></span><span class="nm">Make a <b>GIF</b>…</span><span class="where">Clip</span></div>
+                  <div class="pr"><span class="ico"><svg class="i"><use href="#i-set"/></svg></span><span class="nm">X <b>GIF</b>s as .gif</span><span class="where">Settings</span></div>
+                </div>
+                <div class="grp">Saved</div>
+                <div class="list">
+                  <div class="pr"><div class="th t7"></div><span class="nm">clutch ace <span class="m"><b>GIF</b></span></span><span class="where">Sunday</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="tabbar">
+              <div class="nav on"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>5B · Keyboard only, mentioned once</h3>
+      <p>Nothing on screen; a one-time tip ("Press Ctrl+K to do anything from anywhere") after the first few downloads,
+      and a line in Settings → About. Cleanest, but most people would never find it, and compact has no keyboard.</p>
+    </div>
+  </section>
+
+  <!-- ============ WHAT IT REACHES ============ -->
+  <section>
+    <div class="label"><span>Underneath</span><h2>What it reaches, and the words that find each</h2></div>
+    <p class="why">A first list; each is a page, a section or a dialog that exists today. "…" means a second step (a file
+    or a link). Words in the last column find it as well as its name.</p>
+    <div class="tablewrap">
+    <table class="cmp">
+      <tr><th>Action</th><th>Where it lands</th><th>Also found by</th></tr>
+      <tr><td>Download the copied link / this link</td><td>Download page, link pasted, preview</td><td class="m">get, save, grab, paste</td></tr>
+      <tr><td>Download as sound only…</td><td>Download, Audio only picked</td><td class="m">mp3, audio, music, extract</td></tr>
+      <tr><td>Record a live stream…</td><td>Download, link, From now / From the start</td><td class="m">live, stream, twitch</td></tr>
+      <tr><td>Clip a file… / Clip a link…</td><td>Clip page, file picker / link box</td><td class="m">cut, trim, part</td></tr>
+      <tr><td>Make a GIF…</td><td>Clip page + Make a GIF</td><td class="m">gif, webp, meme</td></tr>
+      <tr><td>Make a file smaller…</td><td>Compress page with the file</td><td class="m">compress, shrink, discord, email, whatsapp</td></tr>
+      <tr><td>Extract the sound…</td><td>Compress, a sound file</td><td class="m">mp3, m4a, opus, audio</td></tr>
+      <tr><td>Transcribe…</td><td>Transcribe dialog</td><td class="m">text, captions, subtitles, srt, speech</td></tr>
+      <tr><td>Turn instant replay on / off · Save the last…</td><td>Capture page (stays where you are)</td><td class="m">replay, record, clip that, game</td></tr>
+      <tr><td>Mirror my phone · Record my phone</td><td>Capture → Phone</td><td class="m">android, phone, scrcpy</td></tr>
+      <tr><td>Add lyrics to songs I have…</td><td>folder picker, then the queue</td><td class="m">lyrics, lrc</td></tr>
+      <tr><td>Follow a channel… · Check now</td><td>Settings → Following</td><td class="m">subscribe, new uploads</td></tr>
+      <tr><td>Find gone files</td><td>Library, Gone tab</td><td class="m">missing, moved</td></tr>
+      <tr><td>Settings: Download / Spotify / Network / Voice / General / About</td><td>Settings drawer at that section</td><td class="m">folder, quality, cookies, theme, dark, update</td></tr>
+      <tr><td>Check for updates</td><td>Settings → About, checks</td><td class="m">version, new</td></tr>
+      <tr><td><i>A saved thing</i></td><td>Watch / Play (Enter), or → for its other actions</td><td class="m">title, site, file name</td></tr>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Summary</span><h2>The recommended picks</h2></div>
+    <div class="tablewrap">
+    <table class="cmp">
+      <tr><th>Part</th><th>Pick</th><th>Why</th></tr>
+      <tr><td>Look</td><td>1A · a box in the middle over the dimmed page</td><td>Same place on every page; no second search field</td></tr>
+      <tr><td>Empty</td><td>2A · copied link, 3 recent things, 3 common actions</td><td>Useful before typing, short enough to read</td></tr>
+      <tr><td>Two parts</td><td>3A + 3B · thing → its actions, or action → which file</td><td>Works however you think of it</td></tr>
+      <tr><td>Matches</td><td>4A · "Do" above "Saved", 5 each</td><td>Enter's result is predictable</td></tr>
+      <tr><td>Finding it</td><td>5A · rail button with Ctrl K; compact: a magnifier next to the gear, a sheet</td><td>Discoverable without a tip; works with no keyboard</td></tr>
+    </table>
+    </div>
+  </section>
+</div>
+</body>
+</html>

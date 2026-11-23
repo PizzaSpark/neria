@@ -1172,7 +1172,10 @@ that's an exception, written only once the Phone tab is used.
   saved before in another format than Settings' leaves the old file next to the new one;
   Twitch keeps a stream's missed bits only while it's live
 - **Command palette** (Ctrl+K): type "compress", "extract audio", "clip"… to jump to any
-  action; also lists recent files
+  action; also lists recent files. Mock `design/palette.html` (2026-11-23), picks not chosen
+  yet (recommended: 1A box over the page, 2A copied link + recent + common, 3A + 3B thing →
+  its actions or action → which file, 4A "Do" above "Saved", 5A rail button / compact
+  magnifier)
 - **Saved workflows**: simple "after download" actions first (extract audio, compress for
   Discord, move to folder); a builder only if people want chains like download → clip → 9:16
   → compress. Watched folder: auto-compress/convert files dropped into a folder
