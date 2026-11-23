@@ -242,19 +242,16 @@ pub fn prepare_lyrics_only(col: &Collection, settings: &crate::settings::Setting
     prepare_as(col, settings, Mode::LyricsOnly)
 }
 
-fn prepare_as(col: &Collection, settings: &crate::settings::Settings, mode: Mode) -> Result<(PathBuf, Vec<MusicJob>)> {
-    let dir = collection_dir(settings, col);
-    std::fs::create_dir_all(&dir).with_context(|| format!("can't create {}", dir.display()))?;
+/// One job per song of `col`, saved in `dir` (nothing touched on disk).
+fn plan(col: &Collection, settings: &crate::settings::Settings, dir: &Path, mode: Mode) -> Vec<MusicJob> {
     let numbered = col.kind == Kind::Playlist && settings.number_spotify;
     let total = col.tracks.len();
-
-    let jobs: Vec<MusicJob> = col
-        .tracks
+    col.tracks
         .iter()
         .enumerate()
         .map(|(i, t)| MusicJob {
             track: t.clone(),
-            dir: dir.clone(),
+            dir: dir.to_path_buf(),
             stem: if numbered { numbered_stem(t, i + 1, total) } else { file_stem(t, col.kind) },
             lyrics: settings.lyrics,
             lyrics_prefs: lyrics::Prefs::from_settings(settings),
@@ -262,7 +259,55 @@ fn prepare_as(col: &Collection, settings: &crate::settings::Settings, mode: Mode
             forced: None,
             verify: settings.verify_audio,
         })
-        .collect();
+        .collect()
+}
+
+/// [`prepare`]'s songs and names, without touching the folder.
+pub fn plan_songs(col: &Collection, settings: &crate::settings::Settings, dir: &Path) -> Vec<MusicJob> {
+    plan(col, settings, dir, Mode::Song)
+}
+
+/// This song is in the folder already: under the name it gets now, or under the one the
+/// last sync gave it (numbering turned on or off, the playlist reordered).
+pub fn have_song(dir: &Path, prev: Option<&Manifest>, job: &MusicJob) -> bool {
+    existing_file(dir, &job.stem).is_some()
+        || prev.is_some_and(|m| {
+            m.tracks
+                .iter()
+                .any(|t| !t.id.is_empty() && t.id == job.track.id && existing_file(dir, &t.stem).is_some())
+        })
+}
+
+/// An album or playlist downloaded before (its folder has a sync manifest): how many of
+/// its songs are there, and the ids of those that aren't.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SyncStatus {
+    pub have: usize,
+    pub missing: Vec<String>,
+}
+
+/// `None` when `col` is a single song or was never downloaded into its folder.
+pub fn sync_status(settings: &crate::settings::Settings, col: &Collection) -> Option<SyncStatus> {
+    if col.kind == Kind::Track {
+        return None;
+    }
+    let dir = collection_dir(settings, col);
+    let prev = read_manifest(&dir)?;
+    let mut s = SyncStatus::default();
+    for j in plan(col, settings, &dir, Mode::Song) {
+        if have_song(&dir, Some(&prev), &j) {
+            s.have += 1;
+        } else {
+            s.missing.push(j.track.id);
+        }
+    }
+    Some(s)
+}
+
+fn prepare_as(col: &Collection, settings: &crate::settings::Settings, mode: Mode) -> Result<(PathBuf, Vec<MusicJob>)> {
+    let dir = collection_dir(settings, col);
+    std::fs::create_dir_all(&dir).with_context(|| format!("can't create {}", dir.display()))?;
+    let jobs = plan(col, settings, &dir, mode);
 
     if mode != Mode::Song {
         // Lyrics go next to the songs already here, under their names (e.g. downloaded
@@ -565,7 +610,7 @@ pub fn add_lyrics_jobs(dir: &Path, settings: &crate::settings::Settings) -> (Vec
 }
 
 /// A downloaded track that is no longer in the playlist.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Removed {
     pub title: String,
     pub file: PathBuf,
@@ -647,6 +692,33 @@ mod tests {
         let prev = Manifest { tracks: vec![entry("b", "01 X - B"), entry("a", "02 X - A")], ..Default::default() };
         assert_eq!(rename_moved(&dir, &prev, &[job("a", "X - A"), job("b", "X - B")]), 2);
         assert!(dir.join("X - A.mp3").is_file() && dir.join("X - B.mp3").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn songs_count_as_had_under_their_old_name() {
+        let dir = std::env::temp_dir().join(format!("neria-have-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("X - A.mp3"), b"a").unwrap();
+        let job = |id: &str, stem: &str| MusicJob {
+            track: Track { id: id.into(), ..Default::default() },
+            dir: dir.clone(),
+            stem: stem.into(),
+            lyrics: false,
+            lyrics_prefs: Default::default(),
+            mode: Mode::Song,
+            forced: None,
+            verify: false,
+        };
+        let prev = Manifest {
+            tracks: vec![ManifestTrack { id: "a".into(), stem: "X - A".into(), title: "A".into() }],
+            ..Default::default()
+        };
+        assert!(have_song(&dir, None, &job("a", "X - A")));
+        // Numbering went on since: still had, found by its id.
+        assert!(!have_song(&dir, None, &job("a", "01 X - A")));
+        assert!(have_song(&dir, Some(&prev), &job("a", "01 X - A")));
+        assert!(!have_song(&dir, Some(&prev), &job("b", "02 X - B")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

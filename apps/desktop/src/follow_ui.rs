@@ -13,7 +13,7 @@ use neria_core::settings::Settings;
 use neria_core::{post, probe};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::{AppWindow, FollowItem, Following};
+use crate::{AppWindow, FollowItem, Following, SyncItem};
 
 /// The previewed channel or playlist, for "Follow".
 struct Preview {
@@ -21,6 +21,8 @@ struct Preview {
     name: String,
     thumbnail: Option<String>,
     items: Vec<post::Item>,
+    /// A Spotify playlist (its songs are kept by track id).
+    spotify: Option<neria_core::spotify::Collection>,
 }
 
 thread_local! {
@@ -61,7 +63,7 @@ fn detail(f: &follow::Followed, now: u64) -> String {
     parts.join(" · ")
 }
 
-fn refresh(ui: &AppWindow) {
+pub(crate) fn refresh(ui: &AppWindow) {
     let now = now_secs();
     let checking = CHECKING.with(|c| c.borrow().clone());
     let items: Vec<FollowItem> = follow::list()
@@ -73,22 +75,46 @@ fn refresh(ui: &AppWindow) {
             every: f.every.index() as i32,
             paused: f.paused,
             checking: checking.as_deref() == Some(f.url.as_str()),
+            removed: f.removed_now().len() as i32,
         })
         .collect();
     let g = ui.global::<Following>();
     g.set_items(ModelRc::from(Rc::new(VecModel::from(items))));
     // The preview's button follows the list (unfollowed in Settings, say).
-    let followed = PREVIEW.with(|p| p.borrow().as_ref().is_some_and(|p| follow::find(&p.url).is_some()));
+    let (followed, spotify) = PREVIEW.with(|p| {
+        let p = p.borrow();
+        (p.as_ref().is_some_and(|p| follow::find(&p.url).is_some()), p.as_ref().is_some_and(|p| p.spotify.is_some()))
+    });
     g.set_followed(followed);
-    g.set_note(note(followed).into());
+    g.set_note(note(followed, spotify).into());
 }
 
-fn note(followed: bool) -> String {
-    if followed {
-        "New uploads download by themselves · Settings → Following".into()
-    } else {
-        "Get its new uploads by themselves, checked daily".into()
+fn note(followed: bool, spotify: bool) -> String {
+    match (followed, spotify) {
+        (true, false) => "New uploads download by themselves · Settings → Following".into(),
+        (false, false) => "Get its new uploads by themselves, checked daily".into(),
+        (true, true) => "Songs added to it download by themselves · Settings → Following".into(),
+        (false, true) => "Get songs added to it by themselves, checked daily".into(),
     }
+}
+
+/// A Spotify playlist's preview came in: offer "Follow".
+pub(crate) fn set_spotify_preview(ui: &AppWindow, col: &neria_core::spotify::Collection) {
+    let url = format!("https://open.spotify.com/playlist/{}", col.id);
+    PREVIEW.with(|p| {
+        *p.borrow_mut() = Some(Preview {
+            url: url.clone(),
+            name: col.name.clone(),
+            thumbnail: col.cover_url.clone(),
+            items: Vec::new(),
+            spotify: Some(col.clone()),
+        })
+    });
+    let followed = follow::find(&url).is_some();
+    let g = ui.global::<Following>();
+    g.set_can_follow(true);
+    g.set_followed(followed);
+    g.set_note(note(followed, true).into());
 }
 
 /// A preview came in: offer "Follow" when it's a channel or playlist.
@@ -110,12 +136,13 @@ pub(crate) fn set_preview(ui: &AppWindow, url: &str, info: &probe::MediaInfo) {
             name,
             thumbnail: info.thumbnail_url.clone(),
             items: info.items.clone(),
+            spotify: None,
         })
     });
     let followed = follow::find(url).is_some();
     g.set_can_follow(true);
     g.set_followed(followed);
-    g.set_note(note(followed).into());
+    g.set_note(note(followed, false).into());
 }
 
 pub(crate) fn clear(ui: &AppWindow) {
@@ -134,7 +161,9 @@ fn run(ui: &AppWindow, url: String, queue: &Queue, settings: &Arc<Mutex<Settings
     let s = settings.lock().unwrap().clone();
     let q = queue.clone();
     std::thread::spawn(move || {
+        let removed_before = follow::find(&url).map_or(0, |f| f.removed_now().len());
         let result = follow::check(&url, &s, &q);
+        let after = follow::find(&url);
         let _ = weak.upgrade_in_event_loop(move |ui| {
             CHECKING.with(|c| *c.borrow_mut() = None);
             refresh(&ui);
@@ -143,9 +172,52 @@ fn run(ui: &AppWindow, url: String, queue: &Queue, settings: &Arc<Mutex<Settings
             {
                 crate::show_toast(&ui, &format!("Couldn't check it: {e}"));
             }
+            // Songs taken off a followed Spotify playlist: say so once (nothing is deleted).
+            if let Some(f) = after
+                && f.removed_now().len() > removed_before
+            {
+                tell_removed(&ui, &f.name, f.removed_now().len());
+            }
             run_due(&ui, &queue2, &settings2);
         });
     });
+}
+
+fn removed_text(name: &str, n: usize) -> String {
+    let songs = if n == 1 { "1 song".to_string() } else { format!("{n} songs") };
+    format!("{songs} in {name} {} taken off it on Spotify. Review them in Settings → Following.", if n == 1 { "was" } else { "were" })
+}
+
+fn tell_removed(ui: &AppWindow, name: &str, n: usize) {
+    let text = removed_text(name, n);
+    crate::show_toast(ui, &text);
+    crate::background_ui::notify(
+        ui,
+        crate::background_ui::Note {
+            title: "Removed on Spotify".into(),
+            body: text,
+            image: None,
+            file: None,
+            failed: false,
+        },
+    );
+}
+
+/// "Review N removed" in Settings → Following: the same dialog a preview opens.
+fn review(ui: &AppWindow, url: &str) {
+    let Some(f) = follow::find(url) else { return };
+    let items: Vec<SyncItem> = f
+        .removed_now()
+        .into_iter()
+        .map(|r| SyncItem { title: r.title.into(), file: r.file.to_string_lossy().as_ref().into(), checked: false })
+        .collect();
+    if items.is_empty() {
+        refresh(ui);
+        return;
+    }
+    ui.set_sync_items(ModelRc::from(Rc::new(VecModel::from(items))));
+    ui.set_sync_ticked(0);
+    ui.set_sync_open(true);
 }
 
 /// Start the most overdue check, if any.
@@ -161,17 +233,30 @@ pub(crate) fn install(ui: &AppWindow, queue: Queue, settings: Arc<Mutex<Settings
         let weak = ui.as_weak();
         move || {
             let Some(ui) = weak.upgrade() else { return };
-            let Some(name) = PREVIEW.with(|p| {
+            let Some((name, spotify)) = PREVIEW.with(|p| {
                 let p = p.borrow();
                 let p = p.as_ref()?;
-                let (quality, preset) = crate::chosen_quality(&ui);
-                follow::follow(&p.url, &p.name, p.thumbnail.clone(), &p.items, quality, preset);
-                Some(p.name.clone())
+                if let Some(col) = &p.spotify {
+                    follow::follow_spotify(col);
+                } else {
+                    let (quality, preset) = crate::chosen_quality(&ui);
+                    follow::follow(&p.url, &p.name, p.thumbnail.clone(), &p.items, quality, preset);
+                }
+                Some((p.name.clone(), p.spotify.is_some()))
             }) else {
                 return;
             };
             refresh(&ui);
-            crate::show_toast(&ui, &format!("Following {name}. New uploads download by themselves (checked daily)."));
+            let what = if spotify { "Songs added to it" } else { "New uploads" };
+            crate::show_toast(&ui, &format!("Following {name}. {what} download by themselves (checked daily)."));
+        }
+    });
+    g.on_review({
+        let weak = ui.as_weak();
+        move |url| {
+            if let Some(ui) = weak.upgrade() {
+                review(&ui, &url);
+            }
         }
     });
     g.on_open_list({

@@ -66,6 +66,20 @@ Tested on Random Access Memories (13/13 matched at 1.00, whole album in 83 s) an
 - Sync like spotDL, but safe: `.neria-sync.json` manifest per folder; songs no longer on the
   Spotify list show a "Review N removed" dialog, all unticked by default, ticked ones go to the
   Recycle Bin (only for complete lists, never for truncated ones)
+- Shown before you press anything: an album or playlist whose folder has a manifest and some
+  of its songs says "N in your folder" (or "all in your folder") in its preview, and the
+  button reads "Download N new" (only those are queued, as one "<name> · N new" card) or
+  "Up to date" (greyed out). Songs found under an older name (numbering, reordering) count
+- Follow (playlists only; albums don't change, an artist's page only lists the top 10):
+  "Follow" under the preview, then Settings → Following checks it hourly / daily / weekly
+  (`follow.rs`, `check_spotify`). Songs are kept by Spotify track id: those in it when you
+  followed count as seen, songs added later download into the same folder a manual sync
+  uses (failed ones are tried at three checks). Songs taken off it are found before the
+  manifest is rewritten and kept in `following.json` until reviewed: a toast and a Windows
+  notification say so once, the row in Settings → Following has "Review N removed" (the same
+  dialog), and a preview of that playlist lists them too. A check never deletes anything.
+  Spotify's public page shows the first 100 songs: songs added beyond that need your own
+  Spotify key (Settings → Spotify). Example: `--example follow -- <playlist link> --try-new`
 
 ## Risks
 - Spotify keeps tightening its Web API (Feb 2026: Development Mode needs Premium, 5-user cap,

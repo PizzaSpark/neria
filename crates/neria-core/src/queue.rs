@@ -728,6 +728,14 @@ impl Queue {
         }
     }
 
+    /// A Spotify song (by its track id) waiting, running or paused in the queue.
+    pub fn music_unfinished(&self, track_id: &str) -> bool {
+        let entries = self.inner.entries.lock().unwrap();
+        entries
+            .iter()
+            .any(|e| !e.snap.state.is_finished() && e.req.music.as_ref().is_some_and(|m| m.track.id == track_id))
+    }
+
     /// A download of this video (by key, else the same link) that's waiting, running or
     /// paused, for the duplicate check.
     pub fn find_unfinished(&self, key: Option<&str>, url: &str) -> Option<JobSnapshot> {

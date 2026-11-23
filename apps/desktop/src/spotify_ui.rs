@@ -11,7 +11,7 @@ use neria_core::music;
 use neria_core::queue::Queue;
 use neria_core::settings::Settings;
 use neria_core::spotify::{self, Collection, Kind, Link};
-use neria_core::{fmt, probe};
+use neria_core::{fmt, follow, probe};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::{AppWindow, Music, SyncItem, show_toast};
@@ -20,6 +20,8 @@ use crate::{AppWindow, Music, SyncItem, show_toast};
 pub struct Pending {
     pub url: String,
     pub collection: Collection,
+    /// Downloaded before: the ids of the songs not in its folder yet (only those download).
+    pub missing: Option<Vec<String>>,
 }
 
 pub type PendingSlot = Arc<Mutex<Option<Pending>>>;
@@ -37,6 +39,8 @@ pub fn preview(
     ui.set_probe_is_spotify(true);
     ui.set_spotify_count(0);
     ui.set_sync_items(ModelRc::from(Rc::new(VecModel::<SyncItem>::default())));
+    ui.global::<Music>().set_sync_have(-1);
+    ui.global::<Music>().set_sync_new(0);
     *slot.lock().unwrap() = None;
 
     let weak = ui.as_weak();
@@ -44,8 +48,18 @@ pub fn preview(
         let result = spotify::fetch(&link, settings.spotify_credentials().as_ref());
         let cover =
             result.as_ref().ok().and_then(|c| c.cover_url.as_deref()).and_then(|u| probe::fetch_thumbnail(u).ok());
-        let removed =
+        let mut removed =
             result.as_ref().map(|c| music::removed_tracks(&music::collection_dir(&settings, c), c)).unwrap_or_default();
+        // Followed: what its checks found removed and nobody reviewed yet.
+        if let Some(f) = follow::find(&url) {
+            for r in f.removed_now() {
+                if !removed.iter().any(|x| x.file == r.file) {
+                    removed.push(r);
+                }
+            }
+        }
+        // None of its songs there (they never downloaded, or were moved away): a first download.
+        let status = result.as_ref().ok().and_then(|c| music::sync_status(&settings, c)).filter(|s| s.have > 0);
 
         let _ = weak.upgrade_in_event_loop(move |ui| {
             if generation.load(Ordering::SeqCst) != my_gen {
@@ -62,6 +76,11 @@ pub fn preview(
                     let total: f64 = col.tracks.iter().map(|t| t.duration_secs()).sum();
                     if col.kind != Kind::Track {
                         meta.push(fmt::duration(total));
+                    }
+                    if let Some(s) = &status {
+                        meta.push(have_text(s.have, n));
+                        ui.global::<Music>().set_sync_have(s.have as i32);
+                        ui.global::<Music>().set_sync_new(s.missing.len() as i32);
                     }
                     meta.push("audio from YouTube Music".into());
                     let mut note = String::new();
@@ -93,7 +112,11 @@ pub fn preview(
                         .collect();
                     ui.set_sync_items(ModelRc::from(Rc::new(VecModel::from(items))));
                     ui.set_sync_ticked(0);
-                    *slot.lock().unwrap() = Some(Pending { url, collection: col });
+                    if follow::spotify_followable(&url) {
+                        crate::follow_ui::set_spotify_preview(&ui, &col);
+                    }
+                    let missing = status.map(|s| s.missing);
+                    *slot.lock().unwrap() = Some(Pending { url, collection: col, missing });
                     // Dev hooks for scripted checks.
                     if std::env::var_os("NERIA_SYNC_REVIEW").is_some() && ui.get_sync_items().row_count() > 0 {
                         ui.set_sync_open(true);
@@ -124,12 +147,30 @@ pub fn preview(
     });
 }
 
+/// The preview's line for an album or playlist downloaded before.
+fn have_text(have: usize, total: usize) -> String {
+    match (have, total) {
+        (h, t) if h >= t => "all in your folder".into(),
+        (h, _) => format!("{h} in your folder"),
+    }
+}
+
 /// Queue every song of the pending collection. Returns false if `url` isn't the pending one.
 pub fn enqueue(ui: &AppWindow, url: &str, slot: &PendingSlot, settings: &Settings, queue: &Queue) -> bool {
     let pending = slot.lock().unwrap().take();
     let Some(p) = pending.filter(|p| p.url == url) else { return false };
     match music::prepare(&p.collection, settings) {
-        Ok((_dir, jobs)) => queue.add_group(&p.collection.name, false, jobs.into_iter().map(DownloadRequest::music)),
+        Ok((_dir, jobs)) => match &p.missing {
+            // Downloaded before: only the songs its folder doesn't have.
+            Some(missing) => {
+                let jobs: Vec<_> = jobs.into_iter().filter(|j| missing.contains(&j.track.id)).collect();
+                let n = jobs.len();
+                if n > 0 {
+                    queue.add_group(&format!("{} · {n} new", p.collection.name), false, jobs.into_iter().map(DownloadRequest::music));
+                }
+            }
+            None => queue.add_group(&p.collection.name, false, jobs.into_iter().map(DownloadRequest::music)),
+        },
         Err(e) => {
             ui.set_probe_state(3);
             ui.set_probe_title(format!("Couldn't prepare the folder: {e}").into());
@@ -161,8 +202,10 @@ pub fn install_sync_review(ui: &AppWindow) {
             let model = ui.get_sync_items();
             let (mut moved, mut failed) = (0, 0);
             let mut keep = Vec::new();
+            let mut reviewed = Vec::new();
             for row in model.iter() {
                 if !row.checked {
+                    reviewed.push(PathBuf::from(row.file.as_str()));
                     continue;
                 }
                 let file = PathBuf::from(row.file.as_str());
@@ -170,6 +213,7 @@ pub fn install_sync_review(ui: &AppWindow) {
                 match trash::delete(&file) {
                     Ok(()) => {
                         moved += 1;
+                        reviewed.push(file.clone());
                         let lrc = file.with_extension("lrc");
                         if lrc.is_file() {
                             let _ = trash::delete(&lrc);
@@ -184,6 +228,9 @@ pub fn install_sync_review(ui: &AppWindow) {
             ui.set_sync_items(ModelRc::from(Rc::new(VecModel::from(keep))));
             ui.set_sync_ticked(0);
             ui.set_sync_open(false);
+            // A followed playlist stops asking about these.
+            follow::forget_removed(&reviewed);
+            crate::follow_ui::refresh(&ui);
             let mut msg = format!("Moved {moved} song{} to the Recycle Bin", if moved == 1 { "" } else { "s" });
             if failed > 0 {
                 msg.push_str(&format!(" ({failed} couldn't be moved)"));
@@ -196,6 +243,9 @@ pub fn install_sync_review(ui: &AppWindow) {
         let weak = ui.as_weak();
         move || {
             let ui = weak.unwrap();
+            let reviewed: Vec<PathBuf> = ui.get_sync_items().iter().map(|r| PathBuf::from(r.file.as_str())).collect();
+            follow::forget_removed(&reviewed);
+            crate::follow_ui::refresh(&ui);
             ui.set_sync_items(ModelRc::from(Rc::new(VecModel::<SyncItem>::default())));
             ui.set_sync_open(false);
         }

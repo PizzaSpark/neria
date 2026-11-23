@@ -456,6 +456,8 @@ export struct FollowItem {
     every: int, // 0 hourly, 1 daily, 2 weekly
     paused: bool,
     checking: bool,
+    // A Spotify playlist: songs taken off it still in its folder, waiting for a review.
+    removed: int,
 }
 
 // Follow a channel or playlist: its new uploads download by themselves (Download track 12).
@@ -471,6 +473,7 @@ export global Following {
     callback pause(string, bool);
     callback unfollow(string);
     callback every(string, int);
+    callback review(string); // "Review N removed": the removed-songs dialog
 }
 
 // Queue actions that rows call directly.
@@ -570,6 +573,10 @@ export global Music {
     callback add-lyrics();
     // Add lyrics to this folder without asking which (the Library's playlist rows).
     in-out property <string> lyrics-dir;
+    // The previewed album or playlist was downloaded before: how many of its songs are in
+    // its folder (-1: never downloaded) and how many aren't. Download then gets only those.
+    in property <int> sync-have: -1;
+    in property <int> sync-new;
 }
 
 // Compress page (Compress track): goals in plain words, what it'll look like, before /
