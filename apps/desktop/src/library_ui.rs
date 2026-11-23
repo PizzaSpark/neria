@@ -960,6 +960,9 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             WIDE.with(|w| w.set(wide));
             if with(|s| s.demo) {
                 rebuild(&ui);
+                if wide && ui.global::<Library>().get_selected() == 0 {
+                    select_first(&ui);
+                }
                 return;
             }
             // Read again each time: things were saved meanwhile.

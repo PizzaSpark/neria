@@ -194,7 +194,11 @@ component MoreActions inherits FlexboxLayout {
 component DetailBody inherits VerticalLayout {
     property <LibDetail> d: Library.detail;
     in property <bool> show-keys: true;
+    // The values' width: a wrapped path only reserves its real height when its width is
+    // known up front (the column, the sheet).
+    in property <length> value-width: 200px;
     spacing: 12px;
+    alignment: start;
     if root.show-keys: VerticalLayout {
         spacing: 6px;
         for k[i] in d.keys: HorizontalLayout {
@@ -206,7 +210,8 @@ component DetailBody inherits VerticalLayout {
                 font-size: 12.5px;
             }
             Text {
-                horizontal-stretch: 1;
+                width: root.value-width;
+                horizontal-stretch: 0;
                 text: d.values[i];
                 color: Theme.ink;
                 font-family: k == "File" || k == "Made from" || k == "Folder" || k == "Was" ? Theme.mono : Theme.body;
@@ -366,6 +371,7 @@ component DetailColumn inherits Rectangle {
             padding: 20px;
             padding-top: 22px;
             spacing: 12px;
+            alignment: start;
             KindThumb {
                 height: 158px;
                 source: d.thumb;
@@ -958,7 +964,9 @@ component DetailSheet inherits Rectangle {
                 height: min(body.preferred-height, root.height * 0.36);
                 body := VerticalLayout {
                     padding-right: 12px;
-                    DetailBody { }
+                    DetailBody {
+                        value-width: root.width - 32px - 12px - 80px;
+                    }
                 }
             }
             HorizontalLayout {
@@ -1045,7 +1053,9 @@ component StartRow inherits VerticalLayout {
     Divider { }
 }
 
-// Several gone: one calm line saying so, Find them…, Remove from Library.
+// Several gone: one calm line saying so, Find them…, Remove from Library. (A sentence that
+// wraps beside buttons would ask for the height of its narrowest wrap, so it's one line cut
+// with "…"; compact leaves the sentence out.)
 component GoneBanner inherits VerticalLayout {
     HorizontalLayout {
         padding-top: 8px;
@@ -1065,7 +1075,7 @@ component GoneBanner inherits VerticalLayout {
             color: Theme.ink;
             font-size: 13px;
             vertical-alignment: center;
-            wrap: word-wrap;
+            overflow: elide;
         }
         VerticalLayout {
             alignment: center;
@@ -1089,11 +1099,19 @@ component GoneBanner inherits VerticalLayout {
     Divider { }
 }
 
-// After Find it…: what was found, and the others from that folder found there too.
+// After Find it…: what was found, and the others from that folder found there too. Compact:
+// the sentence on a line of its own (it wraps there), the buttons under it.
 component FoundStrip inherits VerticalLayout {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    spacing: 8px;
+    if Screen.compact: Text {
+        text: Library.found-text;
+        color: Theme.ink;
+        font-size: 13px;
+        wrap: word-wrap;
+    }
     HorizontalLayout {
-        padding-top: 8px;
-        padding-bottom: 8px;
         spacing: 10px;
         VerticalLayout {
             alignment: center;
@@ -1105,11 +1123,11 @@ component FoundStrip inherits VerticalLayout {
         }
         Text {
             horizontal-stretch: 1;
-            text: Library.found-text;
+            text: Screen.compact ? "" : Library.found-text;
             color: Theme.ink;
             font-size: 13px;
             vertical-alignment: center;
-            wrap: word-wrap;
+            overflow: elide;
         }
         if Library.found-count > 1: VerticalLayout {
             alignment: center;
@@ -1120,7 +1138,7 @@ component FoundStrip inherits VerticalLayout {
                 clicked => { Library.found-all(); }
             }
         }
-        if Library.found-count > 1 && !Screen.compact: VerticalLayout {
+        if Library.found-count > 1: VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
             TextLink {
@@ -1327,14 +1345,17 @@ export component LibraryPage inherits Rectangle {
                         inset-right: Screen.compact ? 8px : Theme.lane - 12px;
                     }
                     if Library.found-open: HorizontalLayout {
+                        vertical-stretch: 0;
                         padding-right: Screen.compact ? 8px : Theme.lane - 12px;
                         FoundStrip { horizontal-stretch: 1; }
                     }
                     if Library.gone >= 2 && !Library.found-open: HorizontalLayout {
+                        vertical-stretch: 0;
                         padding-right: Screen.compact ? 8px : Theme.lane - 12px;
                         GoneBanner { horizontal-stretch: 1; }
                     }
                     if Library.rows.length == 0: HorizontalLayout {
+                        vertical-stretch: 0;
                         padding-top: 16px;
                         padding-right: Theme.lane - 12px;
                         spacing: 8px;

@@ -1132,7 +1132,7 @@ that's an exception, written only once the Phone tab is used.
   **Organize** (Artist / Album folders, M3U playlists, duplicates). Split by timestamps /
   remove silence
 - **Library page** 🚧 (built 2026-11-23, mock `design/library.html`, picks 1A · 2A · 3A ·
-  4A + 4B · 5A; screenshots not yet looked at): a fifth page after Capture (on compact,
+  4A + 4B · 5A; screenshots checked at 1280 / 900 / 720 / 400): a fifth page after Capture (on compact,
   Settings moves to a gear in each page's header and the tab bar shows the five pages).
   Everything Neria saved, in `library.json` (`library.rs`): filled once from `history.json`,
   Capture's Saved list and the Spotify folders' manifests, then written by the queue (link
