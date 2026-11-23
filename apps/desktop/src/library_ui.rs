@@ -504,7 +504,8 @@ fn detail_of(s: &mut State, it: &Item) -> LibDetail {
             && matches!(it.kind, Kind::Video | Kind::Clip | Kind::Recording | Kind::ReplayPc | Kind::ReplayPhone)
             && !library::is_audio_file(&it.file),
         can_download: !it.url.is_empty() && it.kind != Kind::Playlist,
-        can_copy_file: here && matches!(it.kind, Kind::Compressed | Kind::Gif | Kind::Clip),
+        // Any file (to paste into Discord, a chat or a folder); a playlist is a folder.
+        can_copy_file: here && it.kind != Kind::Playlist,
         has_link: !it.url.is_empty(),
         has_source: it.source.is_some(),
         spotify: it.url.contains("spotify.com"),
