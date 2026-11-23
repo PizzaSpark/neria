@@ -1945,6 +1945,7 @@ impl Queue {
                     let mut st = s.live.clone().unwrap_or_default();
                     st.recorded = saved.recorded;
                     st.holes = saved.holes.clone();
+                    st.gaps = saved.gaps.clone();
                     s.live = Some(st);
                     let mut note = saved.note.clone();
                     if saved.files.len() > 1 {
@@ -2501,12 +2502,18 @@ fn library_item(req: &DownloadRequest, s: &JobSnapshot, file: &Path) -> library:
         (_, true) => s.lyrics.clone().unwrap_or_default(),
         _ => String::new(),
     };
+    // A song's link is its Spotify page (req.url is the YouTube Music match it came from).
+    let url = match &req.music {
+        Some(m) if !m.track.id.is_empty() => format!("https://open.spotify.com/track/{}", m.track.id),
+        _ => req.url.clone(),
+    };
     library::Item {
-        url: req.url.clone(),
+        url,
         key: s.key.clone().or_else(|| req.key.clone()).unwrap_or_default(),
         thumbnail: s.thumbnail.clone().unwrap_or_default(),
         section: req.section,
         length: length.filter(|l| *l > 0.0),
+        gaps: s.live.as_ref().and_then(|l| l.gaps.clone()),
         note,
         ..library::Item::new(kind, file, &s.title)
     }

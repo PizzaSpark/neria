@@ -185,6 +185,7 @@ $states = [ordered]@{
   "lib-filter" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "filter" }
   "lib-nomatch" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "nomatch" }
   "lib-delete" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "delete" }
+  "lib-menu"   = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "menu" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-voice-off" = @{ NERIA_SETTINGS = "voice" }

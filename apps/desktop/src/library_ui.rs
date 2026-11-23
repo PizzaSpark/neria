@@ -29,6 +29,8 @@ const CHECK_EVERY: Duration = Duration::from_secs(20);
 struct State {
     loaded: bool,
     loading: bool,
+    /// Something was saved while reading: read again once this read is shown.
+    again: bool,
     items: Vec<Item>,
     places: HashMap<u64, Where>,
     /// file → its cached frame (None: it has none, e.g. sound).
@@ -42,6 +44,9 @@ struct State {
     found: Vec<(u64, PathBuf)>,
     /// Sample data (`NERIA_LIBRARY_DEMO`): nothing is read or written.
     demo: bool,
+    /// Recordings getting their missed bits back now.
+    repairing: std::collections::HashSet<u64>,
+    settings: Option<Arc<Mutex<Settings>>>,
 }
 
 thread_local! {
@@ -61,7 +66,12 @@ fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
 /// Read the Library (filled once from history on the very first open), then show it and
 /// check its files.
 fn load(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
-    if with(|s| s.demo || s.loading) {
+    if with(|s| {
+        if s.loading {
+            s.again = true;
+        }
+        s.demo || s.loading
+    }) {
         return;
     }
     with(|s| s.loading = true);
@@ -88,6 +98,15 @@ fn load(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             }
             if ui.global::<Library>().get_selected() == 0 && WIDE.with(|w| w.get()) {
                 select_first(&ui);
+            } else {
+                // The picked thing's details may have changed (a transcript attached).
+                let id = ui.global::<Library>().get_selected();
+                if id != 0 {
+                    select(&ui, id as u64);
+                }
+            }
+            if with(|s| std::mem::take(&mut s.again)) {
+                load(&ui, settings);
             }
         });
     });
@@ -413,6 +432,12 @@ fn detail_of(s: &mut State, it: &Item) -> LibDetail {
     if let Some(src) = &it.source {
         kv("Made from", src.display().to_string());
     }
+    if let Some(g) = it.gaps.as_ref().filter(|g| !g.holes.is_empty()) {
+        let n = g.holes.len();
+        let places = if n == 1 { "in 1 place".to_string() } else { format!("in {n} places") };
+        let busy = if s.repairing.contains(&it.id) { " · getting them back…" } else { "" };
+        kv("Missed", format!("{} {places}{busy}", fmt::duration(g.missed())));
+    }
     let file = it.file.display().to_string();
     match &w {
         Where::Gone => kv("Was", file),
@@ -484,6 +509,9 @@ fn detail_of(s: &mut State, it: &Item) -> LibDetail {
         has_source: it.source.is_some(),
         spotify: it.url.contains("spotify.com"),
         can_delete: here && it.kind != Kind::Playlist,
+        can_rematch: here && it.kind == Kind::Song,
+        can_repair: here && !it.url.is_empty() && it.gaps.as_ref().is_some_and(|g| !g.holes.is_empty()),
+        repairing: s.repairing.contains(&it.id),
     }
 }
 
@@ -924,12 +952,64 @@ fn act(ui: &AppWindow, id: u64, what: &str) {
             music.invoke_add_lyrics();
         }
         "find" => find_one(ui, &it),
+        "rematch" => crate::match_ui::open_song(it.file.clone(), it.url.clone()),
+        "repair" => repair(ui, &it),
         "remove" => {
             forget(ui, &[id]);
             show_toast(ui, if here { "Removed from the Library. The file is still there." } else { "Removed from the Library" });
         }
         _ => {}
     }
+}
+
+/// Get the missed bits back: fetch a recording's holes from the site again and splice them
+/// in (the file changes in place; its record keeps what's still missing).
+fn repair(ui: &AppWindow, it: &Item) {
+    let Some(gaps) = it.gaps.clone() else { return };
+    let (busy, demo, settings) = with(|s| (s.repairing.contains(&it.id), s.demo, s.settings.clone()));
+    if busy {
+        show_toast(ui, "Still getting them back. It can take a few minutes.");
+        return;
+    }
+    if demo {
+        show_toast(ui, "Getting the missed bits back…");
+        return;
+    }
+    let Some(settings) = settings else { return };
+    with(|s| s.repairing.insert(it.id));
+    select(ui, it.id);
+    show_toast(ui, "Getting the missed bits back from the site. It can take a few minutes.");
+    let (weak, id, file, url) = (ui.as_weak(), it.id, it.file.clone(), it.url.clone());
+    std::thread::spawn(move || {
+        let s = settings.lock().unwrap().clone();
+        let never = std::sync::atomic::AtomicBool::new(false);
+        let result = neria_core::record::get_holes_back(&file, &url, &gaps, &s, &never);
+        let left = match &result {
+            Ok(left) => Some(neria_core::record::Gaps { holes: left.clone(), ..gaps.clone() }),
+            Err(_) => Some(gaps.clone()),
+        };
+        let now = library::set_gaps(id, left.clone());
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            with(|s| {
+                s.repairing.remove(&id);
+                if let (Some(it), Some(now)) = (s.items.iter_mut().find(|i| i.id == id), now) {
+                    *it = now;
+                }
+            });
+            let got = gaps.missed() - left.as_ref().map_or(0.0, |g| g.missed());
+            let msg = match result {
+                Ok(left) if left.is_empty() => format!("Got back all {} missed", fmt::duration(gaps.missed())),
+                Ok(_) if got > 0.0 => format!("Got back {} of {} missed", fmt::duration(got), fmt::duration(gaps.missed())),
+                Ok(_) => "Fetched the missed bits, but they didn't line up with the recording".to_string(),
+                Err(e) => format!("Couldn't get them back: {e}"),
+            };
+            show_toast(&ui, &msg);
+            rebuild(&ui);
+            if ui.global::<Library>().get_selected() as u64 == id {
+                select(&ui, id);
+            }
+        });
+    });
 }
 
 /// Delete file… said yes: to the Recycle Bin, and out of the Library.
@@ -952,6 +1032,7 @@ fn delete(ui: &AppWindow) {
 }
 
 pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
+    with(|s| s.settings = Some(settings.clone()));
     let lib = ui.global::<Library>();
     lib.on_shown({
         let (weak, settings) = (ui.as_weak(), settings.clone());
@@ -1037,22 +1118,67 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         let weak = ui.as_weak();
         move || weak.unwrap().global::<Library>().set_found_open(false)
     });
-    // Saved elsewhere while the page shows (an instant replay, a finished download): seen the
-    // next time the page opens; a quiet re-read every 30 s keeps an open page current.
-    let timer = slint::Timer::default();
+    // Saved elsewhere while the page shows (an instant replay, a finished download, a
+    // transcript): read again at once. A closed page reads again when it opens.
     {
         let (weak, settings) = (ui.as_weak(), settings.clone());
-        timer.start(slint::TimerMode::Repeated, Duration::from_secs(30), move || {
-            if let Some(ui) = weak.upgrade()
-                && ui.get_page() == 4
-                && ui.window().is_visible()
-            {
-                load(&ui, settings.clone());
+        library::on_saved(move || {
+            let (weak, settings) = (weak.clone(), settings.clone());
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = weak.upgrade()
+                    && ui.get_page() == 4
+                    && ui.window().is_visible()
+                {
+                    load(&ui, settings);
+                }
+            });
+        });
+    }
+    demo(ui);
+    press_for_checks(ui);
+}
+
+/// `NERIA_LIBRARY_ACT`: press Library actions as if clicked, for checks in the real app:
+/// `<part of a title>=<action>` steps, `;` between, one every `NERIA_LIBRARY_ACT_EVERY`
+/// seconds (default 4). Actions are `act`'s (`watch`, `clip`, `compress`, `transcribe`, `gif`,
+/// `show`, `copy-file`, `copy-link`, `download`, `update`, `lyrics`, `original`, `rematch`,
+/// `repair`, `remove`, `find`…) plus `select`, `delete` (Delete file… said yes); and, with any title, `back` (the
+/// player's Back), `library` (the page, as from the rail), `match-use` (Pick another match:
+/// Use this on its first row).
+fn press_for_checks(ui: &AppWindow) {
+    let Ok(steps) = std::env::var("NERIA_LIBRARY_ACT") else { return };
+    let every = std::env::var("NERIA_LIBRARY_ACT_EVERY").ok().and_then(|s| s.parse().ok()).unwrap_or(4.0);
+    let steps: Vec<(String, String)> = steps
+        .split(';')
+        .filter_map(|s| s.split_once('=').map(|(a, b)| (a.trim().to_lowercase(), b.trim().to_string())))
+        .collect();
+    for (n, (title, what)) in steps.into_iter().enumerate() {
+        let weak = ui.as_weak();
+        slint::Timer::single_shot(Duration::from_secs_f64(every * (n as f64 + 1.0) + 2.0), move || {
+            let Some(ui) = weak.upgrade() else { return };
+            match what.as_str() {
+                // Watching: the player's Back, as clicked.
+                "back" => return ui.global::<crate::Watch>().invoke_back(),
+                // The Library page, as from the rail.
+                "library" => return ui.set_page(4),
+                // Pick another match: "Use this" on its first row.
+                "match-use" => return ui.invoke_match_use(0),
+                _ => {}
+            }
+            let id = with(|s| s.items.iter().rev().find(|i| i.name().to_lowercase().contains(&title)).map(|i| i.id));
+            let Some(id) = id else {
+                eprintln!("NERIA_LIBRARY_ACT: nothing called {title:?}");
+                return;
+            };
+            eprintln!("NERIA_LIBRARY_ACT: {what} on {title:?} ({id})");
+            select(&ui, id);
+            match what.as_str() {
+                "select" => {}
+                "delete" => delete(&ui),
+                _ => act(&ui, id, &what),
             }
         });
     }
-    std::mem::forget(timer);
-    demo(ui);
 }
 
 // ───────────── Sample data (NERIA_LIBRARY_DEMO) ─────────────
@@ -1094,6 +1220,14 @@ fn demo(ui: &AppWindow) {
             i.size = Some(3_100_000_000);
             i.note = "recorded from the start".into();
             i.attached = att(&["sample.chat.json"]);
+            i.gaps = Some(neria_core::record::Gaps {
+                holes: vec![
+                    neria_core::record::Hole { at: 1865.0, len: 42.0, about: false },
+                    neria_core::record::Hole { at: 5210.0, len: 31.0, about: true },
+                ],
+                started_at: 0.0,
+                starts: 0.0,
+            });
         }),
         mk(Kind::ReplayPc, &replay, "VALORANT · 14:32", 2 * h, &|i| {
             i.length = Some(60.0);
@@ -1224,6 +1358,20 @@ fn demo(ui: &AppWindow) {
         "playlist" => {
             select(ui, 5);
             lib.set_sheet_open(true);
+        }
+        "menu" => {
+            // The recording with holes, its ⋯ menu open (once the page is up).
+            let id = with(|s| s.items.iter().find(|i| i.kind == Kind::Recording).map(|i| i.id));
+            if let Some(id) = id {
+                select(ui, id);
+                lib.set_sheet_open(true);
+            }
+            let weak = ui.as_weak();
+            slint::Timer::single_shot(Duration::from_millis(800), move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.global::<Library>().set_menu_demo(true);
+                }
+            });
         }
         "gone" => {
             select(ui, 14);

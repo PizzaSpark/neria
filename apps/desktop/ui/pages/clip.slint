@@ -711,7 +711,7 @@ export component ClipPage inherits FocusScope {
             PageTitle {
                 horizontal-stretch: 1;
                 spacing: 4px;
-                title: !Watch.on ? "Cut the good part." : Watch.recording-id != 0 && !Watch.rec-done ? "Recording it live." : Watch.recording-id != 0 || ClipLive.on ? "Watching it live." : "Watch it first.";
+                title: !Watch.on ? "Cut the good part." : Watch.recording-id != 0 && !Watch.rec-done ? "Recording it live." : Watch.recording-id != 0 || ClipLive.on ? "Watching it live." : root.is-link ? "Watch it first." : "Watch it again.";
                 subtitle: root.loaded ? root.name : Screen.compact ? "" : "Trim a file, or preview a link and download only the part you want.";
             }
             // Watching: back to the preview it came from.
@@ -1323,12 +1323,13 @@ export component ClipPage inherits FocusScope {
                 enabled: root.tools-ready;
             }
         }
-        // Watching: download the whole thing, or start clipping it.
+        // Watching: download the whole thing, or start clipping it. A saved file (from the
+        // Library) is saved already: its folder instead of Download.
         if root.loaded && Watch.on && Watch.recording-id == 0 && !ClipLive.on: HorizontalLayout {
             spacing: 8px;
             if !Screen.compact: Text {
                 horizontal-stretch: 1;
-                text: "Nothing is saved until you download it.";
+                text: root.is-link ? "Nothing is saved until you download it." : "It's saved. Cut a part of it, or find it in its folder.";
                 color: Theme.muted;
                 font-size: 12px;
                 overflow: elide;
@@ -1340,12 +1341,18 @@ export component ClipPage inherits FocusScope {
                 icon: "\u{E8C6}";
                 clicked => { Watch.clip-this(); }
             }
-            PrimaryButton {
+            if root.is-link: PrimaryButton {
                 horizontal-stretch: Screen.compact ? 1 : 0;
                 text: "Download";
                 icon: "\u{E896}";
                 enabled: root.tools-ready;
                 clicked => { Watch.download(); }
+            }
+            if !root.is-link: GhostButton {
+                horizontal-stretch: Screen.compact ? 1 : 0;
+                text: "Show in folder";
+                icon: "\u{E8B7}";
+                clicked => { Watch.show-file(); }
             }
         }
 

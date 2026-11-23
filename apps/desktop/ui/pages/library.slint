@@ -113,6 +113,16 @@ component LibMenu inherits Menu {
         text: "Open in Spotify";
         clicked => { Library.act(d.id, "spotify"); }
     }
+    if d.can-rematch: MenuItem {
+        icon: "\u{E8EE}";
+        text: "Pick another match";
+        clicked => { Library.act(d.id, "rematch"); }
+    }
+    if d.can-repair: MenuItem {
+        icon: "\u{E777}";
+        text: d.repairing ? "Getting the missed bits back…" : "Get the missed bits back";
+        clicked => { Library.act(d.id, "repair"); }
+    }
     if d.gone && d.main != 5: MenuItem {
         icon: "\u{E721}";
         text: "Find it…";
@@ -352,6 +362,15 @@ component MainAction inherits PrimaryButton {
 // Wide windows: the picked thing on the right.
 component DetailColumn inherits Rectangle {
     property <LibDetail> d: Library.detail;
+    // Sample data only: the ⋯ menu shows by itself.
+    Timer {
+        interval: 300ms;
+        running: Library.menu-demo;
+        triggered => {
+            self.running = false;
+            more.show();
+        }
+    }
     Rectangle {
         x: 0;
         width: 1px;
@@ -877,6 +896,15 @@ component FilterSheet inherits Rectangle {
 // Compact: the picked thing, from the bottom; Watch across its bottom.
 component DetailSheet inherits Rectangle {
     property <LibDetail> d: Library.detail;
+    // Sample data only: the ⋯ menu shows by itself.
+    Timer {
+        interval: 300ms;
+        running: Library.menu-demo;
+        triggered => {
+            self.running = false;
+            more.show();
+        }
+    }
     background: Theme.scrim;
     // keyboard: Esc closes it (the FocusScope below), as does the ×.
     TouchArea {

@@ -488,6 +488,18 @@ pub fn embed_lyrics(file: &Path, text: &str) -> Result<()> {
 
 /// A song's own tags (title, artist, album, length), read with ffprobe.
 /// The song's tags as a track, and whether it has lyrics inside already.
+/// A song file's Spotify track as far as it knows: its id from the folder's manifest (Neria's
+/// own folders), title / artist / album / length from its tags. For "Pick another match" from
+/// the Library, where no queue job remembers the track.
+pub fn track_from_file(file: &Path) -> Option<Track> {
+    let (mut track, _) = song_from_tags(file)?;
+    let stem = file.file_stem()?.to_string_lossy().into_owned();
+    if let Some(m) = file.parent().and_then(read_manifest).and_then(|m| m.tracks.into_iter().find(|t| t.stem == stem)) {
+        track.id = m.id;
+    }
+    Some(track)
+}
+
 fn song_from_tags(file: &Path) -> Option<(Track, bool)> {
     let out = proc::command(paths::tool("ffprobe"))
         .args(["-v", "error", "-show_entries", "format=duration:format_tags", "-of", "json"])

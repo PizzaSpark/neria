@@ -1152,8 +1152,24 @@ that's an exception, written only once the Phone tab is used.
   Update playlist, Add lyrics, Remove, Delete file… (Recycle Bin). Gone checked in the
   background ("On E:, not connected" for a missing drive); Find it… also finds the other
   gone files from that folder; Find them… for a whole folder. Frames cached in
-  `library-thumbs/`. Left: the grid view (2B) on video kinds, Pick another match and Get
-  the holes back from the Library, live updates while the page is open (re-read every 30 s)
+  `library-thumbs/`. Since 2026-11-23 (second pass): an open page shows each save at once
+  (`library::on_saved`, no more 30 s re-read); a song's ⋯ has Pick another match (the
+  Download page's dialog: its track from Spotify by the record's link, else from its tags and
+  the folder's manifest; Use this queues the match over the file); a recording saved with
+  holes keeps them (`record::Gaps`) and its ⋯ has Get the missed bits back
+  (`record::get_holes_back`: fetched again, spliced in by sound, the rest kept); songs from
+  the queue keep their Spotify link (was the YouTube Music match); Download again takes the
+  Gone record's place; watching a saved file offers Show in folder, not Download. Tried in
+  the real app (`NERIA_LIBRARY_ACT`, scratch home): Watch / Play and Back, Clip, Clip again
+  at In / Out, Compress, Transcribe, Make a GIF, Copy file / Copy link (on the clipboard),
+  Download again, Update playlist, Add lyrics, Go to the original, Pick another match + Use
+  this, Get the missed bits back (a YouTube video with 10 s cut out: back, ~2.5 s overlap
+  from keyframe cuts, as when recording), Remove, Delete file…. Left: the grid view (2B) on
+  video kinds; checking by hand Find it… / Find them… (file pickers), Show in folder, pasting
+  a copied file into Explorer, and the Gone check with an unplugged drive; Pick another match
+  marks no row as the current one (the Library doesn't know which match it was), and a song
+  saved before in another format than Settings' leaves the old file next to the new one;
+  Twitch keeps a stream's missed bits only while it's live
 - **Command palette** (Ctrl+K): type "compress", "extract audio", "clip"… to jump to any
   action; also lists recent files
 - **Saved workflows**: simple "after download" actions first (extract audio, compress for

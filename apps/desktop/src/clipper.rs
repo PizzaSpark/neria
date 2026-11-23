@@ -1571,11 +1571,16 @@ pub fn install(
     });
     watch.on_record_from_start(move || record(true));
     watch.on_show_file({
-        let weak = ui.as_weak();
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
         move || {
             let ui = weak.unwrap();
             let id = ui.global::<Watch>().get_recording_id() as u64;
-            if let Some(path) = crate::QUEUE.get().and_then(|q| q.file_of(id)) {
+            if id == 0 {
+                // A saved file watched from the Library.
+                if let Some(Source::File(path)) = &clipper.borrow().source {
+                    crate::reveal(path);
+                }
+            } else if let Some(path) = crate::QUEUE.get().and_then(|q| q.file_of(id)) {
                 crate::reveal(&path);
             }
         }

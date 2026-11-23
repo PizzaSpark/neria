@@ -1240,6 +1240,11 @@ export struct LibDetail {
     has-source: bool,
     spotify: bool,
     can-delete: bool,
+    // A song: Pick another match (the Download page's dialog, the new one downloaded over it).
+    can-rematch: bool,
+    // A recording with holes it can still get back; `repairing` while it's at it.
+    can-repair: bool,
+    repairing: bool,
 }
 
 // The Library page (mock: design/library.html, picks 1A · 2A · 3A · 4A + 4B · 5A): everything
@@ -1282,6 +1287,8 @@ export global Library {
     in-out property <bool> sheet-open;
     // Delete file…: asks first (to the Recycle Bin).
     in-out property <bool> delete-open;
+    // Sample data only (`NERIA_LIBRARY_DEMO=menu`): the picked thing's ⋯ menu shows.
+    in property <bool> menu-demo;
     callback shown(bool); // the page opened (wide: pick the first row)
     callback changed(); // search, a tab or a menu changed
     callback clear-filters();

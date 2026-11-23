@@ -1772,7 +1772,7 @@ fn main() -> anyhow::Result<()> {
     });
     spotify_ui::install_sync_review(&ui);
     spotify_ui::install_lyrics(&ui, probe_state.spotify.clone(), settings.clone(), queue.clone());
-    match_ui::install(&ui, queue.clone());
+    match_ui::install(&ui, queue.clone(), settings.clone());
     updates_ui::install(&ui);
     order_ui::setup(&ui);
     bulk_ui::install(&ui, queue.clone(), settings.clone());

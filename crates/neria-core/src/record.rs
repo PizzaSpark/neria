@@ -204,6 +204,8 @@ pub struct LiveStats {
     /// It's fetched and will be joined in front; or why it couldn't be.
     pub earlier_done: bool,
     pub earlier_failed: Option<String>,
+    /// Once saved: what the Library keeps to get the holes back later.
+    pub gaps: Option<Gaps>,
 }
 
 impl LiveStats {
@@ -228,6 +230,28 @@ pub struct Saved {
     pub note: String,
     pub recorded: f64,
     pub holes: Vec<Hole>,
+    /// Holes left in a video saved as one file, for the Library's "Get the missed bits back".
+    pub gaps: Option<Gaps>,
+}
+
+/// A saved recording's holes and what it takes to fetch them again later (the Library's
+/// "Get the missed bits back"): when the stream began and where in it the file begins.
+/// Only for a video saved as one file (a sound file is re-encoded: a fill can't go in as is).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Gaps {
+    pub holes: Vec<Hole>,
+    /// When the stream went live (Unix seconds).
+    pub started_at: f64,
+    /// Where in the stream the file begins (seconds).
+    pub starts: f64,
+}
+
+impl Gaps {
+    /// Seconds missed in all.
+    pub fn missed(&self) -> f64 {
+        self.holes.iter().map(|h| h.len).sum()
+    }
 }
 
 pub struct Recording<'a> {
@@ -1388,6 +1412,55 @@ pub fn repair_holes(rec: &Recording, stop: &AtomicBool) -> Result<usize> {
     Ok(got)
 }
 
+/// A saved recording's holes, fetched from the site again and spliced into `file` (the
+/// Library's "Get the missed bits back"). Works while the site still has that stretch: a
+/// YouTube stream's last hour while it's live and its video after; Twitch only while live.
+/// Returns the holes still missing (empty: all back).
+pub fn get_holes_back(file: &Path, url: &str, gaps: &Gaps, settings: &Settings, stop: &AtomicBool) -> Result<Vec<Hole>> {
+    let dir = file.parent().context("The recording has no folder")?;
+    let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let work = crate::clip::unique_path(dir, &format!(".{stem}"), "fill");
+    std::fs::create_dir_all(&work)?;
+    let result = (|| -> Result<Vec<Hole>> {
+        let height = crate::media::file_info(file).ok().map(|i| i.height).filter(|h| *h > 0);
+        let rec = Recording {
+            url,
+            settings,
+            audio: false,
+            max_height: height,
+            live: LiveJob::default(),
+            title: &stem,
+            out_dir: dir,
+            work: work.clone(),
+        };
+        let mut fills = Vec::new();
+        let mut last_err = None;
+        for (i, h) in gaps.holes.iter().enumerate() {
+            if stop.load(Ordering::SeqCst) {
+                bail!("Cancelled");
+            }
+            let from = (h.at - FILL_MARGIN).max(0.0);
+            match fetch_stretch(&rec, gaps.started_at, from, h.at + h.len + FILL_AFTER, &format!("fill{i}")) {
+                Ok(f) => fills.push(Fill {
+                    at: h.at,
+                    len: h.len,
+                    file: f.file_name().unwrap_or_default().to_string_lossy().into(),
+                    from,
+                }),
+                Err(e) => last_err = Some(e),
+            }
+        }
+        if fills.is_empty() {
+            return Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Nothing to fetch")));
+        }
+        std::fs::write(fills_path(&work), serde_json::to_string_pretty(&fills)?)?;
+        let done = splice_fills(&work, file, gaps.starts);
+        Ok(gaps.holes.iter().filter(|h| !done.iter().any(|at| (h.at - at).abs() < 1.0)).copied().collect())
+    })();
+    discard(&work);
+    result
+}
+
 /// Where a fill takes over in a recording, by sound: (seconds into the recording where it
 /// broke off, the fill's own seconds to keep `a`–`b`, seconds into the recording where it
 /// picks up again). `expect`: about where in the recording the hole is.
@@ -1451,11 +1524,13 @@ pub fn splice_points(recording: &Path, fill: &Path, expect: f64, hole: f64) -> O
     (b > a && resume > cut - 1.0).then_some((cut, a, b, resume))
 }
 
-/// Splice the fetched bits into the saved `file` (in place). How many went in.
-fn splice_fills(work: &Path, file: &Path, starts_at: f64) -> usize {
+/// Splice the fetched bits into the saved `file` (in place, as its own type). The holes
+/// (`at`) whose bit went in.
+fn splice_fills(work: &Path, file: &Path, starts_at: f64) -> Vec<f64> {
     let mut fills = fills_of(work);
     fills.sort_by(|a, b| b.at.total_cmp(&a.at)); // last first: earlier places don't move
-    let mut done = 0;
+    let ext = file.extension().map_or("mp4".to_string(), |e| e.to_string_lossy().to_ascii_lowercase());
+    let mut done = Vec::new();
     for f in fills {
         let fill = work.join(&f.file);
         let Some((cut, a, b, resume)) = splice_points(file, &fill, f.at - starts_at, f.len) else { continue };
@@ -1463,7 +1538,7 @@ fn splice_fills(work: &Path, file: &Path, starts_at: f64) -> usize {
             [(file.to_path_buf(), 0.0, Some(cut)), (fill.clone(), a, Some(b - a)), (file.to_path_buf(), resume, None)];
         let mut parts = Vec::new();
         for (i, (src, ss, t)) in pieces.iter().enumerate() {
-            let out = work.join(format!("splice{i}.mp4"));
+            let out = work.join(format!("splice{i}.{ext}"));
             let mut args = vec!["-ss".to_string(), format!("{ss:.3}"), "-i".into(), s(src)];
             if let Some(t) = t {
                 args.extend(["-t".into(), format!("{t:.3}")]);
@@ -1482,17 +1557,22 @@ fn splice_fills(work: &Path, file: &Path, starts_at: f64) -> usize {
         if std::fs::write(&list, lines.join("\n")).is_err() {
             continue;
         }
-        let joined = work.join("spliced.mp4");
-        let args: Vec<String> =
-            ["-f", "concat", "-safe", "0", "-i", &s(&list), "-map", "0", "-c", "copy", "-movflags", "+faststart"]
-                .iter()
-                .map(|x| x.to_string())
-                .collect();
-        if ffmpeg(&args, &joined).is_ok() && std::fs::rename(&joined, file).is_ok() {
-            done += 1;
+        let joined = work.join(format!("spliced.{ext}"));
+        let mut args: Vec<String> =
+            ["-f", "concat", "-safe", "0", "-i", &s(&list), "-map", "0", "-c", "copy"].iter().map(|x| x.to_string()).collect();
+        if ext == "mp4" {
+            args.extend(["-movflags", "+faststart"].map(String::from));
+        }
+        if ffmpeg(&args, &joined).is_ok() && replace_file(&joined, file) {
+            done.push(f.at);
         }
     }
     done
+}
+
+/// Put `new` in `file`'s place (a rename, else a copy: another drive).
+fn replace_file(new: &Path, file: &Path) -> bool {
+    std::fs::rename(new, file).is_ok() || (std::fs::copy(new, file).is_ok() && std::fs::remove_file(new).is_ok())
 }
 
 /// Throw a recording away (Cancel).
@@ -1686,14 +1766,11 @@ pub fn save(work: &Path, out_dir: &Path) -> Result<Saved> {
         } else {
             m.parts.first().map_or(0.0, |p| p.offset + p.skip)
         };
-        let before = fills_of(work);
-        if !before.is_empty() && splice_fills(work, file, starts) > 0 {
-            // The holes that went in (spliced ones are those whose bit the file now holds).
-            for f in before {
-                if let Some(i) = holes.iter().position(|h| (h.at - f.at).abs() < 1.0) {
-                    got_back += holes[i].len;
-                    holes.remove(i);
-                }
+        // The holes that went in (spliced ones are those whose bit the file now holds).
+        for at in splice_fills(work, file, starts) {
+            if let Some(i) = holes.iter().position(|h| (h.at - at).abs() < 1.0) {
+                got_back += holes[i].len;
+                holes.remove(i);
             }
         }
     }
@@ -1719,12 +1796,20 @@ pub fn save(work: &Path, out_dir: &Path) -> Result<Saved> {
     } else {
         early.iter().map(|_| 0.0).chain(m.parts.iter().map(|p| p.offset + p.skip)).collect()
     };
+    // What the Library keeps to get the rest back later (a video in one file, from a site
+    // that keeps the stream).
+    let gaps = match (&file_starts[..], m.started_at) {
+        ([starts], Some(started_at)) if !m.audio && !holes.is_empty() && can_record_from_start(&m.url) => {
+            Some(Gaps { holes: holes.clone(), started_at, starts: *starts })
+        }
+        _ => None,
+    };
     let pairs: Vec<(PathBuf, f64)> = files.iter().cloned().zip(file_starts).collect();
     save_chat(work, &m, &pairs);
     discard(work);
     let note =
         if got_back > 0.0 { format!("got back {} missed", crate::fmt::duration(got_back)) } else { String::new() };
-    Ok(Saved { files, note, recorded, holes })
+    Ok(Saved { files, note, recorded, holes, gaps })
 }
 
 /// Move (or, for another type, convert) a finished file into place under a free name.

@@ -1,20 +1,27 @@
 //! "Pick another match" for a Spotify track: list YouTube Music candidates,
 //! check them by sound against an official preview, let the user search, and
-//! re-download the chosen one in place.
+//! re-download the chosen one in place. From the Download page's queue (a job that knows
+//! its track) or the Library (a song file: its track from Spotify or its tags, the new match
+//! added to the queue to download over it).
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use neria_core::fingerprint::{self, Verdict};
-use neria_core::fmt;
+use neria_core::download::DownloadRequest;
+use neria_core::music::{self, MusicJob};
 use neria_core::queue::Queue;
-use neria_core::spotify::Track;
+use neria_core::settings::Settings;
+use neria_core::spotify::{self, Track};
+use neria_core::{fmt, lyrics};
 use neria_core::ytmusic::{self, Candidate};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::{AppWindow, MatchItem};
+use crate::{AppWindow, MatchItem, show_toast};
 
 /// Candidates checked automatically when the dialog opens.
 const AUTO_CHECK: usize = 5;
@@ -40,6 +47,59 @@ struct State {
     /// None = still looking; Some(None) = no preview anywhere.
     reference: Option<Option<Reference>>,
     checks: HashMap<String, Check>,
+    /// Opened from the Library: the song file the new match replaces (no queue job).
+    song: Option<PathBuf>,
+}
+
+type OpenSong = Rc<dyn Fn(PathBuf, String)>;
+
+thread_local! {
+    static OPEN_SONG: RefCell<Option<OpenSong>> = const { RefCell::new(None) };
+}
+
+/// The Library's "Pick another match" for a song file; `url` is its Spotify link when known.
+pub fn open_song(file: PathBuf, url: String) {
+    if let Some(f) = OPEN_SONG.with(|o| o.borrow().clone()) {
+        f(file, url);
+    }
+}
+
+/// The Spotify track id in an `open.spotify.com/track/<id>` link.
+fn track_id(url: &str) -> Option<String> {
+    let l = spotify::parse_link(url)?;
+    matches!(l.kind, spotify::Kind::Track).then_some(l.id)
+}
+
+/// A Library song's track: Spotify's own details when its id is known, else its tags.
+fn song_track(file: &std::path::Path, url: &str) -> Option<Track> {
+    let tags = music::track_from_file(file);
+    let id = track_id(url).or_else(|| tags.as_ref().map(|t| t.id.clone()).filter(|id| !id.is_empty()));
+    match id.and_then(|id| spotify::track_details(&id).ok()) {
+        Some(t) => Some(t),
+        None => tags,
+    }
+}
+
+/// Fill the dialog for a track and open it (looking for matches unless some are known).
+fn open_dialog(ui: &AppWindow, state: &Arc<Mutex<State>>, generation: &Arc<AtomicU64>, fill: State) {
+    let t = &fill.track;
+    ui.set_match_heading(
+        format!("Spotify: {} – {}  ·  {}", t.artist_line(), t.title, fmt::duration(t.duration_secs())).into(),
+    );
+    ui.set_match_query(format!("{} {}", t.main_artist(), t.title).into());
+    ui.set_match_status("".into());
+    let have = !fill.items.is_empty();
+    {
+        let mut st = state.lock().unwrap();
+        let session = st.session + 1;
+        *st = State { session, ..fill };
+        show(ui, &mut st);
+    }
+    ui.set_match_open(true);
+    if !have {
+        search(ui, state, generation, None);
+    }
+    find_reference(ui, state);
 }
 
 fn to_item(c: &Candidate, st: &State) -> MatchItem {
@@ -222,7 +282,7 @@ fn search(ui: &AppWindow, state: &Arc<Mutex<State>>, generation: &Arc<AtomicU64>
     });
 }
 
-pub fn install(ui: &AppWindow, queue: Queue) {
+pub fn install(ui: &AppWindow, queue: Queue, settings: Arc<Mutex<Settings>>) {
     let state = Arc::new(Mutex::new(State::default()));
     let generation = Arc::new(AtomicU64::new(0));
 
@@ -231,34 +291,35 @@ pub fn install(ui: &AppWindow, queue: Queue) {
         move |id| {
             let ui = weak.unwrap();
             let Some(info) = queue.match_info(id as u64) else { return };
-            let t = &info.track;
-            ui.set_match_heading(
-                format!("Spotify: {} – {}  ·  {}", t.artist_line(), t.title, fmt::duration(t.duration_secs())).into(),
-            );
-            ui.set_match_query(format!("{} {}", t.main_artist(), t.title).into());
-            ui.set_match_status("".into());
-            let have = !info.candidates.is_empty();
-            {
-                let mut st = state.lock().unwrap();
-                let session = st.session + 1;
-                *st = State {
-                    session,
-                    job: id as u64,
-                    track: info.track,
-                    items: info.candidates,
-                    chosen: info.chosen,
-                    reference: None,
-                    checks: HashMap::new(),
-                };
-                show(&ui, &mut st);
-            }
-            ui.set_match_open(true);
-            if !have {
-                search(&ui, &state, &generation, None);
-            }
-            find_reference(&ui, &state);
+            let fill = State {
+                job: id as u64,
+                track: info.track,
+                items: info.candidates,
+                chosen: info.chosen,
+                ..State::default()
+            };
+            open_dialog(&ui, &state, &generation, fill);
         }
     });
+
+    let open: OpenSong = Rc::new({
+        let (weak, state, generation) = (ui.as_weak(), state.clone(), generation.clone());
+        move |file: PathBuf, url: String| {
+            show_toast(&weak.unwrap(), "Looking up the song…");
+            let (weak, state, generation) = (weak.clone(), state.clone(), generation.clone());
+            std::thread::spawn(move || {
+                let track = song_track(&file, &url);
+                let _ = weak.upgrade_in_event_loop(move |ui| match track {
+                    Some(track) => {
+                        let fill = State { track, song: Some(file), ..State::default() };
+                        open_dialog(&ui, &state, &generation, fill);
+                    }
+                    None => show_toast(&ui, "Couldn't tell which song this is (it has no title or artist inside)."),
+                });
+            });
+        }
+    });
+    OPEN_SONG.with(|o| *o.borrow_mut() = Some(open));
 
     ui.on_match_search({
         let (weak, state, generation) = (ui.as_weak(), state.clone(), generation.clone());
@@ -288,6 +349,25 @@ pub fn install(ui: &AppWindow, queue: Queue) {
             let ui = weak.unwrap();
             let st = state.lock().unwrap();
             let Some(c) = st.items.get(i as usize) else { return };
+            if let Some(file) = &st.song {
+                // From the Library: download this match over the song file, as the queue would.
+                let (Some(dir), Some(stem)) = (file.parent(), file.file_stem()) else { return };
+                let settings = settings.lock().unwrap().clone();
+                let job = MusicJob {
+                    track: st.track.clone(),
+                    dir: dir.to_path_buf(),
+                    stem: stem.to_string_lossy().into_owned(),
+                    lyrics: settings.lyrics,
+                    lyrics_prefs: lyrics::Prefs::from_settings(&settings),
+                    mode: music::Mode::Song,
+                    forced: Some(c.url()),
+                    verify: settings.verify_audio,
+                };
+                queue.add(DownloadRequest::music(job));
+                ui.set_match_open(false);
+                show_toast(&ui, "Downloading that match over the song. It's on the Download page.");
+                return;
+            }
             if queue.rematch(st.job, c.url()) {
                 ui.set_match_open(false);
             } else {

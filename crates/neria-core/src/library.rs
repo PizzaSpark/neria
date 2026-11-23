@@ -20,6 +20,22 @@ const MAX: usize = 20_000;
 
 static LOCK: Mutex<()> = Mutex::new(());
 
+/// Told after something was saved into the Library (`add`, `add_all`, `transcribed`,
+/// `playlist_synced`, `remove_file`), so an open Library page shows it at once. The page's
+/// own changes (Remove, Find it…, lengths, the background check) don't call it.
+static ON_SAVED: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>> = std::sync::OnceLock::new();
+
+/// The desktop app's Library page: called (from any thread) after each save.
+pub fn on_saved(f: impl Fn() + Send + Sync + 'static) {
+    let _ = ON_SAVED.set(Box::new(f));
+}
+
+fn saved() {
+    if let Some(f) = ON_SAVED.get() {
+        f();
+    }
+}
+
 /// What a saved thing is. The tag on its row says it in words (`label`).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
@@ -139,6 +155,8 @@ pub struct Item {
     pub key: String,
     /// The site's picture for it (a link), for when the file has no frame (songs).
     pub thumbnail: String,
+    /// A recording's holes, while it has some it could get back (Get the missed bits back).
+    pub gaps: Option<crate::record::Gaps>,
 }
 
 impl Item {
@@ -207,7 +225,9 @@ fn edit<R>(f: impl FnOnce(&mut Vec<Item>) -> R) -> R {
 /// Returns its id.
 pub fn add(item: Item) -> u64 {
     let item = complete(item);
-    edit(|items| put(items, item))
+    let id = edit(|items| put(items, item));
+    saved();
+    id
 }
 
 /// `add` for several at once (one write).
@@ -218,6 +238,7 @@ pub fn add_all(new: Vec<Item>) {
             put(items, it);
         }
     });
+    saved();
 }
 
 fn complete(mut item: Item) -> Item {
@@ -241,7 +262,15 @@ fn complete(mut item: Item) -> Item {
 }
 
 fn put(items: &mut Vec<Item>, mut item: Item) -> u64 {
-    if let Some(i) = items.iter().position(|o| same_path(&o.file, &item.file)) {
+    // The same file again; else the same thing whose file is gone (Download again): this
+    // takes its place instead of a second row.
+    let same = items.iter().position(|o| same_path(&o.file, &item.file)).or_else(|| {
+        items.iter().position(|o| {
+            let same_thing = (!item.key.is_empty() && o.key == item.key) || (!item.url.is_empty() && o.url == item.url);
+            same_thing && o.kind == item.kind && o.section == item.section && !o.file.exists()
+        })
+    });
+    if let Some(i) = same {
         let old = items.remove(i);
         item.id = old.id;
         if item.url.is_empty() {
@@ -283,6 +312,7 @@ pub fn remove(ids: &[u64]) {
 /// A file Neria just deleted again (Undo after a save): its record goes too.
 pub fn remove_file(path: &Path) {
     edit(|items| items.retain(|i| !same_path(&i.file, path)));
+    saved();
 }
 
 /// These records' files are now here (Find it…), with what's attached there.
@@ -306,6 +336,18 @@ pub fn relocate(moves: &[(u64, PathBuf)]) {
             }
         }
     });
+}
+
+/// A recording's holes after "Get the missed bits back": what's still missing (none: the
+/// record forgets them), its size and length now. Returns the record as it is now.
+pub fn set_gaps(id: u64, gaps: Option<crate::record::Gaps>) -> Option<Item> {
+    edit(|items| {
+        let it = items.iter_mut().find(|i| i.id == id)?;
+        it.gaps = gaps.filter(|g| !g.holes.is_empty());
+        it.size = std::fs::metadata(&it.file).ok().map(|m| m.len()).or(it.size);
+        it.length = crate::media::duration(&it.file).or(it.length);
+        Some(it.clone())
+    })
 }
 
 /// Lengths worked out later (the Library's thumbnails probe each file once).
@@ -758,6 +800,7 @@ pub fn transcribed(input: &Path, outputs: &[PathBuf]) {
         true
     });
     if has_record {
+        saved();
         return;
     }
     // The .txt first if there is one: it's what people open.
@@ -800,6 +843,30 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items.last().unwrap().url, "https://youtu.be/a");
         assert_eq!(items.last().unwrap().at, 99);
+    }
+
+    #[test]
+    fn download_again_takes_the_gone_ones_place() {
+        let dir = temp("again");
+        let mut items = Vec::new();
+        let link = "https://youtu.be/a";
+        let gone = put(&mut items, Item { url: link.into(), ..Item::new(Kind::Video, dir.join("moved.mp4"), "A") });
+        let clip = put(
+            &mut items,
+            Item { url: link.into(), section: Some((1.0, 2.0)), ..Item::new(Kind::Clip, dir.join("part.mp4"), "A") },
+        );
+        // Saved somewhere else: the gone record becomes this one (its id kept); the clip of
+        // the same link is another thing and stays.
+        std::fs::write(dir.join("new.mp4"), b"x").unwrap();
+        let again = put(&mut items, Item { url: link.into(), ..Item::new(Kind::Video, dir.join("new.mp4"), "A") });
+        assert_eq!(again, gone);
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|i| i.id == clip));
+        // While the file is still there, another copy is a row of its own.
+        std::fs::write(dir.join("copy.mp4"), b"x").unwrap();
+        let copy = put(&mut items, Item { url: link.into(), ..Item::new(Kind::Video, dir.join("copy.mp4"), "A") });
+        assert_ne!(copy, gone);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
