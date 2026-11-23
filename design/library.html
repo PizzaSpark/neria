@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria Library</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --badbg:#3a1a1a; --live:#ff6b6f; --livebg:#3d1719; --accent:#ffd23f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; overflow-x: hidden; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b, td b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+  .scroll > div { min-width: 0; }
+
+  /* app frame */
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; display: flex; }
+  .q.col { flex-direction: column; }
+  .w1000 { width: 1000px; } .w800 { width: 800px; } .w400 { width: 400px; } .w460 { width: 460px; } .w340 { width: 340px; }
+  .main { flex: 1; min-width: 0; padding: 22px 24px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .hd { font: 700 30px/1.1 "Space Grotesk", sans-serif; }
+  .hd.s { font-size: 24px; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.bad { background: var(--badbg); color: var(--bad); }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .ghost { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font: 500 12.5px "Inter Tight", sans-serif; white-space: nowrap; flex: none; background: none; }
+  .ghost.ic { width: 30px; padding: 0; }
+  .ghost.tall { height: 41px; padding: 0 14px; font-size: 13.5px; }
+  .primary { height: 41px; padding: 0 16px; background: var(--pop); color: var(--onpop); border: 2px solid var(--hard); border-radius: 10px;
+             box-shadow: 3px 3px 0 var(--popsh); font: 700 14px "Space Grotesk", sans-serif; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; flex: none; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; white-space: nowrap; gap: 6px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .chip .v { color: var(--dim); font-size: 10px; }
+  svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  svg.i.sm { width: 15px; height: 15px; }
+
+  /* rail */
+  .rail { width: 80px; flex: none; border-right: 1px solid var(--line); padding: 16px 8px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .logo { width: 38px; height: 38px; border-radius: 10px; background: var(--pop); border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); margin-bottom: 14px;
+          font: 700 19px "Space Grotesk", sans-serif; color: var(--onpop); display: flex; align-items: center; justify-content: center; }
+  .nav { width: 64px; padding: 8px 0 6px; border-radius: 10px; border: 2px solid transparent; color: var(--dim); display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; }
+  .nav.on { border-color: var(--ls); background: var(--panel); color: var(--ink); }
+  .nav.new { position: relative; }
+  .rail .sp { flex: 1; }
+
+  /* compact tab bar */
+  .tabbar { display: flex; border-top: 1px solid var(--line); padding: 6px 4px 8px; background: var(--bg); }
+  .tabbar .nav { flex: 1; width: auto; min-width: 0; padding: 6px 0 4px; font-size: 10.5px; }
+
+  /* filter tabs */
+  .ftabs { display: flex; gap: 18px; border-bottom: 1px solid var(--line); margin-top: 16px; flex-wrap: nowrap; overflow: hidden; }
+  .ftab { padding: 8px 0 9px; color: var(--muted); font-size: 13px; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .ftab .n { font: 500 11px "JetBrains Mono", monospace; color: var(--dim); margin-left: 5px; }
+  .ftab.on { color: var(--ink); border-color: var(--ink); }
+  .ftab.on .n { color: var(--ink); }
+  .ftab.warn .n { color: var(--warn); }
+
+  .search { height: 41px; flex: 1; min-width: 0; background: var(--panel); border: 2px solid var(--ls); border-radius: 10px; display: flex; align-items: center; gap: 9px; padding: 0 12px; color: var(--muted); font-size: 13.5px; }
+  .search .key { margin-left: auto; }
+  .key { font: 500 11px "JetBrains Mono", monospace; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--muted); }
+  .menu-btn { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); white-space: nowrap; flex: none; }
+  .menu-btn .v { color: var(--dim); font-size: 10px; }
+  .menu-btn.set { border-color: var(--accent); }
+
+  /* day heading + rows */
+  .day { font: 700 11px "Space Grotesk", sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; padding: 16px 0 6px; display: flex; gap: 8px; }
+  .day .mono { color: var(--dim); font-size: 10.5px; letter-spacing: 0; text-transform: none; font-weight: 400; }
+  .it { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  .it.sel { background: var(--panel); border-radius: 8px; border-bottom-color: transparent; box-shadow: inset 0 0 0 1px var(--ls); }
+  .it .tt { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .it .sub { display: flex; gap: 7px; align-items: center; margin-top: 4px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
+  .it .sub .mono { font-size: 11px; }
+  .att { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); font-size: 11.5px; }
+  .att svg { width: 13px; height: 13px; }
+  .it.gone .th { opacity: .35; filter: grayscale(1); }
+  .it.gone .tt { color: var(--muted); }
+  .acts { display: flex; gap: 6px; flex: none; }
+
+  /* thumbs */
+  .th { width: 64px; height: 36px; border-radius: 6px; flex: none; position: relative; overflow: hidden; }
+  .th.sq { width: 36px; height: 36px; margin: 0 14px; }
+  .th.stack { box-shadow: 4px -4px 0 -1px var(--bg), 4px -4px 0 0 var(--ls); margin-top: 4px; }
+  .th .d { position: absolute; right: 3px; bottom: 3px; font: 500 9px "JetBrains Mono", monospace; background: rgba(0,0,0,.72); color: #fff; padding: 0 3px; border-radius: 3px; }
+  .t1 { background: linear-gradient(135deg,#3b5bdb,#8e2de2 60%,#ff6b6f); }
+  .t2 { background: linear-gradient(160deg,#0f2027,#2c5364 55%,#7fd6a4); }
+  .t3 { background: radial-gradient(circle at 30% 40%,#ffe29f,#ffa99f 40%,#3a1c71); }
+  .t4 { background: linear-gradient(135deg,#ff9a3c,#ff5e62 50%,#2b1a3a); }
+  .t5 { background: linear-gradient(120deg,#1d2b64,#4b6cb7 50%,#f8cdda); }
+  .t6 { background: linear-gradient(145deg,#232526,#5a6a5a 60%,#c9d6a3); }
+  .t7 { background: linear-gradient(135deg,#f7971e,#ffd200); }
+  .t8 { background: linear-gradient(160deg,#41295a,#2f0743 50%,#ff6b6f); }
+  .t9 { background: linear-gradient(135deg,#355c7d,#6c5b7b 50%,#c06c84); }
+
+  /* detail column */
+  .detail { width: 320px; flex: none; border-left: 1px solid var(--line); padding: 22px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .detail .big { width: 100%; height: 158px; border-radius: 10px; position: relative; }
+  .detail .ttl { font: 600 17px/1.3 "Inter Tight", sans-serif; }
+  .kv { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; font-size: 12.5px; }
+  .kv > span:nth-child(odd) { color: var(--muted); }
+  .kv .mono { font-size: 11px; word-break: break-all; }
+  .h5 { font: 700 13px "Space Grotesk", sans-serif; margin-top: 4px; }
+  .attrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .attrow:first-of-type { border-top: 1px solid var(--line); }
+  .attrow .mono { font-size: 10.5px; color: var(--dim); }
+  .wrapacts { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 18px 14px; margin-top: 14px; }
+  .tile .pic { height: 99px; border-radius: 10px; position: relative; }
+  .tile .pic .d { position: absolute; right: 6px; bottom: 6px; font: 500 10px "JetBrains Mono", monospace; background: rgba(0,0,0,.72); color: #fff; padding: 1px 4px; border-radius: 4px; }
+  .tile .pic .k { position: absolute; left: 6px; top: 6px; }
+  .tile .tt { font-size: 13px; font-weight: 500; margin-top: 7px; line-height: 1.3; height: 34px; overflow: hidden; }
+  .tile .sub { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+
+  /* sheet, menu, banner, empty */
+  .sheet { background: var(--panel); border-top: 1px solid var(--ls); border-radius: 14px 14px 0 0; padding: 10px 16px 16px; }
+  .sheet .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--ls); margin: 0 auto 12px; }
+  .scrim { background: rgba(0,0,0,.5); }
+  .menu { background: var(--panel); border: 1px solid var(--ls); border-radius: 12px; padding: 6px; width: 230px; box-shadow: 0 14px 30px -10px rgba(0,0,0,.6); }
+  .mi { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 7px; font-size: 13px; }
+  .mi.hov { background: var(--raised); }
+  .mi .key { margin-left: auto; }
+  .mi.bad { color: var(--bad); }
+  .msep { height: 1px; background: var(--line); margin: 5px 4px; }
+  .banner { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .starts .s { display: flex; gap: 14px; align-items: center; padding: 14px 4px; border-bottom: 1px solid var(--line); }
+  .starts .s:first-child { border-top: 1px solid var(--line); }
+  .starts .ico { width: 36px; height: 36px; border-radius: 9px; border: 2px solid var(--ls); display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 1000px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+  table.cmp td.m, table.cmp code { font: 500 12px "JetBrains Mono", monospace; }
+  .tablewrap { overflow-x: auto; max-width: 100%; }
+  code { font: 500 12.5px "JetBrains Mono", monospace; }
+  @media (max-width: 600px) { body { padding: 28px 16px 60px; } h1 { font-size: 25px; } }
+</style>
+</head>
+<body>
+<!-- icon sprites -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.5 8.5 20 18M8.5 15.5 20 6"/></symbol>
+  <symbol id="i-cmp" viewBox="0 0 24 24"><path d="M4 9h6V3M20 15h-6v6M10 9 3 2M14 15l7 7"/></symbol>
+  <symbol id="i-cap" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="16" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><path d="m16.5 5.2 3.6-1 3 15.4-3.7 1z"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6h14M5 11h14M5 16h9"/></symbol>
+  <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"/></symbol>
+  <symbol id="i-find" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/><circle cx="13" cy="13.5" r="2.5"/><path d="m15 15.5 2 2"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-rows" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+</svg>
+
+<div class="page">
+  <h1>Library: everything Neria saved, in one place</h1>
+  <p class="lead">Today what Neria made is scattered: the queue forgets finished rows once cleared, Capture's Saved list
+  keeps the last 8, Clip and Compress show 5 "Recent downloads", and a compressed file or a GIF isn't remembered at all.
+  The Library is <b>one list of everything Neria has saved</b> (downloads, link clips, clips from files, live
+  recordings, instant replays from the PC and the phone, compressed files, GIFs, transcripts, Spotify songs and
+  playlists) that you <b>find, reopen and do the next thing with</b>: watch it, clip it, compress it, transcribe it,
+  get it again. Calm like the queue, because you read it; the actions are the playful part.</p>
+  <p class="lead"><b>Chosen 2026-11-23: 1A, 2A, 3A, 4A + 4B, 5A</b> (the PICKs below; 2B's grid only later, as a view switch).</p>
+
+  <section>
+    <div class="label"><span>Ground rules</span><h2>What it is, and what it isn't</h2></div>
+    <ul class="why">
+      <li><b>Only what Neria saved.</b> Not a media manager for the whole Videos folder: no scanning drives, no "add a
+        folder". That keeps it fast, honest ("Neria made this") and portable (one <code>library.json</code> next to the exe).</li>
+      <li><b>It doesn't move or rename files.</b> Files stay where they were saved. If one moves, the Library says
+        <b>Gone</b> and helps find it; it never deletes a file unless you ask, and then to the Recycle Bin.</li>
+      <li><b>Each item knows where it came from</b>: the link (so "Download again" works), or the file it was made from
+        (a clip, a compressed copy, a GIF), and what's attached next to it (<code>.chat.json</code>, a transcript,
+        captions). Those show as small marks on the row and as a list in the item's details.</li>
+      <li><b>Existing users don't start empty.</b> On first open it fills itself from <code>history.json</code>, Capture's
+        Saved list and Spotify folders' <code>.neria-sync.json</code> (see the last section for what's there today).</li>
+      <li><b>The queue stays the place for what's happening now.</b> The Library is what's done. A finished queue row
+        gets "In Library" through its ⋯ menu, nothing more.</li>
+    </ul>
+  </section>
+
+  <!-- ============ 1 · WHERE ============ -->
+  <section>
+    <div class="label"><span>1 · Where it lives</span><h2>A fifth page, and what the 400 px tab bar does</h2></div>
+    <p class="why">The rail has room (Download, Clip, Compress, Capture, then Settings at the bottom). The compact tab bar
+    is the tight spot: it already holds five tabs at 400 px.</p>
+
+    <div class="opt">
+      <h3>1A · Its own page after Capture; on compact, Settings moves to the header <span class="rec">PICK</span></h3>
+      <p>Library sits last of the pages because it's where things end up. On compact windows the bar keeps five tabs
+      (Download, Clip, Compress, Capture, <b>Library</b>) and Settings becomes a labelled gear icon at the right of each
+      page's header, next to the logo and headline (header buttons already go icon-only there, DESIGN.md). Settings is
+      opened rarely; the Library daily. Five tabs at 400 px are 78 px each, the same as today.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Rail · wide and medium</div>
+          <div class="q" style="height:420px">
+            <div class="rail">
+              <div class="logo">n</div>
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav on"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+              <div class="sp"></div>
+              <div class="nav"><svg class="i"><use href="#i-set"/></svg>Settings</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Compact · 400 · header gear + five tabs</div>
+          <div class="q col w400" style="height:420px">
+            <div style="padding:16px;flex:1">
+              <div class="row"><div class="logo" style="margin:0;width:32px;height:32px;font-size:16px">n</div><div class="hd s grow">Library</div><span class="ghost ic" title="Settings"><svg class="i sm"><use href="#i-set"/></svg></span></div>
+              <div class="hint" style="margin-top:14px">The gear opens Settings as the full sheet it already is on compact.</div>
+            </div>
+            <div class="tabbar">
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav on"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">1B · six tabs at 400 (for comparison)</div>
+          <div class="q col w400" style="height:420px">
+            <div style="padding:16px;flex:1">
+              <div class="row"><div class="logo" style="margin:0;width:32px;height:32px;font-size:16px">n</div><div class="hd s grow">Library</div></div>
+              <div class="hint" style="margin-top:14px">65 px a tab: "Compress" and "Settings" nearly touch, and at Windows' 125 % text they would.</div>
+            </div>
+            <div class="tabbar">
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav on"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+              <div class="nav"><svg class="i"><use href="#i-set"/></svg>Settings</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>1B · Six tabs on compact, Settings kept in the bar</h3>
+      <p>Nothing moves, but six labels in 400 px are cramped (third frame above), and it's also the starting point for
+      Android, where five is the usual most.</p>
+    </div>
+
+    <div class="opt">
+      <h3>1C · Folded into Download as a "Saved" filter tab</h3>
+      <p>No new page: the queue's filter tabs (All · Active · Done · Needs a look) get a fifth, <b>Saved</b>. Cheap, but
+      replays, compressed files and clips from files aren't downloads, so they'd be in the wrong place, and the Library's
+      search and kind filters would crowd the link box. Not recommended.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="q col w800" style="padding:20px 24px">
+            <div class="hd s">Grab anything.</div>
+            <div class="search" style="margin-top:14px;flex:none">Paste a link…</div>
+            <div class="ftabs"><span class="ftab">All<span class="n">12</span></span><span class="ftab">Active<span class="n">2</span></span><span class="ftab">Done<span class="n">9</span></span><span class="ftab warn">Needs a look<span class="n">1</span></span><span class="ftab on">Saved<span class="n">1,284</span></span></div>
+            <div class="hint" style="margin-top:10px">…then a search box and kind filters under the link box, on the page that's meant to be about one link.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2 · HOW ITEMS LOOK ============ -->
+  <section>
+    <div class="label"><span>2 · How items look</span><h2>Calm rows, or a thumbnail grid</h2></div>
+    <p class="why">Both share the top of the page: headline, search (Ctrl+F or just start typing), <b>filter tabs by
+    kind</b> with mono counts (as the queue's, since they change the view), and two menu buttons, <b>Site</b> and
+    <b>Date</b>, plus <b>Sort</b>. A menu button that's been set gets the "set" outline, and "Clear" appears.</p>
+
+    <div class="opt">
+      <h3>2A · Rows grouped by day, a details column on the right <span class="rec">PICK</span></h3>
+      <p>Queue rows you already know (60 px, 64×36 thumbnail, title, a status line) under day headings. The line says
+      <b>kind · site or source · length · size</b>, then small marks for what's attached (chat, transcript,
+      captions). Songs get a square cover. A Spotify playlist is a group card: one row, a stacked cover, "48 songs",
+      Update playlist. Rows show Watch and Clip on hover; the selected one fills the <b>details column</b> (section 3).
+      Works for every kind, including sound files and transcripts, which have no picture to show in a grid.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide · 1000 · All, one row selected</div>
+          <div class="q w1000" style="height:720px">
+            <div class="rail">
+              <div class="logo">n</div>
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav on"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+              <div class="sp"></div>
+              <div class="nav"><svg class="i"><use href="#i-set"/></svg>Settings</div>
+            </div>
+            <div class="main" style="padding-right:12px">
+              <div class="row"><div class="hd grow">Library</div><span class="mono mut">1,284 things · 412 GB</span></div>
+              <div class="row" style="margin-top:14px">
+                <div class="search"><svg class="i sm"><use href="#i-search"/></svg>Search titles, sites, channels…<span class="key">Ctrl F</span></div>
+              </div>
+              <div class="row" style="margin-top:10px;gap:6px">
+                <span class="menu-btn">Site: any <span class="v">▾</span></span>
+                <span class="menu-btn">Date: any time <span class="v">▾</span></span>
+                <span class="grow"></span>
+                <span class="menu-btn">Newest first <span class="v">▾</span></span>
+                <span class="ghost ic" title="Rows"><svg class="i sm"><use href="#i-rows"/></svg></span>
+              </div>
+              <div class="ftabs">
+                <span class="ftab on">All<span class="n">1,284</span></span>
+                <span class="ftab">Videos<span class="n">402</span></span>
+                <span class="ftab">Sound<span class="n">611</span></span>
+                <span class="ftab">Clips<span class="n">138</span></span>
+                <span class="ftab">Recordings<span class="n">19</span></span>
+                <span class="ftab">Replays<span class="n">114</span></span>
+              </div>
+              <div class="day">Today <span class="mono">3</span></div>
+              <div class="it sel">
+                <div class="th t8"><span class="d">2:14:08</span></div>
+                <div class="grow"><div class="tt">IShowSpeed · Day 3 in Tokyo (full stream)</div>
+                  <div class="sub"><span class="tag">Recording</span>YouTube<span class="mono">2:14:08 · 3.1 GB</span><span class="att"><svg class="i"><use href="#i-chat"/></svg>Chat</span></div></div>
+                <div class="acts"><span class="ghost"><svg class="i sm"><use href="#i-play"/></svg>Watch</span><span class="ghost ic"><svg class="i sm"><use href="#i-clip"/></svg></span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span></div>
+              </div>
+              <div class="it">
+                <div class="th t1"><span class="d">1:00</span></div>
+                <div class="grow"><div class="tt">VALORANT · 14:32</div>
+                  <div class="sub"><span class="tag">Replay</span>This PC<span class="mono">1:00 · 118 MB</span><span class="att"><svg class="i"><use href="#i-sound"/></svg>3 tracks</span></div></div>
+              </div>
+              <div class="it">
+                <div class="th t4"><span class="d">0:31</span></div>
+                <div class="grow"><div class="tt">ohnepixel · the knife reveal</div>
+                  <div class="sub"><span class="tag">Clip</span>Twitch<span class="mono">0:31 · 22 MB</span><span class="att"><svg class="i"><use href="#i-chat"/></svg>Chat burned in</span></div></div>
+              </div>
+              <div class="day">Yesterday <span class="mono">4</span></div>
+              <div class="it">
+                <div class="th t2"><span class="d">12:41</span></div>
+                <div class="grow"><div class="tt">How the James Webb telescope unfolds</div>
+                  <div class="sub"><span class="tag">Video</span>YouTube<span class="mono">1080p · 12:41 · 240 MB</span><span class="att"><svg class="i"><use href="#i-cc"/></svg>Captions</span><span class="att"><svg class="i"><use href="#i-text"/></svg>Transcript</span></div></div>
+              </div>
+              <div class="it">
+                <div class="th sq t7 stack"></div>
+                <div class="grow"><div class="tt" style="font-weight:600">Chill Mix</div>
+                  <div class="sub"><span class="tag">Playlist</span>Spotify<span class="mono">48 songs · 2:51:10 · 410 MB</span><span class="mut">updated 3 days ago</span></div></div>
+              </div>
+              <div class="it">
+                <div class="th t6"><span class="d">0:42</span></div>
+                <div class="grow"><div class="tt">match-final (Discord).mp4</div>
+                  <div class="sub"><span class="tag">Compressed</span>from match-final.mp4<span class="mono">9.6 MB · was 212 MB</span></div></div>
+              </div>
+            </div>
+            <div class="detail">
+              <div class="big t8"><span class="d" style="position:absolute;right:8px;bottom:8px;font:500 10px 'JetBrains Mono';background:rgba(0,0,0,.7);padding:1px 5px;border-radius:4px">2:14:08</span></div>
+              <div class="ttl">IShowSpeed · Day 3 in Tokyo (full stream)</div>
+              <div class="row" style="gap:8px"><span class="primary"><svg class="i sm"><use href="#i-play"/></svg>Watch</span><span class="ghost tall"><svg class="i sm"><use href="#i-clip"/></svg>Clip</span><span class="ghost tall ic" style="width:41px"><svg class="i sm"><use href="#i-more"/></svg></span></div>
+              <div class="kv">
+                <span>Saved</span><span>Today, 13:05 · recorded from the start</span>
+                <span>From</span><span class="lnk" style="text-decoration:none">youtube.com/watch?v=k3…</span>
+                <span>File</span><span class="mono">D:\Videos\Neria\IShowSpeed · Day 3 in Tokyo.mp4</span>
+              </div>
+              <div class="h5">Attached</div>
+              <div>
+                <div class="attrow"><svg class="i sm" style="color:var(--muted)"><use href="#i-chat"/></svg><span class="grow">Chat · 48,210 messages <span class="mono">.chat.json</span></span><span class="lnk">Show</span></div>
+                <div class="attrow"><svg class="i sm" style="color:var(--dim)"><use href="#i-text"/></svg><span class="grow mut">No transcript yet</span><span class="lnk">Transcribe</span></div>
+              </div>
+              <div class="wrapacts">
+                <span class="ghost"><svg class="i sm"><use href="#i-cmp"/></svg>Compress</span>
+                <span class="ghost"><svg class="i sm"><use href="#i-folder"/></svg>Show in folder</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>2B · A thumbnail grid</h3>
+      <p>Looks great for replays and videos, and it's what Photos and Plex do. But more than half of a typical Library is
+      sound (Spotify songs), which turns into a wall of identical covers, and the grid has no room for the line that
+      says what an item is and what's attached. It also hides the day grouping. Could come back later as a view switch
+      on Videos / Clips / Replays only (the rows/grid button in 2A's toolbar).</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide · 1000 · Videos</div>
+          <div class="q w1000" style="height:520px">
+            <div class="rail">
+              <div class="logo">n</div>
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav on"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+            </div>
+            <div class="main">
+              <div class="row"><div class="hd grow">Library</div>
+                <div class="search" style="flex:none;width:360px"><svg class="i sm"><use href="#i-search"/></svg>Search…</div>
+                <span class="ghost ic" style="height:41px;width:41px" title="Grid"><svg class="i sm"><use href="#i-grid"/></svg></span></div>
+              <div class="ftabs">
+                <span class="ftab">All<span class="n">1,284</span></span><span class="ftab on">Videos<span class="n">402</span></span><span class="ftab">Sound<span class="n">611</span></span><span class="ftab">Clips<span class="n">138</span></span><span class="ftab">Recordings<span class="n">19</span></span><span class="ftab">Replays<span class="n">114</span></span>
+              </div>
+              <div class="grid">
+                <div class="tile"><div class="pic t8"><span class="k tag">Recording</span><span class="d">2:14:08</span></div><div class="tt">IShowSpeed · Day 3 in Tokyo (full stream)</div><div class="sub">YouTube · today</div></div>
+                <div class="tile"><div class="pic t1"><span class="k tag">Replay</span><span class="d">1:00</span></div><div class="tt">VALORANT · 14:32</div><div class="sub">This PC · today</div></div>
+                <div class="tile"><div class="pic t4"><span class="k tag">Clip</span><span class="d">0:31</span></div><div class="tt">ohnepixel · the knife reveal</div><div class="sub">Twitch · today</div></div>
+                <div class="tile"><div class="pic t2"><span class="d">12:41</span></div><div class="tt">How the James Webb telescope unfolds</div><div class="sub">YouTube · yesterday</div></div>
+                <div class="tile"><div class="pic t6"><span class="k tag">Compressed</span><span class="d">0:42</span></div><div class="tt">match-final (Discord).mp4</div><div class="sub">9.6 MB · yesterday</div></div>
+                <div class="tile"><div class="pic t5"><span class="k tag">Replay</span><span class="d">0:30</span></div><div class="tt">POCO X7 Pro · Brawl Stars</div><div class="sub">Phone · 20 Nov</div></div>
+                <div class="tile"><div class="pic t3"><span class="k tag">GIF</span><span class="d">0:04</span></div><div class="tt">cat-jump.gif</div><div class="sub">from a clip · 20 Nov</div></div>
+                <div class="tile"><div class="pic t9"><span class="d">48:20</span></div><div class="tt">Lecture 7 · Fourier series</div><div class="sub">YouTube · 18 Nov</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>2C · The filters, up close</h3>
+      <p>Kinds are filter tabs (Videos, Sound, Clips, Recordings, Replays; GIFs and compressed copies count under
+      Clips, transcripts under what they belong to). Site and Date are menus: sites are the ones actually in the
+      Library, with counts. Search matches title, channel, site and file name as you type, and the tabs' counts follow it.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Site menu open</div>
+          <div class="q col" style="padding:18px;width:300px">
+            <span class="menu-btn set" style="align-self:flex-start">Site: YouTube <span class="v">▾</span></span>
+            <div class="menu" style="margin-top:6px">
+              <div class="mi">Any site</div>
+              <div class="msep"></div>
+              <div class="mi hov">✓&nbsp; YouTube<span class="mono mut" style="margin-left:auto">512</span></div>
+              <div class="mi">&nbsp;&nbsp;&nbsp; Spotify<span class="mono mut" style="margin-left:auto">498</span></div>
+              <div class="mi">&nbsp;&nbsp;&nbsp; Twitch<span class="mono mut" style="margin-left:auto">61</span></div>
+              <div class="mi">&nbsp;&nbsp;&nbsp; X<span class="mono mut" style="margin-left:auto">23</span></div>
+              <div class="mi">&nbsp;&nbsp;&nbsp; Made in Neria<span class="mono mut" style="margin-left:auto">190</span></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Searching, Site set</div>
+          <div class="q col w460" style="padding:18px">
+            <div class="search" style="flex:none;color:var(--ink)"><svg class="i sm" style="color:var(--muted)"><use href="#i-search"/></svg>tokyo<span class="lnk" style="margin-left:auto">Clear</span></div>
+            <div class="row" style="margin-top:10px;gap:6px"><span class="menu-btn set">Site: YouTube <span class="v">▾</span></span><span class="menu-btn">Date: any time <span class="v">▾</span></span><span class="lnk">Clear filters</span></div>
+            <div class="ftabs"><span class="ftab on">All<span class="n">4</span></span><span class="ftab">Videos<span class="n">3</span></span><span class="ftab">Clips<span class="n">1</span></span></div>
+            <div class="hint" style="margin-top:8px">Tabs with nothing in them hide while searching.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3 · ACTIONS ============ -->
+  <section>
+    <div class="label"><span>3 · Each item's actions</span><h2>What you can do next, by kind</h2></div>
+    <p class="why">One yellow action per page: <b>Watch</b> (Play for sound) in the details column, in Neria's own
+    player. Everything else is ghost buttons and the ⋯ menu. What's offered depends on the kind and on what's
+    possible: no Download again without a link, no Transcribe when a transcript is there (it becomes Open transcript).</p>
+
+    <div class="opt">
+      <h3>3A · Details column on wide, the row opens in place on medium, a sheet on compact <span class="rec">PICK</span></h3>
+      <p>The ⋯ menu holds the rest, the same on every width. Delete file sends it to the Recycle Bin and asks first;
+      Remove from Library only forgets it.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">⋯ on a downloaded video</div>
+          <div class="q col" style="padding:14px;width:270px">
+            <div class="menu" style="width:240px">
+              <div class="mi"><svg class="i sm"><use href="#i-play"/></svg>Watch</div>
+              <div class="mi"><svg class="i sm"><use href="#i-folder"/></svg>Show in folder</div>
+              <div class="mi">Open with Windows' app</div>
+              <div class="msep"></div>
+              <div class="mi"><svg class="i sm"><use href="#i-clip"/></svg>Clip</div>
+              <div class="mi hov"><svg class="i sm"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="mi"><svg class="i sm"><use href="#i-text"/></svg>Transcribe</div>
+              <div class="mi">Make a GIF</div>
+              <div class="msep"></div>
+              <div class="mi"><svg class="i sm"><use href="#i-dl"/></svg>Download again</div>
+              <div class="mi"><svg class="i sm"><use href="#i-link"/></svg>Copy link</div>
+              <div class="msep"></div>
+              <div class="mi">Remove from Library</div>
+              <div class="mi bad">Delete file…</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Medium · 800 · the selected row opens in place (no details column)</div>
+          <div class="q w800" style="height:470px">
+            <div class="rail">
+              <div class="logo">n</div>
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav on"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+            </div>
+            <div class="main">
+              <div class="row"><div class="hd s grow">Library</div><span class="menu-btn">Newest first <span class="v">▾</span></span></div>
+              <div class="row" style="margin-top:12px;gap:6px"><div class="search"><svg class="i sm"><use href="#i-search"/></svg>Search…</div><span class="menu-btn" style="height:41px">Site <span class="v">▾</span></span><span class="menu-btn" style="height:41px">Date <span class="v">▾</span></span></div>
+              <div class="ftabs"><span class="ftab on">All<span class="n">1,284</span></span><span class="ftab">Videos<span class="n">402</span></span><span class="ftab">Sound<span class="n">611</span></span><span class="ftab">Clips<span class="n">138</span></span><span class="ftab">Recordings<span class="n">19</span></span><span class="ftab">Replays<span class="n">114</span></span></div>
+              <div class="day">Yesterday</div>
+              <div class="it sel" style="flex-wrap:wrap;align-items:flex-start;padding:10px 8px">
+                <div class="th t2" style="margin-top:2px"><span class="d">12:41</span></div>
+                <div class="grow"><div class="tt">How the James Webb telescope unfolds</div>
+                  <div class="sub"><span class="tag">Video</span>YouTube<span class="mono">1080p · 12:41 · 240 MB</span></div>
+                  <div class="sub" style="margin-top:8px;gap:12px"><span class="att"><svg class="i"><use href="#i-cc"/></svg>Captions · English <span class="lnk">Open</span></span><span class="att"><svg class="i"><use href="#i-text"/></svg>Transcript <span class="lnk">Open</span></span></div>
+                  <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap"><span class="primary" style="height:34px;font-size:13px"><svg class="i sm"><use href="#i-play"/></svg>Watch</span><span class="ghost"><svg class="i sm"><use href="#i-clip"/></svg>Clip</span><span class="ghost"><svg class="i sm"><use href="#i-cmp"/></svg>Compress</span><span class="ghost"><svg class="i sm"><use href="#i-folder"/></svg>Show in folder</span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span></div>
+                </div>
+              </div>
+              <div class="it">
+                <div class="th sq t7 stack"></div>
+                <div class="grow"><div class="tt" style="font-weight:600">Chill Mix</div><div class="sub"><span class="tag">Playlist</span>Spotify<span class="mono">48 songs</span></div></div>
+                <div class="acts"><span class="ghost ic"><svg class="i sm"><use href="#i-sync"/></svg></span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <table class="cmp">
+        <tr><th>Kind</th><th>Row (hover)</th><th>Details column / sheet</th><th>Attached</th></tr>
+        <tr><td>Video (download)</td><td>Watch · Clip</td><td>Watch · Clip · Compress · Transcribe · Show in folder · ⋯ Download again, Make a GIF</td><td>captions, transcript, chapters</td></tr>
+        <tr><td>Sound / song</td><td>Play</td><td>Play · Show in folder · Transcribe · ⋯ Download again, Pick another match (songs)</td><td>lyrics (synced / plain)</td></tr>
+        <tr><td>Spotify playlist / album</td><td>Update playlist</td><td>Update playlist · Open folder · Add lyrics · its songs listed under it · ⋯ Open in Spotify</td><td>M3U, lyrics count</td></tr>
+        <tr><td>Clip (link or file)</td><td>Watch · Compress</td><td>Watch · Compress · Clip again (opens the source at In/Out) · Show in folder</td><td>chat (track / burned in), source</td></tr>
+        <tr><td>Live recording</td><td>Watch · Clip</td><td>Watch · Clip · Compress · Transcribe · Show in folder · ⋯ Get the holes back (if any)</td><td>chat (<code>.chat.json</code>)</td></tr>
+        <tr><td>Replay (PC / phone)</td><td>Watch · Clip</td><td>Watch · Clip · Compress · Show in folder</td><td>sound tracks (3 tracks)</td></tr>
+        <tr><td>Compressed copy / GIF</td><td>Open · Show</td><td>Open · Show in folder · Copy file (for pasting into Discord) · ⋯ Go to the original</td><td>the original</td></tr>
+        <tr><td>Transcript only</td><td>Open</td><td>Open · Show in folder · ⋯ Go to the video</td><td>.txt / .srt</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 4 · MISSING + EMPTY ============ -->
+  <section>
+    <div class="label"><span>4 · Missing files and a first visit</span><h2>Gone, found again, and nothing yet</h2></div>
+
+    <div class="opt">
+      <h3>4A · Gone stays in the list, with a way back <span class="rec">PICK</span></h3>
+      <p>The Library checks files when it opens (in the background; a missing drive isn't "gone", it's
+      "On drive E:, not connected"). A gone item keeps its row, greyed, with a <b>Gone</b> tag and the way back that
+      fits: <b>Find it…</b> (pick where it went; Neria then looks for the others from the same folder there and says how
+      many it found), <b>Download again</b> when there's a link, or <b>Remove</b>. A calm banner sums it up once there
+      are several, and a <b>Gone</b> filter tab appears (amber count) only while there are any.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide · banner + gone rows</div>
+          <div class="q col" style="width:680px;padding:20px 24px">
+            <div class="banner">
+              <span class="tag warn">38 gone</span>
+              <span class="grow" style="font-size:13px">38 files were moved or deleted since you last looked.</span>
+              <span class="ghost"><svg class="i sm"><use href="#i-find"/></svg>Find them…</span>
+              <span class="lnk">Remove from Library</span>
+            </div>
+            <div class="ftabs"><span class="ftab on">All<span class="n">1,284</span></span><span class="ftab">Videos<span class="n">402</span></span><span class="ftab">Sound<span class="n">611</span></span><span class="ftab warn">Gone<span class="n">38</span></span></div>
+            <div class="it gone">
+              <div class="th t9"><span class="d">48:20</span></div>
+              <div class="grow"><div class="tt">Lecture 7 · Fourier series</div><div class="sub"><span class="tag bad">Gone</span>YouTube<span class="mono">was D:\Videos\Neria\</span></div></div>
+              <div class="acts"><span class="ghost"><svg class="i sm"><use href="#i-dl"/></svg>Download again</span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span></div>
+            </div>
+            <div class="it gone">
+              <div class="th t1"><span class="d">1:00</span></div>
+              <div class="grow"><div class="tt">VALORANT · 2 Nov, 22:10</div><div class="sub"><span class="tag bad">Gone</span>Replay · This PC<span class="mono">was D:\Videos\Neria\Replays\</span></div></div>
+              <div class="acts"><span class="ghost"><svg class="i sm"><use href="#i-find"/></svg>Find it…</span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span></div>
+            </div>
+            <div class="it">
+              <div class="th t5" style="opacity:.6"><span class="d">0:30</span></div>
+              <div class="grow"><div class="tt">POCO X7 Pro · Brawl Stars</div><div class="sub"><span class="tag">On E:, not connected</span>Replay · Phone</div></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">After Find it… in a folder</div>
+          <div class="q col w340" style="padding:16px">
+            <div class="menu" style="width:100%;padding:14px">
+              <div class="row"><span class="tag ok">Found</span><span class="grow"></span><svg class="i sm" style="color:var(--dim)"><use href="#i-x"/></svg></div>
+              <div style="font-size:13px;margin-top:8px;line-height:1.45">Found <b>VALORANT · 2 Nov</b> in <span class="mono">E:\Old clips</span>, and 11 more gone replays there too.</div>
+              <div class="row" style="margin-top:10px"><span class="ghost">Update all 12</span><span class="lnk">Just this one</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>4B · A first visit with nothing saved <span class="rec">PICK</span></h3>
+      <p>Not a giant centred "Nothing here yet" (DESIGN.md). The headline, one calm line, and three starting points as
+      rows that take you to the page that makes things. Someone who's used Neria before never sees it: the Library
+      fills itself from what's remembered (a one-time line says so: "Brought in 214 things Neria saved before").</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Wide · empty</div>
+          <div class="q" style="width:720px;height:400px">
+            <div class="rail">
+              <div class="logo">n</div>
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav on"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+            </div>
+            <div class="main">
+              <div class="hd">Library</div>
+              <div class="mut" style="margin:8px 0 18px;font-size:14px">Everything you download, clip, record or compress shows up here.</div>
+              <div class="starts">
+                <div class="s"><span class="ico"><svg class="i"><use href="#i-dl"/></svg></span><div class="grow"><div style="font-weight:500">Download a video or a song</div><div class="hint">Paste a link from YouTube, Twitch, X, Spotify…</div></div><span class="ghost">Go to Download</span></div>
+                <div class="s"><span class="ico"><svg class="i"><use href="#i-clip"/></svg></span><div class="grow"><div style="font-weight:500">Clip a file you have</div><div class="hint">Or drop one anywhere on Neria</div></div><span class="ghost">Go to Clip</span></div>
+                <div class="s"><span class="ico"><svg class="i"><use href="#i-cap"/></svg></span><div class="grow"><div style="font-weight:500">Keep the last minute of a game</div><div class="hint">Instant replay, saved with <span class="key">F8</span></div></div><span class="ghost">Go to Capture</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Filters that match nothing</div>
+          <div class="q col w340" style="padding:16px">
+            <div class="ftabs" style="margin-top:0"><span class="ftab on">Recordings<span class="n">0</span></span></div>
+            <div style="padding:16px 2px;font-size:13px" class="mut">Nothing from Twitch in the last 7 days. <span class="lnk">Clear filters</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5 · WIDTHS ============ -->
+  <section>
+    <div class="label"><span>5 · Widths</span><h2>Wide 1000+ (section 2A), medium (3A), and compact 400</h2></div>
+    <div class="opt">
+      <h3>5A · Compact: one action per row, a sheet for the rest <span class="rec">PICK</span></h3>
+      <p>Page padding 16 px. Search keeps the whole width; Site / Date / Sort fold into one <b>Filter</b> menu button
+      (it gets the "set" outline when anything's set). The kind tabs scroll sideways (they're words, they don't wrap).
+      Rows keep one action (Watch / Play / Update playlist / Download again for gone) and ⋯; tapping a row opens the
+      details as a sheet from the bottom, Watch across its bottom.</p>
+      <div class="pair scroll">
+        <div>
+          <div class="cap">Compact · 400 · the list</div>
+          <div class="q col w400" style="height:720px">
+            <div style="padding:16px 16px 0;flex:1;overflow:hidden">
+              <div class="row"><div class="logo" style="margin:0;width:32px;height:32px;font-size:16px">n</div><div class="hd s grow">Library</div><span class="ghost ic" title="Settings"><svg class="i sm"><use href="#i-set"/></svg></span></div>
+              <div class="row" style="margin-top:12px;gap:6px"><div class="search"><svg class="i sm"><use href="#i-search"/></svg>Search…</div><span class="menu-btn" style="height:41px">Filter <span class="v">▾</span></span></div>
+              <div class="ftabs" style="gap:16px"><span class="ftab on">All<span class="n">1,284</span></span><span class="ftab">Videos<span class="n">402</span></span><span class="ftab">Sound<span class="n">611</span></span><span class="ftab">Clips<span class="n">138</span></span></div>
+              <div class="day">Today</div>
+              <div class="it" style="gap:10px">
+                <div class="th t8"><span class="d">2:14:08</span></div>
+                <div class="grow"><div class="tt">IShowSpeed · Day 3 in Tokyo (full stream)</div><div class="sub"><span class="tag">Recording</span><span class="mono">3.1 GB</span><span class="att"><svg class="i"><use href="#i-chat"/></svg></span></div></div>
+                <span class="ghost ic"><svg class="i sm"><use href="#i-play"/></svg></span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span>
+              </div>
+              <div class="it" style="gap:10px">
+                <div class="th t1"><span class="d">1:00</span></div>
+                <div class="grow"><div class="tt">VALORANT · 14:32</div><div class="sub"><span class="tag">Replay</span>This PC<span class="mono">118 MB</span></div></div>
+                <span class="ghost ic"><svg class="i sm"><use href="#i-play"/></svg></span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span>
+              </div>
+              <div class="day">Yesterday</div>
+              <div class="it" style="gap:10px">
+                <div class="th sq t7 stack" style="margin:4px 14px 0"></div>
+                <div class="grow"><div class="tt" style="font-weight:600">Chill Mix</div><div class="sub"><span class="tag">Playlist</span><span class="mono">48 songs</span></div></div>
+                <span class="ghost ic"><svg class="i sm"><use href="#i-sync"/></svg></span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span>
+              </div>
+              <div class="it gone" style="gap:10px">
+                <div class="th t9"><span class="d">48:20</span></div>
+                <div class="grow"><div class="tt">Lecture 7 · Fourier series</div><div class="sub"><span class="tag bad">Gone</span>YouTube</div></div>
+                <span class="ghost ic"><svg class="i sm"><use href="#i-dl"/></svg></span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span>
+              </div>
+              <div class="it" style="gap:10px">
+                <div class="th t6"><span class="d">0:42</span></div>
+                <div class="grow"><div class="tt">match-final (Discord).mp4</div><div class="sub"><span class="tag">Compressed</span><span class="mono">9.6 MB</span></div></div>
+                <span class="ghost ic"><svg class="i sm"><use href="#i-play"/></svg></span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span>
+              </div>
+            </div>
+            <div class="tabbar">
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav on"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">Compact · 400 · a row tapped: the sheet</div>
+          <div class="q col w400" style="height:720px;position:relative">
+            <div style="padding:16px;flex:1;opacity:.35">
+              <div class="row"><div class="logo" style="margin:0;width:32px;height:32px;font-size:16px">n</div><div class="hd s grow">Library</div></div>
+              <div class="search" style="margin-top:12px;flex:none">Search…</div>
+            </div>
+            <div class="sheet" style="position:absolute;left:0;right:0;bottom:0">
+              <div class="grab"></div>
+              <div class="row" style="align-items:flex-start"><div class="th t8" style="width:112px;height:63px"><span class="d">2:14:08</span></div><div class="grow"><div style="font-weight:600;font-size:14.5px;line-height:1.3">IShowSpeed · Day 3 in Tokyo (full stream)</div><div class="sub" style="color:var(--muted);font-size:12px;margin-top:4px"><span class="tag">Recording</span> YouTube · today 13:05</div></div><svg class="i sm" style="color:var(--dim)"><use href="#i-x"/></svg></div>
+              <div class="kv" style="margin-top:14px">
+                <span>Size</span><span class="mono">2:14:08 · 1080p · 3.1 GB</span>
+                <span>File</span><span class="mono">D:\Videos\Neria\IShowSpeed · Day 3 in Tokyo.mp4</span>
+              </div>
+              <div class="h5" style="margin:12px 0 6px">Attached</div>
+              <div class="attrow"><svg class="i sm" style="color:var(--muted)"><use href="#i-chat"/></svg><span class="grow">Chat · 48,210 messages</span><span class="lnk">Show</span></div>
+              <div class="attrow"><svg class="i sm" style="color:var(--dim)"><use href="#i-text"/></svg><span class="grow mut">No transcript yet</span><span class="lnk">Transcribe</span></div>
+              <div class="wrapacts" style="margin-top:12px"><span class="ghost"><svg class="i sm"><use href="#i-clip"/></svg>Clip</span><span class="ghost"><svg class="i sm"><use href="#i-cmp"/></svg>Compress</span><span class="ghost"><svg class="i sm"><use href="#i-folder"/></svg>Show in folder</span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span></div>
+              <span class="primary" style="width:100%;justify-content:center;margin-top:14px"><svg class="i sm"><use href="#i-play"/></svg>Watch</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DATA ============ -->
+  <section>
+    <div class="label"><span>Underneath</span><h2>What's remembered today, and what the Library needs</h2></div>
+    <p class="why">From the code as it is now. Most kinds are already saved somewhere; few are remembered as
+    "this thing, made from that". The plan: one <code>library.json</code> next to the exe (records with kind, source,
+    site, length, size, attached files), filled once from what's below, then written where each thing is saved. JSON is
+    still enough at a few thousand records (history keeps 5,000), so no SQLite.</p>
+    <div class="tablewrap">
+    <table class="cmp">
+      <tr><th>Kind</th><th>Remembered today</th><th>Missing for the Library</th></tr>
+      <tr><td>Downloads (whole videos, sound)</td><td><code>history.json</code> (<code>history.rs</code>): key, link, file, title, time, via <code>queue.rs</code> <code>remember()</code></td><td>kind, site, thumbnail link (only in <code>queue.json</code> while the row lives)</td></tr>
+      <tr><td>Link clips, captions only</td><td>Left out of history on purpose (no duplicate warning for a part)</td><td>a record of their own, with In/Out</td></tr>
+      <tr><td>Spotify songs, playlists</td><td>Not in history; each folder's <code>.neria-sync.json</code> manifest + <code>.m3u8</code> (<code>music.rs</code>)</td><td>the folders themselves (from the settings' Music folder); songs read from manifests</td></tr>
+      <tr><td>Live recordings</td><td>Through the queue, so in history when whole; <code>.chat.json</code> next to them</td><td>"Recording" kind; attached chat found by name</td></tr>
+      <tr><td>Instant replays (PC, phone)</td><td><code>capture::Prefs::saved</code> (last 8) and history via <code>capture_ui::saved_file</code> (no link)</td><td>"Replay · This PC / Phone", sound tracks</td></tr>
+      <tr><td>Clips from files, compressed copies, GIFs</td><td>Not remembered</td><td>a record when saved, with the original file</td></tr>
+      <tr><td>Transcripts</td><td><code>.txt</code> / <code>.srt</code> next to the video only</td><td>attached to the video's record; a record of their own for dropped files</td></tr>
+      <tr><td>Thumbnails</td><td><code>recent_ui.rs</code> takes a frame per file for "Recent downloads" (cached)</td><td>the same, cached on disk next to <code>library.json</code></td></tr>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Summary</span><h2>The picks</h2></div>
+    <div class="tablewrap">
+    <table class="cmp">
+      <tr><th>Part</th><th>Pick</th><th>Why</th></tr>
+      <tr><td>Where</td><td>1A · fifth page after Capture; on compact, Settings becomes a header gear and Library takes its tab</td><td>Five tabs stay readable at 400 px; Library is used far more than Settings</td></tr>
+      <tr><td>Items</td><td>2A · calm rows by day, kind tabs, Site / Date / Sort menus, search</td><td>Fits songs, transcripts and playlists as well as videos; says what's attached</td></tr>
+      <tr><td>Grid</td><td>2B later, as a view switch on Videos / Clips / Replays only</td><td>Nice for pictures, poor for the other half</td></tr>
+      <tr><td>Actions</td><td>3A · details column (wide), row opens (medium), sheet (compact); Watch is the yellow one; ⋯ for the rest</td><td>One yellow per page; the next step for each kind is one click</td></tr>
+      <tr><td>Missing</td><td>4A · Gone tag, Find it… (finds its neighbours too), Download again, a Gone tab while any</td><td>Nothing silently disappears; moved folders fixed in one go</td></tr>
+      <tr><td>Empty</td><td>4B · three starting rows; existing users filled from history at once</td><td>No giant empty state; nobody who's used Neria sees it</td></tr>
+      <tr><td>Data</td><td><code>library.json</code>, filled from history, Capture's Saved and Spotify manifests</td><td>Portable, no SQLite, built on what's there</td></tr>
+    </table>
+    </div>
+  </section>
+</div>
+</body>
+</html>
