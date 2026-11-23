@@ -14,7 +14,7 @@ use glow::HasContext;
 use neria_core::clip::{self, ClipMode, ClipRequest};
 use neria_core::download::DownloadRequest;
 use neria_core::settings::Quality;
-use neria_core::{gif, media, paths, probe};
+use neria_core::{gif, library, media, paths, probe};
 use neria_player::{GlRenderer, Mpv};
 use slint::{ComponentHandle, GraphicsAPI, Model, ModelRc, RenderingState, VecModel};
 
@@ -975,6 +975,13 @@ fn start_export(
     let cancel = Arc::new(AtomicBool::new(false));
     c.export_cancel = Some(cancel.clone());
     let last_output = c.last_output.clone();
+    // What the Library remembers it as: made from this file, or a part of this link.
+    let (source, link) = match &c.source {
+        Some(Source::File(f)) => (Some(f.clone()), String::new()),
+        Some(Source::Link(u)) => (None, u.clone()),
+        None => (None, String::new()),
+    };
+    let section = (ui.get_clip_in() as f64, ui.get_clip_out() as f64);
     ui.set_clip_exporting(true);
     ui.set_clip_export_progress(0.0);
     ui.set_clip_status("Exporting…".into());
@@ -1000,6 +1007,16 @@ fn start_export(
                         if several { format!("{title} · {name}") } else { format!("Saved · {name}") }.into(),
                     );
                     ui.set_clip_has_output(true);
+                    let gif = matches!(title.as_str(), "GIF saved" | "WebP saved" | "MP4 saved");
+                    let kind = if gif { library::Kind::Gif } else { library::Kind::Clip };
+                    let one = !several && section.1 > section.0 && link.is_empty();
+                    library::add(library::Item {
+                        source: source.clone(),
+                        url: link.clone(),
+                        section: one.then_some(section),
+                        length: one.then_some(section.1 - section.0),
+                        ..library::Item::new(kind, &path, "")
+                    });
                     crate::background_ui::notify(
                         &ui,
                         crate::background_ui::Note {
@@ -1503,6 +1520,7 @@ pub fn install(
             let Some(url) = crate::link_of(&ui.get_url()) else { return };
             let title = if ui.get_probe_state() == 2 { ui.get_probe_title().to_string() } else { String::new() };
             ui.global::<Watch>().set_recording_id(0);
+            ui.global::<Watch>().set_back_page(0);
             clipper.borrow_mut().watch(&ui, &url, &title);
         }
     });
@@ -1522,7 +1540,9 @@ pub fn install(
             let ui = weak.unwrap();
             clipper.borrow_mut().unwatch(&ui);
             ui.global::<Watch>().set_recording_id(0);
-            ui.set_page(0);
+            let back = ui.global::<Watch>().get_back_page();
+            ui.global::<Watch>().set_back_page(0);
+            ui.set_page(back);
         }
     });
     // Watching a live stream: record it right here, from now or from its start (the bar
@@ -1615,6 +1635,18 @@ pub fn install(
     watch.on_volume_changed({
         let (clipper, weak) = (clipper.clone(), ui.as_weak());
         move || clipper.borrow().apply_volume(&weak.unwrap())
+    });
+    // The Library's Watch / Play: the file in the player, Back returns to the Library.
+    ui.on_watch_file({
+        let (clipper, weak) = (clipper.clone(), ui.as_weak());
+        move |path| {
+            let ui = weak.unwrap();
+            ui.global::<Watch>().set_recording_id(0);
+            clipper.borrow_mut().open(&ui, Path::new(path.as_str()));
+            ui.global::<Watch>().set_on(true);
+            ui.global::<Watch>().set_back_page(4);
+            ui.set_page(1);
+        }
     });
     // Dev hook for design checks: watch this file or link as if from a preview.
     if let Ok(target) = std::env::var("NERIA_WATCH") {

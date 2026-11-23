@@ -2,12 +2,12 @@
 // talks only to AppWindow (properties and callbacks below) and the exported structs and
 // globals; the screens themselves live in pages/, dialogs/ and components/.
 import { Palette } from "std-widgets.slint";
-import { Theme, Screen } from "theme.slint";
+import { Theme, Screen, Nav } from "theme.slint";
 import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, LiveRow, RecentItem, ChapterMark, Fmt, Formats } from "types.slint";
 import { Toast } from "widgets.slint";
 // Present's window (Capture page → Phone): its own window, generated for Rust too.
 export { PresentWindow } from "present-window.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached } from "globals.slint";
 import { ClipsDialog } from "dialogs/clips.slint";
 import { GifDialog } from "dialogs/gif.slint";
 import { ChatDialog } from "dialogs/chat.slint";
@@ -21,6 +21,7 @@ import { DownloadPage } from "pages/download.slint";
 import { ClipPage } from "pages/clip.slint";
 import { CompressPage } from "pages/compress.slint";
 import { CapturePage, CaptureToast } from "pages/capture.slint";
+import { LibraryPage } from "pages/library.slint";
 import { SettingsDrawer } from "pages/settings.slint";
 import { SetupScreen } from "pages/setup.slint";
 import { MatchDialog } from "dialogs/match.slint";
@@ -28,7 +29,7 @@ import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow }
+export { Theme, Screen, Nav, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -211,7 +212,8 @@ export component AppWindow inherits Window {
     in-out property <bool> drop-choice-open;
     in property <bool> drop-several;
     callback drop-choose(int); // 1 clip, 2 compress, 3 transcribe
-    in-out property <bool> drawer-open;
+    // Settings: the drawer (a sheet over the page on compact, opened from each page's gear).
+    in-out property <bool> drawer-open <=> Nav.settings-open;
     // Settings section to show: 0 Download, 1 Spotify, 2 Network, 3 Appearance, 4 About.
     in-out property <int> settings-section;
 
@@ -260,6 +262,8 @@ export component AppWindow inherits Window {
     callback clip-show-output();
     callback clip-job(int);
     callback clip-open-path(string);
+    // Open a saved file in the player in watch mode (the Library's Watch / Play).
+    callback watch-file(string);
     callback clip-open-link(string, string); // url, title
     callback clip-paste-link();
 
@@ -465,12 +469,16 @@ export component AppWindow inherits Window {
                 }
 
                 if root.page == 3: CapturePage { }
+
+                if root.page == 4: LibraryPage {
+                    go(page) => { root.page = page; }
+                }
             }
 
             if Screen.compact: TabBar {
                 page <=> root.page;
                 settings-open: root.drawer-open;
-                open-settings => { root.drawer-open = true; }
+                close-settings => { root.drawer-open = false; }
             }
         }
     }

@@ -2,7 +2,7 @@ import { Theme } from "../theme.slint";
 import { Capture, Phone } from "../globals.slint";
 import { NavItem, LogoMark } from "../widgets.slint";
 
-// The nav rail on the left (wide and medium windows): logo mark, the four pages, Settings
+// The nav rail on the left (wide and medium windows): logo mark, the five pages, Settings
 // at the bottom.
 export component Sidebar inherits Rectangle {
     in-out property <int> page;
@@ -50,6 +50,12 @@ export component Sidebar inherits Rectangle {
             dot: Capture.state == 2 || Phone.state >= 5;
             clicked => { root.page = 3; }
         }
+        NavItem {
+            icon: "\u{E8F1}";
+            label: "Library";
+            active: root.page == 4;
+            clicked => { root.page = 4; }
+        }
         Rectangle { vertical-stretch: 1; }
         NavItem {
             icon: "\u{E713}";
@@ -60,11 +66,13 @@ export component Sidebar inherits Rectangle {
     }
 }
 
-// Compact windows (and later Android): the same five places as a bar along the bottom.
+// Compact windows (and later Android): the five pages as a bar along the bottom. Settings
+// isn't one of them here: each page's header has a gear (`SettingsGear`). Picking a tab
+// closes Settings (it's a sheet over the page).
 export component TabBar inherits Rectangle {
     in-out property <int> page;
     in property <bool> settings-open;
-    callback open-settings();
+    callback close-settings();
     height: 66px;
     background: Theme.bg;
     Rectangle {
@@ -81,21 +89,21 @@ export component TabBar inherits Rectangle {
             icon: "\u{E896}";
             label: "Download";
             active: root.page == 0 && !root.settings-open;
-            clicked => { root.page = 0; }
+            clicked => { root.page = 0; root.close-settings(); }
         }
         NavItem {
             horizontal-stretch: 1;
             icon: "\u{E8C6}";
             label: "Clip";
             active: root.page == 1 && !root.settings-open;
-            clicked => { root.page = 1; }
+            clicked => { root.page = 1; root.close-settings(); }
         }
         NavItem {
             horizontal-stretch: 1;
             icon: "\u{E73F}";
             label: "Compress";
             active: root.page == 2 && !root.settings-open;
-            clicked => { root.page = 2; }
+            clicked => { root.page = 2; root.close-settings(); }
         }
         NavItem {
             horizontal-stretch: 1;
@@ -103,14 +111,14 @@ export component TabBar inherits Rectangle {
             label: "Capture";
             active: root.page == 3 && !root.settings-open;
             dot: Capture.state == 2 || Phone.state >= 5;
-            clicked => { root.page = 3; }
+            clicked => { root.page = 3; root.close-settings(); }
         }
         NavItem {
             horizontal-stretch: 1;
-            icon: "\u{E713}";
-            label: "Settings";
-            active: root.settings-open;
-            clicked => { root.open-settings(); }
+            icon: "\u{E8F1}";
+            label: "Library";
+            active: root.page == 4 && !root.settings-open;
+            clicked => { root.page = 4; root.close-settings(); }
         }
     }
 }

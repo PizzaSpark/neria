@@ -312,6 +312,8 @@ fn prepare_as(col: &Collection, settings: &crate::settings::Settings, mode: Mode
                 .collect(),
         };
         write_manifest(&dir, &manifest)?;
+        // The Library lists it as one playlist row, its songs under it.
+        crate::library::playlist_synced(&dir, &manifest);
     }
     Ok((dir, jobs))
 }

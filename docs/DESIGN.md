@@ -108,7 +108,8 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
   - *Medium* (720–999): rail stays; chips get their own row; row actions Clip / Compress / Pause
     shrink to icons; the Settings drawer leaves a strip of the page showing.
   - *Compact* (under 720, down to the 400 × 600 minimum; also the starting point for Android):
-    bottom tab bar (Download, Clip, Compress, Settings) and the logo next to the headline;
+    bottom tab bar (Download, Clip, Compress, Capture, Library) and the logo next to the headline;
+    Settings is a gear at the right end of each page's header (`SettingsGear`);
     page padding 16px; queue rows keep one main action (Pause / Resume / Retry / Pick match /
     Show / Cancel) and put the rest in a ⋯ menu (`Menu` / `MenuItem`); Settings is a full
     sheet with the sections as words along the top; Clip stacks (In / Out on their own row, no

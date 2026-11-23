@@ -508,6 +508,10 @@ fn start(ui: &AppWindow) {
             });
             match r {
                 Ok(done) => {
+                    // Several files make one transcript, next to the first.
+                    if let Some(input) = job.inputs.first() {
+                        neria_core::library::transcribed(input, &done.files);
+                    }
                     saved.extend(done.files);
                     language = done.language;
                     lines += done.segments;

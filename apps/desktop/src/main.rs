@@ -27,6 +27,7 @@ mod drop_ui;
 mod extras_ui;
 mod follow_ui;
 mod gif_ui;
+mod library_ui;
 mod live_ui;
 mod match_ui;
 mod names_ui;
@@ -1211,7 +1212,7 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             compressor::dev_hooks(&ui);
             capture_ui::after_tools(&ui);
             if let Ok(page) = std::env::var("NERIA_PAGE") {
-                let names = ["download", "clip", "compress", "capture"];
+                let names = ["download", "clip", "compress", "capture", "library"];
                 if let Some(i) = names.iter().position(|n| page.eq_ignore_ascii_case(n)) {
                     ui.set_page(i as i32);
                 }
@@ -2097,6 +2098,7 @@ fn main() -> anyhow::Result<()> {
     live_ui::install(&ui, &queue);
     voice_ui::install(&ui, settings.clone(), queue.clone());
     capture_ui::install(&ui, settings.clone());
+    library_ui::install(&ui, settings.clone());
     phone_ui::install(&ui, settings.clone());
     sound_ui::install(&ui);
     let _gone_timer = watch_gone(&ui);

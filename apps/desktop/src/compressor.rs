@@ -1184,12 +1184,23 @@ impl Compressor {
                     Err(_) if !cancelled => failed += 1,
                     _ => {}
                 }
+                let source = path.clone();
                 let _ = weak.upgrade_in_event_loop(move |_| {
                     with(|cmp| {
                         let Some(it) = cmp.items.get_mut(i) else { return };
                         match result {
                             Ok(out) => {
                                 let before = part_bytes(&info, &opts);
+                                neria_core::library::add(neria_core::library::Item {
+                                    source: Some(source),
+                                    size: Some(out.bytes),
+                                    note: format!("was {}", fmt::mb(before as f64)),
+                                    ..neria_core::library::Item::new(
+                                        neria_core::library::Kind::Compressed,
+                                        &out.path,
+                                        "",
+                                    )
+                                });
                                 let pct = 100.0 - out.bytes as f64 / before.max(1) as f64 * 100.0;
                                 it.state = SAVED;
                                 it.tag = format!("Saved · {}", fmt::mb(out.bytes as f64));

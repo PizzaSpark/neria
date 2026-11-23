@@ -173,6 +173,18 @@ $states = [ordered]@{
   "ph-switch"  = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "switch" }
   "ph-stalled" = @{ NERIA_PAGE = "capture"; NERIA_PHONE_DEMO = "stalled" }
   "ph-fake"    = @{ NERIA_PAGE = "capture"; NERIA_PHONE_FAKE = "1" }
+  # The Library: filled from this home's history.json, then sample data in every state.
+  "lib-real"   = @{ NERIA_PAGE = "library" }
+  "lib"        = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1" }
+  "lib-brought" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "brought" }
+  "lib-empty"  = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "empty" }
+  "lib-sheet"  = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "sheet" }
+  "lib-playlist" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "playlist" }
+  "lib-gone"   = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "gone" }
+  "lib-found"  = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "found" }
+  "lib-filter" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "filter" }
+  "lib-nomatch" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "nomatch" }
+  "lib-delete" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "delete" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-voice-off" = @{ NERIA_SETTINGS = "voice" }

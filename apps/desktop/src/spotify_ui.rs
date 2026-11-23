@@ -234,8 +234,11 @@ pub fn install_lyrics(ui: &AppWindow, slot: PendingSlot, settings: Arc<Mutex<Set
         move || {
             let current = settings.lock().unwrap().clone();
             let start = neria_core::folders::for_kind(&current, neria_core::folders::Kind::Audio);
-            // Dev hook: that folder, without the picker.
+            // A folder given (the Library, or the dev hook): that one, without the picker.
+            let given = weak.unwrap().global::<Music>().get_lyrics_dir().to_string();
+            weak.unwrap().global::<Music>().set_lyrics_dir("".into());
             let picked = match std::env::var_os("NERIA_ADD_LYRICS") {
+                _ if !given.is_empty() => Some(std::path::PathBuf::from(given)),
                 Some(d) => Some(std::path::PathBuf::from(d)),
                 None => rfd::FileDialog::new().set_directory(&start).pick_folder(),
             };

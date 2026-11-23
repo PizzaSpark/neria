@@ -1,6 +1,6 @@
 import { LineEdit, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { PrimaryButton, GhostButton, IconButton, TextLink, Bar, ChoiceChips, PageTitle, Notice, Divider, Thumb, Tick, Tag, Icon, ChoiceRow, CompareSlider, KeyPress } from "../widgets.slint";
+import { PrimaryButton, GhostButton, IconButton, TextLink, Bar, ChoiceChips, PageTitle, SettingsGear, Notice, Divider, Thumb, Tick, Tag, Icon, ChoiceRow, CompareSlider, KeyPress } from "../widgets.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { TrimStrip } from "../components/trim-strip.slint";
 import { RecentItem } from "../types.slint";
@@ -385,6 +385,7 @@ export component CompressPage inherits Rectangle {
                     clicked => { Compress.open-file(); }
                 }
             }
+            if Screen.compact: SettingsGear { }
         }
 
         // Nothing open: the way in, then recent video downloads.

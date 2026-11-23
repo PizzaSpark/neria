@@ -21,6 +21,7 @@ pub mod follow;
 pub mod gif;
 pub mod history;
 pub mod hotkey;
+pub mod library;
 pub mod live;
 pub mod lyrics;
 pub mod media;

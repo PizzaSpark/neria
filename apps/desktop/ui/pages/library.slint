@@ -1,0 +1,1446 @@
+// The Library (mock: design/library.html; picks 1A · 2A · 3A · 4A + 4B · 5A): everything Neria
+// saved, in calm rows by day. Kind tabs, Site / Date / Sort and search on top; the picked
+// thing's details in a right column (wide), opened in place under its row (medium) or in a
+// sheet from the bottom (compact). Watch (Play for sound) is the one yellow action.
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SettingsGear, SectionTitle, Tag, TextLink, FilterTab, ChoiceChips, Divider, Thumb, Menu, MenuItem, KeyPress, Kbd, Notice, Dialog, Hint } from "../widgets.slint";
+import { Library, LibRow, LibDetail, LibAttached } from "../globals.slint";
+
+// The main action's word and icon (LibRow.main).
+global LibWords {
+    out property <[string]> main: ["Watch", "Play", "Open", "Update playlist", "Download again", "Find it…"];
+    out property <[string]> main-icon: ["\u{E768}", "\u{E768}", "\u{E8A7}", "\u{E895}", "\u{E896}", "\u{E721}"];
+    out property <[string]> tabs: ["All", "Videos", "Sound", "Clips", "Recordings", "Replays", "Gone"];
+}
+
+// A thing's picture: a frame (videos), a square with a note (sound), a stacked square
+// (a playlist), a page (a text file). Faded when its file is gone or its drive isn't here.
+component KindThumb inherits Rectangle {
+    in property <image> source;
+    in property <string> length;
+    in property <bool> sound;
+    in property <bool> playlist;
+    in property <bool> text;
+    in property <float> fade: 1;
+    in property <length> icon-size: 14px;
+    property <bool> square: root.sound || root.text || root.playlist;
+    property <length> side: root.square ? root.height : root.width;
+    // A playlist: another cover peeking out behind.
+    if root.playlist: Rectangle {
+        x: (root.width - root.side) / 2 + 4px;
+        y: -4px;
+        width: root.side;
+        height: root.height;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        background: Theme.bg;
+    }
+    Thumb {
+        x: (root.width - root.side) / 2;
+        width: root.side;
+        height: root.height;
+        source: root.source;
+        opacity: root.fade;
+        background: root.square ? Theme.raised : Theme.video;
+        if root.source.width == 0: Icon {
+            text: root.playlist || root.sound ? "\u{E8D6}" : root.text ? "\u{E8A5}" : "\u{E714}";
+            font-size: root.icon-size;
+            color: Theme.dim;
+        }
+        if root.length != "" && !root.square: Rectangle {
+            x: parent.width - self.width - 3px;
+            y: parent.height - self.height - 3px;
+            width: len.preferred-width + 6px;
+            height: 13px;
+            border-radius: 3px;
+            background: Theme.video-veil;
+            len := Text {
+                text: root.length;
+                color: Theme.strip-mark;
+                font-family: Theme.mono;
+                font-size: 9px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}
+
+// A menu button (Site / Date / Sort / Filter): its value, a ▾, the "set" outline when set.
+component MenuButton inherits GhostButton {
+    trail: "\u{E70D}";
+}
+
+// The ⋯ menu: everything the details don't show as buttons, for the picked thing.
+component LibMenu inherits Menu {
+    width: 240px;
+    property <LibDetail> d: Library.detail;
+    if !d.gone: MenuItem {
+        icon: "\u{E7AC}";
+        text: d.playlist ? "Open the folder" : "Open with Windows' app";
+        clicked => { Library.act(d.id, "open-with"); }
+    }
+    if d.can-gif: MenuItem {
+        icon: "\u{E8B9}";
+        text: "Make a GIF";
+        clicked => { Library.act(d.id, "gif"); }
+    }
+    if d.can-transcribe && !d.no-transcript: MenuItem {
+        icon: "\u{E8A5}";
+        text: "Transcribe again";
+        clicked => { Library.act(d.id, "transcribe"); }
+    }
+    if d.can-download && d.main != 4: MenuItem {
+        icon: "\u{E896}";
+        text: "Download again";
+        clicked => { Library.act(d.id, "download"); }
+    }
+    if d.has-link: MenuItem {
+        icon: "\u{E71B}";
+        text: "Copy link";
+        clicked => { Library.act(d.id, "copy-link"); }
+    }
+    if d.has-source: MenuItem {
+        icon: "\u{E8A7}";
+        text: "Go to the original";
+        clicked => { Library.act(d.id, "original"); }
+    }
+    if d.spotify: MenuItem {
+        icon: "\u{E8A7}";
+        text: "Open in Spotify";
+        clicked => { Library.act(d.id, "spotify"); }
+    }
+    if d.gone && d.main != 5: MenuItem {
+        icon: "\u{E721}";
+        text: "Find it…";
+        clicked => { Library.act(d.id, "find"); }
+    }
+    Rectangle {
+        height: 9px;
+        Rectangle {
+            x: 4px;
+            width: parent.width - 8px;
+            height: 1px;
+            background: Theme.line;
+        }
+    }
+    MenuItem {
+        icon: "\u{E738}";
+        text: "Remove from Library";
+        clicked => { Library.act(d.id, "remove"); }
+    }
+    if d.can-delete: MenuItem {
+        icon: "\u{E74D}";
+        text: "Delete file…";
+        clicked => { Library.delete-open = true; }
+    }
+}
+
+// The buttons after the main one (details column, opened row, sheet): Compress, Show in
+// folder, Copy file, Add lyrics; a gone thing's way back.
+component MoreActions inherits FlexboxLayout {
+    property <LibDetail> d: Library.detail;
+    // A row opened in place already has Clip next to the yellow button.
+    in property <bool> with-clip;
+    spacing: 6px;
+    if root.with-clip && d.can-clip: GhostButton {
+        compact: true;
+        icon: "\u{E8C6}";
+        text: "Clip";
+        clicked => { Library.act(d.id, "clip"); }
+    }
+    if d.can-compress: GhostButton {
+        compact: true;
+        icon: "\u{E73F}";
+        text: "Compress";
+        clicked => { Library.act(d.id, "compress"); }
+    }
+    if d.can-copy-file: GhostButton {
+        compact: true;
+        icon: "\u{E8C8}";
+        text: "Copy file";
+        clicked => { Library.act(d.id, "copy-file"); }
+    }
+    if d.playlist && !d.gone: GhostButton {
+        compact: true;
+        icon: "\u{E8D6}";
+        text: "Add lyrics";
+        clicked => { Library.act(d.id, "lyrics"); }
+    }
+    if !d.gone: GhostButton {
+        compact: true;
+        icon: "\u{E8B7}";
+        text: d.playlist ? "Open folder" : "Show in folder";
+        clicked => { Library.act(d.id, "show"); }
+    }
+    if d.gone && d.main == 4: GhostButton {
+        compact: true;
+        icon: "\u{E721}";
+        text: "Find it…";
+        clicked => { Library.act(d.id, "find"); }
+    }
+    if d.gone: GhostButton {
+        compact: true;
+        icon: "\u{E738}";
+        text: "Remove";
+        clicked => { Library.act(d.id, "remove"); }
+    }
+}
+
+// Saved / From / File / Made from, then what's attached (and a playlist's songs).
+component DetailBody inherits VerticalLayout {
+    property <LibDetail> d: Library.detail;
+    in property <bool> show-keys: true;
+    spacing: 12px;
+    if root.show-keys: VerticalLayout {
+        spacing: 6px;
+        for k[i] in d.keys: HorizontalLayout {
+            spacing: 10px;
+            Text {
+                width: 70px;
+                text: k;
+                color: Theme.muted;
+                font-size: 12.5px;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: d.values[i];
+                color: Theme.ink;
+                font-family: k == "File" || k == "Made from" || k == "Folder" ? Theme.mono : Theme.body;
+                font-size: k == "File" || k == "Made from" || k == "Folder" ? 11px : 12.5px;
+                wrap: k == "File" || k == "Made from" || k == "Folder" ? char-wrap : word-wrap;
+            }
+        }
+    }
+    if d.attached.length > 0 || d.no-transcript: VerticalLayout {
+        spacing: 0px;
+        Text {
+            text: "Attached";
+            color: Theme.ink;
+            font-family: Theme.display;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        Rectangle { height: 6px; }
+        Divider { }
+        for a in d.attached: VerticalLayout {
+            HorizontalLayout {
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 10px;
+                Icon {
+                    horizontal-stretch: 0;
+                    text: a.label == "Chat" ? "\u{E8BD}" : a.label == "Lyrics" ? "\u{E8D6}" : a.label == "Captions" ? "\u{E7F0}" : "\u{E8A5}";
+                    font-size: 13px;
+                    color: Theme.muted;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: a.label;
+                    color: Theme.ink;
+                    font-size: 12.5px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    horizontal-stretch: 0;
+                    text: a.detail;
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 10.5px;
+                    vertical-alignment: center;
+                }
+                TextLink {
+                    horizontal-stretch: 0;
+                    text: a.label == "Chat" ? "Show" : "Open";
+                    clicked => { Library.open-file(a.path); }
+                }
+            }
+            Divider { }
+        }
+        if d.no-transcript: VerticalLayout {
+            HorizontalLayout {
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 10px;
+                Icon {
+                    horizontal-stretch: 0;
+                    text: "\u{E8A5}";
+                    font-size: 13px;
+                    color: Theme.dim;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: "No transcript yet";
+                    color: Theme.muted;
+                    font-size: 12.5px;
+                    vertical-alignment: center;
+                }
+                TextLink {
+                    horizontal-stretch: 0;
+                    text: "Transcribe";
+                    clicked => { Library.act(d.id, "transcribe"); }
+                }
+            }
+            Divider { }
+        }
+    }
+    if d.songs.length > 0: VerticalLayout {
+        spacing: 0px;
+        Text {
+            text: "Songs";
+            color: Theme.ink;
+            font-family: Theme.display;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        Rectangle { height: 6px; }
+        Divider { }
+        for s in d.songs: VerticalLayout {
+            HorizontalLayout {
+                padding-top: 5px;
+                padding-bottom: 5px;
+                spacing: 10px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: s.label;
+                    color: Theme.ink;
+                    font-size: 12.5px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    horizontal-stretch: 0;
+                    text: s.detail;
+                    color: Theme.muted;
+                    font-family: Theme.mono;
+                    font-size: 10.5px;
+                    vertical-alignment: center;
+                }
+                TextLink {
+                    horizontal-stretch: 0;
+                    text: "Play";
+                    clicked => { Library.open-file(s.path); }
+                }
+            }
+            Divider { }
+        }
+        if d.more != "": Text {
+            text: d.more;
+            color: Theme.muted;
+            font-size: 12px;
+        }
+    }
+}
+
+// The yellow action, as big as the place allows.
+component MainAction inherits PrimaryButton {
+    property <LibDetail> d: Library.detail;
+    text: LibWords.main[d.main];
+    icon: LibWords.main-icon[d.main];
+    clicked => { Library.act(d.id, "main"); }
+}
+
+// Wide windows: the picked thing on the right.
+component DetailColumn inherits Rectangle {
+    property <LibDetail> d: Library.detail;
+    Rectangle {
+        x: 0;
+        width: 1px;
+        background: Theme.line;
+    }
+    if Library.selected == 0: VerticalLayout {
+        padding: 22px;
+        alignment: start;
+        Hint {
+            text: Library.empty ? "What you save shows up here, with what you can do next." : "Pick something to see where it came from and what you can do next.";
+        }
+    }
+    if Library.selected != 0: ScrollView {
+        x: 1px;
+        width: parent.width - 1px;
+        VerticalLayout {
+            padding: 20px;
+            padding-top: 22px;
+            spacing: 12px;
+            KindThumb {
+                height: 158px;
+                source: d.thumb;
+                length: d.length;
+                sound: d.sound;
+                playlist: d.playlist;
+                text: d.text;
+                fade: d.gone ? 0.35 : d.offline != "" ? 0.6 : 1;
+                icon-size: 30px;
+            }
+            Text {
+                text: d.title;
+                color: Theme.ink;
+                font-size: 17px;
+                font-weight: 600;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: start;
+                spacing: 8px;
+                Tag {
+                    text: d.offline != "" ? d.offline : d.tag;
+                    kind: d.tag-kind;
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                MainAction { }
+                if d.can-clip && !d.gone: GhostButton {
+                    icon: "\u{E8C6}";
+                    text: "Clip";
+                    clicked => { Library.act(d.id, "clip"); }
+                }
+                GhostButton {
+                    icon: "\u{E712}";
+                    label: "More actions";
+                    clicked => { more.show(); }
+                }
+            }
+            DetailBody { }
+            MoreActions { }
+        }
+    }
+    more := PopupWindow {
+        x: 20px;
+        y: 290px;
+        LibMenu { }
+    }
+}
+
+// Medium windows: the picked row opens in place, with what's attached and its actions.
+component OpenedRow inherits VerticalLayout {
+    property <LibDetail> d: Library.detail;
+    callback more();
+    spacing: 10px;
+    padding-bottom: 4px;
+    DetailBody {
+        show-keys: false;
+    }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        MainAction { }
+        VerticalLayout {
+            alignment: start;
+            MoreActions {
+                with-clip: true;
+            }
+        }
+        VerticalLayout {
+            alignment: start;
+            GhostButton {
+                compact: true;
+                icon: "\u{E712}";
+                label: "More actions";
+                clicked => { root.more(); }
+            }
+        }
+    }
+}
+
+// One saved thing (or a day heading).
+component LibRowView inherits Rectangle {
+    in property <LibRow> item;
+    property <bool> selected: !root.item.heading && Library.selected == root.item.id;
+    property <bool> opened: root.selected && !Screen.wide && !Screen.compact;
+    property <bool> hover;
+    // Wide: Watch and Clip on the hovered or picked row; narrower: one icon action and ⋯.
+    property <bool> wide-acts: Screen.wide && (root.hover || root.selected || root.item.gone);
+    accessible-role: list-item;
+    accessible-label: root.item.heading ? root.item.day : root.item.title + ", " + root.item.tag;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.pick(); }
+    function pick() {
+        Library.select(root.item.id);
+        if Screen.compact {
+            Library.sheet-open = true;
+        }
+    }
+    if root.item.heading: HorizontalLayout {
+        padding-top: 16px;
+        padding-bottom: 6px;
+        spacing: 8px;
+        alignment: start;
+        Text {
+            text: root.item.day;
+            color: Theme.muted;
+            font-family: Theme.display;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.7px;
+        }
+        Text {
+            text: root.item.stats;
+            color: Theme.dim;
+            font-family: Theme.mono;
+            font-size: 10.5px;
+        }
+    }
+    if !root.item.heading: Rectangle {
+        // The picked row: a quiet panel instead of the hairline.
+        Rectangle {
+            width: parent.width - Theme.lane;
+            x: 0;
+            border-radius: 8px;
+            background: root.selected ? Theme.panel : ta.has-hover ? Theme.raised.with-alpha(0.45) : transparent;
+            border-width: root.selected ? 1px : 0px;
+            border-color: Theme.line-strong;
+        }
+        if !root.selected: Rectangle {
+            x: 0;
+            y: parent.height - 1px;
+            width: parent.width - Theme.lane;
+            height: 1px;
+            background: Theme.line;
+        }
+        // keyboard: KeyPress below picks the row (Enter / Space).
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            changed has-hover => { root.hover = self.has-hover; }
+            clicked => { root.pick(); }
+            double-clicked => { Library.act(root.item.id, "main"); }
+        }
+        KeyPress {
+            width: parent.width - Theme.lane;
+            radius: 8px;
+            activated => { root.pick(); }
+        }
+        VerticalLayout {
+            padding-left: 6px;
+            padding-right: Theme.lane + 6px;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            spacing: 10px;
+            HorizontalLayout {
+                spacing: Screen.compact ? 10px : 12px;
+                min-height: 44px;
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    KindThumb {
+                        width: 64px;
+                        height: 36px;
+                        source: root.item.thumb;
+                        length: root.item.length;
+                        sound: root.item.sound;
+                        playlist: root.item.playlist;
+                        text: root.item.text;
+                        fade: root.item.gone ? 0.35 : root.item.offline ? 0.6 : 1;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    Text {
+                        text: root.item.title;
+                        color: root.item.gone ? Theme.muted : Theme.ink;
+                        font-size: 14px;
+                        font-weight: root.item.playlist ? 600 : 500;
+                        overflow: elide;
+                    }
+                    HorizontalLayout {
+                        spacing: 7px;
+                        Tag {
+                            horizontal-stretch: 0;
+                            text: root.item.tag;
+                            kind: root.item.tag-kind;
+                        }
+                        if root.item.place != "": Text {
+                            horizontal-stretch: 0;
+                            max-width: self.preferred-width;
+                            text: root.item.place;
+                            color: Theme.muted;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        if root.item.stats != "" && !(Screen.compact && root.item.gone): Text {
+                            horizontal-stretch: 0;
+                            max-width: self.preferred-width;
+                            text: root.item.stats;
+                            color: Theme.muted;
+                            font-family: Theme.mono;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        if root.item.marks != "": HorizontalLayout {
+                            horizontal-stretch: 0;
+                            spacing: 4px;
+                            Icon {
+                                text: "\u{E723}";
+                                font-size: 11px;
+                                color: Theme.muted;
+                            }
+                            if !Screen.compact: Text {
+                                max-width: self.preferred-width;
+                                text: root.item.marks;
+                                color: Theme.muted;
+                                font-size: 11.5px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+                }
+                // Wide: the main action in words (on hover, the picked row, gone rows), Clip, ⋯.
+                if root.wide-acts: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        GhostButton {
+                            compact: true;
+                            icon: LibWords.main-icon[root.item.main];
+                            text: LibWords.main[root.item.main];
+                            clicked => { Library.act(root.item.id, "main"); }
+                        }
+                        if root.item.can-clip && !root.item.gone: GhostButton {
+                            compact: true;
+                            icon: "\u{E8C6}";
+                            label: "Clip";
+                            clicked => { Library.act(root.item.id, "clip"); }
+                        }
+                        GhostButton {
+                            compact: true;
+                            icon: "\u{E712}";
+                            label: "More actions";
+                            clicked => {
+                                Library.select(root.item.id);
+                                menu.show();
+                            }
+                        }
+                    }
+                }
+                // Medium and compact: one icon action, then ⋯ (compact: the sheet).
+                if !Screen.wide && !root.opened: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        GhostButton {
+                            compact: true;
+                            icon: LibWords.main-icon[root.item.main];
+                            label: LibWords.main[root.item.main];
+                            clicked => { Library.act(root.item.id, "main"); }
+                        }
+                        GhostButton {
+                            compact: true;
+                            icon: "\u{E712}";
+                            label: "More actions";
+                            clicked => {
+                                Library.select(root.item.id);
+                                if Screen.compact {
+                                    Library.sheet-open = true;
+                                } else {
+                                    menu.show();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if root.opened: HorizontalLayout {
+                padding-left: 76px;
+                OpenedRow {
+                    more => { menu.show(); }
+                }
+            }
+        }
+    }
+    menu := PopupWindow {
+        x: root.width - Theme.lane - 240px;
+        y: Screen.wide || !root.opened ? 48px : root.height - 8px;
+        LibMenu { }
+    }
+}
+
+// The search box: what's typed filters as you type; Esc clears it.
+component SearchBox inherits Rectangle {
+    // Bumped by Ctrl+F. Wide and medium: it takes the keyboard when the page opens, so you
+    // can just start typing.
+    in property <int> find;
+    changed find => { input.focus(); }
+    init => {
+        if !Screen.compact {
+            input.focus();
+        }
+    }
+    height: 41px;
+    border-radius: 10px;
+    background: Theme.panel;
+    border-width: 2px;
+    border-color: input.has-focus ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
+    animate border-color { duration: 100ms; }
+    // keyboard: Tab reaches the text input itself.
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        spacing: 9px;
+        Icon {
+            horizontal-stretch: 0;
+            text: "\u{E721}";
+            font-size: 13px;
+            color: Theme.muted;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            if Library.query == "": Text {
+                x: 0;
+                width: parent.width;
+                height: parent.height;
+                text: Screen.wide ? "Search titles, sites, file names…" : "Search…";
+                color: Theme.muted;
+                font-size: 13.5px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            FocusScope {
+                x: 0;
+                width: parent.width;
+                height: parent.height;
+                focus-on-click: false;
+                focus-on-tab-navigation: false;
+                key-pressed(event) => {
+                    if event.text == Key.Escape && Library.query != "" {
+                        Library.query = "";
+                        Library.changed();
+                        return accept;
+                    }
+                    reject
+                }
+                input := TextInput {
+                    x: 0;
+                    width: parent.width;
+                    height: parent.height;
+                    text <=> Library.query;
+                    color: Theme.ink;
+                    font-size: 13.5px;
+                    vertical-alignment: center;
+                    single-line: true;
+                    accessible-label: "Search the Library";
+                    selection-background-color: Theme.pop.with-alpha(0.45);
+                    selection-foreground-color: Theme.ink;
+                    edited => { Library.changed(); }
+                }
+            }
+        }
+        if Library.query != "": TextLink {
+            horizontal-stretch: 0;
+            text: "Clear";
+            clicked => {
+                Library.query = "";
+                Library.changed();
+                input.focus();
+            }
+        }
+        if Library.query == "" && Screen.wide: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Kbd {
+                text: "Ctrl F";
+            }
+        }
+    }
+}
+
+// Kind tabs with counts. Searching or filtering hides the empty ones; Gone only while any.
+component KindTabs inherits HorizontalLayout {
+    property <bool> narrowed: Library.query != "" || Library.site != 0 || Library.date != 0;
+    spacing: Screen.compact ? 16px : 18px;
+    alignment: start;
+    for t[i] in LibWords.tabs: FilterTab {
+        // ui-rules: hidden tabs take no room (a for can't skip items).
+        visible: i == Library.tab || (i == 6 ? Library.counts[6] > 0 : (!root.narrowed || Library.counts[i] > 0));
+        width: self.visible ? self.min-width : 0px;
+        text: t;
+        count: Library.counts[i];
+        active: Library.tab == i;
+        attention: i == 6;
+        clicked => {
+            Library.tab = i;
+            Library.changed();
+        }
+    }
+}
+
+// Compact: Site, Date and Sort as chips in a sheet (Filter).
+component FilterSheet inherits Rectangle {
+    callback close();
+    background: Theme.scrim;
+    // keyboard: the × button closes it.
+    TouchArea {
+        clicked => { root.close(); }
+    }
+    Rectangle {
+        y: root.height - self.height;
+        height: min(col.preferred-height, root.height - 40px);
+        border-radius: 14px;
+        background: Theme.panel;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        clip: true;
+        TouchArea { }
+        col := VerticalLayout {
+            padding: 16px;
+            padding-top: 10px;
+            spacing: 10px;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 40px;
+                    height: 4px;
+                    border-radius: 2px;
+                    background: Theme.line-strong;
+                }
+            }
+            HorizontalLayout {
+                SectionTitle {
+                    horizontal-stretch: 1;
+                    text: "Filter";
+                    vertical-alignment: center;
+                }
+                if Library.site != 0 || Library.date != 0 || Library.sort != 0: TextLink {
+                    text: "Clear filters";
+                    clicked => {
+                        Library.site = 0;
+                        Library.date = 0;
+                        Library.sort = 0;
+                        Library.changed();
+                    }
+                }
+                IconButton {
+                    icon: "\u{E711}";
+                    label: "Close";
+                    clicked => { root.close(); }
+                }
+            }
+            Hint { text: "Site"; }
+            ChoiceChips {
+                options: Library.sites;
+                current: Library.site;
+                changed => {
+                    Library.site = self.current;
+                    Library.changed();
+                }
+            }
+            Hint { text: "Date"; }
+            ChoiceChips {
+                options: Library.dates;
+                current: Library.date;
+                changed => {
+                    Library.date = self.current;
+                    Library.changed();
+                }
+            }
+            Hint { text: "Sort"; }
+            ChoiceChips {
+                options: Library.sorts;
+                current: Library.sort;
+                changed => {
+                    Library.sort = self.current;
+                    Library.changed();
+                }
+            }
+        }
+    }
+}
+
+// Compact: the picked thing, from the bottom; Watch across its bottom.
+component DetailSheet inherits Rectangle {
+    property <LibDetail> d: Library.detail;
+    background: Theme.scrim;
+    // keyboard: Esc closes it (the FocusScope below), as does the ×.
+    TouchArea {
+        clicked => { Library.sheet-open = false; }
+    }
+    init => { keys.focus(); }
+    keys := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                Library.sheet-open = false;
+                return accept;
+            }
+            reject
+        }
+    }
+    Rectangle {
+        y: root.height - self.height;
+        height: col.preferred-height;
+        border-radius: 14px;
+        background: Theme.panel;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        clip: true;
+        TouchArea { }
+        col := VerticalLayout {
+            padding: 16px;
+            padding-top: 10px;
+            spacing: 12px;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 40px;
+                    height: 4px;
+                    border-radius: 2px;
+                    background: Theme.line-strong;
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    alignment: start;
+                    horizontal-stretch: 0;
+                    KindThumb {
+                        width: 112px;
+                        height: 63px;
+                        source: d.thumb;
+                        length: d.length;
+                        sound: d.sound;
+                        playlist: d.playlist;
+                        text: d.text;
+                        fade: d.gone ? 0.35 : d.offline != "" ? 0.6 : 1;
+                        icon-size: 20px;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 6px;
+                    Text {
+                        text: d.title;
+                        color: Theme.ink;
+                        font-size: 14.5px;
+                        font-weight: 600;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        Tag {
+                            text: d.offline != "" ? d.offline : d.tag;
+                            kind: d.tag-kind;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: start;
+                    horizontal-stretch: 0;
+                    IconButton {
+                        icon: "\u{E711}";
+                        label: "Close";
+                        clicked => { Library.sheet-open = false; }
+                    }
+                }
+            }
+            body-scroll := ScrollView {
+                height: min(body.preferred-height, root.height * 0.42);
+                body := VerticalLayout {
+                    spacing: 12px;
+                    DetailBody { }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        VerticalLayout {
+                            alignment: start;
+                            MoreActions {
+                                with-clip: true;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: start;
+                            GhostButton {
+                                compact: true;
+                                icon: "\u{E712}";
+                                label: "More actions";
+                                clicked => { more.show(); }
+                            }
+                        }
+                    }
+                }
+            }
+            MainAction { }
+        }
+    }
+    more := PopupWindow {
+        x: root.width - 256px;
+        y: max(8px, root.height - 380px);
+        LibMenu { }
+    }
+}
+
+// The empty first visit: three ways to make something.
+component StartRow inherits VerticalLayout {
+    in property <string> icon;
+    in property <string> title;
+    in property <string> hint;
+    in property <string> go;
+    callback clicked();
+    HorizontalLayout {
+        padding-top: 14px;
+        padding-bottom: 14px;
+        padding-left: 4px;
+        spacing: 14px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: 9px;
+                border-width: 2px;
+                border-color: Theme.line-strong;
+                Icon {
+                    text: root.icon;
+                    font-size: 15px;
+                    color: Theme.muted;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 3px;
+            Text {
+                text: root.title;
+                color: Theme.ink;
+                font-size: 14px;
+                font-weight: 500;
+                wrap: word-wrap;
+            }
+            Hint {
+                text: root.hint;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            GhostButton {
+                compact: true;
+                text: Screen.compact ? "" : root.go;
+                icon: Screen.compact ? "\u{E72A}" : "";
+                label: root.go;
+                clicked => { root.clicked(); }
+            }
+        }
+    }
+    Divider { }
+}
+
+// Several gone: one calm line saying so, Find them…, Remove from Library.
+component GoneBanner inherits VerticalLayout {
+    HorizontalLayout {
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Tag {
+                text: Library.gone + " gone";
+                kind: 2;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: Screen.compact ? "" : Library.gone-text;
+            color: Theme.ink;
+            font-size: 13px;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            GhostButton {
+                compact: true;
+                icon: "\u{E721}";
+                text: "Find them…";
+                clicked => { Library.find-gone(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            TextLink {
+                text: Screen.compact ? "Remove" : "Remove from Library";
+                clicked => { Library.remove-gone(); }
+            }
+        }
+    }
+    Divider { }
+}
+
+// After Find it…: what was found, and the others from that folder found there too.
+component FoundStrip inherits VerticalLayout {
+    HorizontalLayout {
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Tag {
+                text: "Found";
+                kind: 1;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: Library.found-text;
+            color: Theme.ink;
+            font-size: 13px;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+        if Library.found-count > 1: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            GhostButton {
+                compact: true;
+                text: "Update all " + Library.found-count;
+                clicked => { Library.found-all(); }
+            }
+        }
+        if Library.found-count > 1 && !Screen.compact: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            TextLink {
+                text: "Just this one";
+                clicked => { Library.found-one(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            IconButton {
+                icon: "\u{E711}";
+                label: Library.found-count > 1 ? "Just this one" : "Close";
+                clicked => {
+                    if Library.found-count > 1 {
+                        Library.found-one();
+                    } else {
+                        Library.found-close();
+                    }
+                }
+            }
+        }
+    }
+    Divider { }
+}
+
+export component LibraryPage inherits Rectangle {
+    // To another page (the starting rows): 0 Download, 1 Clip, 3 Capture.
+    callback go(int);
+    property <bool> filtered: Library.site != 0 || Library.date != 0;
+    init => { Library.shown(Screen.wide); }
+    // Ctrl+F asks the search box to take the keyboard.
+    property <int> find;
+    // Ctrl+F: to the search box, from anywhere on the page.
+    FocusScope {
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        capture-key-pressed(event) => {
+            if event.modifiers.control && (event.text == "f" || event.text == "F") {
+                root.find += 1;
+                return accept;
+            }
+            reject
+        }
+        HorizontalLayout {
+            VerticalLayout {
+                horizontal-stretch: 1;
+                padding: Screen.compact ? Screen.pad : 24px;
+                padding-top: Screen.compact ? Screen.pad : 22px;
+                padding-right: Screen.compact ? Screen.pad - 8px : 12px;
+                padding-bottom: 0px;
+                spacing: 0px;
+
+                // Headline; the total (wide), Sort (medium), the gear (compact).
+                HorizontalLayout {
+                    spacing: 12px;
+                    padding-right: Screen.compact ? 8px : Theme.lane - 12px;
+                    PageTitle {
+                        horizontal-stretch: 1;
+                        title: "Library";
+                    }
+                    if Screen.wide && !Library.empty: VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        Text {
+                            text: Library.total;
+                            color: Theme.muted;
+                            font-family: Theme.mono;
+                            font-size: 11.5px;
+                        }
+                    }
+                    if !Screen.wide && !Screen.compact && !Library.empty: VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        MenuButton {
+                            compact: true;
+                            text: Library.sorts[Library.sort];
+                            on: Library.sort != 0;
+                            clicked => { sort-menu.show(); }
+                        }
+                    }
+                    if Screen.compact: SettingsGear { }
+                }
+
+                if Library.brought-in != "": HorizontalLayout {
+                    padding-top: 8px;
+                    padding-right: Theme.lane - 12px;
+                    Notice {
+                        icon: "\u{E73E}";
+                        icon-color: Theme.ok;
+                        color: Theme.muted;
+                        text: Library.brought-in;
+                        wrap: true;
+                    }
+                }
+
+                // The empty first visit.
+                if Library.empty: VerticalLayout {
+                    padding-top: 8px;
+                    padding-right: Theme.lane - 12px;
+                    vertical-stretch: 1;
+                    alignment: start;
+                    Text {
+                        text: "Everything you download, clip, record or compress shows up here.";
+                        color: Theme.muted;
+                        font-size: 14px;
+                        wrap: word-wrap;
+                    }
+                    Rectangle { height: 18px; }
+                    Divider { }
+                    StartRow {
+                        icon: "\u{E896}";
+                        title: "Download a video or a song";
+                        hint: "Paste a link from YouTube, Twitch, X, Spotify…";
+                        go: "Go to Download";
+                        clicked => { root.go(0); }
+                    }
+                    StartRow {
+                        icon: "\u{E8C6}";
+                        title: "Clip a file you have";
+                        hint: "Or drop one anywhere on Neria";
+                        go: "Go to Clip";
+                        clicked => { root.go(1); }
+                    }
+                    StartRow {
+                        icon: "\u{E7C8}";
+                        title: "Keep the last minute of a game";
+                        hint: "Instant replay, saved with a key (F8)";
+                        go: "Go to Capture";
+                        clicked => { root.go(3); }
+                    }
+                }
+
+                if !Library.empty: VerticalLayout {
+                    vertical-stretch: 1;
+                    spacing: 0px;
+                    Rectangle { height: 14px; }
+                    // Search, and the menus beside it (medium, compact) or under it (wide).
+                    HorizontalLayout {
+                        spacing: 6px;
+                        padding-right: Screen.compact ? 8px : Theme.lane - 12px;
+                        VerticalLayout {
+                            alignment: start;
+                            horizontal-stretch: 1;
+                            SearchBox {
+                                find: root.find;
+                            }
+                        }
+                        if !Screen.wide && !Screen.compact: MenuButton {
+                            text: Library.site == 0 ? "Site" : Library.sites[Library.site];
+                            on: Library.site != 0;
+                            clicked => { site-menu.show(); }
+                        }
+                        if !Screen.wide && !Screen.compact: MenuButton {
+                            text: Library.date == 0 ? "Date" : Library.dates[Library.date];
+                            on: Library.date != 0;
+                            clicked => { date-menu.show(); }
+                        }
+                        if Screen.compact: MenuButton {
+                            text: "Filter";
+                            on: root.filtered || Library.sort != 0;
+                            clicked => { root.filter-open = true; }
+                        }
+                    }
+                    if Screen.wide: HorizontalLayout {
+                        padding-top: 10px;
+                        padding-right: Theme.lane - 12px;
+                        spacing: 6px;
+                        MenuButton {
+                            compact: true;
+                            text: "Site: " + (Library.site == 0 ? "any" : Library.sites[Library.site]);
+                            on: Library.site != 0;
+                            clicked => { site-menu.show(); }
+                        }
+                        MenuButton {
+                            compact: true;
+                            text: "Date: " + (Library.date == 0 ? "any time" : Library.dates[Library.date]);
+                            on: Library.date != 0;
+                            clicked => { date-menu.show(); }
+                        }
+                        if root.filtered: TextLink {
+                            text: "Clear filters";
+                            clicked => { Library.clear-filters(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        MenuButton {
+                            compact: true;
+                            text: Library.sorts[Library.sort];
+                            on: Library.sort != 0;
+                            clicked => { sort-menu.show(); }
+                        }
+                    }
+                    Rectangle { height: Screen.compact ? 8px : 12px; }
+                    // Kind tabs: on compact they scroll sideways (words don't wrap).
+                    if !Screen.compact: KindTabs { }
+                    if Screen.compact: Flickable {
+                        height: 32px;
+                        content-width: compact-tabs.preferred-width + 8px;
+                        compact-tabs := KindTabs {
+                            height: 32px;
+                        }
+                    }
+                    Divider {
+                        inset-right: Screen.compact ? 8px : Theme.lane - 12px;
+                    }
+                    if Library.found-open: HorizontalLayout {
+                        padding-right: Screen.compact ? 8px : Theme.lane - 12px;
+                        FoundStrip { horizontal-stretch: 1; }
+                    }
+                    if Library.gone >= 2 && !Library.found-open: HorizontalLayout {
+                        padding-right: Screen.compact ? 8px : Theme.lane - 12px;
+                        GoneBanner { horizontal-stretch: 1; }
+                    }
+                    if Library.rows.length == 0: HorizontalLayout {
+                        padding-top: 16px;
+                        padding-right: Theme.lane - 12px;
+                        spacing: 8px;
+                        alignment: start;
+                        Text {
+                            text: Library.no-match;
+                            color: Theme.muted;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                        }
+                        if root.filtered || Library.query != "" || Library.tab != 0: TextLink {
+                            horizontal-stretch: 0;
+                            text: "Clear filters";
+                            clicked => { Library.clear-filters(); }
+                        }
+                    }
+                    if Library.rows.length == 0: Rectangle { vertical-stretch: 1; }
+                    if Library.rows.length > 0: ListView {
+                        vertical-stretch: 1;
+                        for r in Library.rows: LibRowView {
+                            item: r;
+                        }
+                    }
+                }
+            }
+            if Screen.wide: DetailColumn {
+                width: 320px;
+            }
+        }
+    }
+
+    property <bool> filter-open;
+    if root.filter-open && Screen.compact: FilterSheet {
+        close => { root.filter-open = false; }
+    }
+    if Library.sheet-open && Screen.compact && Library.selected != 0: DetailSheet { }
+
+    if Library.delete-open: Dialog {
+        title: "Delete this file?";
+        subtitle: "It goes to the Recycle Bin, and leaves the Library.";
+        card-width: 420px;
+        fit: true;
+        close => { Library.delete-open = false; }
+        Text {
+            text: Library.detail.title;
+            color: Theme.ink;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            GhostButton {
+                text: "Keep it";
+                clicked => { Library.delete-open = false; }
+            }
+            PrimaryButton {
+                text: "Delete";
+                icon: "\u{E74D}";
+                clicked => { Library.delete-confirm(); }
+            }
+        }
+    }
+
+    // The menus' pop-ups, under their buttons.
+    site-menu := PopupWindow {
+        x: Screen.wide ? 24px : root.width - 360px;
+        y: Screen.wide ? 150px : 120px;
+        Menu {
+            width: 240px;
+            for s[i] in Library.sites: MenuItem {
+                icon: Library.site == i ? "\u{E73E}" : "";
+                text: s;
+                shortcut: i == 0 ? "" : Library.site-counts[i];
+                clicked => {
+                    Library.site = i;
+                    Library.changed();
+                }
+            }
+        }
+    }
+    date-menu := PopupWindow {
+        x: Screen.wide ? 150px : root.width - 250px;
+        y: Screen.wide ? 150px : 120px;
+        Menu {
+            width: 200px;
+            for s[i] in Library.dates: MenuItem {
+                icon: Library.date == i ? "\u{E73E}" : "";
+                text: s;
+                clicked => {
+                    Library.date = i;
+                    Library.changed();
+                }
+            }
+        }
+    }
+    sort-menu := PopupWindow {
+        x: Screen.wide ? root.width - 320px - 12px - 200px - Theme.lane : root.width - 230px;
+        y: Screen.wide ? 150px : 64px;
+        Menu {
+            width: 200px;
+            for s[i] in Library.sorts: MenuItem {
+                icon: Library.sort == i ? "\u{E73E}" : "";
+                text: s;
+                clicked => {
+                    Library.sort = i;
+                    Library.changed();
+                }
+            }
+        }
+    }
+}

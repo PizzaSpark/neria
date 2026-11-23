@@ -1356,7 +1356,7 @@ pub fn clip(ui: &AppWindow) {
             match res {
                 Ok(f) => {
                     let text = format!("Saved the last {} of {}", keep_text(secs), ui.global::<Phone>().get_name());
-                    crate::capture_ui::saved_file(&ui, &f, &name, "Saved", &text, true);
+                    crate::capture_ui::saved_file(&ui, &f, &name, "Saved", &text, true, true);
                 }
                 Err(e) => crate::capture_ui::toast(&ui, "Not saved", &e.to_string(), false, None),
             }
@@ -1391,7 +1391,7 @@ fn finish_recording(ui: &AppWindow, r: Arc<Recording>) {
             Ok(f) => {
                 let name = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
                 let text = format!("Recorded {} of {}", fmt::duration(len), ui.global::<Phone>().get_name());
-                crate::capture_ui::saved_file(&ui, &f, &name, "Saved", &text, false);
+                crate::capture_ui::saved_file(&ui, &f, &name, "Saved", &text, false, true);
             }
             Err(e) => crate::capture_ui::toast(&ui, "Not saved", &e.to_string(), false, None),
         });

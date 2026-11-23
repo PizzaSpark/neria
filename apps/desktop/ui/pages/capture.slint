@@ -1,6 +1,6 @@
 import { ComboBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { Menu, MenuItem, PrimaryButton, GhostButton, IconButton, TextLink, ChoiceChips, PageTitle, Notice, Divider, Thumb, Tick, Tag, Icon, KeyPress, SectionTitle, FilterTab } from "../widgets.slint";
+import { Menu, MenuItem, PrimaryButton, GhostButton, IconButton, TextLink, ChoiceChips, PageTitle, SettingsGear, Notice, Divider, Thumb, Tick, Tag, Icon, KeyPress, SectionTitle, FilterTab } from "../widgets.slint";
 import { Capture, CaptureSource, CaptureTrack, CaptureApp, Voice, Phone } from "../globals.slint";
 import { SavedList } from "../components/saved-list.slint";
 import { QualityChoice } from "../components/quality-choice.slint";
@@ -621,6 +621,7 @@ export component CapturePage inherits Rectangle {
                 subtitle: Screen.compact || Capture.state != 0 || Phone.tab == 1 ? "" : "Neria keeps the last minute of your game or screen on the graphics card, so the game hardly notices. Press the key when something happens and it's saved.";
             }
             if Voice.listening: ListenBadge { }
+            if Screen.compact: SettingsGear { }
         }
 
         // This PC / Phone: calm tabs (they change the view, not a setting).

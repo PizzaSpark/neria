@@ -1131,8 +1131,23 @@ that's an exception, written only once the Phone tab is used.
   across songs. **Tag editor** (many files at once; "Find tags online" from Spotify).
   **Organize** (Artist / Album folders, M3U playlists, duplicates). Split by timestamps /
   remove silence
-- **Library page**: everything Neria downloaded/made, with thumbnails/covers, search,
-  audio/video/photo filters, sort by date/size/length; open, show in folder, clip/compress
+- **Library page** 🚧 (built 2026-11-23, mock `design/library.html`, picks 1A · 2A · 3A ·
+  4A + 4B · 5A; screenshots not yet looked at): a fifth page after Capture (on compact,
+  Settings moves to a gear in each page's header and the tab bar shows the five pages).
+  Everything Neria saved, in `library.json` (`library.rs`): filled once from `history.json`,
+  Capture's Saved list and the Spotify folders' manifests, then written by the queue (link
+  clips, songs and captions only too), instant replays (PC / phone), clips from files,
+  compressed copies, GIFs and transcripts. Calm rows by day with kind tabs (All, Videos,
+  Sound, Clips, Recordings, Replays, Gone while any), Site / Date / Sort and search; a
+  Spotify playlist is one row with its songs in its details. Details in a right column
+  (wide), opened in place (medium), a sheet (compact); Watch / Play the one yellow action;
+  Clip (Clip again of a file clip opens the original at In / Out), Compress, Transcribe,
+  Make a GIF, Show in folder, Copy file, Download again, Copy link, Go to the original,
+  Update playlist, Add lyrics, Remove, Delete file… (Recycle Bin). Gone checked in the
+  background ("On E:, not connected" for a missing drive); Find it… also finds the other
+  gone files from that folder; Find them… for a whole folder. Frames cached in
+  `library-thumbs/`. Left: the grid view (2B) on video kinds, Pick another match and Get
+  the holes back from the Library, live updates while the page is open (re-read every 30 s)
 - **Command palette** (Ctrl+K): type "compress", "extract audio", "clip"… to jump to any
   action; also lists recent files
 - **Saved workflows**: simple "after download" actions first (extract audio, compress for

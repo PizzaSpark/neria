@@ -1,6 +1,6 @@
 import { Theme, Screen } from "../theme.slint";
 import { Fmt } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, Chip, PageTitle, Notice, Divider, Tag, Hint, CropFrame } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, Chip, PageTitle, SettingsGear, Notice, Divider, Tag, Hint, CropFrame } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
@@ -760,6 +760,7 @@ export component ClipPage inherits FocusScope {
                     clicked => { root.open-file(); }
                 }
             }
+            if Screen.compact: SettingsGear { alignment: start; }
         }
 
         // Nothing open: the two ways in, then recent downloads (left-aligned like every page).

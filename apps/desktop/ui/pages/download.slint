@@ -1,7 +1,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { JobItem, PickItem, SyncItem } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SectionTitle, Tag, LinkField, TextLink, FilterTab, ChoiceChips, Notice, Divider, Thumb, Menu, MenuItem, PlayMark } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SettingsGear, SectionTitle, Tag, LinkField, TextLink, FilterTab, ChoiceChips, Notice, Divider, Thumb, Menu, MenuItem, PlayMark } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { JobRow } from "../components/job-row.slint";
 import { PickList } from "../components/pick-list.slint";
@@ -206,6 +206,7 @@ export component DownloadPage inherits Rectangle {
                 // Compact: the link box says it all; the queue gets the line.
                 subtitle: Screen.compact ? "" : "YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.";
             }
+            if Screen.compact: SettingsGear { }
         }
 
         // The clipboard watcher: a link was just copied somewhere else.

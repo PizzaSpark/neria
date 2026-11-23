@@ -155,7 +155,9 @@ export global Watch {
     callback record-from-start();
     callback show-file();
     callback trim();
-    callback back(); // to the Download page (a file open before comes back)
+    callback back(); // to the Download page (a file open before comes back), or `back-page`
+    // The page Back goes to: 0 Download; 4 the Library (watching something from it).
+    in-out property <int> back-page;
     callback download(); // the whole link, with the chips as they are
     callback clip-this(); // stay, with In/Out
     callback volume-changed();
@@ -566,6 +568,8 @@ export global Music {
     callback lyrics-only();
     // Settings: pick a folder of songs and add lyrics to them.
     callback add-lyrics();
+    // Add lyrics to this folder without asking which (the Library's playlist rows).
+    in-out property <string> lyrics-dir;
 }
 
 // Compress page (Compress track): goals in plain words, what it'll look like, before /
@@ -1157,4 +1161,141 @@ export global Phone {
     callback typed(string);
     // The tab is showing.
     callback shown(bool);
+}
+
+// One line of the Library's list: a day heading, or a saved thing (Rust builds them).
+export struct LibRow {
+    // A day heading ("Today" and how many); the rest is empty then.
+    heading: bool,
+    day: string,
+    id: int,
+    title: string,
+    // The kind's word on its tag ("Recording", "Gone", "On E:, not connected").
+    tag: string,
+    // Tag colour: 0 plain, 3 bad (Gone).
+    tag-kind: int,
+    gone: bool,
+    offline: bool,
+    // "YouTube", "This PC", "from match-final.mp4", "was D:\Videos\Neria\".
+    place: string,
+    // Mono: "2:14:08 · 3.1 GB".
+    stats: string,
+    // What's attached, in words: "Chat", "Captions · Transcript"; "" for nothing.
+    marks: string,
+    // Over the thumbnail, bottom right: "2:14:08".
+    length: string,
+    thumb: image,
+    // Sound (a square, a note), a playlist (a stacked square), a text file (a page).
+    sound: bool,
+    playlist: bool,
+    text: bool,
+    // Watch (0) · Play (1) · Open (2) · Update playlist (3) · Download again (4) · Find it… (5).
+    main: int,
+    can-clip: bool,
+}
+
+// A file that belongs to the picked thing (its chat, transcript, captions), or one of a
+// playlist's songs.
+export struct LibAttached {
+    // "Chat", "Transcript · English", a song's title.
+    label: string,
+    // Mono, quiet: ".chat.json", "3:21".
+    detail: string,
+    path: string,
+}
+
+// The picked thing, for its details (the right column, the row opened in place, the sheet).
+export struct LibDetail {
+    id: int,
+    title: string,
+    tag: string,
+    tag-kind: int,
+    thumb: image,
+    length: string,
+    sound: bool,
+    playlist: bool,
+    text: bool,
+    gone: bool,
+    // "On E:, not connected" (its drive isn't plugged in).
+    offline: string,
+    // The lines under the title, name · value: "Saved" "Today, 13:05 · recorded from the start".
+    keys: [string],
+    values: [string],
+    attached: [LibAttached],
+    // A playlist's songs (the first ones; "and 32 more" in `more`).
+    songs: [LibAttached],
+    more: string,
+    // No transcript next to it yet (Transcribe offered in Attached).
+    no-transcript: bool,
+    // Main action as on its row (LibRow.main).
+    main: int,
+    can-clip: bool,
+    can-compress: bool,
+    can-transcribe: bool,
+    can-gif: bool,
+    can-download: bool,
+    can-copy-file: bool,
+    has-link: bool,
+    has-source: bool,
+    spotify: bool,
+    can-delete: bool,
+}
+
+// The Library page (mock: design/library.html, picks 1A · 2A · 3A · 4A + 4B · 5A): everything
+// Neria saved, by day, to find, reopen and do the next thing with. Rust: library_ui.rs.
+export global Library {
+    // The list as shown (filters and search applied), day headings in between.
+    in property <[LibRow]> rows;
+    // "1,284 things · 412 GB".
+    in property <string> total;
+    // Nothing saved at all: the three starting rows instead of the list.
+    in property <bool> empty;
+    // Once, after the first fill: "Brought in 214 things Neria saved before".
+    in property <string> brought-in;
+    // Filter tabs: All, Videos, Sound, Clips, Recordings, Replays, Gone; counts follow the
+    // search and the menus. Tabs with nothing hide while searching; Gone only while any.
+    in-out property <int> tab;
+    in property <[int]> counts: [0, 0, 0, 0, 0, 0, 0];
+    in-out property <string> query;
+    // Site menu: "Any site", then the sites in the Library with their counts.
+    in property <[string]> sites: ["Any site"];
+    in property <[int]> site-counts: [0];
+    in-out property <int> site;
+    // Date menu (Any time, Today, Last 7 days, Last 30 days, Last 12 months) and Sort.
+    in property <[string]> dates: ["Any time", "Today", "Last 7 days", "Last 30 days", "Last 12 months"];
+    in-out property <int> date;
+    in property <[string]> sorts: ["Newest first", "Oldest first", "Biggest first", "Name A–Z"];
+    in-out property <int> sort;
+    // Nothing matches: "Nothing from Twitch in the last 7 days."
+    in property <string> no-match;
+    // Gone files: how many, and the banner's line.
+    in property <int> gone;
+    in property <string> gone-text;
+    // After Find it…: "Found … in E:\Old clips, and 11 more gone replays there too."
+    in property <bool> found-open;
+    in property <string> found-text;
+    in property <int> found-count;
+    // The picked thing (0: none), its details, and the compact sheet.
+    in property <int> selected;
+    in property <LibDetail> detail;
+    in-out property <bool> sheet-open;
+    // Delete file…: asks first (to the Recycle Bin).
+    in-out property <bool> delete-open;
+    callback shown(bool); // the page opened (wide: pick the first row)
+    callback changed(); // search, a tab or a menu changed
+    callback clear-filters();
+    callback select(int);
+    // What to do with a thing: "watch", "clip", "compress", "transcribe", "gif", "show",
+    // "open-with", "download", "copy-link", "copy-file", "original", "spotify", "update",
+    // "lyrics", "find", "remove", "delete".
+    callback act(int, string);
+    callback open-file(string);
+    callback delete-confirm();
+    // The Gone banner: look for them in a folder, or forget them all.
+    callback find-gone();
+    callback remove-gone();
+    // After Find it…: move every record found, or only the one picked.
+    callback found-all();
+    callback found-one();
+    callback found-close();
 }

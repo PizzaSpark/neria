@@ -13,7 +13,7 @@ use crate::settings::Quality;
 use crate::settings::Settings;
 use crate::spotify::Track;
 use crate::ytmusic::Candidate;
-use crate::{disk, fingerprint, gif, history, music, paths, probe, proc, report, tools};
+use crate::{disk, fingerprint, gif, history, library, music, paths, probe, proc, report, tools};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2056,19 +2056,23 @@ impl Queue {
         entries.iter().find(|e| e.snap.id == id).map(|e| e.dests.clone()).unwrap_or_default()
     }
 
-    /// A finished download goes in the history, for the duplicate check.
+    /// A finished download goes in the Library (everything), and in the history for the
+    /// duplicate check (whole videos and sound only).
     fn remember(&self, id: u64, req: &DownloadRequest) {
-        // A clip, a song or just the captions isn't "the video": pasting it again shouldn't
-        // say you have it (and "Download again" would overwrite the caption file's name).
-        if req.section.is_some() || req.music.is_some() || req.captions_only() {
-            return;
-        }
         let snap = {
             let entries = self.inner.entries.lock().unwrap();
             entries.iter().find(|e| e.snap.id == id).map(|e| e.snap.clone())
         };
         let Some(s) = snap.filter(|s| s.state == JobState::Done) else { return };
-        let (Some(key), Some(file)) = (s.key.or_else(|| req.key.clone()), s.file) else { return };
+        let Some(file) = s.file.clone() else { return };
+        library::add(library_item(req, &s, &file));
+        // A clip, a song or just the captions isn't "the video": pasting it again shouldn't
+        // say you have it (and "Download again" would overwrite the caption file's name).
+        let part = req.section.is_some() || !req.sections.is_empty() || req.live_window.is_some();
+        if part || req.music.is_some() || req.captions_only() {
+            return;
+        }
+        let Some(key) = s.key.or_else(|| req.key.clone()) else { return };
         let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
         history::record(history::Record { key, url: req.url.clone(), file, title: s.title, at });
     }
@@ -2464,6 +2468,47 @@ impl Queue {
         if e.snap.state != before {
             self.save_locked(&entries);
         }
+    }
+}
+
+
+/// The Library's record of a finished download: what kind of thing it is, from the request.
+fn library_item(req: &DownloadRequest, s: &JobSnapshot, file: &Path) -> library::Item {
+    use library::Kind;
+    let section = req.section.or_else(|| req.live_window.map(|(a, b)| (0.0, b - a)));
+    let kind = if req.live.is_some() {
+        Kind::Recording
+    } else if req.gif_spec.is_some() || s.gif || file.extension().is_some_and(|e| e.eq_ignore_ascii_case("gif")) {
+        Kind::Gif
+    } else if section.is_some() || !req.sections.is_empty() {
+        Kind::Clip
+    } else if req.music.is_some() {
+        Kind::Song
+    } else if req.captions_only() {
+        Kind::Captions
+    } else if library::is_audio_file(file) {
+        Kind::Sound
+    } else {
+        Kind::Video
+    };
+    let length = match (section, &req.sections) {
+        (Some((a, b)), _) => Some(b - a),
+        (None, parts) if !parts.is_empty() => Some(parts.iter().map(|(a, b)| b - a).sum()),
+        _ => req.duration,
+    };
+    let note = match (&req.live, req.music.is_some()) {
+        (Some(l), _) if l.from_start => "recorded from the start".to_string(),
+        (_, true) => s.lyrics.clone().unwrap_or_default(),
+        _ => String::new(),
+    };
+    library::Item {
+        url: req.url.clone(),
+        key: s.key.clone().or_else(|| req.key.clone()).unwrap_or_default(),
+        thumbnail: s.thumbnail.clone().unwrap_or_default(),
+        section: req.section,
+        length: length.filter(|l| *l > 0.0),
+        note,
+        ..library::Item::new(kind, file, &s.title)
     }
 }
 

@@ -99,3 +99,9 @@ export global Screen {
     // Page padding: 26px, 16px on compact.
     out property <length> pad: root.compact ? 16px : 26px;
 }
+
+// Moving between places from anywhere. On compact windows Settings isn't in the tab bar:
+// each page's header ends with a gear (`SettingsGear`) that opens it.
+export global Nav {
+    in-out property <bool> settings-open;
+}

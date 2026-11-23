@@ -1190,7 +1190,7 @@ pub fn save(ui: &AppWindow, by: By) {
             match saved {
                 Ok(file) => {
                     let text = format!("Saved the last {} of {what}", keep_text(secs));
-                    saved_file(&ui, &file, &name, heard.as_deref().unwrap_or("Saved"), &text, by_voice);
+                    saved_file(&ui, &file, &name, heard.as_deref().unwrap_or("Saved"), &text, by_voice, false);
                 }
                 Err(e) => toast(&ui, heard.as_deref().unwrap_or("Not saved"), &e.to_string(), false, None),
             }
@@ -1200,8 +1200,13 @@ pub fn save(ui: &AppWindow, by: By) {
 
 /// Something saved from the Capture page (instant replay, the phone): in Saved, in the
 /// history, the toast with Open in clipper (and Undo), a notification when Neria is behind.
-pub fn saved_file(ui: &AppWindow, file: &Path, name: &str, tag: &str, text: &str, undo: bool) {
+pub fn saved_file(ui: &AppWindow, file: &Path, name: &str, tag: &str, text: &str, undo: bool, phone: bool) {
     save_prefs(|p| p.add_saved(file.to_path_buf()));
+    let kind = if phone { neria_core::library::Kind::ReplayPhone } else { neria_core::library::Kind::ReplayPc };
+    neria_core::library::add(neria_core::library::Item {
+        note: if phone && text.starts_with("Recorded") { "recorded".into() } else { String::new() },
+        ..neria_core::library::Item::new(kind, file, name)
+    });
     ST.with(|s| s.borrow_mut().last = Some((file.to_path_buf(), Instant::now())));
     history::record(history::Record {
         key: String::new(),
@@ -1224,6 +1229,7 @@ pub fn undo(ui: &AppWindow, heard: Option<&str>) -> bool {
     };
     let _ = at;
     let _ = std::fs::remove_file(&file);
+    neria_core::library::remove_file(&file);
     save_prefs(|p| p.saved.retain(|f| f != &file));
     show_saved(ui);
     toast(ui, heard.unwrap_or("Undone"), "That clip is deleted", false, None);

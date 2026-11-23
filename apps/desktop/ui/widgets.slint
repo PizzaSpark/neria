@@ -1,7 +1,7 @@
 // Shared controls. Rule: anything you press is playful (outline, sticker
 // yellow, hard shadow on the main action); anything you read is calm.
 
-import { Theme, Screen } from "theme.slint";
+import { Theme, Screen, Nav } from "theme.slint";
 
 export component Icon inherits Text {
     font-family: Theme.icons;
@@ -1648,5 +1648,18 @@ export component CompareSlider inherits Rectangle {
                 root.split = max(0, min(1, self.mouse-x / root.width));
             }
         }
+    }
+}
+
+// Compact windows: Settings, at the right end of every page's header (the tab bar holds the
+// five pages). Put it last in the header row, behind `if Screen.compact`.
+export component SettingsGear inherits VerticalLayout {
+    alignment: center;
+    horizontal-stretch: 0;
+    GhostButton {
+        compact: true;
+        icon: "\u{E713}";
+        label: "Settings";
+        clicked => { Nav.settings-open = true; }
     }
 }
