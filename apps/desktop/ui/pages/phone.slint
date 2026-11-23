@@ -1,6 +1,6 @@
 import { ScrollView, Slider } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, LinkField, ChoiceRow } from "../widgets.slint";
+import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, LinkField, ChoiceRow, ChoiceChips } from "../widgets.slint";
 import { Phone, PhoneRow, Capture } from "../globals.slint";
 import { SavedList } from "../components/saved-list.slint";
 import { QualityChoice } from "../components/quality-choice.slint";
@@ -830,6 +830,17 @@ component MirrorChoices inherits VerticalLayout {
         text: "Click and drag on the picture to use the phone; scroll and type work too. " + Phone.save-key + " clips here as well.";
     }
     Rectangle { height: 8px; }
+    Head { text: "Show"; }
+    if Phone.camera-why == "": ChoiceChips {
+        options: ["Screen", "Back camera", "Front camera"];
+        current <=> Phone.show;
+        changed => { Phone.show-changed(); }
+    }
+    if Phone.camera-why != "" || Phone.show != 0: Hint {
+        text: Phone.camera-why != "" ? Phone.camera-why
+            : "The camera with the phone's mic. Taps and keys don't reach the phone while it shows.";
+    }
+    Rectangle { height: 8px; }
     SoundChoices { }
     Rectangle { height: 12px; }
     Head { text: "While mirroring"; }
@@ -841,6 +852,11 @@ component MirrorChoices inherits VerticalLayout {
     Tick {
         text: "Keep the phone awake";
         checked <=> Phone.awake;
+        toggled => { Phone.changed(); }
+    }
+    Tick {
+        text: "Share the clipboard (copy on one, paste on the other)";
+        checked <=> Phone.clipboard;
         toggled => { Phone.changed(); }
     }
     Rectangle { height: 8px; }

@@ -1668,6 +1668,25 @@ impl Queue {
                         Err(e) => chat_note = Some(format!("Saved, but without the chat: {e}")),
                     }
                 }
+                // A live clip's own chat, next to it (moved by a keyframe start like above).
+                if !job.beside.is_empty() && !cancelled {
+                    let early = match (job.clip_len, crate::media::duration(&file)) {
+                        (Some(want), Some(got)) => (got - want).max(0.0),
+                        _ => 0.0,
+                    };
+                    let msgs: Vec<_> =
+                        job.beside.iter().map(|m| crate::chat::Message { t: m.t + early, ..m.clone() }).collect();
+                    let mut sites: Vec<crate::chat::Site> = Vec::new();
+                    for m in &msgs {
+                        if !sites.contains(&m.site) {
+                            sites.push(m.site);
+                        }
+                    }
+                    let chat = crate::chat::ChatFile { version: 1, sites, messages: msgs, ..Default::default() };
+                    if let Err(e) = chat.save(&crate::chat::sidecar_of(&file)) {
+                        chat_note = Some(format!("Saved, but its chat couldn't be: {e}"));
+                    }
+                }
                 // The whole stream's chat, for a whole video (not a part of one).
                 if job.save && !cancelled && req.section.is_none() && req.sections.is_empty() {
                     self.update(id, true, |s| {
@@ -1886,19 +1905,19 @@ impl Queue {
                 RecEvent::Stats(st) => {
                     let ask = !earlier_asked && st.phase == Phase::Recording && st.recorded > 0.0;
                     self.update(id, true, |s| {
-                    let saving = st.phase == Phase::Saving;
-                    s.state = if saving { JobState::Processing } else { JobState::Downloading };
-                    s.postprocessor = saving.then(|| "Saving".into());
-                    s.downloaded = Some(st.bytes as f64);
-                    s.speed = (st.speed > 0.0).then_some(st.speed);
-                    let mut st = st;
-                    if let Some(old) = s.live.as_ref() {
-                        st.earlier = old.earlier;
-                        st.earlier_bytes = old.earlier_bytes;
-                        st.earlier_done = old.earlier_done;
-                        st.earlier_failed = old.earlier_failed.clone();
-                    }
-                    s.live = Some(st);
+                        let saving = st.phase == Phase::Saving;
+                        s.state = if saving { JobState::Processing } else { JobState::Downloading };
+                        s.postprocessor = saving.then(|| "Saving".into());
+                        s.downloaded = Some(st.bytes as f64);
+                        s.speed = (st.speed > 0.0).then_some(st.speed);
+                        let mut st = st;
+                        if let Some(old) = s.live.as_ref() {
+                            st.earlier = old.earlier;
+                            st.earlier_bytes = old.earlier_bytes;
+                            st.earlier_done = old.earlier_done;
+                            st.earlier_failed = old.earlier_failed.clone();
+                        }
+                        s.live = Some(st);
                     });
                     if ask {
                         earlier_asked = true;

@@ -215,6 +215,7 @@ $states = [ordered]@{
   # file and for three dropped parts, at work, saved, and Extras → Transcript for a preview.
   "transcribe-get"   = @{ NERIA_DIALOG = "transcribe-get" }
   "transcribe"       = @{ NERIA_DIALOG = "transcribe" }
+  "transcribe-video" = @{ NERIA_DIALOG = "transcribe"; NERIA_OPEN = $video }
   "transcribe-files" = @{ NERIA_DIALOG = "transcribe-files" }
   "transcribe-work"  = @{ NERIA_DIALOG = "transcribe-work" }
   "transcribe-done"  = @{ NERIA_DIALOG = "transcribe-done" }
@@ -230,6 +231,7 @@ $states = [ordered]@{
   # A recording opened with its saved chat (copy one to target\ui-check\media\recording.mp4 + .chat.json).
   "chat-file"  = @{ NERIA_OPEN = (Join-Path $media "recording.mp4"); NERIA_CLIP_IN = "20"; NERIA_CLIP_OUT = "30" }
   "chat-sheet" = @{ NERIA_OPEN = $video; NERIA_CHAT_DEMO = "sheet"; NERIA_CLIP_IN = "6"; NERIA_CLIP_OUT = "12" }
+  "chat-also"  = @{ NERIA_OPEN = $video; NERIA_CHAT_DEMO = "also"; NERIA_CLIP_IN = "6"; NERIA_CLIP_OUT = "12" }
   # Watching a live stream with its chat (needs the internet and a long -Wait).
   "watch-live-chat" = @{ NERIA_WATCH = "https://www.twitch.tv/lofigirl" }
   "picture"    = @{ NERIA_OPEN = $video; NERIA_DIALOG = "picture" }

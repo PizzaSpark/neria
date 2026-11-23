@@ -66,6 +66,10 @@ struct Ui {
     /// much for this phone this time (mirroring on Standard until the next start by hand).
     on_best: bool,
     stepped_back: bool,
+    /// The clipboard shared while mirroring: the phone's count last taken, and the text both
+    /// sides last had (so neither side's copy bounces back).
+    clip_seen: u64,
+    clip_text: Option<String>,
     /// Looking at what adb sees while mirroring (off the UI thread).
     watching: bool,
     /// Said once mirroring starts again ("Cable unplugged: mirroring over Wi-Fi now").
@@ -259,6 +263,17 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         let weak = ui.as_weak();
         move || changed(&weak.unwrap())
     });
+    p.on_show_changed({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            if UI.with(|u| u.borrow().demo) || state(&ui) != st::MIRROR {
+                return;
+            }
+            let serial = UI.with(|u| u.borrow().serial.clone());
+            start(&ui, serial, false);
+        }
+    });
     p.on_quality_pick({
         let weak = ui.as_weak();
         move |i| {
@@ -356,6 +371,7 @@ fn show_prefs(ui: &AppWindow) {
     p.set_sound_place(pr.place.index());
     p.set_screen_off(pr.screen_off);
     p.set_awake(pr.awake);
+    p.set_clipboard(pr.clipboard);
     p.set_volume(pr.volume);
     p.set_on_top(pr.on_top);
     p.set_show_taps(pr.show_taps);
@@ -455,6 +471,7 @@ fn changed(ui: &AppWindow) {
         x.place = place;
         x.screen_off = off;
         x.awake = p.get_awake();
+        x.clipboard = p.get_clipboard();
         x.on_top = p.get_on_top();
         x.show_taps = p.get_show_taps();
     });
@@ -900,6 +917,64 @@ fn name_of(serial: &str) -> String {
     UI.with(|u| u.borrow().infos.get(serial).map(|i| i.name.clone())).unwrap_or_else(|| "the phone".into())
 }
 
+/// Where a file dropped on the window goes, if it goes to a phone: the Capture page's Phone
+/// tab with a phone there (the one mirrored, else the first ready one). Its serial and name.
+pub fn drop_target(ui: &AppWindow) -> Option<(String, String)> {
+    if ui.get_page() != 3 || ui.global::<Phone>().get_tab() != 1 || UI.with(|u| u.borrow().demo) {
+        return None;
+    }
+    let serial = UI.with(|u| {
+        let u = u.borrow();
+        match &u.session {
+            Some(s) => Some(s.serial.clone()),
+            None => u.devices.iter().find(|d| d.state == State::Ready).map(|d| d.serial.clone()),
+        }
+    })?;
+    let name = name_of(&serial);
+    Some((serial, name))
+}
+
+/// Files dropped on the Phone tab: an app installed, anything else sent to its Download
+/// folder. Off the UI thread; a toast says how it went.
+pub fn dropped(ui: &AppWindow, serial: String, name: String, files: Vec<PathBuf>) {
+    let is_apk = |p: &PathBuf| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("apk"));
+    let (apks, others): (Vec<PathBuf>, Vec<PathBuf>) = files.into_iter().filter(|p| p.is_file()).partition(is_apk);
+    if apks.is_empty() && others.is_empty() {
+        crate::show_toast(ui, "Drop files, not folders, to send them to the phone.");
+        return;
+    }
+    let file_name = |p: &PathBuf| p.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let what = match (apks.len(), others.len()) {
+        (1, 0) => format!("Installing {} on {name}…", file_name(&apks[0])),
+        (0, 1) => format!("Sending {} to {name}…", file_name(&others[0])),
+        (a, o) => format!("Sending {} to {name}…", plural(a + o, "file")),
+    };
+    crate::show_toast(ui, &what);
+    let weak = ui.as_weak();
+    std::thread::spawn(move || {
+        let mut said = Vec::new();
+        for apk in &apks {
+            match phone::install_apk(&serial, apk) {
+                Ok(()) => said.push(format!("Installed {} on {name}", file_name(apk))),
+                Err(e) => said.push(format!("Couldn't install {}: {e}", file_name(apk))),
+            }
+        }
+        if !others.is_empty() {
+            let one = if others.len() == 1 { file_name(&others[0]) } else { plural(others.len(), "file") };
+            match phone::send_files(&serial, &others) {
+                Ok(()) => said.push(format!("Sent {one} to {name}'s Download folder")),
+                Err(e) => said.push(format!("Couldn't send {one}: {e}")),
+            }
+        }
+        let text = said.join(". ");
+        let _ = weak.upgrade_in_event_loop(move |ui| crate::show_toast(&ui, &text));
+    });
+}
+
+fn plural(n: usize, word: &str) -> String {
+    if n == 1 { format!("1 {word}") } else { format!("{n} {word}s") }
+}
+
 /// Mirror the phone (or play its sound alone), replacing what runs.
 fn start(ui: &AppWindow, serial: String, sound_only: bool) {
     if UI.with(|u| u.borrow().demo) || serial.is_empty() {
@@ -930,6 +1005,11 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
             plain,
             audio: !plain && pr.place.here(),
             keep_on_phone: pr.place == Place::Both,
+            camera: match p.get_show() {
+                1 => Some(phone::Facing::Back),
+                2 => Some(phone::Facing::Front),
+                _ => None,
+            },
             ..Options::default()
         }
         .with_look(look)
@@ -945,6 +1025,13 @@ fn start(ui: &AppWindow, serial: String, sound_only: bool) {
             let (w, sr) = (weak.clone(), serial.clone());
             let _ = w.upgrade_in_event_loop(move |ui| {
                 ui.global::<Phone>().set_name(i.name.as_str().into());
+                // The camera needs Android 12.
+                let why = if i.sdk > 0 && i.sdk < phone::CAMERA_SDK {
+                    format!("{} runs Android {}: showing its camera needs Android 12 or newer.", i.name, i.android)
+                } else {
+                    String::new()
+                };
+                ui.global::<Phone>().set_camera_why(why.into());
                 ui.global::<Phone>().set_status(format!("Connecting to {}…", i.name).into());
                 UI.with(|u| u.borrow_mut().infos.insert(sr, i));
             });
@@ -1016,6 +1103,8 @@ fn running(ui: &AppWindow, s: Arc<Session>, buffer: Option<Arc<PhoneBuffer>>, so
         u.speaker = speaker;
         u.usb_offer = None;
         u.usb_declined = false;
+        u.clip_seen = 0;
+        u.clip_text = None;
     });
     p.set_usb_offer(false);
     if let Some(n) = UI.with(|u| u.borrow_mut().note.take()) {
@@ -1072,12 +1161,45 @@ fn stop(ui: &AppWindow, then: Option<i32>) {
     }
 }
 
+/// The clipboard both ways while mirroring (Share the clipboard): the phone's newest copy
+/// onto this PC's clipboard, this PC's newest onto the phone's.
+fn share_clipboard(s: &Session) {
+    if !prefs().clipboard || s.video.is_none() {
+        return;
+    }
+    let (n, phone_text) = s.clipboard.lock().unwrap().clone();
+    let mut pc = arboard::Clipboard::new().ok();
+    let pc_text = pc.as_mut().and_then(|c| c.get_text().ok());
+    UI.with(|u| {
+        let mut u = u.borrow_mut();
+        if n > u.clip_seen {
+            u.clip_seen = n;
+            if !phone_text.is_empty() && Some(&phone_text) != pc_text.as_ref() {
+                if let Some(c) = pc.as_mut() {
+                    let _ = c.set_text(phone_text.clone());
+                }
+                u.clip_text = Some(phone_text);
+                return;
+            }
+        }
+        if let Some(t) = pc_text.filter(|t| !t.is_empty())
+            && u.clip_text.as_ref() != Some(&t)
+        {
+            s.send(Control::SetClipboard { text: t.clone(), paste: false });
+            u.clip_text = Some(t);
+        }
+    });
+}
+
 /// The status lines while it runs, and noticing it ended by itself.
 fn live(ui: &AppWindow) {
     let (session, buffer, rec) =
         UI.with(|u| (u.borrow().session.clone(), u.borrow().buffer.clone(), u.borrow().recording.clone()));
     let p = ui.global::<Phone>();
     let Some(s) = session else { return };
+    if s.running() {
+        share_clipboard(&s);
+    }
     if !s.running() {
         let why = s.problem.lock().unwrap().clone();
         // The cable came out: carry on over Wi-Fi when the phone is there too.

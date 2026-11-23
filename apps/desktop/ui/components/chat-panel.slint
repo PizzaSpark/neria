@@ -144,6 +144,30 @@ export component ChatPanel inherits Rectangle {
                 }
             }
         }
+        // The same stream live on the other site: its chat with one click.
+        if ClipChat.also-text != "" && !ClipChat.adding: HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: ClipChat.also-text;
+                color: Theme.muted;
+                font-family: Theme.body;
+                font-size: 12px;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            GhostButton {
+                compact: true;
+                text: "Add its chat";
+                icon: "\u{E710}";
+                clicked => { ClipChat.add-also(); }
+            }
+            IconButton {
+                icon: "\u{E711}";
+                label: "Not now";
+                clicked => { ClipChat.dismiss-also(); }
+            }
+        }
         // Another stream's chat alongside (the same channel on YouTube and Twitch).
         if ClipChat.adding: VerticalLayout {
             spacing: 6px;

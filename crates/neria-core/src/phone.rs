@@ -119,6 +119,45 @@ pub fn adb() -> Command {
     cmd
 }
 
+/// Install an app (`.apk`) on the phone, replacing an older copy. A few seconds to a minute.
+pub fn install_apk(serial: &str, apk: &Path) -> Result<()> {
+    let apk = apk.to_string_lossy().into_owned();
+    let out = adb_out(&["-s", serial, "install", "-r", &apk], Duration::from_secs(300))?;
+    if out.contains("Success") {
+        return Ok(());
+    }
+    // adb's reason ("INSTALL_FAILED_VERSION_DOWNGRADE", "…USER_RESTRICTED"…), in words.
+    let why = out.lines().find(|l| l.contains("Failure") || l.contains("INSTALL_")).unwrap_or(out.trim());
+    if why.contains("USER_RESTRICTED") || why.contains("canceled by user") {
+        bail!(
+            "The phone said no: allow installing over USB in Developer options, or tap Install on the phone when it asks"
+        );
+    }
+    if why.contains("VERSION_DOWNGRADE") {
+        bail!("The phone has a newer version of this app");
+    }
+    if why.contains("NO_MATCHING_ABIS") {
+        bail!("This app isn't made for this phone's processor");
+    }
+    bail!("{}", why.trim())
+}
+
+/// Where files sent to the phone go: its Download folder (the Files app shows it).
+pub const SEND_TO: &str = "/sdcard/Download/";
+
+/// Copy files to the phone's Download folder.
+pub fn send_files(serial: &str, files: &[PathBuf]) -> Result<()> {
+    let mut args: Vec<String> = vec!["-s".into(), serial.into(), "push".into()];
+    args.extend(files.iter().map(|f| f.to_string_lossy().into_owned()));
+    args.push(SEND_TO.into());
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let bytes: u64 = files.iter().filter_map(|f| std::fs::metadata(f).ok()).map(|m| m.len()).sum();
+    // Wi-Fi can be slow: a minute plus a minute for every 100 MB.
+    let secs = 60 + bytes / 1_666_666;
+    adb_out(&refs, Duration::from_secs(secs))?;
+    Ok(())
+}
+
 /// Run adb and return what it printed (stdout, then stderr), failing on a non-zero exit or
 /// after `timeout`.
 fn adb_out(args: &[&str], timeout: Duration) -> Result<String> {
@@ -298,6 +337,8 @@ pub struct Prefs {
     /// While mirroring: its screen off, kept awake.
     pub screen_off: bool,
     pub awake: bool,
+    /// While mirroring: text copied on the phone can be pasted here, and the other way.
+    pub clipboard: bool,
     /// The volume on this PC (Neria's own, after the phone's).
     pub volume: f32,
     /// Present: on top, taps shown, its picture smaller and lighter for the Wi-Fi ("Smooth").
@@ -364,6 +405,7 @@ impl Default for Prefs {
             place: Place::Pc,
             screen_off: false,
             awake: true,
+            clipboard: true,
             volume: 1.0,
             on_top: true,
             show_taps: false,
@@ -858,7 +900,21 @@ pub struct Options {
     /// Ask the phone for exactly what scrcpy's own window does (its encoder left on its own
     /// defaults: no size, frame rate or key frame settings), to compare with Present.
     pub plain: bool,
+    /// The phone's camera instead of its screen (Android 12+): its sound is the phone's mic,
+    /// and nothing is tapped (the picture isn't the screen).
+    pub camera: Option<Facing>,
 }
+
+/// Which camera.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Facing {
+    Back,
+    Front,
+}
+
+/// The camera needs Android 12 (SDK 31) or newer.
+pub const CAMERA_SDK: u32 = 31;
 
 impl Default for Options {
     fn default() -> Self {
@@ -876,6 +932,7 @@ impl Default for Options {
             stay_awake: true,
             screen_off: false,
             plain: false,
+            camera: None,
         }
     }
 }
@@ -899,8 +956,16 @@ impl Options {
             "tunnel_forward=true".into(),
             format!("video={}", self.video),
             format!("audio={}", self.audio),
-            format!("control={}", self.control),
+            format!("control={}", self.control && self.camera.is_none()),
         ];
+        if let (true, Some(f)) = (self.video, self.camera) {
+            a.push("video_source=camera".into());
+            a.push(format!("camera_facing={}", if f == Facing::Front { "front" } else { "back" }));
+            // The phone's mic: what the camera hears.
+            if self.audio {
+                a.push("audio_source=mic".into());
+            }
+        }
         if self.video {
             a.push("video_codec=h264".into());
             a.push(format!("video_bit_rate={}", self.bit_rate));
@@ -922,7 +987,7 @@ impl Options {
         if self.audio {
             // 48 kHz stereo s16le: what our speaker and ffmpeg's sound inputs take as is.
             a.push("audio_codec=raw".into());
-            if self.keep_on_phone {
+            if self.keep_on_phone && self.camera.is_none() {
                 a.push("audio_source=playback".into());
                 a.push("audio_dup=true".into());
             }
@@ -1518,6 +1583,11 @@ pub enum Control {
     Rotate,
     /// A key frame now.
     ResetVideo,
+    /// Put text on the phone's clipboard (`paste`: and paste it where the cursor is).
+    SetClipboard {
+        text: String,
+        paste: bool,
+    },
 }
 
 impl Control {
@@ -1571,6 +1641,18 @@ impl Control {
             }
             Control::Rotate => b.push(11),
             Control::ResetVideo => b.push(17),
+            Control::SetClipboard { text, paste } => {
+                // The server reads up to 256 KB of message; cut on a character boundary.
+                let mut end = text.len().min(256 * 1024 - 14);
+                while !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                b.push(9);
+                b.extend(0u64.to_be_bytes());
+                b.push(*paste as u8);
+                b.extend((end as u32).to_be_bytes());
+                b.extend(&text.as_bytes()[..end]);
+            }
         }
         b
     }
@@ -1613,6 +1695,9 @@ pub struct Session {
     pub no_sound: String,
     pub live: Arc<Mutex<Live>>,
     pub started: Instant,
+    /// The phone's clipboard as it last told us (it says so each time it changes), with a
+    /// count that goes up each time.
+    pub clipboard: Arc<Mutex<(u64, String)>>,
     /// Control messages go out from a thread of their own: a phone that stops reading them
     /// must never hold up the caller (the UI thread, for taps).
     control: Mutex<Option<SyncSender<Vec<u8>>>>,
@@ -1624,6 +1709,41 @@ pub struct Session {
     server: Mutex<Option<Child>>,
     forward: Option<u16>,
     sockets: Vec<TcpStream>,
+}
+
+/// scrcpy's device messages until the socket ends: `0` the clipboard (u32 length + UTF-8),
+/// `1` a clipboard ack (u64), `2` UHID output (u16 id, u16 size + bytes).
+fn read_device_messages(r: &mut impl Read, clip: &Mutex<(u64, String)>) -> std::io::Result<()> {
+    loop {
+        let mut t = [0u8; 1];
+        r.read_exact(&mut t)?;
+        match t[0] {
+            0 => {
+                let len = read_u32(r)? as usize;
+                if len > 1 << 20 {
+                    return Ok(());
+                }
+                let mut text = vec![0u8; len];
+                r.read_exact(&mut text)?;
+                let mut c = clip.lock().unwrap();
+                c.0 += 1;
+                c.1 = String::from_utf8_lossy(&text).into_owned();
+            }
+            1 => {
+                let mut b = [0u8; 8];
+                r.read_exact(&mut b)?;
+            }
+            2 => {
+                let mut b = [0u8; 4];
+                r.read_exact(&mut b)?;
+                let size = u16::from_be_bytes([b[2], b[3]]) as usize;
+                let mut d = vec![0u8; size];
+                r.read_exact(&mut d)?;
+            }
+            // Something newer than we know: stop parsing (the caller drains the rest).
+            _ => return Ok(()),
+        }
+    }
 }
 
 fn read_u32(r: &mut impl Read) -> std::io::Result<u32> {
@@ -1759,6 +1879,7 @@ impl Session {
             no_sound: String::new(),
             live: live.clone(),
             started: Instant::now(),
+            clipboard: Arc::new(Mutex::new((0, String::new()))),
             control: Mutex::new(None),
             screen_off: AtomicBool::new(false),
             stop: stop.clone(),
@@ -1892,10 +2013,13 @@ impl Session {
             });
         }
         if let Some(s) = control_sock {
-            // Device messages (clipboard, acks): read and dropped, so the phone never waits on us.
+            // Device messages: the phone's clipboard when it changes is kept; the rest (acks,
+            // UHID) read past, so the phone never waits on us.
             let mut r = s.try_clone()?;
             r.set_read_timeout(None)?;
+            let clip = session.clipboard.clone();
             std::thread::spawn(move || {
+                let _ = read_device_messages(&mut r, &clip);
                 let mut buf = [0u8; 4096];
                 while matches!(r.read(&mut buf), Ok(n) if n > 0) {}
             });
@@ -2678,7 +2802,20 @@ mod tests {
 
     #[test]
     fn server_args() {
+        // The camera: its picture and the mic, never taps.
+        let cam = Options { camera: Some(Facing::Front), ..Options::default() }.server_args(1);
+        assert!(cam.contains(&"video_source=camera".to_string()) && cam.contains(&"camera_facing=front".to_string()));
+        assert!(cam.contains(&"audio_source=mic".to_string()) && cam.contains(&"control=false".to_string()));
         // Standard is what the mirror always asked for.
+        // The clipboard: set on the phone; the phone's own read back (a clip, then an ack).
+        let b = Control::SetClipboard { text: "hé".into(), paste: false }.bytes();
+        assert_eq!(b, [vec![9u8], vec![0; 8], vec![0], vec![0, 0, 0, 3], "hé".as_bytes().to_vec()].concat());
+        let msgs =
+            [vec![0u8, 0, 0, 0, 5], b"hello".to_vec(), vec![1u8], vec![0; 8], vec![0u8, 0, 0, 0, 2], b"ok".to_vec()]
+                .concat();
+        let clip = Mutex::new((0, String::new()));
+        let _ = read_device_messages(&mut msgs.as_slice(), &clip);
+        assert_eq!(*clip.lock().unwrap(), (2, "ok".to_string()));
         let std = Options::default().with_look(quality_look(crate::capture::Quality::Standard));
         assert_eq!((std.max_size, std.max_fps, std.bit_rate), (0, 60, 8_000_000));
         let small = Options::default().with_look(quality_look(crate::capture::Quality::Smaller)).server_args(1);

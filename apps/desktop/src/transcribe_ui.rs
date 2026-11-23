@@ -61,6 +61,8 @@ fn spec(ui: &AppWindow) -> Spec {
             .flatten(),
         output: Output::from_index(t.get_output()),
         times: t.get_times(),
+        translate: false,
+        burn: t.get_can_burn() && t.get_burn(),
     }
 }
 
@@ -76,6 +78,7 @@ fn show_spec(ui: &AppWindow, s: &Spec) {
     t.set_language(lang);
     t.set_output(s.output.index());
     t.set_times(s.times);
+    t.set_burn(s.burn);
 }
 
 /// Settings → Download → Speech to text, and what Get would download.
@@ -129,6 +132,14 @@ fn open_dialog(ui: &AppWindow, target: Target, subtitle: String) {
     STATE.with(|s| s.borrow_mut().target = target.clone());
     t.set_for_download(matches!(target, Target::Download));
     t.set_is_link(matches!(target, Target::Link(_)));
+    // Captions burned into the picture: one video (a link or a download is one too).
+    t.set_can_burn(match &target {
+        Target::Files { paths, .. } => {
+            paths.len() == 1 && neria_core::media::file_info(&paths[0]).is_ok_and(|i| i.width > 0)
+        }
+        Target::Link(_) | Target::Download => true,
+        _ => false,
+    });
     t.set_subtitle(subtitle.into());
     t.set_error("".into());
     t.set_getting(false);
@@ -563,6 +574,10 @@ pub fn demo(ui: &AppWindow, which: &str) {
             t.set_has_selection(true);
             t.set_selection_text("The selection · 00:06–01:20".into());
             t.set_view(VIEW_OPTIONS);
+            // On a video: captions burned into a copy, ticked (its line under it shows).
+            if t.get_can_burn() {
+                t.set_burn(true);
+            }
             match which {
                 "transcribe-work" => {
                     t.set_view(VIEW_WORKING);

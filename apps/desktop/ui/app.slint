@@ -205,6 +205,8 @@ export component AppWindow inherits Window {
     in property <bool> drop-hover;
     in property <string> drop-name;
     in property <int> drop-kind;
+    // The phone a file dropped on the Phone tab goes to ("Pixel 7").
+    in property <string> drop-target;
     in property <string> drop-file;
     in-out property <bool> drop-choice-open;
     in property <bool> drop-several;
@@ -651,6 +653,7 @@ export component AppWindow inherits Window {
         height: root.height - (Screen.compact ? 66px : 0);
         kind: root.drop-kind;
         name: root.drop-name;
+        target: root.drop-target;
         page: root.page;
     }
 

@@ -48,8 +48,20 @@ fn file_kind(path: &Path) -> i32 {
     }
 }
 
+/// Over the Phone tab with a phone there: 4 an app to install, 5 files to send.
+const PHONE_APK: i32 = 4;
+const PHONE_FILES: i32 = 5;
+
 /// Show the drop overlay for a file being dragged over the window.
 fn hover_file(ui: &AppWindow, path: &Path) {
+    if let Some((_, phone)) = crate::phone_ui::drop_target(ui) {
+        let apk = ext(path) == "apk";
+        ui.set_drop_name(if apk { name(path) } else { format!("{} · into its Download folder", name(path)) }.into());
+        ui.set_drop_target(phone.into());
+        ui.set_drop_kind(if apk { PHONE_APK } else { PHONE_FILES });
+        ui.set_drop_hover(true);
+        return;
+    }
     ui.set_drop_name(name(path).into());
     ui.set_drop_kind(file_kind(path));
     ui.set_drop_hover(true);
@@ -99,6 +111,10 @@ pub fn install(ui: &AppWindow) {
             WindowEvent::HoveredFileCancelled => ui.set_drop_hover(false),
             WindowEvent::DroppedFile(path) => {
                 ui.set_drop_hover(false);
+                if let Some((serial, phone)) = crate::phone_ui::drop_target(&ui) {
+                    crate::phone_ui::dropped(&ui, serial, phone, vec![path.clone()]);
+                    return EventResult::PreventDefault;
+                }
                 // Compress takes several files (and folders of them) at once.
                 if ui.get_page() == 2 && ui.get_tools_ready() && (path.is_dir() || compressible(path)) {
                     ui.global::<crate::Compress>().invoke_open_path(path.to_string_lossy().as_ref().into());
@@ -150,6 +166,11 @@ fn compressible(path: &Path) -> bool {
 /// file and folder; the Download page asks to compress or transcribe them all; anywhere
 /// else only the first one opens.
 fn dropped_files(ui: &AppWindow, first: PathBuf, all: Vec<PathBuf>) {
+    // The Phone tab: to the phone (an app installed, the rest into its Download folder).
+    if let Some((serial, phone)) = crate::phone_ui::drop_target(ui) {
+        crate::phone_ui::dropped(ui, serial, phone, all);
+        return;
+    }
     let takes = |p: &PathBuf| p.is_dir() || compressible(p);
     if ui.get_page() == 2 && ui.get_tools_ready() && all.iter().any(takes) {
         for p in all.into_iter().filter(takes) {

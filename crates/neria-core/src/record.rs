@@ -303,7 +303,10 @@ fn save_chat(work: &Path, m: &Manifest, files: &[(PathBuf, f64)]) {
         // known, else from when its first part began (a few pieces behind live).
         let zero = match m.started_at {
             Some(s) => s + starts,
-            None => m.parts.first().map_or(0.0, |p| p.began - LIVE_LAG + p.skip) + (starts - m.parts.first().map_or(0.0, |p| p.offset + p.skip)),
+            None => {
+                m.parts.first().map_or(0.0, |p| p.began - LIVE_LAG + p.skip)
+                    + (starts - m.parts.first().map_or(0.0, |p| p.offset + p.skip))
+            }
         };
         let len = crate::media::duration(file).unwrap_or(f64::MAX);
         let msgs: Vec<_> = all.iter().filter(|x| x.t >= zero - 5.0 && x.t <= zero + len + 5.0).cloned().collect();
@@ -1708,7 +1711,11 @@ pub fn save(work: &Path, out_dir: &Path) -> Result<Saved> {
     let recorded = if recorded > 0.0 { recorded } else { m.parts.iter().map(|p| p.recorded).sum() };
     // Its chat, timed to each file: where in the stream each one begins.
     let file_starts: Vec<f64> = if files.len() == 1 {
-        vec![if early.as_ref().is_some_and(|e| e.until >= 1.0) { 0.0 } else { m.parts.first().map_or(0.0, |p| p.offset + p.skip) }]
+        vec![if early.as_ref().is_some_and(|e| e.until >= 1.0) {
+            0.0
+        } else {
+            m.parts.first().map_or(0.0, |p| p.offset + p.skip)
+        }]
     } else {
         early.iter().map(|_| 0.0).chain(m.parts.iter().map(|p| p.offset + p.skip)).collect()
     };
@@ -1818,7 +1825,29 @@ fn clip_last_as(work: &Path, seconds: f64, ago: f64, out_dir: &Path, title: &str
     }
     args.extend(["-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart"].map(String::from));
     ffmpeg(&args, &out)?;
+    // Its chat too, as the whole recording gets it: what was said while the clip ran.
+    let from = (part.recorded - ago - seconds).max(0.0);
+    let part_zero = match m.started_at {
+        Some(s) => s + part.offset + part.skip,
+        None => part.began - LIVE_LAG + part.skip,
+    };
+    clip_chat(work, &m, part_zero + from, seconds, &out);
     Ok(out)
+}
+
+/// The recording's chat from `zero` (on the clock) for `len` seconds, next to `clip`.
+fn clip_chat(work: &Path, m: &Manifest, zero: f64, len: f64, clip: &Path) {
+    let log = chat_log(work);
+    if !log.is_file() {
+        return;
+    }
+    let msgs: Vec<_> = crate::chat::read_log(&log).into_iter().filter(|x| x.t >= zero && x.t <= zero + len).collect();
+    if msgs.is_empty() {
+        return;
+    }
+    let sites: Vec<crate::chat::Site> = crate::chat::Site::of(&m.url).into_iter().collect();
+    let chat = crate::chat::to_file(msgs, zero, sites, vec![m.title.clone()]);
+    let _ = chat.save(&crate::chat::sidecar_of(clip));
 }
 
 /// The recordings left in `out_dir`-style folders by a crash are saved from the queue

@@ -51,6 +51,9 @@ pub struct ChatJob {
     /// How long the clip was asked to be: a lossless cut that starts on the keyframe before
     /// In comes out longer, and its chat moves by as much.
     pub clip_len: Option<f64>,
+    /// Everything said during the clip (`t` from its start), saved next to it as its
+    /// `.chat.json` ("Save the last" while watching live).
+    pub beside: Vec<Message>,
 }
 
 impl Spec {
@@ -141,14 +144,23 @@ pub fn ass(messages: &[Message], len: f64, width: u32, height: u32) -> String {
         let lines: Vec<String> = shown
             .iter()
             .map(|m| {
-                let c = if m.kind == Kind::Paid { "#F5B14A".to_string() } else { m.color.clone().unwrap_or_else(|| "#8E8C88".into()) };
+                let c = if m.kind == Kind::Paid {
+                    "#F5B14A".to_string()
+                } else {
+                    m.color.clone().unwrap_or_else(|| "#8E8C88".into())
+                };
                 let name = match &m.amount {
                     Some(amt) => format!("{} · {amt}", m.name),
                     None => m.name.clone(),
                 };
                 let text = m.text();
                 let text = if text.trim().is_empty() { m.note.clone().unwrap_or_default() } else { text };
-                format!("{{\\b1\\c{}}}{}{{\\b0\\c&HE9EFF1&}} {}", ass_color(&c), ass_escape(&name), ass_escape(text.trim()))
+                format!(
+                    "{{\\b1\\c{}}}{}{{\\b0\\c&HE9EFF1&}} {}",
+                    ass_color(&c),
+                    ass_escape(&name),
+                    ass_escape(text.trim())
+                )
             })
             .collect();
         s.push_str(&format!("Dialogue: 0,{},{},Chat,,0,0,0,,{}\n", ts_ass(a), ts_ass(b), lines.join("\\N")));
@@ -202,7 +214,14 @@ pub fn place(how: How, w: u32, h: u32) -> Place {
 }
 
 /// Put `messages` into `video`, written to `out`. `on` gets 0–1.
-pub fn put_into(video: &Path, messages: &[Message], spec: &Spec, out: &Path, cancel: &AtomicBool, on: &mut dyn FnMut(f32)) -> Result<()> {
+pub fn put_into(
+    video: &Path,
+    messages: &[Message],
+    spec: &Spec,
+    out: &Path,
+    cancel: &AtomicBool,
+    on: &mut dyn FnMut(f32),
+) -> Result<()> {
     let info = crate::media::file_info(video)?;
     let len = info.duration.max(0.1);
     let ext = out.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_else(|| "mp4".into());
@@ -234,14 +253,20 @@ pub fn put_into(video: &Path, messages: &[Message], spec: &Spec, out: &Path, can
                         (p, "mov_text")
                     }
                 };
-                let mut a: Vec<String> =
-                    ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"].map(String::from).to_vec();
+                let mut a: Vec<String> = ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"]
+                    .map(String::from)
+                    .to_vec();
                 a.push(s(video));
                 a.extend(["-i".into(), s(&file)]);
                 a.extend(["-map", "0", "-map", "1:0", "-c", "copy"].map(String::from));
                 let n = info.subtitles.len();
                 a.extend([format!("-c:s:{n}"), codec.into(), format!("-metadata:s:s:{n}"), "title=Chat".into()]);
-                a.extend([format!("-metadata:s:s:{n}"), "language=und".into(), format!("-disposition:s:{n}"), "0".into()]);
+                a.extend([
+                    format!("-metadata:s:s:{n}"),
+                    "language=und".into(),
+                    format!("-disposition:s:{n}"),
+                    "0".into(),
+                ]);
                 if ext == "mp4" || ext == "mov" {
                     a.extend(["-movflags".into(), "+faststart".into()]);
                 }
@@ -289,7 +314,12 @@ fn burn(
     }
     let len = info.duration.max(0.1);
     let p = place(spec.how, w, h);
-    let look = Look { light: spec.light, overlay: spec.how == How::Overlay, show_site: mixed(messages), pictures: spec.emotes };
+    let look = Look {
+        light: spec.light,
+        overlay: spec.how == How::Overlay,
+        show_site: mixed(messages),
+        pictures: spec.emotes,
+    };
     let fonts = Fonts::load();
     let mut pics = Pictures::fetching();
     // A frame each time chat changes; at most 4 a second (a busy chat comes in bursts).
@@ -326,9 +356,12 @@ fn burn(
             "[0:v]pad={}:{}:0:0:color={bg},setsar=1[b];[b][1:v]overlay={}:{}:eof_action=repeat:format=auto,format=yuv420p[v]",
             p.out_w, p.out_h, p.x, p.y
         ),
-        _ => format!("[0:v]setsar=1[b];[b][1:v]overlay={}:{}:eof_action=repeat:format=auto,format=yuv420p[v]", p.x, p.y),
+        _ => {
+            format!("[0:v]setsar=1[b];[b][1:v]overlay={}:{}:eof_action=repeat:format=auto,format=yuv420p[v]", p.x, p.y)
+        }
     };
-    let mut a: Vec<String> = ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"].map(String::from).to_vec();
+    let mut a: Vec<String> =
+        ["-hide_banner", "-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"].map(String::from).to_vec();
     a.push(s(video));
     a.extend(["-f", "concat", "-safe", "0", "-i"].map(String::from));
     a.push(s(&list_path));
@@ -354,7 +387,13 @@ fn mixed(messages: &[Message]) -> bool {
 
 /// Put chat into `file` itself (a link clip after its download, a saved clip): the file is
 /// replaced; a burned-in .webm becomes an .mp4. Returns where it is now.
-pub fn put_in_place(file: &Path, messages: &[Message], spec: &Spec, cancel: &AtomicBool, on: &mut dyn FnMut(f32)) -> Result<PathBuf> {
+pub fn put_in_place(
+    file: &Path,
+    messages: &[Message],
+    spec: &Spec,
+    cancel: &AtomicBool,
+    on: &mut dyn FnMut(f32),
+) -> Result<PathBuf> {
     if spec.is_none() {
         return Ok(file.to_path_buf());
     }
@@ -394,7 +433,13 @@ mod tests {
     use crate::chat::Part;
 
     fn m(t: f64, name: &str, text: &str) -> Message {
-        Message { t, name: name.into(), parts: vec![Part::Text { s: text.into() }], color: Some("#FF9F43".into()), ..Message::default() }
+        Message {
+            t,
+            name: name.into(),
+            parts: vec![Part::Text { s: text.into() }],
+            color: Some("#FF9F43".into()),
+            ..Message::default()
+        }
     }
 
     #[test]

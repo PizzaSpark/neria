@@ -16,10 +16,22 @@ use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, 
 
 use crate::chat::{Kind, Message, Part};
 
-static INTER_400: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/desktop/ui/fonts/inter-tight-latin-400-normal.ttf"));
-static INTER_600: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/desktop/ui/fonts/inter-tight-latin-600-normal.ttf"));
-static MONO_400: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/desktop/ui/fonts/jetbrains-mono-latin-400-normal.ttf"));
-static GROTESK_700: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/desktop/ui/fonts/space-grotesk-latin-700-normal.ttf"));
+static INTER_400: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../apps/desktop/ui/fonts/inter-tight-latin-400-normal.ttf"
+));
+static INTER_600: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../apps/desktop/ui/fonts/inter-tight-latin-600-normal.ttf"
+));
+static MONO_400: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../apps/desktop/ui/fonts/jetbrains-mono-latin-400-normal.ttf"
+));
+static GROTESK_700: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../apps/desktop/ui/fonts/space-grotesk-latin-700-normal.ttf"
+));
 
 /// Windows' fonts tried, in order, for letters Inter Tight hasn't got.
 const FALLBACKS: &[&str] = &[
@@ -44,7 +56,9 @@ pub struct Fonts {
 fn system_fallbacks() -> &'static [FontArc] {
     static F: OnceLock<Vec<FontArc>> = OnceLock::new();
     F.get_or_init(|| {
-        let dir = std::env::var_os("WINDIR").map(|w| Path::new(&w).join("Fonts")).unwrap_or_else(|| "C:\\Windows\\Fonts".into());
+        let dir = std::env::var_os("WINDIR")
+            .map(|w| Path::new(&w).join("Fonts"))
+            .unwrap_or_else(|| "C:\\Windows\\Fonts".into());
         FALLBACKS
             .iter()
             .filter_map(|n| std::fs::read(dir.join(n)).ok())
@@ -56,7 +70,13 @@ fn system_fallbacks() -> &'static [FontArc] {
 impl Fonts {
     pub fn load() -> Fonts {
         let f = |b: &'static [u8]| FontArc::try_from_slice(b).expect("bundled font");
-        Fonts { regular: f(INTER_400), bold: f(INTER_600), mono: f(MONO_400), tag: f(GROTESK_700), fallback: system_fallbacks() }
+        Fonts {
+            regular: f(INTER_400),
+            bold: f(INTER_600),
+            mono: f(MONO_400),
+            tag: f(GROTESK_700),
+            fallback: system_fallbacks(),
+        }
     }
 
     /// The font that has `c` (the given one, else a fallback), and its glyph.
@@ -118,7 +138,9 @@ impl Pictures {
             self.decoded.insert(url.to_string(), img);
         }
         let img = self.decoded.get(url)?.clone()?;
-        let w = ((img.width() as f32 / img.height().max(1) as f32) * height as f32).round().clamp(1.0, height as f32 * 4.0) as u32;
+        let w = ((img.width() as f32 / img.height().max(1) as f32) * height as f32)
+            .round()
+            .clamp(1.0, height as f32 * 4.0) as u32;
         let small = image::imageops::resize(img.as_ref(), w, height, image::imageops::FilterType::Triangle);
         let mut px = Pixmap::new(w, height)?;
         for (dst, src) in px.pixels_mut().iter_mut().zip(small.pixels()) {
@@ -276,7 +298,17 @@ fn fill_round(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, c: Color)
 }
 
 /// Draw `text` with `font` at (x, baseline), `alpha` over it. Returns the width.
-fn draw_text(px: &mut Pixmap, fonts: &Fonts, font: &FontArc, size: f32, x: f32, baseline: f32, text: &str, c: [u8; 4], alpha: f32) -> f32 {
+fn draw_text(
+    px: &mut Pixmap,
+    fonts: &Fonts,
+    font: &FontArc,
+    size: f32,
+    x: f32,
+    baseline: f32,
+    text: &str,
+    c: [u8; 4],
+    alpha: f32,
+) -> f32 {
     let mut pen = x;
     let mut last: Option<(GlyphId, *const FontArc)> = None;
     let (w, h) = (px.width() as i32, px.height() as i32);
@@ -391,7 +423,11 @@ fn layout(fonts: &Fonts, size: f32, items: Vec<Item>, width: f32, start_x: f32) 
                             let try_w = text_width(fonts, font, size, &format!("{piece}{ch}"));
                             if x + try_w > width && !piece.is_empty() {
                                 let pw = text_width(fonts, font, size, &piece);
-                                out.push(Placed { item: Item::Text { s: std::mem::take(&mut piece), bold, c, w: pw }, x, line });
+                                out.push(Placed {
+                                    item: Item::Text { s: std::mem::take(&mut piece), bold, c, w: pw },
+                                    x,
+                                    line,
+                                });
                                 line += 1;
                                 x = 0.0;
                             }
@@ -443,7 +479,16 @@ fn badge_tag(b: &str) -> Option<&'static str> {
 }
 
 /// The parts of a message as items: tags, the name, then the text and pictures.
-fn items_of(fonts: &Fonts, pics: &mut Pictures, m: &Message, size: f32, pal: &Palette, look: &Look, on: [u8; 4], header_only: bool) -> Vec<Item> {
+fn items_of(
+    fonts: &Fonts,
+    pics: &mut Pictures,
+    m: &Message,
+    size: f32,
+    pal: &Palette,
+    look: &Look,
+    on: [u8; 4],
+    header_only: bool,
+) -> Vec<Item> {
     let mut items = Vec::new();
     let tag_size = size * 0.72;
     let tag = |s: &str, fg: [u8; 4], bg: [u8; 4]| {
@@ -454,11 +499,13 @@ fn items_of(fonts: &Fonts, pics: &mut Pictures, m: &Message, size: f32, pal: &Pa
         let (fg, bg) = match m.site {
             crate::chat::Site::YouTube => (hex("#ff8a80").unwrap(), hex("#3a1a1a").unwrap()),
             crate::chat::Site::Twitch => (hex("#c4a8ff").unwrap(), hex("#2a2140").unwrap()),
+            crate::chat::Site::Kick => (hex("#7ef08a").unwrap(), hex("#16301a").unwrap()),
         };
         let (fg, bg) = if look.light {
             match m.site {
                 crate::chat::Site::YouTube => (hex("#b3261e").unwrap(), hex("#fde0dc").unwrap()),
                 crate::chat::Site::Twitch => (hex("#5b2fb8").unwrap(), hex("#ece4fb").unwrap()),
+                crate::chat::Site::Kick => (hex("#1d6b2a").unwrap(), hex("#dcf6df").unwrap()),
             }
         } else {
             (fg, bg)
@@ -510,21 +557,36 @@ fn items_of(fonts: &Fonts, pics: &mut Pictures, m: &Message, size: f32, pal: &Pa
 
 /// One message drawn at `width` px: what the chat panel shows per row, and what a burned-in
 /// frame stacks. Transparent where nothing is drawn (cards have their own background).
-pub fn message(fonts: &Fonts, pics: &mut Pictures, m: &Message, width: u32, look: &Look, size: f32, extras: &RowExtras) -> Pixmap {
+pub fn message(
+    fonts: &Fonts,
+    pics: &mut Pictures,
+    m: &Message,
+    width: u32,
+    look: &Look,
+    size: f32,
+    extras: &RowExtras,
+) -> Pixmap {
     let pal = palette(look.light);
     let on = if look.overlay { hex("#000000").unwrap() } else { pal.bg };
     let line_h = (size * 1.42).round();
     let pad = (size * 0.45).round();
     let card = m.kind != Kind::Chat;
     let inset = if card || look.overlay { pad } else { 0.0 };
-    let time_w = extras.time.as_ref().map(|t| text_width(fonts, &fonts.mono, size * 0.88, t) + size * 0.6).unwrap_or(0.0);
+    let time_w =
+        extras.time.as_ref().map(|t| text_width(fonts, &fonts.mono, size * 0.88, t) + size * 0.6).unwrap_or(0.0);
     let body_x = inset + time_w;
     let body_w = (width as f32 - body_x - inset).max(size * 4.0);
 
     // A card (Super Chat, sub, raid): the site's line, the name (and amount), then the text.
     let mut note_lines: Vec<String> = Vec::new();
     if let Some(note) = m.note.as_ref().filter(|_| card) {
-        let (placed, _) = layout(fonts, size * 0.9, vec![Item::Text { s: note.clone(), bold: false, c: pal.muted, w: 0.0 }], body_w, 0.0);
+        let (placed, _) = layout(
+            fonts,
+            size * 0.9,
+            vec![Item::Text { s: note.clone(), bold: false, c: pal.muted, w: 0.0 }],
+            body_w,
+            0.0,
+        );
         let mut by_line: Vec<String> = Vec::new();
         for p in placed {
             if let Item::Text { s, .. } = p.item {
@@ -537,7 +599,13 @@ pub fn message(fonts: &Fonts, pics: &mut Pictures, m: &Message, width: u32, look
         note_lines = by_line;
     }
     let mut items = items_of(fonts, pics, m, size, &pal, look, on, false);
-    let note_c = if m.kind == Kind::Paid { pal.warn } else if m.kind == Kind::Member { pal.ok } else { pal.muted };
+    let note_c = if m.kind == Kind::Paid {
+        pal.warn
+    } else if m.kind == Kind::Member {
+        pal.ok
+    } else {
+        pal.muted
+    };
     // On a card the name sits on its own line, the text under it.
     let mut header: Vec<Item> = Vec::new();
     if card {
@@ -607,7 +675,14 @@ pub fn message(fonts: &Fonts, pics: &mut Pictures, m: &Message, width: u32, look
                     if let Some(pic) = pics.get(&url, pic_h) {
                         let top = vpad + y_extra + line as f32 * line_h + (line_h - pic_h as f32) / 2.0;
                         let paint = PixmapPaint { opacity: alpha, ..PixmapPaint::default() };
-                        px.draw_pixmap(x.round() as i32, top.round() as i32, pic.as_ref().as_ref(), &paint, Transform::identity(), None);
+                        px.draw_pixmap(
+                            x.round() as i32,
+                            top.round() as i32,
+                            pic.as_ref().as_ref(),
+                            &paint,
+                            Transform::identity(),
+                            None,
+                        );
                     }
                 }
                 Item::Tag { s, fg, bg, w } => {
@@ -630,7 +705,16 @@ pub fn message(fonts: &Fonts, pics: &mut Pictures, m: &Message, width: u32, look
 /// bottom, as many as fit. `shown` is what's been said by then (oldest first). A side panel
 /// has Neria's background; over the picture, lines fade out after a while and few are kept.
 #[allow(clippy::too_many_arguments)]
-pub fn panel(fonts: &Fonts, pics: &mut Pictures, shown: &[Message], now: f64, width: u32, height: u32, look: &Look, size: f32) -> Pixmap {
+pub fn panel(
+    fonts: &Fonts,
+    pics: &mut Pictures,
+    shown: &[Message],
+    now: f64,
+    width: u32,
+    height: u32,
+    look: &Look,
+    size: f32,
+) -> Pixmap {
     let pal = palette(look.light);
     let mut px = Pixmap::new(width.max(1), height.max(1)).unwrap();
     let pad = (size * 0.7).round();
@@ -693,7 +777,13 @@ mod tests {
     use crate::chat::Site;
 
     fn msg(name: &str, text: &str) -> Message {
-        Message { name: name.into(), site: Site::Twitch, parts: vec![Part::Text { s: text.into() }], color: Some("#0E0D0F".into()), ..Message::default() }
+        Message {
+            name: name.into(),
+            site: Site::Twitch,
+            parts: vec![Part::Text { s: text.into() }],
+            color: Some("#0E0D0F".into()),
+            ..Message::default()
+        }
     }
 
     #[test]
@@ -702,7 +792,15 @@ mod tests {
         let mut pics = Pictures::default();
         let look = Look::default();
         let short = message(&fonts, &mut pics, &msg("kaiyo", "CLEAN"), 300, &look, 14.0, &RowExtras::default());
-        let long = message(&fonts, &mut pics, &msg("kaiyo", &"that was so clean ".repeat(8)), 300, &look, 14.0, &RowExtras::default());
+        let long = message(
+            &fonts,
+            &mut pics,
+            &msg("kaiyo", &"that was so clean ".repeat(8)),
+            300,
+            &look,
+            14.0,
+            &RowExtras::default(),
+        );
         assert_eq!(short.width(), 300);
         assert!(long.height() > short.height() * 2, "{} vs {}", long.height(), short.height());
         let word = message(&fonts, &mut pics, &msg("x", &"A".repeat(200)), 120, &look, 14.0, &RowExtras::default());

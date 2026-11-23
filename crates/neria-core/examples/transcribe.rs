@@ -9,6 +9,8 @@
 //! - `--lang <code>`: `en`, `tl`… (default: detect)
 //! - `--srt` (captions only) / `--both` (text and captions); default: text
 //! - `--no-times`: no `[01:23]` before each line of the text
+//! - `--translate`: into English, whatever is spoken
+//! - `--burn`: also a copy of the video with the captions burned into the picture
 //! - `--range <start> <end>`: only that part of the (one) file, in seconds
 //! - `--out <dir>`: save there (default: next to the first file)
 
@@ -84,7 +86,13 @@ fn main() -> anyhow::Result<()> {
     let req = Request {
         inputs,
         range,
-        spec: Spec { language: after("--lang", 1), output, times: !flag("--no-times") },
+        spec: Spec {
+            language: after("--lang", 1),
+            output,
+            times: !flag("--no-times"),
+            translate: flag("--translate"),
+            burn: flag("--burn"),
+        },
         out_dir: after("--out", 1).map(PathBuf::from),
     };
     let t0 = Instant::now();

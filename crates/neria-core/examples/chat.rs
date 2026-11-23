@@ -3,6 +3,7 @@
 //!
 //! Modes:
 //! - `live <seconds>`: read a live stream's chat that long, print each message
+//! - `also`: whether the same stream is live on the other site now (a multi-stream), and where
 //! - `replay [out.chat.json]`: a past stream's whole chat (YouTube replay, Twitch past broadcast)
 //! - `draw <file.chat.json> <out.png> [--width 420] [--height 900] [--at <s>] [--overlay] [--light]`:
 //!   the burned-in look of the chat at second `at` (the link is ignored, pass `-`)
@@ -26,12 +27,12 @@ fn main() -> anyhow::Result<()> {
         eprintln!("usage: chat <link> live <seconds> | replay [out] | draw … | into …");
         std::process::exit(2);
     };
-    let look = chat_draw::Look {
-        light: flag("--light"),
-        overlay: flag("--overlay"),
-        ..chat_draw::Look::default()
-    };
+    let look = chat_draw::Look { light: flag("--light"), overlay: flag("--overlay"), ..chat_draw::Look::default() };
     match mode.as_str() {
+        "also" => {
+            let t = Instant::now();
+            println!("{:?} ({:.1} s)", chat::also_live(url), t.elapsed().as_secs_f64());
+        }
         "live" => {
             let secs: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(20);
             let live = LiveChat::start(url, None).ok_or_else(|| anyhow::anyhow!("not a YouTube or Twitch link"))?;
@@ -67,7 +68,8 @@ fn main() -> anyhow::Result<()> {
                 print_msg(m);
             }
             let kinds = f.messages.iter().filter(|m| m.kind != chat::Kind::Chat).count();
-            let emotes = f.messages.iter().filter(|m| m.parts.iter().any(|p| matches!(p, chat::Part::Emote { .. }))).count();
+            let emotes =
+                f.messages.iter().filter(|m| m.parts.iter().any(|p| matches!(p, chat::Part::Emote { .. }))).count();
             println!(
                 "-- {} messages ({kinds} paid/member/notice, {emotes} with pictures), last at {:.0}s, in {:.1}s",
                 f.messages.len(),

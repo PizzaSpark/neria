@@ -271,11 +271,16 @@ pub struct Spec {
     pub output: Output,
     /// `[01:23]` before each line of the `.txt`.
     pub times: bool,
+    /// Into English, whatever is spoken (Whisper's own translation).
+    pub translate: bool,
+    /// Also a copy of the video with the captions burned into the picture (one video file:
+    /// the part transcribed), for apps that don't show `.srt` captions.
+    pub burn: bool,
 }
 
 impl Default for Spec {
     fn default() -> Self {
-        Spec { language: None, output: Output::Text, times: true }
+        Spec { language: None, output: Output::Text, times: true, translate: false, burn: false }
     }
 }
 
@@ -395,10 +400,11 @@ pub fn run(req: &Request, cancel: &AtomicBool, mut on: impl FnMut(Progress)) -> 
         let lang = req.spec.language.clone().filter(|l| !l.is_empty());
         let json_base = work.join("out");
         let st = status();
-        let mut out = whisper(&wav, &json_base, lang.as_deref(), false, cancel, &mut on);
+        let tr = req.spec.translate;
+        let mut out = whisper(&wav, &json_base, lang.as_deref(), tr, false, cancel, &mut on);
         // The NVIDIA pack on a card or driver it can't use: the same pack runs on the CPU.
         if out.is_err() && st.gpu && !cancel.load(Ordering::SeqCst) {
-            out = whisper(&wav, &json_base, lang.as_deref(), true, cancel, &mut on);
+            out = whisper(&wav, &json_base, lang.as_deref(), tr, true, cancel, &mut on);
         }
         out?;
         let raw = fs::read(json_base.with_extension("json")).context("Whisper wrote nothing")?;
@@ -407,7 +413,8 @@ pub fn run(req: &Request, cancel: &AtomicBool, mut on: impl FnMut(Progress)) -> 
             s.start += offset;
             s.end += offset;
         }
-        let language = lang.unwrap_or(detected);
+        // Translated: what's written is English, whatever was spoken.
+        let language = if tr { "en".to_string() } else { lang.unwrap_or(detected) };
 
         let dir = req.out_dir.clone().unwrap_or_else(|| first.parent().map(Path::to_path_buf).unwrap_or_default());
         let stem = crate::music::sanitize(&first.file_stem().unwrap_or_default().to_string_lossy());
@@ -440,6 +447,17 @@ pub fn run(req: &Request, cancel: &AtomicBool, mut on: impl FnMut(Progress)) -> 
             let path = crate::clip::unique_path(&dir, &base, "srt");
             fs::write(&path, to_srt(&segs)).with_context(|| format!("saving {}", path.display()))?;
             files.push(path);
+        }
+        // The captions in the picture: the part transcribed, as its own video.
+        if req.spec.burn
+            && req.inputs.len() == 1
+            && crate::media::file_info(first).is_ok_and(|i| i.width > 0)
+            && !segs.is_empty()
+        {
+            on(Progress { fraction: 0.99, stage: Stage::Preparing });
+            let out = crate::clip::unique_path(&dir, &format!("{base} (captions)"), "mp4");
+            burn(first, req.range, &segs, &work, &out, cancel)?;
+            files.push(out);
         }
         on(Progress { fraction: 1.0, stage: Stage::Listening(String::new()) });
         Ok(Done { files, language, segments: segs.len() })
@@ -531,10 +549,84 @@ fn threads() -> usize {
 }
 
 /// Run whisper-cli on `wav`, writing `<json_base>.json`.
+/// `input` (or its `range`) with `segs` burned into the picture, into `out` (H.264, the
+/// sound copied as AAC). The captions are written into `work` and read from there (ffmpeg's
+/// subtitles filter can't take a Windows path with its drive colon unescaped).
+fn burn(
+    input: &Path,
+    range: Option<(f64, f64)>,
+    segs: &[Segment],
+    work: &Path,
+    out: &Path,
+    cancel: &AtomicBool,
+) -> Result<()> {
+    let from = range.map(|r| r.0).unwrap_or(0.0);
+    let shifted: Vec<Segment> = segs
+        .iter()
+        .map(|s| Segment { start: (s.start - from).max(0.0), end: (s.end - from).max(0.0), text: s.text.clone() })
+        .collect();
+    fs::write(work.join("captions.srt"), to_srt(&shifted))?;
+    let input = std::path::absolute(input).unwrap_or_else(|_| input.to_path_buf());
+    let out_abs = std::path::absolute(out).unwrap_or_else(|_| out.to_path_buf());
+    let mut cmd = proc::command(paths::tool("ffmpeg"));
+    cmd.current_dir(work).args(["-hide_banner", "-v", "error", "-nostdin", "-y"]);
+    if let Some((a, b)) = range {
+        cmd.args(["-ss", &format!("{a:.3}"), "-to", &format!("{b:.3}")]);
+    }
+    cmd.arg("-i").arg(&input);
+    // White words on a soft dark outline, near the bottom: readable on any picture.
+    cmd.args([
+        "-vf",
+        "subtitles=captions.srt:force_style='FontName=Arial,FontSize=18,Bold=1,Outline=2,Shadow=0,MarginV=24'",
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0?",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+    ]);
+    cmd.arg(&out_abs);
+    let mut child = cmd.stdout(Stdio::null()).stderr(Stdio::piped()).spawn().context("starting ffmpeg")?;
+    proc::end_with_neria(&child);
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            let _ = child.kill();
+            let _ = fs::remove_file(&out_abs);
+            bail!("Cancelled");
+        }
+        if let Some(status) = child.try_wait()? {
+            if status.success() {
+                return Ok(());
+            }
+            let mut err = String::new();
+            if let Some(mut e) = child.stderr.take() {
+                use std::io::Read as _;
+                let _ = e.read_to_string(&mut err);
+            }
+            let _ = fs::remove_file(&out_abs);
+            bail!("Couldn't burn the captions in: {}", err.lines().last().unwrap_or("ffmpeg failed").trim());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+}
+
 fn whisper(
     wav: &Path,
     json_base: &Path,
     lang: Option<&str>,
+    translate: bool,
     no_gpu: bool,
     cancel: &AtomicBool,
     on: &mut impl FnMut(Progress),
@@ -562,6 +654,9 @@ fn whisper(
     }
     if no_gpu {
         cmd.arg("-ng");
+    }
+    if translate {
+        cmd.arg("-tr");
     }
     let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().context("starting Whisper")?;
     proc::end_with_neria(&child);

@@ -357,6 +357,10 @@ export global ClipChat {
     callback remove-chats();
     in property <bool> can-add;
     in-out property <bool> adding;
+    // The same stream live on the other site now ("Also live on Twitch"): Add its chat, or ×.
+    in property <string> also-text;
+    callback add-also();
+    callback dismiss-also();
 
     // Chat in this clip (the dialog).
     in-out property <bool> open;
@@ -731,6 +735,9 @@ export global Transcribe {
     // 0 text, 1 captions (.srt), 2 both
     in-out property <int> output;
     in-out property <bool> times: true;
+    // One video: also a copy with the captions burned into the picture.
+    in property <bool> can-burn;
+    in-out property <bool> burn;
     // Getting it: an NVIDIA card makes it much faster with its own pack.
     in property <bool> nvidia;
     in-out property <bool> use-gpu: true;
@@ -1080,6 +1087,12 @@ export global Phone {
     // While mirroring: the phone's screen off, kept awake.
     in-out property <bool> screen-off;
     in-out property <bool> awake: true;
+    in-out property <bool> clipboard: true;
+    // What the mirror shows: 0 the screen, 1 the back camera, 2 the front one (Android 12+:
+    // `camera-why` says why not when it can't).
+    in-out property <int> show;
+    in property <string> camera-why;
+    callback show-changed();
     // Present: on top, taps shown, kept awake.
     in-out property <bool> on-top: true;
     in-out property <bool> show-taps;

@@ -37,6 +37,7 @@ pub enum Site {
     #[default]
     YouTube,
     Twitch,
+    Kick,
 }
 
 impl Site {
@@ -46,6 +47,8 @@ impl Site {
             Some(Site::YouTube)
         } else if host == "twitch.tv" || host.ends_with(".twitch.tv") {
             Some(Site::Twitch)
+        } else if host == "kick.com" {
+            Some(Site::Kick)
         } else {
             None
         }
@@ -56,6 +59,7 @@ impl Site {
         match self {
             Site::YouTube => "YT",
             Site::Twitch => "TW",
+            Site::Kick => "KI",
         }
     }
 
@@ -63,6 +67,7 @@ impl Site {
         match self {
             Site::YouTube => "YouTube",
             Site::Twitch => "Twitch",
+            Site::Kick => "Kick",
         }
     }
 }
@@ -83,10 +88,15 @@ pub enum Kind {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "k", rename_all = "lowercase")]
 pub enum Part {
-    Text { s: String },
+    Text {
+        s: String,
+    },
     /// A picture in the text: an emote or an emoji (`name` is its text, for search and
     /// where the picture can't be had).
-    Emote { name: String, url: String },
+    Emote {
+        name: String,
+        url: String,
+    },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -228,8 +238,25 @@ pub fn supported(url: &str) -> bool {
     match Site::of(url) {
         Some(Site::Twitch) => crate::ttv::login_of(url).is_some() || twitch_video_id(url).is_some(),
         Some(Site::YouTube) => true,
+        // Kick's channel API turns Neria's own requests away (Cloudflare, HTTP 403) though
+        // its chat itself is open: the reader is here (`kick_live`) for when the chat room can
+        // be found another way. Until then a Kick link offers no chat.
+        Some(Site::Kick) => false,
         None => false,
     }
+}
+
+/// A Kick channel's name from its link (`kick.com/xqc`; not a past stream's `/videos/`).
+pub fn kick_slug(url: &str) -> Option<String> {
+    if Site::of(url) != Some(Site::Kick) {
+        return None;
+    }
+    let path = url.split("//").nth(1).unwrap_or(url).split_once('/')?.1;
+    let mut segs = path.split(['?', '#']).next()?.split('/').filter(|s| !s.is_empty());
+    let slug = segs.next()?;
+    let reserved = ["video", "videos", "categories", "category", "browse", "following", "search", "clips", "api"];
+    let ok = slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') && !reserved.contains(&slug);
+    (ok && segs.next().is_none()).then(|| slug.to_ascii_lowercase())
 }
 
 /// Whether a (non-live) link kept its chat: a Twitch past broadcast, or a YouTube video
@@ -237,8 +264,11 @@ pub fn supported(url: &str) -> bool {
 pub fn has_replay(url: &str) -> bool {
     match Site::of(url) {
         Some(Site::Twitch) => twitch_video_id(url).is_some(),
+        Some(Site::Kick) => false,
         Some(Site::YouTube) => match youtube_id(url) {
-            Some(id) => yt_get(&format!("https://www.youtube.com/watch?v={id}")).is_ok_and(|h| h.contains("liveChatRenderer")),
+            Some(id) => {
+                yt_get(&format!("https://www.youtube.com/watch?v={id}")).is_ok_and(|h| h.contains("liveChatRenderer"))
+            }
             None => false,
         },
         None => false,
@@ -385,7 +415,8 @@ pub fn emojify(parts: Vec<Part>) -> Vec<Part> {
         while i < chars.len() {
             let c = chars[i];
             // Text-style symbols (©, ™, ♥ without the emoji mark) stay text.
-            let wants = is_emoji_start(c) && ((c as u32) >= 0x1F000 || chars.get(i + 1).is_some_and(|n| *n as u32 == 0xFE0F));
+            let wants =
+                is_emoji_start(c) && ((c as u32) >= 0x1F000 || chars.get(i + 1).is_some_and(|n| *n as u32 == 0xFE0F));
             if !wants {
                 text.push(c);
                 i += 1;
@@ -443,8 +474,10 @@ impl Emotes {
             bttv(&v["sharedEmotes"], &mut map);
         }
         // FrankerFaceZ.
-        for url in ["https://api.frankerfacez.com/v1/set/global".to_string(), format!("https://api.frankerfacez.com/v1/room/id/{room_id}")]
-        {
+        for url in [
+            "https://api.frankerfacez.com/v1/set/global".to_string(),
+            format!("https://api.frankerfacez.com/v1/room/id/{room_id}"),
+        ] {
             if let Some(v) = get(&url)
                 && let Some(sets) = v["sets"].as_object()
             {
@@ -533,13 +566,18 @@ pub fn emote_file(url: &str) -> Option<PathBuf> {
     }
     // A miss is remembered for a while, so a gone picture isn't asked for every frame.
     let miss = path.with_extension("miss");
-    if miss.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().unwrap_or_default() < Duration::from_secs(3600)) {
+    if miss
+        .metadata()
+        .and_then(|m| m.modified())
+        .is_ok_and(|t| t.elapsed().unwrap_or_default() < Duration::from_secs(3600))
+    {
         return None;
     }
     let _ = std::fs::create_dir_all(&dir);
     let got = (|| -> Option<Vec<u8>> {
         // Asked for PNG/GIF: WebP and AVIF answers can't all be read.
-        let resp = crate::web::client().ok()?.get(url).header("Accept", "image/png,image/gif,image/*;q=0.5").send().ok()?;
+        let resp =
+            crate::web::client().ok()?.get(url).header("Accept", "image/png,image/gif,image/*;q=0.5").send().ok()?;
         resp.status().is_success().then_some(())?;
         let bytes = resp.bytes().ok()?;
         (bytes.len() > 16).then(|| bytes.to_vec())
@@ -649,7 +687,10 @@ enum Irc {
     Message(Message),
     /// Messages to take out (a ban, a timeout, a deleted message): by id, or every one of a
     /// name.
-    Remove { id: Option<String>, name: Option<String> },
+    Remove {
+        id: Option<String>,
+        name: Option<String>,
+    },
     Room(String),
     Ping(String),
     Reconnect,
@@ -678,7 +719,10 @@ fn parse_irc(line: &str) -> Irc {
                 text = t.to_string();
             }
             let name = get("display-name").or_else(|| get("login")).unwrap_or_else(|| "someone".into());
-            let t = get("tmi-sent-ts").and_then(|v| v.parse::<f64>().ok()).map(|ms| ms / 1000.0).unwrap_or_else(crate::live::now);
+            let t = get("tmi-sent-ts")
+                .and_then(|v| v.parse::<f64>().ok())
+                .map(|ms| ms / 1000.0)
+                .unwrap_or_else(crate::live::now);
             let mut m = Message {
                 t,
                 id: get("id").unwrap_or_default(),
@@ -746,7 +790,8 @@ fn yt_runs(v: &Value) -> Vec<Part> {
                 e["emojiId"].as_str().unwrap_or("").to_string()
             };
             match url {
-                Some(u) => out.push(Part::Emote { name, url: if u.starts_with("//") { format!("https:{u}") } else { u.into() } }),
+                Some(u) => out
+                    .push(Part::Emote { name, url: if u.starts_with("//") { format!("https:{u}") } else { u.into() } }),
                 None => out.push(Part::Text { s: name }),
             }
         }
@@ -804,7 +849,9 @@ fn parse_yt_item(item: &Value) -> Option<Message> {
         "liveChatPaidStickerRenderer" => {
             m.kind = Kind::Paid;
             m.amount = Some(yt_text(&r["purchaseAmountText"]));
-            if let Some(u) = r["sticker"]["thumbnails"].as_array().and_then(|t| t.last()).and_then(|t| t["url"].as_str()) {
+            if let Some(u) =
+                r["sticker"]["thumbnails"].as_array().and_then(|t| t.last()).and_then(|t| t["url"].as_str())
+            {
                 let url = if u.starts_with("//") { format!("https:{u}") } else { u.to_string() };
                 m.parts = vec![Part::Emote { name: "sticker".into(), url }];
             }
@@ -911,10 +958,14 @@ impl LiveChat {
         let stop = Arc::new(AtomicBool::new(false));
         let (s, st, url) = (shared.clone(), stop.clone(), url.to_string());
         std::thread::spawn(move || {
-            let mut sink = Sink { shared: s.clone(), log: log.and_then(|p| std::fs::OpenOptions::new().create(true).append(true).open(p).ok()) };
+            let mut sink = Sink {
+                shared: s.clone(),
+                log: log.and_then(|p| std::fs::OpenOptions::new().create(true).append(true).open(p).ok()),
+            };
             let end = match site {
                 Site::Twitch => twitch_live(&url, &st, &mut sink),
                 Site::YouTube => youtube_live(&url, &st, &mut sink),
+                Site::Kick => kick_live(&url, &st, &mut sink),
             };
             if !st.load(Ordering::SeqCst) {
                 sink.state(LiveState::Off(match end {
@@ -1031,7 +1082,10 @@ fn twitch_live(url: &str, stop: &AtomicBool, sink: &mut Sink) -> Result<()> {
             let mut s = TcpStream::connect("irc.chat.twitch.tv:6667")?;
             s.set_read_timeout(Some(Duration::from_millis(500)))?;
             let nick = format!("justinfan{}", 10000 + (crate::live::now() as u64 % 80000));
-            write!(s, "CAP REQ :twitch.tv/tags twitch.tv/commands\r\nPASS SCHMOOPIIE\r\nNICK {nick}\r\nJOIN #{login}\r\n")?;
+            write!(
+                s,
+                "CAP REQ :twitch.tv/tags twitch.tv/commands\r\nPASS SCHMOOPIIE\r\nNICK {nick}\r\nJOIN #{login}\r\n"
+            )?;
             let mut reader = BufReader::new(s.try_clone()?);
             let debug = std::env::var_os("NERIA_CHAT_DEBUG").is_some();
             let mut line = String::new();
@@ -1078,6 +1132,143 @@ fn twitch_live(url: &str, stop: &AtomicBool, sink: &mut Sink) -> Result<()> {
                             last_data = Instant::now();
                         }
                     }
+                    Err(e) => return Err(e.into()),
+                }
+                if !batch.is_empty() && last_flush.elapsed() >= Duration::from_millis(200) {
+                    sink.push(std::mem::take(&mut batch));
+                    last_flush = Instant::now();
+                }
+            }
+        })();
+        match run {
+            Ok(true) => return Ok(()),
+            Ok(false) => failures = 0,
+            Err(e) => {
+                failures += 1;
+                sink.state(LiveState::Retrying(format!("Chat dropped: {e}")));
+            }
+        }
+        sleep_unless(stop, Duration::from_secs([1, 2, 5, 10, 30][failures.min(4) as usize]));
+    }
+    Ok(())
+}
+
+// ───────────── Kick ─────────────
+
+/// Kick's own public Pusher app (the key its web page uses for chat; anyone can listen).
+const KICK_PUSHER: &str =
+    "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false";
+
+/// `[emote:37226:KEKW]` in a Kick message → the emote's picture.
+fn kick_parts(content: &str) -> Vec<Part> {
+    let mut parts = Vec::new();
+    let mut rest = content;
+    while let Some(at) = rest.find("[emote:") {
+        let after = &rest[at + 7..];
+        let Some(end) = after.find(']') else { break };
+        let inner = &after[..end];
+        let Some((id, name)) = inner.split_once(':') else { break };
+        if !id.chars().all(|c| c.is_ascii_digit()) {
+            break;
+        }
+        if at > 0 {
+            parts.push(Part::Text { s: rest[..at].to_string() });
+        }
+        parts.push(Part::Emote { name: name.to_string(), url: format!("https://files.kick.com/emotes/{id}/fullsize") });
+        rest = &after[end + 1..];
+    }
+    if !rest.is_empty() {
+        parts.push(Part::Text { s: rest.to_string() });
+    }
+    emojify(parts)
+}
+
+/// A Kick chat message (Pusher's `ChatMessageEvent` data) as Neria's.
+fn kick_message(d: &Value, now: f64) -> Option<Message> {
+    let sender = &d["sender"];
+    let name = sender["username"].as_str()?.to_string();
+    let content = d["content"].as_str()?;
+    let badges: Vec<String> = sender["identity"]["badges"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|b| b["type"].as_str())
+                .map(|t| match t {
+                    "og" | "founder" | "sub_gifter" => "subscriber".to_string(),
+                    "staff" => "verified".to_string(),
+                    t => t.to_string(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(Message {
+        t: now,
+        id: d["id"].as_str().map(String::from).unwrap_or_default(),
+        site: Site::Kick,
+        name,
+        color: sender["identity"]["color"].as_str().filter(|c| c.starts_with('#')).map(String::from),
+        badges,
+        parts: kick_parts(content),
+        ..Message::default()
+    })
+}
+
+fn kick_live(url: &str, stop: &AtomicBool, sink: &mut Sink) -> Result<()> {
+    let slug = kick_slug(url).context("Not a Kick channel")?;
+    let resp = crate::web::client()?
+        .get(format!("https://kick.com/api/v2/channels/{slug}"))
+        .header("Accept", "application/json")
+        .send()?;
+    let status = resp.status();
+    if !status.is_success() {
+        bail!("Kick didn't say where this channel's chat is (HTTP {})", status.as_u16());
+    }
+    let info: Value = serde_json::from_str(&resp.text()?).unwrap_or(Value::Null);
+    let room = info["chatroom"]["id"].as_i64().context("Kick didn't say where this channel's chat is")?;
+    *sink.shared.channel.lock().unwrap() = info["user"]["username"].as_str().unwrap_or(&slug).to_string();
+    let mut failures = 0u32;
+    while !stop.load(Ordering::SeqCst) {
+        let run = (|| -> Result<bool> {
+            let (mut ws, _) = tungstenite::connect(KICK_PUSHER)?;
+            if let tungstenite::stream::MaybeTlsStream::NativeTls(s) = ws.get_mut() {
+                s.get_mut().set_read_timeout(Some(Duration::from_millis(500)))?;
+            }
+            let sub = json!({ "event": "pusher:subscribe", "data": { "auth": "", "channel": format!("chatrooms.{room}.v2") } });
+            ws.send(tungstenite::Message::Text(sub.to_string().into()))?;
+            let mut batch = Vec::new();
+            let mut last_flush = Instant::now();
+            loop {
+                if stop.load(Ordering::SeqCst) {
+                    let _ = ws.close(None);
+                    return Ok(true);
+                }
+                match ws.read() {
+                    Ok(tungstenite::Message::Text(text)) => {
+                        let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+                        let event = v["event"].as_str().unwrap_or("");
+                        // Pusher's data is JSON inside a string.
+                        let data: Value =
+                            v["data"].as_str().and_then(|d| serde_json::from_str(d).ok()).unwrap_or(Value::Null);
+                        match event {
+                            "pusher:ping" => ws.send(tungstenite::Message::Text(
+                                json!({ "event": "pusher:pong", "data": {} }).to_string().into(),
+                            ))?,
+                            "pusher_internal:subscription_succeeded" => sink.state(LiveState::On),
+                            "App\\Events\\ChatMessageEvent" => {
+                                if let Some(m) = kick_message(&data, crate::live::now()) {
+                                    batch.push(m);
+                                }
+                            }
+                            "App\\Events\\MessageDeletedEvent" => sink.remove(data["message"]["id"].as_str(), None),
+                            "App\\Events\\UserBannedEvent" => sink.remove(None, data["user"]["username"].as_str()),
+                            "pusher:error" => bail!("{}", data["message"].as_str().unwrap_or("Kick's chat refused")),
+                            _ => {}
+                        }
+                    }
+                    Ok(tungstenite::Message::Close(_)) => return Ok(false),
+                    Ok(_) => {}
+                    Err(tungstenite::Error::Io(e))
+                        if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
                     Err(e) => return Err(e.into()),
                 }
                 if !batch.is_empty() && last_flush.elapsed() >= Duration::from_millis(200) {
@@ -1159,10 +1350,8 @@ fn yt_start(id: &str) -> Result<YtStart> {
     // The view menu's second item is "Live chat" (everything); the default is "Top chat".
     let items = &r["header"]["liveChatHeaderRenderer"]["viewSelector"]["sortFilterSubMenuRenderer"]["subMenuItems"];
     let all = items[1]["continuation"]["reloadContinuationData"]["continuation"].as_str();
-    let first = r["continuations"][0]
-        .as_object()
-        .and_then(|o| o.values().next())
-        .and_then(|c| c["continuation"].as_str());
+    let first =
+        r["continuations"][0].as_object().and_then(|o| o.values().next()).and_then(|c| c["continuation"].as_str());
     let continuation = all.or(first).context("This stream's chat is off")?.to_string();
     let mut initial = Vec::new();
     let mut removed = Vec::new();
@@ -1210,7 +1399,11 @@ fn youtube_live(url: &str, stop: &AtomicBool, sink: &mut Sink) -> Result<()> {
                 "continuation": continuation,
             });
             let resp = client.post(&endpoint).header("Content-Type", "application/json").body(body.to_string()).send();
-            let v: Value = match resp.and_then(|r| r.text()).map_err(anyhow::Error::from).and_then(|t| Ok(serde_json::from_str(&t)?)) {
+            let v: Value = match resp
+                .and_then(|r| r.text())
+                .map_err(anyhow::Error::from)
+                .and_then(|t| Ok(serde_json::from_str(&t)?))
+            {
                 Ok(v) => v,
                 Err(e) => {
                     failures += 1;
@@ -1291,7 +1484,8 @@ pub fn fetch_replay(url: &str, duration: Option<f64>, cancel: &AtomicBool, on: P
     match Site::of(url) {
         Some(Site::YouTube) => youtube_replay(url, duration, cancel, on),
         Some(Site::Twitch) => twitch_replay(url, duration, cancel, on),
-        None => bail!("Neria can read chat from YouTube and Twitch"),
+        Some(Site::Kick) => bail!("Neria reads Kick's chat while it's live, not a past stream's"),
+        None => bail!("Neria can read chat from YouTube, Twitch and Kick"),
     }
 }
 
@@ -1300,9 +1494,18 @@ fn youtube_replay(url: &str, duration: Option<f64>, cancel: &AtomicBool, on: Pro
     let dir = crate::paths::cache_dir().join(format!("chat-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
-    let mut args: Vec<String> = ["--encoding", "utf-8", "--skip-download", "--write-subs", "--sub-langs", "live_chat", "--no-playlist", "--no-progress"]
-        .map(String::from)
-        .to_vec();
+    let mut args: Vec<String> = [
+        "--encoding",
+        "utf-8",
+        "--skip-download",
+        "--write-subs",
+        "--sub-langs",
+        "live_chat",
+        "--no-playlist",
+        "--no-progress",
+    ]
+    .map(String::from)
+    .to_vec();
     args.extend(crate::cookies::args_for(url, &settings));
     args.extend(["-o".into(), dir.join("chat.%(ext)s").to_string_lossy().into_owned(), url.to_string()]);
     let mut child = crate::proc::command(crate::paths::tool("yt-dlp"))
@@ -1391,8 +1594,157 @@ fn twitch_gql(body: &Value) -> Result<Value> {
     Ok(serde_json::from_str(&text)?)
 }
 
+// ───────────── the same stream elsewhere ─────────────
+
+/// The same streamer live on the other site at the same time (a multi-stream), whose chat
+/// can be read beside this one.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AlsoLive {
+    pub site: Site,
+    pub link: String,
+}
+
+/// Words of a title, for "the same stream": lowercase, 3+ letters, no emoji or tags.
+fn title_words(t: &str) -> HashSet<String> {
+    t.split(|c: char| !c.is_alphanumeric()).filter(|w| w.chars().count() >= 3).map(|w| w.to_lowercase()).collect()
+}
+
+/// Two titles of the same stream: most of the shorter one's words are in the other.
+pub fn same_title(a: &str, b: &str) -> bool {
+    let (wa, wb) = (title_words(a), title_words(b));
+    let small = wa.len().min(wb.len());
+    if small == 0 {
+        return false;
+    }
+    let shared = wa.intersection(&wb).count();
+    shared * 10 >= small * 6
+}
+
+/// Logins in `twitch.tv/<login>` links in `text`.
+fn twitch_links(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (i, _) in text.match_indices("twitch.tv/") {
+        let login: String = text[i + 10..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect::<String>()
+            .to_lowercase();
+        if login.len() >= 3
+            && !["videos", "directory", "p", "search"].contains(&login.as_str())
+            && !out.contains(&login)
+        {
+            out.push(login);
+        }
+    }
+    out
+}
+
+/// YouTube channel paths (`@name`, `channel/UC…`, `c/name`) in links in `text`.
+fn youtube_channels(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (i, _) in text.match_indices("youtube.com/") {
+        let rest = &text[i + 12..];
+        let path: String = if let Some(r) = rest.strip_prefix('@') {
+            let n: String = r.chars().take_while(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.')).collect();
+            format!("@{n}")
+        } else if let Some(r) = rest.strip_prefix("channel/") {
+            format!(
+                "channel/{}",
+                r.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')).collect::<String>()
+            )
+        } else if let Some(r) = rest.strip_prefix("c/") {
+            format!("c/{}", r.chars().take_while(|c| c.is_alphanumeric() || matches!(c, '_' | '-')).collect::<String>())
+        } else {
+            continue;
+        };
+        if path.len() > 3 && !out.contains(&path) {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// A Twitch login's stream title when it's live.
+fn twitch_live_title(login: &str) -> Option<String> {
+    let q = json!({ "query": format!("query{{user(login:\"{login}\"){{stream{{title}}}}}}") });
+    let v = twitch_gql(&q).ok()?;
+    let s = &v["data"]["user"]["stream"];
+    (!s.is_null()).then(|| s["title"].as_str().unwrap_or("").to_string())
+}
+
+/// A YouTube channel's live stream now (its link and title), from `youtube.com/<path>/live`.
+fn youtube_live_now(path: &str) -> Option<(String, String)> {
+    let html = yt_get(&format!("https://www.youtube.com/{path}/live")).ok()?;
+    if !html.contains("\"isLiveNow\":true") {
+        return None;
+    }
+    let id = find_str(&html, "<link rel=\"canonical\" href=\"https://www.youtube.com/watch?v=")?;
+    let title = find_str(&html, "<meta name=\"title\" content=\"").unwrap_or_default();
+    Some((format!("https://www.youtube.com/watch?v={id}"), title))
+}
+
+/// The same stream live on the other site now: a link to it in the stream's description or
+/// the channel's links (enough by itself), else a channel of the same name with a matching
+/// title. A few quick looks; run it off the UI thread.
+pub fn also_live(url: &str) -> Option<AlsoLive> {
+    match Site::of(url)? {
+        Site::YouTube => {
+            let id = yt_live_id(url).ok()?;
+            let html = yt_get(&format!("https://www.youtube.com/watch?v={id}")).ok()?;
+            let title = find_str(&html, "<meta name=\"title\" content=\"").unwrap_or_default();
+            let desc: String = find_str(&html, "\"shortDescription\":\"")
+                .map(|d| serde_json::from_str::<String>(&format!("\"{d}\"")).unwrap_or(d))
+                .unwrap_or_default();
+            let handle = find_str(&html, "\"canonicalBaseUrl\":\"/@").unwrap_or_default().to_lowercase();
+            let mut tries: Vec<(String, bool)> = twitch_links(&desc).into_iter().map(|l| (l, true)).collect();
+            let name: String = handle.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+            if name.len() >= 3 && !tries.iter().any(|(l, _)| *l == name) {
+                tries.push((name, false));
+            }
+            for (login, linked) in tries.into_iter().take(4) {
+                if let Some(t) = twitch_live_title(&login)
+                    && (linked || same_title(&t, &title))
+                {
+                    return Some(AlsoLive { site: Site::Twitch, link: format!("https://www.twitch.tv/{login}") });
+                }
+            }
+            None
+        }
+        Site::Twitch => {
+            let login = crate::ttv::login_of(url)?;
+            let q = json!({ "query": format!("query{{user(login:\"{login}\"){{description stream{{title}} channel{{socialMedias{{url}}}}}}}}") });
+            let v = twitch_gql(&q).ok()?;
+            let u = &v["data"]["user"];
+            let title = u["stream"]["title"].as_str().unwrap_or("").to_string();
+            let mut text = u["description"].as_str().unwrap_or("").to_string();
+            for s in u["channel"]["socialMedias"].as_array().into_iter().flatten() {
+                text.push(' ');
+                text.push_str(s["url"].as_str().unwrap_or(""));
+            }
+            let mut tries: Vec<(String, bool)> = youtube_channels(&text).into_iter().map(|c| (c, true)).collect();
+            let same = format!("@{login}");
+            if !tries.iter().any(|(c, _)| c.eq_ignore_ascii_case(&same)) {
+                tries.push((same, false));
+            }
+            for (path, linked) in tries.into_iter().take(4) {
+                if let Some((link, t)) = youtube_live_now(&path)
+                    && (linked || same_title(&t, &title))
+                {
+                    return Some(AlsoLive { site: Site::YouTube, link });
+                }
+            }
+            None
+        }
+        Site::Kick => None,
+    }
+}
+
 fn twitch_comment(node: &Value) -> Option<Message> {
-    let name = node["commenter"]["displayName"].as_str().or(node["commenter"]["login"].as_str()).unwrap_or("someone").to_string();
+    let name = node["commenter"]["displayName"]
+        .as_str()
+        .or(node["commenter"]["login"].as_str())
+        .unwrap_or("someone")
+        .to_string();
     let msg = &node["message"];
     let mut parts = Vec::new();
     for f in msg["fragments"].as_array().into_iter().flatten() {
@@ -1405,7 +1757,8 @@ fn twitch_comment(node: &Value) -> Option<Message> {
             None => parts.push(Part::Text { s: text }),
         }
     }
-    let sets: Vec<&str> = msg["userBadges"].as_array().into_iter().flatten().filter_map(|b| b["setID"].as_str()).collect();
+    let sets: Vec<&str> =
+        msg["userBadges"].as_array().into_iter().flatten().filter_map(|b| b["setID"].as_str()).collect();
     let badges = twitch_badges(&sets.join(","));
     Some(Message {
         t: node["contentOffsetSeconds"].as_f64()?,
@@ -1426,10 +1779,17 @@ fn twitch_page(id: &str, offset: i64) -> Result<(Value, Vec<Message>, bool)> {
     loop {
         let v = twitch_gql(&json!({"query": TWITCH_COMMENTS, "variables": {"id": id, "offset": offset}}));
         match v {
-            Ok(v) if v["data"]["video"].is_null() && v["errors"].is_null() => bail!("That past stream isn't there any more"),
+            Ok(v) if v["data"]["video"].is_null() && v["errors"].is_null() => {
+                bail!("That past stream isn't there any more")
+            }
             Ok(v) if v["data"]["video"]["comments"].is_object() => {
                 let video = &v["data"]["video"];
-                let msgs = video["comments"]["edges"].as_array().into_iter().flatten().filter_map(|e| twitch_comment(&e["node"])).collect();
+                let msgs = video["comments"]["edges"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|e| twitch_comment(&e["node"]))
+                    .collect();
                 let more = video["comments"]["pageInfo"]["hasNextPage"].as_bool() == Some(true);
                 return Ok((video.clone(), msgs, more));
             }
@@ -1437,7 +1797,9 @@ fn twitch_page(id: &str, offset: i64) -> Result<(Value, Vec<Message>, bool)> {
                 tries += 1;
                 std::thread::sleep(Duration::from_secs(2));
             }
-            Ok(v) => bail!("Twitch wouldn't give its chat: {}", v["errors"][0]["message"].as_str().unwrap_or("no answer")),
+            Ok(v) => {
+                bail!("Twitch wouldn't give its chat: {}", v["errors"][0]["message"].as_str().unwrap_or("no answer"))
+            }
             Err(e) => return Err(e),
         }
     }
@@ -1446,7 +1808,10 @@ fn twitch_page(id: &str, offset: i64) -> Result<(Value, Vec<Message>, bool)> {
 fn twitch_replay(url: &str, duration: Option<f64>, cancel: &AtomicBool, on: Progress) -> Result<ChatFile> {
     let id = twitch_video_id(url).context("That's a Twitch channel, not one of its past streams")?;
     let (video, first, _) = twitch_page(&id, 0)?;
-    let creator = (video["creator"]["id"].as_str().unwrap_or("").to_string(), video["creator"]["login"].as_str().unwrap_or("").to_string());
+    let creator = (
+        video["creator"]["id"].as_str().unwrap_or("").to_string(),
+        video["creator"]["login"].as_str().unwrap_or("").to_string(),
+    );
     let length = video["lengthSeconds"].as_f64().or(duration).unwrap_or(0.0).max(1.0);
     // Pages come a few dozen messages at a time: the video is split into stretches read side
     // by side, each from its start to the next one's.
@@ -1490,7 +1855,8 @@ fn twitch_replay(url: &str, duration: Option<f64>, cancel: &AtomicBool, on: Prog
         if cancel.load(Ordering::SeqCst) {
             stop.store(true, Ordering::SeqCst);
         }
-        let done: i64 = reached.lock().unwrap().iter().zip(&starts).map(|(r, s)| (r.min(&(length as i64)) - s).max(0)).sum();
+        let done: i64 =
+            reached.lock().unwrap().iter().zip(&starts).map(|(r, s)| (r.min(&(length as i64)) - s).max(0)).sum();
         on(got.lock().unwrap().len(), Some((done as f64 / length).clamp(0.0, 1.0)));
         std::thread::sleep(Duration::from_millis(300));
     }
@@ -1504,7 +1870,8 @@ fn twitch_replay(url: &str, duration: Option<f64>, cancel: &AtomicBool, on: Prog
         bail!(e);
     }
     let mut seen = HashSet::new();
-    let mut messages: Vec<Message> = std::mem::take(&mut *got.lock().unwrap()).into_iter().filter(|m| seen.insert(m.id.clone())).collect();
+    let mut messages: Vec<Message> =
+        std::mem::take(&mut *got.lock().unwrap()).into_iter().filter(|m| seen.insert(m.id.clone())).collect();
     if messages.is_empty() {
         bail!("This past stream has no saved chat");
     }
@@ -1533,7 +1900,23 @@ mod tests {
         assert_eq!(twitch_video_id("https://www.twitch.tv/zackrawrr"), None);
         assert_eq!(Site::of("https://m.youtube.com/watch?v=x"), Some(Site::YouTube));
         assert_eq!(Site::of("https://www.twitch.tv/x"), Some(Site::Twitch));
-        assert_eq!(Site::of("https://kick.com/x"), None);
+        assert_eq!(Site::of("https://kick.com/x"), Some(Site::Kick));
+        assert_eq!(kick_slug("https://kick.com/XQC"), Some("xqc".into()));
+        // The same stream elsewhere: links in a description, titles that match.
+        assert_eq!(twitch_links("Also on https://www.twitch.tv/Foo_Bar and twitch.tv/videos/1"), vec!["foo_bar"]);
+        assert_eq!(
+            youtube_channels("yt: https://www.youtube.com/@Some.Name x youtube.com/channel/UCabc-1_x"),
+            vec!["@Some.Name", "channel/UCabc-1_x"]
+        );
+        assert!(same_title("🔴 GTA 6 FULL PLAYTHROUGH day 5 !drops", "GTA 6 full playthrough DAY 5"));
+        assert!(!same_title("Chill Minecraft build", "GTA 6 full playthrough"));
+        assert_eq!(kick_slug("https://kick.com/xqc/videos/abc"), None);
+        assert_eq!(kick_slug("https://kick.com/categories/games"), None);
+        let p = kick_parts("hi [emote:37226:KEKW] there");
+        assert_eq!(
+            p[1],
+            Part::Emote { name: "KEKW".into(), url: "https://files.kick.com/emotes/37226/fullsize".into() }
+        );
     }
 
     #[test]
@@ -1556,7 +1939,10 @@ mod tests {
         assert!(m.color.is_some());
 
         assert_eq!(parse_irc("PING :tmi.twitch.tv"), Irc::Ping(":tmi.twitch.tv".into()));
-        assert_eq!(parse_irc("@target-msg-id=abc :tmi.twitch.tv CLEARMSG #zack :bad"), Irc::Remove { id: Some("abc".into()), name: None });
+        assert_eq!(
+            parse_irc("@target-msg-id=abc :tmi.twitch.tv CLEARMSG #zack :bad"),
+            Irc::Remove { id: Some("abc".into()), name: None }
+        );
         assert_eq!(parse_irc("@room-id=55 :tmi.twitch.tv ROOMSTATE #zack"), Irc::Room("55".into()));
     }
 

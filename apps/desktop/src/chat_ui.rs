@@ -47,6 +47,9 @@ struct State {
     loading: Option<(Arc<AtomicBool>, Arc<Mutex<Loading>>)>,
     /// Looking at whether the link kept its chat.
     checking: Option<Arc<Mutex<Option<bool>>>>,
+    /// Looking for the same stream live on the other site (a multi-stream); what was found.
+    seeking: Option<Arc<Mutex<Option<Option<chat::AlsoLive>>>>>,
+    also: Option<chat::AlsoLive>,
     /// Everything on the player's timeline (`t`: seconds on it), oldest first.
     msgs: Vec<Message>,
     msgs_gen: u64,
@@ -91,6 +94,47 @@ pub fn add_to_download(req: &mut neria_core::download::DownloadRequest, settings
     }
 }
 
+thread_local! {
+    /// The next link clip is a live "Save the last": its chat goes next to it.
+    static BESIDE_NEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The next link clip's export is "Save the last" while watching live.
+pub fn beside_next() {
+    BESIDE_NEXT.with(|b| b.set(true));
+}
+
+/// Everything said `from`–`to` on the player's timeline (`t` from `from`), for a live clip's
+/// `.chat.json`: only while live chat is read and Settings → Save live chat is on.
+pub fn said_during(ui: &AppWindow, from: f64, to: f64) -> Vec<Message> {
+    if !ui.global::<ClipChat>().get_save() {
+        return Vec::new();
+    }
+    STATE.with(|s| {
+        let s = s.borrow();
+        if s.lives.is_empty() {
+            return Vec::new();
+        }
+        chat::for_clip(&s.msgs, from, to, &Filter::default())
+    })
+}
+
+/// The same as a chat file, for a clip saved here (the replay buffer).
+pub fn file_for(ui: &AppWindow, from: f64, to: f64) -> Option<ChatFile> {
+    let messages = said_during(ui, from, to);
+    if messages.is_empty() {
+        return None;
+    }
+    let anchor = STATE.with(|s| s.borrow().anchor);
+    let mut sites: Vec<chat::Site> = Vec::new();
+    for m in &messages {
+        if !sites.contains(&m.site) {
+            sites.push(m.site);
+        }
+    }
+    Some(ChatFile { version: 1, sites, zero: anchor.map(|a| a + from), messages, ..Default::default() })
+}
+
 fn number(n: usize) -> String {
     let s = n.to_string();
     let mut out = String::new();
@@ -105,6 +149,7 @@ fn number(n: usize) -> String {
 
 /// Something new opened in the clipper: what was there goes.
 fn reset(ui: &AppWindow) {
+    BESIDE_NEXT.with(|b| b.set(false));
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         if let Some((cancel, _)) = &s.loading {
@@ -127,6 +172,7 @@ fn reset(ui: &AppWindow) {
     g.set_view(0);
     g.set_adding(false);
     g.set_can_add(false);
+    g.set_also_text("".into());
     g.set_open(false);
     g.set_sheet(false);
     g.set_activity(slint::Image::default());
@@ -188,6 +234,11 @@ pub fn length_known(ui: &AppWindow, live: bool, anchor: Option<f64>) {
             g.set_line("Connecting to the chat…".into());
             g.set_can_add(true);
             refresh_dialog(ui);
+            // The same stream on the other site: its chat is one click away.
+            let found = Arc::new(Mutex::new(None));
+            let (f, u) = (found.clone(), url.clone());
+            std::thread::spawn(move || *f.lock().unwrap() = Some(chat::also_live(&u)));
+            STATE.with(|s| s.borrow_mut().seeking = Some(found));
         }
         return;
     }
@@ -278,8 +329,16 @@ pub fn messages_for(ui: &AppWindow, from: f64, to: f64) -> Vec<Message> {
 /// come one after the other.
 pub fn job_for(ui: &AppWindow, ranges: &[(f64, f64)]) -> Option<ChatJob> {
     let spec = spec(ui);
-    if spec.is_none() || ranges.is_empty() {
+    // "Save the last" while live: everything said goes next to the clip too.
+    let beside = match (BESIDE_NEXT.with(|b| b.replace(false)), ranges) {
+        (true, [(a, b)]) => said_during(ui, *a, *b),
+        _ => Vec::new(),
+    };
+    if ranges.is_empty() || (spec.is_none() && beside.is_empty()) {
         return None;
+    }
+    if spec.is_none() {
+        return Some(ChatJob { clip_len: Some(ranges[0].1 - ranges[0].0), beside, ..ChatJob::default() });
     }
     let mut messages = Vec::new();
     let mut offset = 0.0;
@@ -287,7 +346,7 @@ pub fn job_for(ui: &AppWindow, ranges: &[(f64, f64)]) -> Option<ChatJob> {
         messages.extend(messages_for(ui, *a, *b).into_iter().map(|m| Message { t: m.t + offset, ..m }));
         offset += b - a;
     }
-    Some(ChatJob { save: false, spec, messages, clip_len: Some(offset) })
+    Some(ChatJob { save: false, spec, messages, clip_len: Some(offset), beside })
 }
 
 /// Chat into a clip saved from a file: the clip's messages, timed to where the file really
@@ -383,6 +442,15 @@ fn row_time(live_anchor: Option<f64>, t: f64) -> String {
 /// the activity strip follow (only when something they show changed).
 pub fn tick(ui: &AppWindow, position: f64) {
     let g = ui.global::<ClipChat>();
+    // The same stream live on the other site: "Also live on Twitch · Add its chat".
+    let sought = STATE.with(|s| s.borrow().seeking.as_ref().and_then(|c| c.lock().unwrap().take()));
+    if let Some(found) = sought {
+        STATE.with(|s| s.borrow_mut().seeking = None);
+        if let Some(a) = found {
+            g.set_also_text(format!("Also live on {}", a.site.name()).into());
+            STATE.with(|s| s.borrow_mut().also = Some(a));
+        }
+    }
     // Whether the link kept its chat (a past stream): offer to load it.
     let checked = STATE.with(|s| s.borrow().checking.as_ref().and_then(|c| *c.lock().unwrap()));
     if let Some(found) = checked {
@@ -701,6 +769,23 @@ fn add_chat(ui: &AppWindow, link: &str) {
 
 pub fn install(ui: &AppWindow, seek: impl Fn(f64) + 'static) {
     let g = ui.global::<ClipChat>();
+    g.on_add_also({
+        let weak = ui.as_weak();
+        move || {
+            let ui = weak.unwrap();
+            if let Some(a) = STATE.with(|s| s.borrow_mut().also.take()) {
+                add_chat(&ui, &a.link);
+            }
+            ui.global::<ClipChat>().set_also_text("".into());
+        }
+    });
+    g.on_dismiss_also({
+        let weak = ui.as_weak();
+        move || {
+            STATE.with(|s| s.borrow_mut().also = None);
+            weak.unwrap().global::<ClipChat>().set_also_text("".into());
+        }
+    });
     g.on_load({
         let weak = ui.as_weak();
         move || load(&weak.unwrap())
@@ -886,6 +971,11 @@ pub fn demo(ui: &AppWindow) {
         g.set_how(2);
         g.set_which(2);
         g.set_open(true);
+    }
+    // `also`: one site's chat, the same stream found live on the other.
+    if std::env::var("NERIA_CHAT_DEMO").is_ok_and(|v| v == "also") {
+        g.set_sites("Twitch".into());
+        g.set_also_text("Also live on YouTube".into());
     }
     refresh_dialog(ui);
 }

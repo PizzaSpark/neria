@@ -1326,6 +1326,11 @@ pub fn install(
                 let pieces = b.dir.clone();
                 let title = ui.get_clip_name().to_string();
                 let ago = behind_live(&ui);
+                // Its chat: what was said in those seconds on the player's timeline.
+                let edge = LIVE_ANCHOR
+                    .with(|a| a.get())
+                    .map_or(ui.get_clip_duration() as f64, |anchor| neria_core::live::now() - anchor);
+                let chat = crate::chat_ui::file_for(&ui, edge - ago - secs, edge - ago);
                 ui.set_clip_status("Saving…".into());
                 start_export(&ui, &mut c, "Live clip saved", move |_cancel, progress| {
                     let dir = neria_core::folders::for_kind(
@@ -1333,6 +1338,9 @@ pub fn install(
                         neria_core::folders::Kind::Video,
                     );
                     let out = neria_core::live::clip_last_in(&pieces, secs, ago, &dir, &title);
+                    if let (Ok(file), Some(chat)) = (&out, &chat) {
+                        let _ = chat.save(&neria_core::chat::sidecar_of(file));
+                    }
                     progress(1.0);
                     out
                 });
@@ -1348,6 +1356,7 @@ pub fn install(
             ui.set_clip_in((end - secs).max(0.0) as f32);
             ui.set_clip_out(end as f32);
             drop(c);
+            crate::chat_ui::beside_next();
             ui.invoke_clip_export();
         }
     });

@@ -215,13 +215,27 @@ so they get built together.
    the release it began with; the next start removed that release and ran the new one.
    The tools check no longer lets one tool's failed check (GitHub's API limit) hide the
    others' updates; yt-dlp's check doesn't use the API
-7. **Small open bits, as time allows**: live chat for "Save the last" / "Clip the last" while
-   live and Kick's chat (Livestreams 11); **both chats of a multi-stream by themselves**
-   (asked for 2026-11-21): a streamer live on YouTube and Twitch at once is spotted (links in
-   the stream's description or the channel's, the same name live elsewhere with a matching
-   title) and the other chat is offered with one click ("Also live on Twitch · Add its
-   chat"), using the "+" that reads a second chat today; Speech to text extras (burned-in captions,
-   translate); Spotify's own-key path and playlists over 100 songs (Music 4).
+7. **Small open bits** (worked on 2026-11-23):
+   - ✅ Live chat for "Clip the last" / "Save the last" while live: the clip gets its own
+     `.chat.json` (checked on a YouTube recording: a 10 s clip with the 2 messages said in it).
+     The player's "Save the last" uses the chat it reads; not yet checked in the window.
+   - Kick's chat: the reader is written (Kick's public Pusher chat, emotes, deletions) but
+     Kick's channel API answers Neria with HTTP 403 (Cloudflare; curl gets through), so a Kick
+     link offers no chat yet. Getting past it would mean dressing Neria up as a browser: the
+     user's call
+   - ✅ Both chats of a multi-stream: "Also live on YouTube · Add its chat" in the chat panel
+     (links in the description or the channel's links, else the same name with a matching
+     title). Checked on IShowSpeed and ohnepixel live on both, both ways, in the window too
+   - ✅ Speech to text: captions burned into a copy ("(captions).mp4", Transcribe dialog on a
+     video). Translate to English: in the engine (`--translate`) but not offered: the
+     large-v3-turbo model can't translate (gave Spanish back); it needs the full large-v3
+     ("Best quality", see Speech to text)
+   - Spotify playlists over 100 songs: through the user's own key only (user's call
+     2026-11-23: the web player's token stays for lyrics). Waiting on a key to test the
+     own-key path
+   - ✅ Phone extras built (not yet checked on a phone): the camera (Show: Screen / Back /
+     Front camera, Android 12+, the mic with it), an APK dropped on the Phone tab installs, other
+     files go to its Download folder, Share the clipboard both ways while mirroring
    ✅ **A Quality choice for capture** (built 2026-11-23, mock `design/capture-quality.html`,
    instead of OBS-style CBR / rate-control knobs): Smaller files / Standard / Best as rows on
    both Capture tabs, each with what it records and MB a minute for what's picked; Advanced
@@ -1094,8 +1108,9 @@ one pinned scrcpy version (its server and client protocol must match), updated o
    - [x] Cable and Wi-Fi hand over (asked for 2026-11-22): mirroring by cable carries on over
      Wi-Fi when the cable comes out; mirroring over Wi-Fi offers the cable when it's plugged in
      (asked, since switching starts again). Checked both ways on the POCO
-6. [ ] **Extras, if wanted.** The phone's camera as a source (Android 12+); drop an APK to
-   install it, drop files to send them to the phone; copy and paste between PC and phone
+6. [x] **Extras** (built 2026-11-23, not yet checked on a phone): the phone's camera as a
+   source (Android 12+); drop an APK to install it, drop files to send them to the phone;
+   copy and paste between PC and phone
 Watch out: only one adb server runs per PC (port 5037); another adb at a different version
 (Android Studio's) kills ours and the other way round: notice it and use theirs or say so
 plainly (done: ours runs on 5038). Portable rule: checked 2026-11-22: on Windows adb keeps its

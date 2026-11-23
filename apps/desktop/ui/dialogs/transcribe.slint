@@ -140,6 +140,14 @@ export component TranscribeDialog inherits Dialog {
                     checked <=> Transcribe.times;
                     toggled => { Transcribe.changed(); }
                 }
+                if Transcribe.can-burn: Tick {
+                    text: "Also a copy with the captions in the picture";
+                    checked <=> Transcribe.burn;
+                    toggled => { Transcribe.changed(); }
+                }
+                if Transcribe.can-burn && Transcribe.burn: Hint {
+                    text: "For apps that don't show caption files (Instagram, TikTok, WhatsApp). It takes a little longer: the video is made again, \"(captions)\" added to its name.";
+                }
             }
         }
     }

@@ -2,14 +2,17 @@ import { Theme, Screen } from "../theme.slint";
 import { Icon, Dialog, ChoiceTile, Sticker } from "../widgets.slint";
 
 // A file dragged in from Explorer, or a link from a browser, over the page it would land
-// on (not the nav). kind: 0 not media, 1 video or sound, 2 clip only (a .gif), 3 a link.
+// on (not the nav). kind: 0 not media, 1 video or sound, 2 clip only (a .gif), 3 a link,
+// 4 an app (.apk) onto the Phone tab, 5 any other file onto it (`target`: the phone's name).
 export component DropOverlay inherits Rectangle {
     in property <int> kind;
     in property <string> name;
     in property <int> page;
+    in property <string> target;
+    property <bool> phone: root.kind == 4 || root.kind == 5;
     // Links: the clipper on Clip, the Download box anywhere else.
     property <bool> link: root.kind == 3;
-    property <bool> ok: root.kind != 0 && !(root.page == 2 && root.kind == 2);
+    property <bool> ok: root.phone || (root.kind != 0 && !(root.page == 2 && root.kind == 2));
     background: Theme.bg.with-alpha(0.94);
     Rectangle {
         x: 18px;
@@ -34,14 +37,16 @@ export component DropOverlay inherits Rectangle {
                     edge: root.kind != 0 ? Theme.hard : Theme.line-strong;
                     face: root.kind != 0 ? Theme.pop : Theme.raised;
                     Icon {
-                        text: root.kind == 0 ? "\u{E8A5}" : root.link ? (root.page == 1 ? "\u{E8C6}" : "\u{E896}") : root.page == 2 ? "\u{E73F}" : root.page == 1 || root.kind == 2 ? "\u{E8C6}" : "\u{E8E5}";
+                        text: root.kind == 4 ? "\u{E896}" : root.kind == 5 ? "\u{E8EA}" : root.kind == 0 ? "\u{E8A5}" : root.link ? (root.page == 1 ? "\u{E8C6}" : "\u{E896}") : root.page == 2 ? "\u{E73F}" : root.page == 1 || root.kind == 2 ? "\u{E8C6}" : "\u{E8E5}";
                         font-size: 22px;
                         color: root.kind != 0 ? Theme.on-pop : Theme.muted;
                     }
                 }
             }
             Text {
-                text: root.kind == 0 ? "Neria opens video and audio files"
+                text: root.kind == 4 ? "Drop to install it on " + root.target
+                    : root.kind == 5 ? "Drop to send it to " + root.target
+                    : root.kind == 0 ? "Neria opens video and audio files"
                     : root.link ? (root.page == 1 ? "Drop to clip it" : "Drop to download it")
                     : root.page == 2 ? (root.kind == 1 ? "Drop to compress it" : "Compress works on videos and sound")
                     : root.page == 1 || root.kind == 2 ? "Drop to clip it"
