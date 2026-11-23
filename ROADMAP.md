@@ -181,8 +181,8 @@ so they get built together.
 
 ## Up next (priority order)
 1. **Ship v0.9.0 in December** (nothing pushed before then, user's call 2026-11-21). Release
-   what's on `capture-prototype` since v0.8.0: Compress for sound files (MP3 too, waveform trim),
-   several kept parts and Even out, Speech to text, Live chat. The Capture engine can ride
+   what's on `main` since v0.8.0: Compress for sound files (MP3 too, waveform trim),
+   several kept parts and Even out, Speech to text, Live chat, the Library page. The Capture engine can ride
    along hidden (no UI yet)
 2. **Real-link checks left**: an Instagram carousel all the way through with cookies; whether
    Brave's cookies are read once Brave is fully closed; a scheduled stream / premiere recorded
@@ -245,7 +245,8 @@ so they get built together.
    laptop's 1440p 165 Hz screen (1920 × 1080 / 2560 × 1440 / 1440p120). Left: the sizes
    compared on the same game moment at each choice, a real game, AMD (untested here; a route
    that can't scale records full size), the phone on Best
-8. **Bigger ideas** (section "Later"), in this order: Library page, command palette, Audio
+8. **Bigger ideas** (section "Later"), in this order: ✅ Library page (built 2026-11-23, see
+   Later; left: its menus, Find it… and Delete tried in the real app), command palette, Audio
    tools page, saved workflows, external tools. Parked (user's call 2026-11-23): the browser
    extension (Chrome's store asks $5 once; Firefox / Edge are free) and a Tampermonkey
    userscript instead (free everywhere, but two installs and no cookies); the clipboard
