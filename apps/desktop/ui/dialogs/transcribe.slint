@@ -122,6 +122,35 @@ export component TranscribeDialog inherits Dialog {
                 Hint {
                     text: "Detect works for any language, and for talks that mix two. Pick one only if it guesses wrong.";
                 }
+                Tick {
+                    text: "Write it in English (translate)";
+                    checked <=> Transcribe.translate;
+                    // Only Best quality translates.
+                    toggled => {
+                        if Transcribe.translate {
+                            Transcribe.model = 1;
+                        }
+                        Transcribe.changed();
+                    }
+                }
+            }
+            Part {
+                title: "Model";
+                ChoiceChips {
+                    options: ["Fast", "Best quality"];
+                    current <=> Transcribe.model;
+                    changed => {
+                        if Transcribe.model == 0 {
+                            Transcribe.translate = false;
+                        }
+                        Transcribe.changed();
+                    }
+                }
+                Hint {
+                    text: Transcribe.model == 0
+                        ? "Quick, and good on clear speech."
+                        : "Slower (a little on an NVIDIA card, about 3 times on the processor): better on mixed languages, accents and poor sound, and it can translate." + (Transcribe.best-ready ? "" : " A one-time " + Transcribe.best-size + " download, the first time.");
+                }
             }
             Part {
                 title: "Save as";
@@ -172,7 +201,9 @@ export component TranscribeDialog inherits Dialog {
             clicked => { Transcribe.open = false; }
         }
         PrimaryButton {
-            text: Transcribe.for-download ? (Transcribe.download-on ? "Done" : "Add to this download") : "Transcribe";
+            text: Transcribe.for-download ? (Transcribe.download-on ? "Done" : "Add to this download")
+                : Transcribe.model == 1 && !Transcribe.best-ready ? "Get it and transcribe"
+                : "Transcribe";
             icon: Transcribe.for-download ? "\u{E73E}" : "\u{E70B}";
             clicked => {
                 if Transcribe.for-download {

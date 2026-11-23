@@ -227,9 +227,7 @@ so they get built together.
      (links in the description or the channel's links, else the same name with a matching
      title). Checked on IShowSpeed and ohnepixel live on both, both ways, in the window too
    - ✅ Speech to text: captions burned into a copy ("(captions).mp4", Transcribe dialog on a
-     video). Translate to English: in the engine (`--translate`) but not offered: the
-     large-v3-turbo model can't translate (gave Spanish back); it needs the full large-v3
-     ("Best quality", see Speech to text)
+     video), and ✅ Translate to English with the Best quality model (see Speech to text)
    - Spotify playlists over 100 songs: through the user's own key only (user's call
      2026-11-23: the web player's token stays for lyrics). Waiting on a key to test the
      own-key path
@@ -835,14 +833,17 @@ lecture; whisper large-v3 got it). Nothing is downloaded until someone uses it.
   first), a dropped file or several (Clip / Compress / Transcribe), Extras → Transcript on
   the Download page (after the download, "Writing the transcript…" on its row),
   Settings → Download → Speech to text (status, Remove, switch to the NVIDIA pack)
-- [ ] Pick the model (asked for 2026-11-22): Settings → Download → Speech to text and the
-  Transcribe… dialog let you choose **Fast** (`large-v3-turbo-q5_0`, 575 MB, today's default)
-  or **Best quality** (full `ggml-large-v3`, ~3 GB, slower; better on Taglish, accents, poor
-  audio). Each model is downloaded only when first picked, shown with its size, and can be
-  removed on its own. Replaces the separate Python faster-whisper large-v3 in
-  `D:\APPS\Tools\Whisper` (5.1 GB), which can be deleted once this ships
-- [ ] Later, if wanted: captions burned into a clip; translate to English (`--translate`);
-  speaker names; a smaller model for slow PCs
+- [x] Pick the model (built 2026-11-23): Settings → Download → Speech to text and the
+  Transcribe… dialog choose **Fast** (`large-v3-turbo-q5_0`, 575 MB, the default) or **Best
+  quality** (`ggml-large-v3-q5_0`, 1.08 GB: whisper.cpp's q5_0 of large-v3, as close to the
+  3.1 GB full one as makes no difference). Best quality is downloaded the first time it's
+  used, inside the job ("Get it and transcribe"), and Settings removes it on its own. On the
+  RTX 3060 a 30 s clip: Fast 2.9 s, Best 4.2 s. The separate Python faster-whisper large-v3
+  in `D:\APPS\Tools\Whisper` (5.1 GB) can be deleted once this ships
+- [x] Translate to English ("Write it in English", picks Best quality: the turbo model can't
+  translate). Checked on a Spanish TED talk: clean English captions, timed right
+- [x] Captions burned into a copy of a video (see Up next 7)
+- [ ] Later, if wanted: speaker names; a smaller model for slow PCs
 Dev hooks: `NERIA_TRANSCRIBE` (+ `_START`), `NERIA_TRANSCRIPT` (smoke), `NERIA_FAKE_NVIDIA`;
 ui-check `transcribe-get`, `transcribe`, `transcribe-files`, `transcribe-work`,
 `transcribe-done`, `transcript`.

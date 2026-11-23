@@ -4,7 +4,10 @@
 //!
 //! ```text
 //! bin/whisper/engine/   whisper-cli.exe + its DLLs (the CPU pack, or the NVIDIA pack)
-//! bin/whisper/ggml-large-v3-turbo-q5_0.bin   the model (574 MB)
+//! bin/whisper/ggml-large-v3-turbo-q5_0.bin   Fast: the model (574 MB)
+//! bin/whisper/ggml-large-v3-q5_0.bin         Best quality, only once picked (1.08 GB):
+//!                                            better on mixed languages, accents, poor sound,
+//!                                            and the one that translates
 //! bin/whisper/ggml-silero-v5.1.2.bin         voice detection: skips silence (no made-up
 //!                                            lines over music or quiet parts)
 //! ```
@@ -40,6 +43,59 @@ pub const CPU_MB: u64 = 22;
 pub const GPU_MB: u64 = 685;
 pub const MODEL_MB: u64 = 575;
 
+/// Which Whisper model writes it down.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Model {
+    /// large-v3-turbo: quick, good on clear speech. Can't translate.
+    #[default]
+    Fast,
+    /// large-v3 (q5_0, as close to the full one as makes no difference): about 3 times slower,
+    /// better on mixed languages, accents and poor sound, and it translates into English.
+    Best,
+}
+
+impl Model {
+    pub fn file(self) -> &'static str {
+        match self {
+            Model::Fast => MODEL_FILE,
+            Model::Best => "ggml-large-v3-q5_0.bin",
+        }
+    }
+
+    fn url(self) -> String {
+        format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}", self.file())
+    }
+
+    /// Its download, MB rounded up.
+    pub fn mb(self) -> u64 {
+        match self {
+            Model::Fast => MODEL_MB,
+            Model::Best => 1082,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Model::Fast => "Fast",
+            Model::Best => "Best quality",
+        }
+    }
+
+    pub fn from_index(i: i32) -> Model {
+        if i == 1 { Model::Best } else { Model::Fast }
+    }
+
+    pub fn index(self) -> i32 {
+        self as i32
+    }
+}
+
+/// This model is on the drive (a cut-off download is smaller).
+pub fn has(m: Model) -> bool {
+    dir().join(m.file()).metadata().is_ok_and(|x| x.len() > 100_000_000)
+}
+
 /// A hint that gets Whisper to write sentences (capitals, full stops), which it often
 /// drops on long talks without one. Only for English or "detect": it's English itself.
 const PUNCTUATION_PROMPT: &str = "Hello, welcome. Okay, so let's begin.";
@@ -61,21 +117,25 @@ pub struct Status {
     pub engine: bool,
     /// The NVIDIA pack is the one installed.
     pub gpu: bool,
+    /// Fast is there (and voice detection).
     pub model: bool,
+    /// Best quality is there.
+    pub best: bool,
 }
 
 impl Status {
     pub fn ready(self) -> bool {
-        self.engine && self.model
+        self.engine && (self.model || self.best)
     }
 }
 
 pub fn status() -> Status {
-    let model = dir().join(MODEL_FILE);
+    let vad = dir().join(VAD_FILE).is_file();
     Status {
         engine: cli().is_file(),
         gpu: engine_dir().join("ggml-cuda.dll").is_file(),
-        model: model.metadata().is_ok_and(|m| m.len() > 100_000_000) && dir().join(VAD_FILE).is_file(),
+        model: has(Model::Fast) && vad,
+        best: has(Model::Best) && vad,
     }
 }
 
@@ -163,6 +223,41 @@ pub fn install(gpu: bool, cancel: &AtomicBool, mut on: impl FnMut(tools::Progres
                 .with_context(|| format!("downloading {label}"))?;
             fs::rename(&tmp, &dest)?;
         }
+    }
+    Ok(())
+}
+
+/// Download one model (and voice detection, if it's missing). Blocking; call from a worker
+/// thread.
+pub fn install_model(model: Model, cancel: &AtomicBool, mut on: impl FnMut(tools::Progress)) -> Result<()> {
+    let base = dir();
+    fs::create_dir_all(&base).with_context(|| format!("cannot create {}", base.display()))?;
+    let label = format!("the {} model", model.label());
+    let vad = base.join(VAD_FILE);
+    let mut jobs: Vec<(&str, String, String)> = Vec::new();
+    if !vad.is_file() {
+        jobs.push((VAD_FILE, VAD_URL.to_string(), "voice detection".into()));
+    }
+    if !has(model) {
+        jobs.push((model.file(), model.url(), label));
+    }
+    let steps = jobs.len().max(1);
+    for (step, (file, url, label)) in jobs.into_iter().enumerate() {
+        let tmp = base.join(format!("{file}.download"));
+        tools::download_to_cancellable(&url, &tmp, cancel, |d, t| {
+            on(tools::Progress { tool: 0, step, steps, label: label.clone(), downloaded: d, total: t })
+        })
+        .with_context(|| format!("downloading {label}"))?;
+        fs::rename(&tmp, base.join(file))?;
+    }
+    Ok(())
+}
+
+/// Take one model off the drive (Settings → Speech to text).
+pub fn remove_model(model: Model) -> Result<()> {
+    let f = dir().join(model.file());
+    if f.exists() {
+        fs::remove_file(&f).with_context(|| format!("removing {}", f.display()))?;
     }
     Ok(())
 }
@@ -271,8 +366,11 @@ pub struct Spec {
     pub output: Output,
     /// `[01:23]` before each line of the `.txt`.
     pub times: bool,
-    /// Into English, whatever is spoken (Whisper's own translation).
+    /// Into English, whatever is spoken (Whisper's own translation; Best quality only: the
+    /// Fast model can't).
     pub translate: bool,
+    /// Which model writes it down (Best quality is downloaded the first time it's used).
+    pub model: Model,
     /// Also a copy of the video with the captions burned into the picture (one video file:
     /// the part transcribed), for apps that don't show `.srt` captions.
     pub burn: bool,
@@ -280,7 +378,7 @@ pub struct Spec {
 
 impl Default for Spec {
     fn default() -> Self {
-        Spec { language: None, output: Output::Text, times: true, translate: false, burn: false }
+        Spec { language: None, output: Output::Text, times: true, translate: false, burn: false, model: Model::Fast }
     }
 }
 
@@ -350,6 +448,9 @@ pub struct Request {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stage {
+    /// The model picked isn't here yet: being downloaded ("the Best quality model · 340 /
+    /// 1,082 MB").
+    Getting(String),
     /// ffmpeg pulling the sound out.
     Preparing,
     /// Whisper at work; the last line it heard, when there is one.
@@ -383,6 +484,13 @@ pub fn run(req: &Request, cancel: &AtomicBool, mut on: impl FnMut(Progress)) -> 
         bail!("Speech to text isn't set up yet");
     }
     let Some(first) = req.inputs.first() else { bail!("nothing to transcribe") };
+    // Translating needs Best quality (Fast gives the words back untranslated).
+    let model = if req.spec.translate { Model::Best } else { req.spec.model };
+    if !has(model) || !dir().join(VAD_FILE).is_file() {
+        install_model(model, cancel, |p| {
+            on(Progress { fraction: p.fraction() * 0.99, stage: Stage::Getting(p.text()) })
+        })?;
+    }
     on(Progress { fraction: 0.0, stage: Stage::Preparing });
 
     let work = paths::cache_dir().join(format!("transcribe-{}-{}", std::process::id(), stamp_now()));
@@ -401,10 +509,10 @@ pub fn run(req: &Request, cancel: &AtomicBool, mut on: impl FnMut(Progress)) -> 
         let json_base = work.join("out");
         let st = status();
         let tr = req.spec.translate;
-        let mut out = whisper(&wav, &json_base, lang.as_deref(), tr, false, cancel, &mut on);
+        let mut out = whisper(&wav, &json_base, model, lang.as_deref(), tr, false, cancel, &mut on);
         // The NVIDIA pack on a card or driver it can't use: the same pack runs on the CPU.
         if out.is_err() && st.gpu && !cancel.load(Ordering::SeqCst) {
-            out = whisper(&wav, &json_base, lang.as_deref(), tr, true, cancel, &mut on);
+            out = whisper(&wav, &json_base, model, lang.as_deref(), tr, true, cancel, &mut on);
         }
         out?;
         let raw = fs::read(json_base.with_extension("json")).context("Whisper wrote nothing")?;
@@ -622,9 +730,11 @@ fn burn(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn whisper(
     wav: &Path,
     json_base: &Path,
+    model: Model,
     lang: Option<&str>,
     translate: bool,
     no_gpu: bool,
@@ -640,7 +750,7 @@ fn whisper(
     let mut cmd = proc::command(std::path::absolute(cli()).unwrap_or_else(|_| cli()));
     cmd.current_dir(d.join("engine"))
         .arg("-m")
-        .arg(d.join(MODEL_FILE))
+        .arg(d.join(model.file()))
         .arg("-f")
         .arg(wav)
         .args(["-l", lang.unwrap_or("auto"), "-t", &threads().to_string(), "-oj", "-pp"])

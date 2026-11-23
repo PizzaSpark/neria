@@ -984,6 +984,47 @@ export component SettingsDrawer inherits Rectangle {
                                         }
                                     }
                                 }
+                                if Transcribe.ready: HorizontalLayout {
+                                    spacing: 10px;
+                                    Text {
+                                        text: "Model";
+                                        color: Theme.ink;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 0;
+                                    }
+                                    ChoiceChips {
+                                        options: ["Fast", "Best quality"];
+                                        current <=> Transcribe.model;
+                                        changed => {
+                                            if Transcribe.model == 0 {
+                                                Transcribe.translate = false;
+                                            }
+                                            Transcribe.changed();
+                                        }
+                                    }
+                                }
+                                if Transcribe.ready: Hint {
+                                    text: Transcribe.model == 0
+                                        ? "Quick, and good on clear speech."
+                                        : "Slower (a little on an NVIDIA card, about 3 times on the processor): better on mixed languages, accents and poor sound, and it can translate." + (Transcribe.best-ready ? "" : " A one-time " + Transcribe.best-size + " download, the first time.");
+                                }
+                                if Transcribe.best-ready: HorizontalLayout {
+                                    spacing: 10px;
+                                    Text {
+                                        horizontal-stretch: 1;
+                                        text: "Best quality model: " + Transcribe.best-size + " on this PC";
+                                        color: Theme.muted;
+                                        font-size: 12px;
+                                        vertical-alignment: center;
+                                        wrap: word-wrap;
+                                    }
+                                    TextLink {
+                                        horizontal-stretch: 0;
+                                        text: "Remove it";
+                                        clicked => { Transcribe.remove-best(); }
+                                    }
+                                }
                                 if Transcribe.ready && Transcribe.nvidia && !Transcribe.on-gpu: TextLink {
                                     text: "Use my NVIDIA graphics card: about 20 times faster (685 MB)";
                                     clicked => { Transcribe.use-gpu = true; Transcribe.open-get(); }

@@ -9,6 +9,8 @@
 //! - `--lang <code>`: `en`, `tl`… (default: detect)
 //! - `--srt` (captions only) / `--both` (text and captions); default: text
 //! - `--no-times`: no `[01:23]` before each line of the text
+//! - `--best`: the Best quality model (downloaded first if it isn't there); `--translate`
+//!   uses it too
 //! - `--translate`: into English, whatever is spoken
 //! - `--burn`: also a copy of the video with the captions burned into the picture
 //! - `--range <start> <end>`: only that part of the (one) file, in seconds
@@ -29,10 +31,11 @@ fn main() -> anyhow::Result<()> {
     if flag("--status") {
         let st = transcribe::status();
         println!(
-            "engine: {} ({})  model: {}  ready: {}  on drive: {}  NVIDIA card: {}",
+            "engine: {} ({})  fast: {}  best quality: {}  ready: {}  on drive: {}  NVIDIA card: {}",
             st.engine,
             if st.gpu { "NVIDIA" } else { "CPU" },
             st.model,
+            st.best,
             st.ready(),
             fmt::bytes(transcribe::disk_bytes() as f64),
             transcribe::has_nvidia()
@@ -92,12 +95,20 @@ fn main() -> anyhow::Result<()> {
             times: !flag("--no-times"),
             translate: flag("--translate"),
             burn: flag("--burn"),
+            model: if flag("--best") { transcribe::Model::Best } else { transcribe::Model::Fast },
         },
         out_dir: after("--out", 1).map(PathBuf::from),
     };
     let t0 = Instant::now();
     let mut shown = -1i32;
     let done = transcribe::run(&req, &AtomicBool::new(false), |p| match p.stage {
+        Stage::Getting(text) => {
+            let pc = (p.fraction * 100.0) as i32;
+            if pc / 10 != shown / 10 {
+                println!("{text}");
+                shown = pc;
+            }
+        }
         Stage::Preparing => println!("preparing the sound…"),
         Stage::Listening(line) if !line.is_empty() => println!("  {line}"),
         Stage::Listening(_) => {

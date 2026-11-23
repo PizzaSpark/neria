@@ -61,8 +61,9 @@ fn spec(ui: &AppWindow) -> Spec {
             .flatten(),
         output: Output::from_index(t.get_output()),
         times: t.get_times(),
-        translate: false,
+        translate: t.get_translate(),
         burn: t.get_can_burn() && t.get_burn(),
+        model: transcribe::Model::from_index(t.get_model()),
     }
 }
 
@@ -79,6 +80,8 @@ fn show_spec(ui: &AppWindow, s: &Spec) {
     t.set_output(s.output.index());
     t.set_times(s.times);
     t.set_burn(s.burn);
+    t.set_model(s.model.index());
+    t.set_translate(s.translate);
 }
 
 /// Settings → Download → Speech to text, and what Get would download.
@@ -101,6 +104,10 @@ pub fn refresh(ui: &AppWindow) {
         }
         .into(),
     );
+    t.set_best_ready(st.best);
+    let best = transcribe::dir().join(transcribe::Model::Best.file());
+    let bytes = best.metadata().map(|m| m.len()).unwrap_or(transcribe::Model::Best.mb() * 1_000_000);
+    t.set_best_size(fmt::bytes(bytes as f64).into());
     update_size(ui);
 }
 
@@ -310,6 +317,27 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         }
     });
 
+    t.on_remove_best({
+        let (weak, settings) = (ui.as_weak(), settings.clone());
+        move || {
+            let ui = weak.unwrap();
+            if STATE.with(|s| s.borrow().cancel.is_some()) {
+                crate::show_toast(&ui, "Speech to text is busy. Remove it once it's done.");
+                return;
+            }
+            match transcribe::remove_model(transcribe::Model::Best) {
+                Ok(()) => crate::show_toast(&ui, "The Best quality model is off this PC. Fast stays."),
+                Err(e) => crate::show_toast(&ui, &format!("Couldn't remove it: {e}")),
+            }
+            // Back to Fast, which is still there.
+            let t = ui.global::<Transcribe>();
+            t.set_model(0);
+            t.set_translate(false);
+            remember(&ui, &settings);
+            refresh(&ui);
+        }
+    });
+
     t.on_stop(|| {
         STATE.with(|s| {
             if let Some(c) = &s.borrow().cancel {
@@ -465,6 +493,7 @@ fn start(ui: &AppWindow) {
                 last = Instant::now();
                 let f = (i as f32 + p.fraction) / n as f32;
                 let status = match p.stage {
+                    Stage::Getting(what) => format!("Getting {what}…"),
                     Stage::Preparing => format!("Getting the sound ready{which}…"),
                     Stage::Listening(_) => format!("Listening{which}… {:.0}%", p.fraction * 100.0),
                 };

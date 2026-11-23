@@ -735,6 +735,13 @@ export global Transcribe {
     // 0 text, 1 captions (.srt), 2 both
     in-out property <int> output;
     in-out property <bool> times: true;
+    // Which model: 0 Fast, 1 Best quality (downloaded the first time it's used; `best-size`
+    // "1.1 GB"). Translate into English needs Best quality.
+    in-out property <int> model;
+    in property <bool> best-ready;
+    in property <string> best-size;
+    in-out property <bool> translate;
+    callback remove-best();
     // One video: also a copy with the captions burned into the picture.
     in property <bool> can-burn;
     in-out property <bool> burn;
