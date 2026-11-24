@@ -107,6 +107,23 @@ component FileRow inherits Rectangle {
 // look like and its size for this file, so you compare before picking.
 component Goals inherits VerticalLayout {
     spacing: 0px;
+    // A video: keep the picture, or make a sound file of it (mock design/audio-tools.html 2A).
+    if Compress.has-video: HorizontalLayout {
+        padding-bottom: 12px;
+        spacing: 10px;
+        ChoiceChips {
+            horizontal-stretch: 0;
+            options: ["Video", "Sound only"];
+            current <=> Compress.sound-only;
+            changed => { Compress.changed(); }
+        }
+        if Compress.sound-only == 1 && !Screen.compact: Text {
+            text: "the picture is left out";
+            color: Theme.muted;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
     Divider { }
     for g[i] in Compress.goals: ChoiceRow {
         title: g.name;
@@ -268,25 +285,12 @@ component Advanced inherits VerticalLayout {
         padding-left: 4px;
         VerticalLayout {
             spacing: 6px;
-            OptionHead { text: "Format"; }
-            if !Compress.sound-file: ChoiceChips {
+            // A sound file's format is its goal now (Plays everywhere, MP3…).
+            if !Compress.sound-mode: OptionHead { text: "Format"; }
+            if !Compress.sound-mode: ChoiceChips {
                 options: ["Plays everywhere", "Smaller", "Smallest"];
                 current <=> Compress.format;
                 changed => { Compress.changed(); }
-            }
-            // A sound file picks its kind of file: what each is good for, said under it.
-            if Compress.sound-file: ChoiceChips {
-                options: ["M4A", "MP3", "Opus"];
-                current <=> Compress.sound-format;
-                changed => { Compress.changed(); }
-            }
-            if Compress.sound-file: Text {
-                text: Compress.sound-format == 1 ? "Plays on anything, even old car stereos. Needs a bit more room for the same sound."
-                    : Compress.sound-format == 2 ? "The smallest for the same sound. Some older players and apps can't play it."
-                    : "AAC: plays on phones, computers and in most apps, and sounds better than MP3 at the same size.";
-                color: Theme.muted;
-                font-size: 12px;
-                wrap: word-wrap;
             }
             if Compress.format-warning != "": Notice {
                 text: Compress.format-warning;
@@ -330,6 +334,20 @@ component Advanced inherits VerticalLayout {
                 options: ["Online video · -14 LUFS", "Podcast · -16 LUFS"];
                 current <=> Compress.loudness;
                 changed => { Compress.changed(); }
+            }
+            // Several: each brought to the level, or the album as a whole (quiet songs stay
+            // quieter than loud ones).
+            if Compress.volume == 1 && Compress.count > 1: ChoiceChips {
+                options: ["Each the same", "As an album"];
+                current <=> Compress.album;
+                changed => { Compress.changed(); }
+            }
+            if Compress.volume == 1 && Compress.count > 1: Text {
+                text: Compress.album == 1 ? "One change of volume for all of them, so a quiet song stays quieter than the loud one."
+                    : "Every file at the same loudness: right for a mixed playlist.";
+                color: Theme.muted;
+                font-size: 12px;
+                wrap: word-wrap;
             }
         }
         if Compress.tracks-text != "" && !Compress.sound-file: Tick {

@@ -56,6 +56,7 @@ const ACTIONS: &[Action] = &[
     f("compress", "Make a file smaller…", &["compress", "shrink", "size", "discord", "email", "whatsapp", "mb"], "\u{E73F}", "Compress", Wants::Media),
     a("replay", "Turn on instant replay", &["replay", "record", "game", "screen", "clip that", "last minute"], "\u{E7C8}", "Capture"),
     a("download", "Download a link…", &["get", "save", "grab", "paste", "youtube", "spotify", "mp3", "song", "playlist", "live", "stream", "record"], "\u{E896}", "Download"),
+    f("sound", "Convert to a sound file…", &["convert", "extract audio", "audio", "mp3", "m4a", "flac", "wav", "opus", "sound only"], "\u{E8D6}", "Compress", Wants::Media),
     f("gif", "Make a GIF…", &["gif", "webp", "meme", "animated"], "\u{E8B9}", "Clip", Wants::Video),
     f("transcribe", "Transcribe…", &["text", "captions", "subtitles", "srt", "speech", "words", "whisper"], "\u{E8A5}", "Speech to text", Wants::Media),
     a("clip-link", "Clip part of a link…", &["cut", "trim", "youtube", "twitch", "part"], "\u{E71B}", "Clip"),

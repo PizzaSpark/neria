@@ -612,6 +612,15 @@ export global Compress {
     in property <bool> reading; // still reading the file (or files)
     // The one file is sound only: no pictures to compare, no picture options.
     in property <bool> sound-file;
+    // A video is on the list: Video / Sound only shows above the goals.
+    in property <bool> has-video;
+    // Sound only picked (the picture left out: "Extract audio").
+    in-out property <int> sound-only;
+    // The goals are formats (sound files, or Sound only): Plays everywhere, MP3, Smallest
+    // that sounds good, Lossless, For editing, then Custom size.
+    in property <bool> sound-mode;
+    // Several files evened out: 0 each the same, 1 as an album (one gain for all).
+    in-out property <int> album;
 
     // ── Goal ──
     // 0 Discord, 1 email, 2 WhatsApp, 3 smaller still sharp, 4 as small as possible, 5 custom

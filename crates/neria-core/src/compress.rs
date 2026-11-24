@@ -58,6 +58,10 @@ pub enum SoundCodec {
     Aac,
     Mp3,
     Opus,
+    /// Lossless, about 60% of WAV ("Lossless": nothing lost, not smaller).
+    Flac,
+    /// 16-bit PCM ("For editing": every app opens it).
+    Wav,
 }
 
 /// The bitrates an MP3 at 44.1 / 48 kHz can have (MPEG-1 Layer III).
@@ -73,6 +77,8 @@ impl SoundCodec {
             Self::Aac => "AAC",
             Self::Mp3 => "MP3",
             Self::Opus => "Opus",
+            Self::Flac => "FLAC",
+            Self::Wav => "WAV",
         }
     }
 
@@ -81,7 +87,14 @@ impl SoundCodec {
             Self::Aac => "m4a",
             Self::Mp3 => "mp3",
             Self::Opus => "opus",
+            Self::Flac => "flac",
+            Self::Wav => "wav",
         }
+    }
+
+    /// Nothing lost: no bitrate to pick (its size is the sound's own).
+    pub fn lossless(self) -> bool {
+        matches!(self, Self::Flac | Self::Wav)
     }
 
     /// More than this sounds no better (stereo).
@@ -89,6 +102,7 @@ impl SoundCodec {
         match self {
             Self::Aac | Self::Mp3 => 192.0,
             Self::Opus => 160.0,
+            Self::Flac | Self::Wav => 1411.0,
         }
     }
 
@@ -98,6 +112,7 @@ impl SoundCodec {
             Self::Aac => 24.0,
             Self::Mp3 => 32.0,
             Self::Opus => 12.0,
+            Self::Flac | Self::Wav => 700.0,
         }
     }
 
@@ -107,6 +122,7 @@ impl SoundCodec {
             Self::Aac => 48.0,
             Self::Mp3 => 80.0,
             Self::Opus => 24.0,
+            Self::Flac | Self::Wav => 0.0,
         }
     }
 
@@ -116,6 +132,7 @@ impl SoundCodec {
             Self::Aac => 48.0,
             Self::Mp3 => 64.0,
             Self::Opus => 24.0,
+            Self::Flac | Self::Wav => 700.0,
         }
     }
 
@@ -134,6 +151,7 @@ impl SoundCodec {
             Self::Aac => [160.0, 112.0, 80.0, 48.0],
             Self::Mp3 => [192.0, 128.0, 96.0, 64.0],
             Self::Opus => [128.0, 80.0, 48.0, 24.0],
+            Self::Flac | Self::Wav => return Look::Same,
         };
         if k >= steps[0] {
             Look::Same
@@ -281,6 +299,10 @@ pub enum Goal {
     Tiny,
     /// Custom size in MB.
     Size(f64),
+    /// Sound only, in this format, sounding the same (Compress → Sound only: "Plays
+    /// everywhere" M4A, MP3, "Smallest that sounds good" Opus, "Lossless" FLAC, "For
+    /// editing" WAV).
+    Format(SoundCodec),
 }
 
 impl Goal {
@@ -292,6 +314,11 @@ impl Goal {
             Self::Sharp => "Smaller, still sharp".into(),
             Self::Tiny => "As small as possible".into(),
             Self::Size(mb) => format!("{} MB", fmt_mb(mb)),
+            Self::Format(SoundCodec::Aac) => "Plays everywhere".into(),
+            Self::Format(SoundCodec::Mp3) => "MP3".into(),
+            Self::Format(SoundCodec::Opus) => "Smallest that sounds good".into(),
+            Self::Format(SoundCodec::Flac) => "Lossless".into(),
+            Self::Format(SoundCodec::Wav) => "For editing".into(),
         }
     }
 
@@ -303,6 +330,9 @@ impl Goal {
             Self::Sharp => Target::Quality(0.7),
             Self::Tiny => Target::Quality(0.25),
             Self::Size(mb) => Target::SizeMb(mb),
+            // AAC 160 / MP3 192 kbps: sounds the same; Opus 96: nearly the same, a third the size.
+            Self::Format(SoundCodec::Opus) => Target::Quality(0.7),
+            Self::Format(_) => Target::Quality(0.95),
         }
     }
 
@@ -413,6 +443,11 @@ pub struct Options {
     /// Keep every sound track, the text captions and the chapter marks (else: the first
     /// sound track only, no captions, no chapters).
     pub keep_tracks: bool,
+    /// Just the sound of a video, as a sound file (Compress → Sound only; "Extract audio").
+    pub sound_only: bool,
+    /// Louder or quieter by this many dB (Even out "as an album": one gain for every file,
+    /// from their loudness together; `album_gain`). Instead of `even`.
+    pub gain: Option<f32>,
     /// Cut these black bars off (from `detect_bars`).
     pub crop: Option<Bars>,
 }
@@ -448,6 +483,8 @@ impl Options {
             even: None,
             sound_codec: None,
             keep_tracks: true,
+            sound_only: false,
+            gain: None,
             crop: None,
         }
     }
@@ -498,6 +535,8 @@ pub struct Plan {
     /// What the loudness pass measured (`run` fills it in); without it evening out is
     /// one pass, fine for a sample to listen to.
     pub measured: Option<Loudness>,
+    /// Louder or quieter by this many dB (an album evened out together).
+    pub gain: Option<f32>,
 }
 
 impl Plan {
@@ -519,6 +558,11 @@ impl Plan {
     /// measured loudness it's the second of two passes; without, one pass (samples).
     /// loudnorm works at 192 kHz inside: back to 48 kHz after.
     pub fn audio_filter(&self, dur: f64) -> Option<String> {
+        if let Some(g) = self.gain {
+            return AudioEdit { level: Level::Gain(g), ..Default::default() }
+                .chain(dur, None)
+                .map(|c| format!("{c},aresample=48000"));
+        }
         let edit = AudioEdit { level: Level::Normalize(self.even?), ..Default::default() };
         edit.chain(dur, self.measured.as_ref()).map(|c| format!("{c},aresample=48000"))
     }
@@ -539,6 +583,9 @@ impl Plan {
         }
         if let Some(sc) = self.sound {
             let ch = if self.channels == 1 { "mono" } else { "stereo" };
+            if sc.lossless() {
+                return format!("{}  ·  {ch}  ·  .{}{extra}", sc.label(), sc.ext());
+            }
             return format!("{} kbps {}  ·  {ch}  ·  .{}{extra}", self.audio_kbps.unwrap_or(0), sc.label(), sc.ext());
         }
         let mut parts = vec![format!("{}×{}", self.width, self.height)];
@@ -563,7 +610,11 @@ impl Plan {
     /// What it'll look like, in plain words: "720p 30 fps, a bit softer".
     pub fn hint(&self) -> String {
         if let Some(sc) = self.sound {
-            return format!("{} kbps {}, {}", self.audio_kbps.unwrap_or(0), sc.label(), self.look.sound_label());
+            return match sc {
+                SoundCodec::Flac => "FLAC, nothing lost".into(),
+                SoundCodec::Wav => "WAV, nothing lost".into(),
+                _ => format!("{} kbps {}, {}", self.audio_kbps.unwrap_or(0), sc.label(), self.look.sound_label()),
+            };
         }
         let fps = if self.fps_cut { format!(" {:.0} fps", self.fps) } else { String::new() };
         format!("{}p{fps}, {}", self.lines, self.look.label())
@@ -595,15 +646,19 @@ pub fn plan(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan
         p.audio_tracks = p.audio_tracks.min(1);
     }
     p.even = opts.even.filter(|_| info.has_audio && p.audio_kbps.is_some());
+    p.gain = opts.gain.filter(|_| info.has_audio && p.audio_kbps.is_some());
+    if p.gain.is_some() {
+        p.even = None;
+    }
     Ok(p)
 }
 
 fn plan_file(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan> {
-    if !info.has_video {
+    if !info.has_video || opts.sound_only {
         if info.has_audio {
             return plan_sound(info, opts);
         }
-        bail!("This file has no picture or sound to compress.");
+        bail!(if info.has_video { "This video has no sound." } else { "This file has no picture or sound to compress." });
     }
     if info.duration <= 0.0 {
         bail!("Can't tell how long this video is.");
@@ -773,6 +828,7 @@ fn plan_file(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Pla
         parts: Vec::new(),
         even: None,
         measured: None,
+        gain: None,
     })
 }
 
@@ -787,6 +843,37 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
         bail!("The part to keep is empty: move Out after In.");
     }
     let sc = opts.sound_codec.unwrap_or(SoundCodec::for_codec(opts.codec));
+    if sc.lossless() {
+        // CD-like 16-bit sound: 1411 kbps stereo as WAV, FLAC about 60% of that.
+        let channels = if info.audio_channels == 1 { 1 } else { 2 };
+        let pcm = 705.6 * channels as f64;
+        let kbps = if sc == SoundCodec::Flac { pcm * 0.6 } else { pcm };
+        return Ok(Plan {
+            encoder: Encoder::Cpu(opts.codec),
+            width: 0,
+            height: 0,
+            lines: 0,
+            fps: 0.0,
+            video_kbps: None,
+            audio_kbps: Some(kbps as u32),
+            audio_tracks: 1,
+            captions: Vec::new(),
+            captions_dropped: 0,
+            chapters: opts.keep_tracks && !info.chapters.is_empty() && sc == SoundCodec::Flac,
+            quality: None,
+            target_bytes: None,
+            look: Look::Same,
+            fps_cut: false,
+            filters: Vec::new(),
+            tight: false,
+            sound: Some(sc),
+            channels,
+            parts: Vec::new(),
+            even: None,
+            measured: None,
+        gain: None,
+        });
+    }
     let (kbps, target_bytes) = match opts.target {
         Target::Quality(level) => {
             // 0.7 (Smaller, still clear): AAC 128 / MP3 160 / Opus 96; 0.25: AAC 72 /
@@ -796,6 +883,7 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
                 SoundCodec::Aac => 40.0 + l * 125.0,
                 SoundCodec::Mp3 => 64.0 + l * 137.0,
                 SoundCodec::Opus => 24.0 + l * 103.0,
+                SoundCodec::Flac | SoundCodec::Wav => unreachable!("lossless is planned above"),
             };
             ((k / 8.0).round() * 8.0, None)
         }
@@ -814,7 +902,8 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
         }
     };
     // What the file carries now (its whole size over its length): more can't sound better.
-    let now = info.size_bytes as f64 * 8.0 / 1000.0 / info.duration;
+    // (A video's size is mostly picture: no cap from it.)
+    let now = if info.has_video { f64::MAX } else { info.size_bytes as f64 * 8.0 / 1000.0 / info.duration };
     // Mono sounds the same at half of stereo's bitrate.
     let max = if info.audio_channels == 1 { sc.max_kbps() / 2.0 } else { sc.max_kbps() };
     let kbps = sc.snap(kbps.min(max).min(now.floor().max(sc.min_kbps())).max(sc.min_kbps()));
@@ -842,7 +931,21 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
         parts: Vec::new(),
         even: None,
         measured: None,
+        gain: None,
     })
+}
+
+/// Even out "as an album": the one gain (dB) that brings these files, together, to `target`
+/// LUFS, from each one's loudness and length (louder parts weigh by their energy), so a quiet
+/// song stays quieter than a loud one. Within ±20 dB.
+pub fn album_gain(files: &[(f64, f64)], target: f32) -> Option<f32> {
+    let total: f64 = files.iter().map(|(_, len)| len).sum();
+    if total <= 0.0 {
+        return None;
+    }
+    let energy: f64 = files.iter().map(|(i, len)| len * 10f64.powf(i / 10.0)).sum::<f64>() / total;
+    let album = 10.0 * energy.log10();
+    Some(((target as f64 - album) as f32).clamp(-20.0, 20.0))
 }
 
 /// A size goal the whole video can't look OK in (the plan fails, or comes out blurry):
@@ -928,6 +1031,12 @@ fn bars_worth_cutting(sw: u32, sh: u32, x0: u32, y0: u32, x1: u32, y1: u32) -> O
 pub fn output_path(input: &Path, opts: &Options, plan: &Plan) -> PathBuf {
     let dir = input.parent().map(Path::to_path_buf).unwrap_or_default();
     let stem = input.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "video".into());
+    // Converted to another kind of sound file (a video's sound, an .mp3 as .flac): just the
+    // new extension, as a converter names it.
+    let same_ext = input.extension().is_some_and(|e| e.eq_ignore_ascii_case(plan.ext()));
+    if plan.sound.is_some() && !same_ext && opts.whole() && matches!(opts.target, Target::Quality(_)) {
+        return clip::unique_path(&dir, &stem, plan.ext());
+    }
     let mut tag = match opts.target {
         Target::SizeMb(mb) => format!("compressed {mb}MB"),
         Target::Quality(_) => "compressed".into(),
@@ -1027,8 +1136,12 @@ pub fn build_args(
             // Constant bitrate: the size is exactly what it says.
             SoundCodec::Mp3 => a.extend(["-c:a", "libmp3lame"].map(String::from)),
             SoundCodec::Opus => a.extend(["-c:a", "libopus", "-vbr", "on"].map(String::from)),
+            SoundCodec::Flac => a.extend(["-c:a", "flac"].map(String::from)),
+            SoundCodec::Wav => a.extend(["-c:a", "pcm_s16le"].map(String::from)),
         }
-        a.extend(["-b:a".into(), format!("{}k", plan.audio_kbps.unwrap_or(96))]);
+        if !sc.lossless() {
+            a.extend(["-b:a".into(), format!("{}k", plan.audio_kbps.unwrap_or(96))]);
+        }
         a.extend(["-ac".into(), plan.channels.max(1).to_string()]);
         if !plan.chapters {
             a.extend(["-map_chapters", "-1"].map(String::from));
@@ -1564,8 +1677,54 @@ mod tests {
             even: None,
             sound_codec: None,
             keep_tracks: false,
+            sound_only: false,
+            gain: None,
             crop: None,
         }
+    }
+
+    #[test]
+    fn an_album_gets_one_gain() {
+        // A loud single (-8 LUFS) and a quiet ballad (-18), as long as each other: together
+        // about -10.6, so both go down ~3.4 dB to -14 and the ballad stays 10 dB quieter.
+        let g = album_gain(&[(-8.0, 200.0), (-18.0, 200.0)], -14.0).unwrap();
+        assert!((g + 3.4).abs() < 0.1, "{g}");
+        assert_eq!(album_gain(&[], -14.0), None);
+        let mut p = plan(&song(), &Options { gain: Some(g), even: Some(-14.0), ..opts(Target::Quality(0.7)) }, &Encoders::default()).unwrap();
+        assert_eq!(p.even, None);
+        p.measured = None;
+        assert_eq!(p.audio_filter(60.0).as_deref(), Some("volume=-3.4dB,aresample=48000"));
+    }
+
+    #[test]
+    fn a_videos_sound_in_each_format() {
+        let opts_for = |sc: SoundCodec| Options {
+            sound_codec: Some(sc),
+            sound_only: true,
+            ..opts(Goal::Format(sc).target())
+        };
+        // Plays everywhere: AAC that sounds the same, the picture left out.
+        let p = plan(&info(), &opts_for(SoundCodec::Aac), &Encoders::default()).unwrap();
+        assert_eq!((p.sound, p.audio_kbps, p.ext()), (Some(SoundCodec::Aac), Some(160), "m4a"));
+        let args = build_args(Path::new("in.mp4"), Path::new("out.m4a"), &info(), &p, None, None);
+        assert!(args.iter().any(|a| a == "-vn") && args.windows(2).any(|w| w == ["-map", "0:a:0"]));
+        // Smallest that sounds good: Opus, nearly the same.
+        let p = plan(&info(), &opts_for(SoundCodec::Opus), &Encoders::default()).unwrap();
+        assert_eq!((p.audio_kbps, p.look), (Some(96), Look::NearlySame));
+        // Lossless and For editing: no bitrate asked of the encoder; WAV about 10 MB a minute.
+        for (sc, codec) in [(SoundCodec::Flac, "flac"), (SoundCodec::Wav, "pcm_s16le")] {
+            let p = plan(&info(), &opts_for(sc), &Encoders::default()).unwrap();
+            assert_eq!(p.look, Look::Same);
+            let args = build_args(Path::new("in.mp4"), Path::new("out"), &info(), &p, None, None);
+            assert!(args.windows(2).any(|w| w == ["-c:a", codec]));
+            assert!(!args.iter().any(|a| a == "-b:a"));
+        }
+        let wav = plan(&song(), &opts_for(SoundCodec::Wav), &Encoders::default()).unwrap();
+        let mb_a_minute = wav.sound_bytes(60.0).unwrap() as f64 / 1e6;
+        assert!((10.0..11.0).contains(&mb_a_minute), "{mb_a_minute}");
+        assert_eq!(wav.hint(), "WAV, nothing lost");
+        // A video without its sound option is planned as a video.
+        assert!(plan(&info(), &opts(Target::Quality(0.7)), &Encoders::default()).unwrap().sound.is_none());
     }
 
     #[test]

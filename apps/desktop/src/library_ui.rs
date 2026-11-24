@@ -891,7 +891,7 @@ pub(crate) fn act(ui: &AppWindow, id: u64, what: &str) {
             }
             ui.set_page(1);
         }
-        "compress" | "transcribe" | "gif" => act_on_file(ui, &it.file, what),
+        "compress" | "sound" | "transcribe" | "gif" => act_on_file(ui, &it.file, what),
         "show" if it.kind == Kind::Playlist => {
             let _ = open::that(&it.file);
         }
@@ -1008,6 +1008,13 @@ pub(crate) fn act_on_file(ui: &AppWindow, file: &Path, what: &str) {
         }
         "compress" => {
             ui.set_page(2);
+            ui.global::<Compress>().set_sound_only(0);
+            ui.global::<Compress>().invoke_open_path(path);
+        }
+        // Compress with Sound only: a sound file of it (Convert, Extract audio).
+        "sound" => {
+            ui.set_page(2);
+            ui.global::<Compress>().set_sound_only(1);
             ui.global::<Compress>().invoke_open_path(path);
         }
         "transcribe" => crate::transcribe_ui::open_files(ui, vec![file.to_path_buf()]),
@@ -1070,6 +1077,7 @@ pub(crate) fn thing_actions(id: u64) -> Vec<(&'static str, &'static str, &'stati
     };
     add(d.can_clip, ("clip", "Clip", "\u{E8C6}"));
     add(d.can_compress, ("compress", "Compress", "\u{E73F}"));
+    add(d.can_gif, ("sound", "Convert to a sound file", "\u{E8D6}"));
     add(d.can_gif, ("gif", "Make a GIF", "\u{E8B9}"));
     add(d.can_transcribe, ("transcribe", "Transcribe", "\u{E8A5}"));
     add(d.can_copy_file, ("copy-file", "Copy file", "\u{E8C8}"));

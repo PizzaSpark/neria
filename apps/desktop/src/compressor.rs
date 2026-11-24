@@ -24,6 +24,19 @@ const VIDEO_EXTENSIONS: &[&str] =
 /// Sound files go through the same goals (AAC or Opus, see `compress::plan`).
 const SOUND_EXTENSIONS: &[&str] = &["mp3", "m4a", "aac", "wav", "flac", "opus", "ogg", "wma", "aiff", "aif"];
 const GOALS: [Goal; 5] = [Goal::Discord, Goal::Email, Goal::WhatsApp, Goal::Sharp, Goal::Tiny];
+/// Sound files and Sound only: the formats, in plain words (mock design/audio-tools.html 2A).
+const SOUND_GOALS: [Goal; 5] = [
+    Goal::Format(compress::SoundCodec::Aac),
+    Goal::Format(compress::SoundCodec::Mp3),
+    Goal::Format(compress::SoundCodec::Opus),
+    Goal::Format(compress::SoundCodec::Flac),
+    Goal::Format(compress::SoundCodec::Wav),
+];
+
+/// The goals shown now (the page's `sound-mode` says which).
+fn goals_of(c: &Compress) -> [Goal; 5] {
+    if c.get_sound_mode() { SOUND_GOALS } else { GOALS }
+}
 
 // File states, as the UI reads them (CmpFile.state).
 const WAITING: i32 = 0;
@@ -88,7 +101,7 @@ fn with(f: impl FnOnce(&mut Compressor)) {
 
 fn goal_of(c: &Compress, index: i32) -> Result<Goal> {
     Ok(match index {
-        i @ 0..=4 => GOALS[i as usize],
+        i @ 0..=4 => goals_of(c)[i as usize],
         _ => Goal::Size(
             c.get_custom_mb()
                 .trim()
@@ -120,15 +133,6 @@ fn place(goal: Goal) -> String {
     }
 }
 
-/// A sound file's format chip (Advanced → Format): M4A, MP3 or Opus.
-fn sound_codec_of(c: &Compress) -> compress::SoundCodec {
-    match c.get_sound_format() {
-        1 => compress::SoundCodec::Mp3,
-        2 => compress::SoundCodec::Opus,
-        _ => compress::SoundCodec::Aac,
-    }
-}
-
 /// The goal's name for this file: a sound file is "still clear", not "still sharp".
 fn goal_name(goal: Goal, info: &FileInfo) -> String {
     match goal {
@@ -146,7 +150,7 @@ fn part_bytes(info: &FileInfo, opts: &Options) -> u64 {
 /// under `limit`, in a kind of file the apps play (an .mkv, .avi or .wma isn't, so it's
 /// still made), and nothing else asked of it (evening out the sound).
 fn fits_as_is(path: &Path, info: &FileInfo, opts: &Options, limit: u64) -> bool {
-    if opts.even.is_some() {
+    if opts.even.is_some() || opts.gain.is_some() {
         return false;
     }
     let playable = path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
@@ -222,10 +226,14 @@ impl Compressor {
         if c.get_volume() == 1 {
             o.even = Some(if c.get_loudness() == 1 { -16.0 } else { -14.0 });
         }
-        // One sound file picks its own format; in a list, sound files follow Format (AAC for
-        // Plays everywhere, else Opus).
-        if self.items.len() == 1 && item.info.as_ref().is_some_and(|i| !i.has_video) {
-            o.sound_codec = Some(sound_codec_of(c));
+        // Sound files and Sound only: the format is the goal (Custom size: AAC). In a list of
+        // videos, sound files follow Format (AAC for Plays everywhere, else Opus).
+        if let Goal::Format(sc) = goal {
+            o.sound_codec = Some(sc);
+            o.sound_only = true;
+        } else if c.get_sound_mode() {
+            o.sound_codec = Some(compress::SoundCodec::Aac);
+            o.sound_only = true;
         }
         if self.items.len() == 1 && c.get_trim_open() && !self.parts.is_empty() {
             // Parts kept: one is a plain trim; joined, they're one file; one file each,
@@ -437,16 +445,29 @@ impl Compressor {
             .into(),
         );
 
+        // A video on the list: Video / Sound only. Sound files only, or Sound only picked: the
+        // goals are formats.
+        let read: Vec<&FileInfo> = self.items.iter().filter_map(|i| i.info.as_ref()).collect();
+        let has_video = read.iter().any(|i| i.has_video);
+        c.set_has_video(has_video);
+        if !read.is_empty() && !has_video {
+            c.set_sound_only(0);
+        }
+        let sound_mode = !read.is_empty() && (c.get_sound_only() == 1 || read.iter().all(|i| !i.has_video));
+        c.set_sound_mode(sound_mode);
         let goal = goal_of(&c, c.get_goal());
-        // One sound file: Advanced is only its format.
-        let sound_file = self.items.len() == 1 && self.items[0].info.as_ref().is_some_and(|i| !i.has_video);
+        // One sound file (or one video's sound): no pictures, Advanced is only the volume.
+        let sound_file = self.items.len() == 1 && sound_mode;
         c.set_sound_file(sound_file);
         let format_names = ["Plays everywhere", "Smaller", "Smallest"];
         let picture_names = ["picture as needed", "picture kept", "1080p at most", "720p at most", "480p at most"];
         let sound_names = ["sound 128 kbps", "sound 96 kbps", "sound 64 kbps", "no sound"];
         let format = format_names[c.get_format().clamp(0, 2) as usize].to_string();
         let line = if sound_file {
-            let sc = sound_codec_of(&c);
+            let sc = match goal.as_ref() {
+                Ok(Goal::Format(sc)) => *sc,
+                _ => compress::SoundCodec::Aac,
+            };
             let mut line = vec![format!("{} (.{})", sc.label(), sc.ext())];
             if c.get_volume() == 1 {
                 line.push("evened out".into());
@@ -467,10 +488,7 @@ impl Compressor {
         c.set_advanced_line(line.join(" · ").into());
         c.set_format_warning(
             match goal.as_ref().ok().and_then(|g| g.must_play_in()) {
-                Some(place) if sound_file && sound_codec_of(&c) == compress::SoundCodec::Opus => format!(
-                    "Opus may not play in {place} on every phone or computer. M4A or MP3 are the safe picks for sending."
-                ),
-                Some(_) if sound_file => String::new(),
+                Some(_) if sound_mode => String::new(),
                 Some(place) if c.get_format() != 0 => format!(
                     "{} may not play in {place} on every phone or computer. Plays everywhere is the safe pick for sending.",
                     format_names[c.get_format() as usize]
@@ -519,9 +537,11 @@ impl Compressor {
         let (mut verdict, mut sizes, mut problem, mut fix, mut summary) =
             (String::new(), String::new(), String::new(), String::new(), String::new());
         let mut can_start = !running && encoders.is_some() && !self.items.is_empty();
-        let mut start_text = match self.items.len() {
-            0 | 1 => "Compress".to_string(),
-            n => format!("Compress {n} files"),
+        let mut start_text = match (self.items.len(), sound_mode) {
+            (0 | 1, false) => "Compress".to_string(),
+            (0 | 1, true) => "Save the sound".to_string(),
+            (n, false) => format!("Compress {n} files"),
+            (n, true) => format!("Save {n} as sound"),
         };
 
         match one {
@@ -542,11 +562,18 @@ impl Compressor {
                         c.set_duration(info.duration as f32);
 
                         // Every goal, worked out for this file.
-                        for g in GOALS.iter() {
+                        for g in goals_of(&c).iter() {
                             let opts = self.options(&c, *g, it);
+                            // A sound file's size follows from its bitrate: no sample needed.
+                            let sound_size = compress::plan(info, &opts, &enc)
+                                .ok()
+                                .and_then(|p| p.sound_bytes(opts.length(info)))
+                                .filter(|_| matches!(g, Goal::Format(_)))
+                                .map(|b| format!("about {}", fmt::mb(b as f64)));
                             let row = match self.verdict_for(&c, *g, it, info, &enc) {
                                 Ok(hint) => {
                                     let size = match g.target() {
+                                        _ if sound_size.is_some() => sound_size.clone().unwrap_or_default(),
                                         Target::SizeMb(mb) => format!("{} MB", compress::fmt_mb(mb)),
                                         Target::Quality(_) => {
                                             self.estimates.get(&self.preview_key(it, &opts, *g)).map_or_else(
@@ -574,6 +601,7 @@ impl Compressor {
                                     name: goal_name(*g, info).into(),
                                     hint: why.into(),
                                     size: match g.target() {
+                                        _ if sound_size.is_some() => sound_size.clone().unwrap_or_default().into(),
                                         Target::SizeMb(mb) => format!("{} MB", compress::fmt_mb(mb)).into(),
                                         _ => self
                                             .estimates
@@ -695,6 +723,7 @@ impl Compressor {
                                             );
                                             fix = format!("Keep the first {}", fmt::duration(s));
                                         } else if let Some(b) = est
+                                            && !matches!(g, Goal::Format(_))
                                             && plan.target_bytes.is_none()
                                             && opts.even.is_none()
                                             && b as f64 >= now as f64 * 0.95
@@ -755,8 +784,9 @@ impl Compressor {
             }
             None => {
                 // Several (or none): one goal for all, each file says what it'll get.
-                for g in GOALS {
+                for g in goals_of(&c) {
                     let size = match g.target() {
+                        _ if matches!(g, Goal::Format(_)) => "the size follows".into(),
                         Target::SizeMb(mb) => format!("{} MB each", compress::fmt_mb(mb)),
                         Target::Quality(_) => "the size follows".into(),
                     };
@@ -855,6 +885,7 @@ impl Compressor {
                 // (Evening out the sound is worth doing even then.)
                 if plan.target_bytes.is_none()
                     && opts.even.is_none()
+                    && !matches!(goal, Goal::Format(_))
                     && let Some(b) = self.estimates.get(&self.preview_key(it, &opts, goal))
                     && *b as f64 >= now as f64 * 0.95
                 {
@@ -987,7 +1018,7 @@ impl Compressor {
         let len = (to - from).min(10.0);
         c.set_player_busy(true);
         let (path, weak) = (it.path.clone(), ui.as_weak());
-        let has_video = info.has_video;
+        let has_video = info.has_video && plan.sound.is_none();
         std::thread::spawn(move || {
             // Earlier samples go (one still open in a player stays until the next time).
             for f in std::fs::read_dir(neria_core::paths::cache_dir()).into_iter().flatten().flatten() {
@@ -1141,9 +1172,32 @@ impl Compressor {
         c.set_status("Starting…".into());
         let total = plan.len();
         let weak = ui.as_weak();
+        // Several evened out as an album: their loudness together first, one gain for all.
+        let album = total > 1 && c.get_album() == 1 && !each;
         std::thread::spawn(move || {
             let started = Instant::now();
             let (mut saved, mut failed) = (0usize, 0usize);
+            let mut plan = plan;
+            if album && let Some(target) = plan.first().and_then(|p| p.3.even) {
+                let mut found = Vec::new();
+                for (n, (_, path, info, opts)) in plan.iter().enumerate() {
+                    if cancel.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let status = format!("Measuring how loud each one is: {} of {total}…", n + 1);
+                    let _ = weak.upgrade_in_event_loop(move |ui| ui.global::<Compress>().set_status(status.into()));
+                    let (start, len) = (opts.range.map_or(0.0, |r| r.0), opts.length(info));
+                    if let Ok(Some(m)) = neria_core::sound::measure(path, start, len, target, &cancel, |_| {}) {
+                        found.push((m.i, len));
+                    }
+                }
+                if let Some(g) = compress::album_gain(&found, target) {
+                    for p in &mut plan {
+                        p.3.gain = Some(g);
+                        p.3.even = None;
+                    }
+                }
+            }
             for (n, (i, path, info, opts)) in plan.into_iter().enumerate() {
                 if cancel.load(Ordering::SeqCst) {
                     break;
@@ -1571,12 +1625,23 @@ pub fn dev_hooks(ui: &AppWindow) {
         c.set_split(1);
     }
     // A sound file's format: `m4a`, `mp3` or `opus`.
+    // A sound file's format (its goal): `m4a`, `mp3`, `opus`, `flac`, `wav`.
     if let Ok(f) = std::env::var("NERIA_COMPRESS_FORMAT") {
-        c.set_sound_format(match f.trim().to_ascii_lowercase().as_str() {
+        c.set_goal(match f.trim().to_ascii_lowercase().as_str() {
             "mp3" => 1,
             "opus" => 2,
+            "flac" => 3,
+            "wav" => 4,
             _ => 0,
         });
+    }
+    // `NERIA_COMPRESS_ALBUM`: several evened out as an album.
+    if std::env::var_os("NERIA_COMPRESS_ALBUM").is_some() {
+        c.set_album(1);
+    }
+    // `NERIA_COMPRESS_SOUND_ONLY`: a video's Sound only picked.
+    if std::env::var_os("NERIA_COMPRESS_SOUND_ONLY").is_some() {
+        c.set_sound_only(1);
     }
     if let Some(v) = std::env::var_os("NERIA_COMPRESS") {
         let paths: Vec<PathBuf> =
