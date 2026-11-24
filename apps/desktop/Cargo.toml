@@ -20,6 +20,8 @@ wry = { version = "0.57", default-features = false }
 # Closing to the tray, and Windows notifications (Settings → General).
 tray-icon = "0.26"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Writing NERIA_SHOT's PNG (scripts/ui-check.ps1).
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Our own drop target, so links dragged from a browser land too (winit only takes files).
 [target.'cfg(windows)'.dependencies]

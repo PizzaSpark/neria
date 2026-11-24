@@ -6,9 +6,9 @@
 .DESCRIPTION
   Needs a debug build whose tools exist (`cargo run -p neria` once). Uses its own scratch
   home in target/ui-check (bin is a junction to target/debug/bin, sample media is made
-  with ffmpeg), so nothing touches your settings, queue or Videos folder. Windows are
-  captured even when covered (PrintWindow), but not while the screen is off or asleep:
-  the script says so when every shot comes out blank.
+  with ffmpeg), so nothing touches your settings, queue or Videos folder. Each shot is
+  Neria drawing its own window into a PNG (NERIA_SHOT), from a window off every screen and
+  out of the taskbar, so nothing pops up and it works with the screen off.
 
 .EXAMPLE
   powershell -File scripts/ui-check.ps1
@@ -20,9 +20,9 @@ param(
   [int]$Wait = 5,
   # Another build (e.g. target\clip\debug\neria.exe while the usual one is running).
   [string]$Exe = "",
-  # Open the windows on the main screen too (by default they go to another screen, if
-  # there is one, and never take the keyboard: you can keep working or playing).
-  [switch]$MainScreen
+  # Open the windows where you can watch them (another screen if there is one). By default
+  # they open off every screen and out of the taskbar: nothing shows, nothing takes the keyboard.
+  [switch]$Show
 )
 $ErrorActionPreference = "Stop"
 # "-Only a,b" through powershell -File arrives as one string.
@@ -301,70 +301,51 @@ $states = [ordered]@{
 }
 
 Add-Type -AssemblyName System.Drawing
-if (-not ("NeriaShot" -as [type])) {
-Add-Type @"
-using System; using System.Runtime.InteropServices;
-public class NeriaShot {
-  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
-  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);
-  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint f);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
-  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-  public delegate bool EP(IntPtr h, IntPtr l);
-  [DllImport("user32.dll")] public static extern bool EnumWindows(EP cb, IntPtr l);
-  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
-  public static IntPtr Find(uint pid) {
-    IntPtr best = IntPtr.Zero; long area = 0;
-    EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p);
-      if (p == pid && IsWindowVisible(h)) { RECT r; GetWindowRect(h, out r); long a = (long)(r.R-r.L)*(r.B-r.T); if (a > area) { area = a; best = h; } }
-      return true; }, IntPtr.Zero);
-    return area > 40000 ? best : IntPtr.Zero;
+# Windows go off every screen and out of the taskbar (NERIA_SHOT): nothing shows or takes the
+# keyboard. With -Show they open where you can watch: on another screen if there is one.
+$windowPos = ""
+if ($Show) {
+  if (-not ("NeriaDpi" -as [type])) {
+    Add-Type 'using System; using System.Runtime.InteropServices; public class NeriaDpi { [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c); }'
   }
+  # Per-monitor aware, so screen bounds are in physical px as NERIA_WINDOW_POS wants.
+  [NeriaDpi]::SetProcessDpiAwarenessContext([IntPtr]::new(-4)) | Out-Null
+  Add-Type -AssemblyName System.Windows.Forms
+  $screen = [System.Windows.Forms.Screen]::AllScreens | Sort-Object Primary | Select-Object -First 1
+  $windowPos = "$($screen.Bounds.X + 20),$($screen.Bounds.Y + 20)"
 }
-"@
-}
-# Per-monitor aware, so a window on a screen with another scale is measured in its own pixels.
-if (-not [NeriaShot]::SetProcessDpiAwarenessContext([IntPtr]::new(-4))) { [NeriaShot]::SetProcessDPIAware() | Out-Null }
-# Where the windows open (physical px, now that this script is DPI-aware).
-Add-Type -AssemblyName System.Windows.Forms
-$other = [System.Windows.Forms.Screen]::AllScreens | Where-Object { -not $_.Primary } | Select-Object -First 1
-$windowPos = if ($other -and -not $MainScreen) { "$($other.Bounds.X + 20),$($other.Bounds.Y + 20)" } else { "" }
 
 function Shot([string]$name, [string]$size, [hashtable]$envs) {
+  $file = Join-Path $shots "$name.png"
+  $raw = Join-Path $shots "$name.raw.png"
+  Remove-Item $file, $raw -ErrorAction SilentlyContinue
   $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
   $psi.UseShellExecute = $false
   $psi.EnvironmentVariables["NERIA_HOME"] = $home_
   $psi.EnvironmentVariables["NERIA_WINDOW"] = $size
+  # The app draws itself into $raw after $Wait seconds and quits (main.rs, shot_later).
+  $psi.EnvironmentVariables["NERIA_SHOT"] = $raw
+  $psi.EnvironmentVariables["NERIA_SHOT_AFTER"] = "$Wait"
   if ($windowPos) { $psi.EnvironmentVariables["NERIA_WINDOW_POS"] = $windowPos }
   foreach ($k in $envs.Keys) { $psi.EnvironmentVariables[$k] = $envs[$k] }
   $p = [System.Diagnostics.Process]::Start($psi)
   try {
-    $deadline = (Get-Date).AddSeconds(20)
-    while ([NeriaShot]::Find([uint32]$p.Id) -eq 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }
-    Start-Sleep -Seconds $Wait
-    $h = [NeriaShot]::Find([uint32]$p.Id)
-    $r = New-Object NeriaShot+RECT
-    [NeriaShot]::GetWindowRect($h, [ref]$r) | Out-Null
-    $w = $r.R - $r.L; $ht = $r.B - $r.T
-    $bmp = New-Object System.Drawing.Bitmap $w, $ht
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $dc = $g.GetHdc(); [NeriaShot]::PrintWindow($h, $dc, 2) | Out-Null; $g.ReleaseHdc($dc); $g.Dispose()
-    # Back to logical pixels (the window was asked for $size logical px).
-    $c = New-Object NeriaShot+RECT; [NeriaShot]::GetClientRect($h, [ref]$c) | Out-Null
-    $scale = [math]::Max(1.0, ($c.R - $c.L) / [double]$size.Split("x")[0])
-    $small = New-Object System.Drawing.Bitmap ([int]($w / $scale)), ([int]($ht / $scale))
-    $g2 = [System.Drawing.Graphics]::FromImage($small)
-    $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-    $g2.DrawImage($bmp, 0, 0, $small.Width, $small.Height); $g2.Dispose(); $bmp.Dispose()
-    $file = Join-Path $shots "$name.png"
-    $small.Save($file, [System.Drawing.Imaging.ImageFormat]::Png)
-    $px = $small.GetPixel([int]($small.Width / 2), [int]($small.Height / 2)); $small.Dispose()
-    return ($px.R -eq 255 -and $px.G -eq 255 -and $px.B -eq 255)
+    if (-not $p.WaitForExit(($Wait + 30) * 1000)) { Write-Warning "$name took too long"; return $false }
   } finally {
     if (-not $p.HasExited) { $p.Kill() }
   }
+  if (-not (Test-Path $raw)) { Write-Warning "${name}: no picture (exit code $($p.ExitCode))"; return $false }
+  # Back to logical pixels (the window was asked for $size logical px).
+  $bmp = [System.Drawing.Image]::FromFile($raw)
+  $scale = [math]::Max(1.0, $bmp.Width / [double]$size.Split("x")[0])
+  $small = New-Object System.Drawing.Bitmap ([int]($bmp.Width / $scale)), ([int]($bmp.Height / $scale))
+  $g = [System.Drawing.Graphics]::FromImage($small)
+  $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $g.DrawImage($bmp, 0, 0, $small.Width, $small.Height); $g.Dispose(); $bmp.Dispose()
+  Remove-Item $raw
+  $small.Save($file, [System.Drawing.Imaging.ImageFormat]::Png)
+  $px = $small.GetPixel([int]($small.Width / 2), [int]($small.Height / 2)); $small.Dispose()
+  return ($px.R -eq 255 -and $px.G -eq 255 -and $px.B -eq 255)
 }
 
 function Sheet([string]$size, [string[]]$files) {
@@ -406,5 +387,5 @@ foreach ($size in $Sizes) {
   if ($files.Count -gt 0) { Write-Host "$size -> $(Sheet $size $files)" }
 }
 if ($total -gt 0 -and $blank -eq $total) {
-  Write-Warning "Every shot is blank white: the screen is probably off or asleep. Wake it and run again."
+  Write-Warning "Every shot is blank white: something is wrong with drawing. Try one with -Show."
 }

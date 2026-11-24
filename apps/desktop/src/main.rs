@@ -1625,6 +1625,29 @@ pub(crate) fn reveal(path: &Path) {
     }
 }
 
+/// Dev hook `NERIA_SHOT=<file.png>` (scripts/ui-check.ps1): after `NERIA_SHOT_AFTER` seconds
+/// (5), draw the window into that PNG (physical pixels, no title bar) and quit at once. The
+/// window draws itself again for it, so this works off-screen, covered, or with the screen off.
+fn shot_later(ui: &AppWindow, path: PathBuf) -> slint::Timer {
+    let after = std::env::var("NERIA_SHOT_AFTER").ok().and_then(|s| s.trim().parse::<f64>().ok()).unwrap_or(5.0);
+    let weak = ui.as_weak();
+    let timer = slint::Timer::default();
+    timer.start(slint::TimerMode::SingleShot, Duration::from_secs_f64(after.max(0.0)), move || {
+        let saved = weak.upgrade().ok_or_else(|| anyhow::anyhow!("the window is gone")).and_then(|ui| {
+            let px = ui.window().take_snapshot().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let img = image::RgbaImage::from_raw(px.width(), px.height(), px.as_bytes().to_vec())
+                .ok_or_else(|| anyhow::anyhow!("odd snapshot size"))?;
+            img.save(&path).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))
+        });
+        if let Err(e) = &saved {
+            eprintln!("NERIA_SHOT: {e}");
+        }
+        // Straight out, as closing the window from outside did: nothing saved on the way.
+        std::process::exit(if saved.is_ok() { 0 } else { 1 });
+    });
+    timer
+}
+
 fn main() -> anyhow::Result<()> {
     // `neria --sign-in <site> [dark|light]`: just the sign-in window (see signin.rs).
     let args: Vec<String> = std::env::args().collect();
@@ -1648,14 +1671,24 @@ fn main() -> anyhow::Result<()> {
 
     // The video preview renders through OpenGL, so insist on a GL renderer.
     let mut backend = slint::BackendSelector::new().require_opengl();
-    // Dev hook for scripted checks: open the window at "x,y" (physical px, e.g. on another
-    // screen) without taking the keyboard from whatever has it.
-    if let Some((x, y)) = std::env::var("NERIA_WINDOW_POS").ok().and_then(|v| {
+    // Dev hooks for scripted checks: NERIA_WINDOW_POS opens the window at "x,y" (physical px,
+    // e.g. on another screen) without taking the keyboard from whatever has it; NERIA_SHOT
+    // without it opens the window off every screen, out of the taskbar, so nothing shows.
+    let shot = std::env::var_os("NERIA_SHOT").map(PathBuf::from);
+    let pos = std::env::var("NERIA_WINDOW_POS").ok().and_then(|v| {
         let (x, y) = v.split_once(',')?;
         Some((x.trim().parse::<i32>().ok()?, y.trim().parse::<i32>().ok()?))
-    }) {
+    });
+    let hidden = shot.is_some() && pos.is_none();
+    if let Some((x, y)) = pos.or(hidden.then_some((-30000, -30000))) {
         backend = backend.with_winit_window_attributes_hook(move |a| {
-            a.with_position(slint::winit_030::winit::dpi::PhysicalPosition::new(x, y)).with_active(false)
+            let a = a.with_position(slint::winit_030::winit::dpi::PhysicalPosition::new(x, y)).with_active(false);
+            #[cfg(windows)]
+            let a = {
+                use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
+                a.with_skip_taskbar(hidden)
+            };
+            a
         });
     }
     backend.select()?;
@@ -2139,6 +2172,7 @@ fn main() -> anyhow::Result<()> {
     // Not `ui.run()`: the window may hide to the tray and come back, so the event loop
     // runs until Quit (background_ui) instead of until the window closes.
     ui.show()?;
+    let _shot_timer = shot.map(|path| shot_later(&ui, path));
     slint::run_event_loop_until_quit()?;
 
     // Save the queue for next time, then stop every yt-dlp/ffmpeg so none survives the window.

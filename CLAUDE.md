@@ -4,7 +4,7 @@ Fast, portable, UX-first downloader / clipper / compressor. Rust + Slint, drivin
 Deno, gallery-dl (photos in posts) and libmpv, all auto-fetched into `bin/` next to the exe. Plan and status: `ROADMAP.md`.
 UI design system: `docs/DESIGN.md` (Studio + Play); follow it for any new or changed screen,
 including its "Adding a screen or a control" checklist. Screenshots of every page and dialog at
-every width: `powershell -File scripts/ui-check.ps1` (sheets in `target/ui-check`;
+every width: `powershell -File scripts/ui-check.ps1` (no window shows; sheets in `target/ui-check`;
 `-Exe target/clip/debug/neria.exe` for a build in another target dir while `target/debug/neria.exe` runs).
 
 ## Layout
@@ -122,7 +122,7 @@ data: `match`, `sync`, `spotify`, `pick` (post item picker), `toast`, `update`, 
 `signin` (a problem that sign-in fixes), `extras` / `captions` / `audio` / `chapters` (a video with all three, the
 picker open), `advanced` (presets with Advanced open), `close` (close-to-tray question), `later`, `names`, `sound` / `sound-gain` / `sound-only` / `sound-as` (Clip page → Sound, with `NERIA_OPEN`; `sound-as` wants a sound file: Save as opus), `gif` (Make a GIF, with `NERIA_OPEN`: a real estimate), `transcribe` / `transcribe-get` / `transcribe-files` / `transcribe-work` / `transcribe-done` / `transcribe-failed` / `transcript` (speech to text, sample data), `picture` / `picture-result` / `clips` / `clips-page` (Picture mode, its result, the clip list; with `NERIA_OPEN`)),
 `NERIA_MATCH_PICK` (open "pick another match" on the first flagged song),
-`NERIA_WINDOW_POS` (`x,y` physical px: open the window there without taking the keyboard; `ui-check.ps1` puts its windows on another screen this way unless `-MainScreen`), `NERIA_WINDOW` (window size in logical px, e.g. `780x580`; resizing from outside with
+`NERIA_SHOT` (a `.png`: after `NERIA_SHOT_AFTER` seconds (5) the app draws its window into it and quits; without `NERIA_WINDOW_POS` the window opens off every screen and out of the taskbar, so nothing shows: how `ui-check.ps1` takes every shot), `NERIA_WINDOW_POS` (`x,y` physical px: open the window there without taking the keyboard; `ui-check.ps1 -Show` opens its windows where you can watch this way), `NERIA_WINDOW` (window size in logical px, e.g. `780x580`; resizing from outside with
 MoveWindow/SetWindowPos also works, but in PowerShell don't name the window handle `$h` next to
 a `$H` height: variable names ignore case, so the handle becomes the height and the window
 jumps to 32767px tall; Windows doesn't enforce the 400x600 minimum on scripted resizes), `NERIA_FAKE_FREE_MB` (pretend the
@@ -132,7 +132,7 @@ drive has this much free, to test the free-space checks), `NERIA_DROP_HOVER` / `
 `NERIA_HOME` (override app dir; for UI tests point it at a scratch folder with its own
 `settings.json` and a junction `bin` → `target/debug/bin`, so downloads don't land in the real
 Videos folder).
-The window can be captured even when covered with `PrintWindow(..., PW_RENDERFULLCONTENT)`.
+For a one-off picture of any state, `NERIA_SHOT` beats capturing the window: it works covered, off-screen, or with the screen off, and includes the video.
 
 ## Rules
 - Portable: settings and tools live next to the exe; nothing system-wide. One exception:
