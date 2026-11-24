@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria Audio Tools</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --badbg:#3a1a1a; --live:#ff6b6f; --livebg:#3d1719; --accent:#ffd23f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; overflow-x: hidden; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b, td b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+  .scroll > div { min-width: 0; }
+
+  /* app frame */
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; display: flex; }
+  .q.col { flex-direction: column; }
+  .w1000 { width: 1000px; } .w800 { width: 800px; } .w400 { width: 400px; } .w460 { width: 460px; } .w340 { width: 340px; }
+  .main { flex: 1; min-width: 0; padding: 22px 24px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .hd { font: 700 30px/1.1 "Space Grotesk", sans-serif; }
+  .hd.s { font-size: 24px; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.bad { background: var(--badbg); color: var(--bad); }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .ghost { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font: 500 12.5px "Inter Tight", sans-serif; white-space: nowrap; flex: none; background: none; }
+  .ghost.ic { width: 30px; padding: 0; }
+  .ghost.tall { height: 41px; padding: 0 14px; font-size: 13.5px; }
+  .primary { height: 41px; padding: 0 16px; background: var(--pop); color: var(--onpop); border: 2px solid var(--hard); border-radius: 10px;
+             box-shadow: 3px 3px 0 var(--popsh); font: 700 14px "Space Grotesk", sans-serif; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; flex: none; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; white-space: nowrap; gap: 6px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .chip .v { color: var(--dim); font-size: 10px; }
+  svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  svg.i.sm { width: 15px; height: 15px; }
+
+  /* rail */
+  .rail { width: 80px; flex: none; border-right: 1px solid var(--line); padding: 16px 8px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .logo { width: 38px; height: 38px; border-radius: 10px; background: var(--pop); border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); margin-bottom: 14px;
+          font: 700 19px "Space Grotesk", sans-serif; color: var(--onpop); display: flex; align-items: center; justify-content: center; }
+  .nav { width: 64px; padding: 8px 0 6px; border-radius: 10px; border: 2px solid transparent; color: var(--dim); display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; }
+  .nav.on { border-color: var(--ls); background: var(--panel); color: var(--ink); }
+  .nav.new { position: relative; }
+  .rail .sp { flex: 1; }
+
+  /* compact tab bar */
+  .tabbar { display: flex; border-top: 1px solid var(--line); padding: 6px 4px 8px; background: var(--bg); }
+  .tabbar .nav { flex: 1; width: auto; min-width: 0; padding: 6px 0 4px; font-size: 10.5px; }
+
+  /* filter tabs */
+  .ftabs { display: flex; gap: 18px; border-bottom: 1px solid var(--line); margin-top: 16px; flex-wrap: nowrap; overflow: hidden; }
+  .ftab { padding: 8px 0 9px; color: var(--muted); font-size: 13px; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .ftab .n { font: 500 11px "JetBrains Mono", monospace; color: var(--dim); margin-left: 5px; }
+  .ftab.on { color: var(--ink); border-color: var(--ink); }
+  .ftab.on .n { color: var(--ink); }
+  .ftab.warn .n { color: var(--warn); }
+
+  .search { height: 41px; flex: 1; min-width: 0; background: var(--panel); border: 2px solid var(--ls); border-radius: 10px; display: flex; align-items: center; gap: 9px; padding: 0 12px; color: var(--muted); font-size: 13.5px; }
+  .search .key { margin-left: auto; }
+  .key { font: 500 11px "JetBrains Mono", monospace; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--muted); }
+  .menu-btn { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); white-space: nowrap; flex: none; }
+  .menu-btn .v { color: var(--dim); font-size: 10px; }
+  .menu-btn.set { border-color: var(--accent); }
+
+  /* day heading + rows */
+  .day { font: 700 11px "Space Grotesk", sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; padding: 16px 0 6px; display: flex; gap: 8px; }
+  .day .mono { color: var(--dim); font-size: 10.5px; letter-spacing: 0; text-transform: none; font-weight: 400; }
+  .it { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  .it.sel { background: var(--panel); border-radius: 8px; border-bottom-color: transparent; box-shadow: inset 0 0 0 1px var(--ls); }
+  .it .tt { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .it .sub { display: flex; gap: 7px; align-items: center; margin-top: 4px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
+  .it .sub .mono { font-size: 11px; }
+  .att { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); font-size: 11.5px; }
+  .att svg { width: 13px; height: 13px; }
+  .it.gone .th { opacity: .35; filter: grayscale(1); }
+  .it.gone .tt { color: var(--muted); }
+  .acts { display: flex; gap: 6px; flex: none; }
+
+  /* thumbs */
+  .th { width: 64px; height: 36px; border-radius: 6px; flex: none; position: relative; overflow: hidden; }
+  .th.sq { width: 36px; height: 36px; margin: 0 14px; }
+  .th.stack { box-shadow: 4px -4px 0 -1px var(--bg), 4px -4px 0 0 var(--ls); margin-top: 4px; }
+  .th .d { position: absolute; right: 3px; bottom: 3px; font: 500 9px "JetBrains Mono", monospace; background: rgba(0,0,0,.72); color: #fff; padding: 0 3px; border-radius: 3px; }
+  .t1 { background: linear-gradient(135deg,#3b5bdb,#8e2de2 60%,#ff6b6f); }
+  .t2 { background: linear-gradient(160deg,#0f2027,#2c5364 55%,#7fd6a4); }
+  .t3 { background: radial-gradient(circle at 30% 40%,#ffe29f,#ffa99f 40%,#3a1c71); }
+  .t4 { background: linear-gradient(135deg,#ff9a3c,#ff5e62 50%,#2b1a3a); }
+  .t5 { background: linear-gradient(120deg,#1d2b64,#4b6cb7 50%,#f8cdda); }
+  .t6 { background: linear-gradient(145deg,#232526,#5a6a5a 60%,#c9d6a3); }
+  .t7 { background: linear-gradient(135deg,#f7971e,#ffd200); }
+  .t8 { background: linear-gradient(160deg,#41295a,#2f0743 50%,#ff6b6f); }
+  .t9 { background: linear-gradient(135deg,#355c7d,#6c5b7b 50%,#c06c84); }
+
+  /* detail column */
+  .detail { width: 320px; flex: none; border-left: 1px solid var(--line); padding: 22px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .detail .big { width: 100%; height: 158px; border-radius: 10px; position: relative; }
+  .detail .ttl { font: 600 17px/1.3 "Inter Tight", sans-serif; }
+  .kv { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; font-size: 12.5px; }
+  .kv > span:nth-child(odd) { color: var(--muted); }
+  .kv .mono { font-size: 11px; word-break: break-all; }
+  .h5 { font: 700 13px "Space Grotesk", sans-serif; margin-top: 4px; }
+  .attrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .attrow:first-of-type { border-top: 1px solid var(--line); }
+  .attrow .mono { font-size: 10.5px; color: var(--dim); }
+  .wrapacts { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 18px 14px; margin-top: 14px; }
+  .tile .pic { height: 99px; border-radius: 10px; position: relative; }
+  .tile .pic .d { position: absolute; right: 6px; bottom: 6px; font: 500 10px "JetBrains Mono", monospace; background: rgba(0,0,0,.72); color: #fff; padding: 1px 4px; border-radius: 4px; }
+  .tile .pic .k { position: absolute; left: 6px; top: 6px; }
+  .tile .tt { font-size: 13px; font-weight: 500; margin-top: 7px; line-height: 1.3; height: 34px; overflow: hidden; }
+  .tile .sub { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+
+  /* sheet, menu, banner, empty */
+  .sheet { background: var(--panel); border-top: 1px solid var(--ls); border-radius: 14px 14px 0 0; padding: 10px 16px 16px; }
+  .sheet .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--ls); margin: 0 auto 12px; }
+  .scrim { background: rgba(0,0,0,.5); }
+  .menu { background: var(--panel); border: 1px solid var(--ls); border-radius: 12px; padding: 6px; width: 230px; box-shadow: 0 14px 30px -10px rgba(0,0,0,.6); }
+  .mi { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 7px; font-size: 13px; }
+  .mi.hov { background: var(--raised); }
+  .mi .key { margin-left: auto; }
+  .mi.bad { color: var(--bad); }
+  .msep { height: 1px; background: var(--line); margin: 5px 4px; }
+  .banner { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .starts .s { display: flex; gap: 14px; align-items: center; padding: 14px 4px; border-bottom: 1px solid var(--line); }
+  .starts .s:first-child { border-top: 1px solid var(--line); }
+  .starts .ico { width: 36px; height: 36px; border-radius: 9px; border: 2px solid var(--ls); display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 1000px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+  table.cmp td.m, table.cmp code { font: 500 12px "JetBrains Mono", monospace; }
+  .tablewrap { overflow-x: auto; max-width: 100%; }
+  code { font: 500 12.5px "JetBrains Mono", monospace; }
+  @media (max-width: 600px) { body { padding: 28px 16px 60px; } h1 { font-size: 25px; } }
+  /* audio tools */
+  .goal { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .goal:first-child { border-top: 1px solid var(--line); }
+  .radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--edge); flex: none; }
+  .radio.on { border-color: var(--ink); box-shadow: inset 0 0 0 3px var(--bg), inset 0 0 0 8px var(--ink); }
+  .goal b { font-weight: 600; }
+  .goal .h { color: var(--muted); font-size: 12px; }
+  .goal .v { margin-left: auto; font: 500 11.5px "JetBrains Mono", monospace; color: var(--muted); }
+  .seg { display: inline-flex; border: 2px solid var(--ls); border-radius: 10px; padding: 2px; gap: 2px; }
+  .seg span { padding: 5px 12px; border-radius: 7px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .seg span.on { background: var(--ink); color: var(--bg); }
+  .field { display: grid; grid-template-columns: 90px 1fr; gap: 8px 12px; align-items: center; font-size: 12.5px; }
+  .field .lab { color: var(--muted); }
+  .inp { height: 32px; border: 2px solid var(--ls); border-radius: 8px; background: var(--panel); display: flex; align-items: center; padding: 0 10px; color: var(--ink); font-size: 12.5px; }
+  .inp.many { color: var(--dim); font-style: italic; }
+  .dlg { background: var(--panel); border: 1px solid var(--ls); border-radius: 14px; padding: 20px 22px; box-shadow: 0 24px 60px -16px rgba(0,0,0,.8); }
+  .dlg .t { font: 700 18px "Space Grotesk", sans-serif; }
+  .dlg .st { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .bulk { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--raised); border: 1px solid var(--ls); border-radius: 12px; flex-wrap: wrap; }
+  .tick { width: 16px; height: 16px; border-radius: 4px; border: 2px solid var(--edge); flex: none; }
+  .tick.on { background: var(--pop); border-color: var(--hard); }
+  .mv { display: flex; gap: 10px; font: 500 11.5px "JetBrains Mono", monospace; padding: 6px 0; border-bottom: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; }
+  .mv b { color: var(--ink); font-weight: 500; }
+  .tile2 { border: 2px solid var(--ls); border-radius: 12px; padding: 14px; display: flex; gap: 12px; align-items: flex-start; }
+  .tile2 .ico { width: 36px; height: 36px; border-radius: 9px; border: 2px solid var(--ls); display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+  .note { position: absolute; font: 500 10.5px "JetBrains Mono", monospace; color: #151412; background: #ffd23f; border: 2px solid #000; border-radius: 6px; padding: 2px 6px; box-shadow: 2px 2px 0 #9a6f00; white-space: nowrap; }
+</style>
+</head>
+<body>
+<!-- icon sprites -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.5 8.5 20 18M8.5 15.5 20 6"/></symbol>
+  <symbol id="i-cmp" viewBox="0 0 24 24"><path d="M4 9h6V3M20 15h-6v6M10 9 3 2M14 15l7 7"/></symbol>
+  <symbol id="i-cap" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="16" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><path d="m16.5 5.2 3.6-1 3 15.4-3.7 1z"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6h14M5 11h14M5 16h9"/></symbol>
+  <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"/></symbol>
+  <symbol id="i-find" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/><circle cx="13" cy="13.5" r="2.5"/><path d="m15 15.5 2 2"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-rows" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/></symbol>
+  <symbol id="i-level" viewBox="0 0 24 24"><path d="M4 14v-4M8 17V7M12 20V4M16 17V7M20 14v-4"/></symbol>
+  <symbol id="i-split" viewBox="0 0 24 24"><path d="M12 3v18M4 8h5M4 16h5M15 8h5M15 16h5"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14l-4-4M20 16H6l4 4"/></symbol>
+</svg>
+
+<div class="page">
+  <h1>Audio tools: where each one goes</h1>
+  <p class="lead">The roadmap lists five sound tools: <b>Convert</b> (MP3, M4A, Opus, FLAC, WAV, and "Extract audio" from a
+  video), <b>Even out loudness</b> across songs, a <b>Tag editor</b> (many files at once, "Find tags online"),
+  <b>Organize</b> (Artist / Album folders, playlists, duplicates) and <b>Split / remove silence</b>. Half of that already has a
+  home: Compress already makes M4A / MP3 / Opus from a sound file and evens out volume, the Clip page already splits by
+  chapters and trims, the Library already knows every song and playlist. So the first question is whether these get a
+  page of their own or join the places that do the nearest thing.</p>
+  <p class="lead"><b>Not chosen yet.</b> Each section has a recommended pick (PICK); say which you want.</p>
+
+  <section>
+    <div class="label"><span>Ground rules</span><h2>What it is, and what it isn't</h2></div>
+    <ul class="why">
+      <li><b>Files you have, made into what you need.</b> No new downloading; these work on Neria's own saves and on any
+        file you drop or pick.</li>
+      <li><b>A copy unless you say otherwise.</b> Convert and Even out write a new file next to the old one (as Compress does);
+        tags are written into the file itself (that's what tags are), with Undo while the toast shows.</li>
+      <li><b>Moving files is the one exception to the Library's "never moves anything"</b>, and only for Organize: you see every
+        move before it happens, the Library's records follow the files, and Undo puts them back.</li>
+      <li><b>Plain words first, numbers under Advanced.</b> "Plays everywhere" before "AAC 256 kbps"; bit rate, sample rate,
+        mono under Advanced, as on Compress.</li>
+    </ul>
+  </section>
+
+  <!-- ============ 1 · WHERE ============ -->
+  <section>
+    <div class="label"><span>1 · Where it lives</span><h2>A sixth page, or the pages that already do half of it</h2></div>
+
+    <div class="opt">
+      <h3>1A · A sixth page, "Audio", with the five tools as cards</h3>
+      <p>Easy to find from its name, and room for each tool. But it's a second Compress for sound (two places to make an
+      MP3), and at 400 px the tab bar would need six tabs (each 60 px wide: the labels no longer fit).</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">1000 × 560 · the Audio page</div>
+          <div class="q w1000" style="height:560px">
+            <div class="rail">
+              <div class="logo">N</div>
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav on"><svg class="i"><use href="#i-note"/></svg>Audio</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+            </div>
+            <div class="main">
+              <div class="hd">Make it sound right.</div>
+              <div class="mut" style="margin-top:6px">Convert, even out, tag and sort your music.</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px">
+                <div class="tile2"><span class="ico"><svg class="i"><use href="#i-swap"/></svg></span><div><b>Convert</b><div class="hint">MP3, M4A, Opus, FLAC, WAV; the sound from a video</div></div></div>
+                <div class="tile2"><span class="ico"><svg class="i"><use href="#i-level"/></svg></span><div><b>Even out loudness</b><div class="hint">Songs at the same volume</div></div></div>
+                <div class="tile2"><span class="ico"><svg class="i"><use href="#i-tag"/></svg></span><div><b>Edit tags</b><div class="hint">Title, artist, album, cover; many at once</div></div></div>
+                <div class="tile2"><span class="ico"><svg class="i"><use href="#i-folder"/></svg></span><div><b>Organize</b><div class="hint">Artist / Album folders, playlists, duplicates</div></div></div>
+                <div class="tile2"><span class="ico"><svg class="i"><use href="#i-split"/></svg></span><div><b>Split</b><div class="hint">By chapters or timestamps; cut silence</div></div></div>
+              </div>
+              <div class="note" style="left:330px;top:30px">a second Compress for sound</div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="opt">
+      <h3>1B · Each tool where its nearest cousin already is <span class="rec">PICK</span></h3>
+      <p>No new page. The command palette finds every one by name ("convert", "mp3", "tags", "organize"), so "where is
+      it?" has one answer anyway.</p>
+      <div class="tablewrap">
+      <table class="cmp">
+        <tr><th>Tool</th><th>Goes to</th><th>What's new there</th></tr>
+        <tr><td>Convert, Extract audio</td><td>Compress page</td><td>A <b>Video / Sound only</b> switch above the goals (section 2); FLAC and WAV join M4A / MP3 / Opus</td></tr>
+        <tr><td>Even out loudness</td><td>Compress page, several files</td><td>Volume → Even out gets <b>"as an album"</b> (keeps quiet songs quieter than loud ones)</td></tr>
+        <tr><td>Edit tags, Find tags online</td><td>Library: a song's ⋯, or several picked</td><td>An <b>Edit tags</b> dialog (section 3) and picking several rows (section 4)</td></tr>
+        <tr><td>Organize, duplicates</td><td>Library: a playlist's ⋯, or several picked</td><td><b>Put in folders…</b> with every move shown first (section 5); <b>Find duplicates</b> as a filter</td></tr>
+        <tr><td>Split, remove silence</td><td>Clip page</td><td>Already: the clip list's "Add all chapters" + "a file each". New: <b>"Cut silence at the ends"</b> in Sound</td></tr>
+      </table>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>1C · A page that's not in the rail (opened from the palette and the Library)</h3>
+      <p>Keeps the tab bar at five, but a page you can't see in the rail is a page you forget; and it still duplicates
+      Compress.</p>
+    </div>
+  </section>
+
+  <!-- ============ 2 · CONVERT ============ -->
+  <section>
+    <div class="label"><span>2 · Convert and Extract audio</span><h2>On the Compress page: Video, or Sound only</h2></div>
+    <div class="opt">
+      <h3>2A · A switch above the goals; Sound only turns the goals into formats in plain words <span class="rec">PICK</span></h3>
+      <p>A video dropped on Compress shows <b>Video · Sound only</b>. Sound only (the default for a sound file, where the
+      switch hides) lists what you'd use it for, with the format on the right: the page's same row style, the same
+      before/after "Listen to 10 s". Advanced holds bit rate, sample rate, mono. Several files: one choice for all, as now.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">1000 × 600 · a video on Compress, Sound only picked</div>
+          <div class="q w1000" style="height:600px">
+            <div class="rail">
+              <div class="logo">N</div>
+              <div class="nav"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav on"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+            </div>
+            <div class="main">
+              <div class="row"><div class="hd grow">Make it smaller.</div><span class="ghost">+ Add files…</span></div>
+              <div class="mut" style="margin-top:6px">Pick where it's going, or how it should look.</div>
+              <div class="row" style="margin-top:16px;gap:14px">
+                <div class="th t2" style="width:120px;height:68px;border-radius:8px"></div>
+                <div class="grow"><div style="font-weight:600;font-size:14px">Live at Red Rocks (full concert).mp4</div><div class="mono mut" style="margin-top:4px">1:52:10 · 2.4 GB · h264</div></div>
+              </div>
+              <div class="row" style="margin-top:16px"><span class="seg"><span>Video</span><span class="on">Sound only</span></span><span class="hint" style="margin-left:6px">the picture is left out</span></div>
+              <div style="display:flex;gap:22px;margin-top:12px">
+                <div class="grow">
+                  <div class="goal"><span class="radio on"></span><b>Plays everywhere</b><span class="h">M4A (AAC), sounds the same</span><span class="v">about 205 MB</span></div>
+                  <div class="goal"><span class="radio"></span><b>MP3</b><span class="h">for old players and car stereos</span><span class="v">about 240 MB</span></div>
+                  <div class="goal"><span class="radio"></span><b>Smallest that sounds good</b><span class="h">Opus</span><span class="v">about 100 MB</span></div>
+                  <div class="goal"><span class="radio"></span><b>Lossless</b><span class="h">FLAC, nothing lost (not smaller)</span><span class="v">about 780 MB</span></div>
+                  <div class="goal"><span class="radio"></span><b>For editing</b><span class="h">WAV, every app opens it</span><span class="v">about 1.2 GB</span></div>
+                </div>
+                <div style="width:250px">
+                  <div style="font:700 15px 'Space Grotesk'">M4A, sounds the same</div>
+                  <div class="mono mut" style="margin-top:6px">2.4 GB now · 256 kbps AAC</div>
+                  <div class="row" style="margin-top:14px"><span class="ghost">▷ Listen to 10 s</span></div>
+                </div>
+              </div>
+              <div class="row" style="margin-top:12px"><span class="mut" style="font-size:12.5px">⌄ Advanced</span><span class="hint">256 kbps · 48 kHz · stereo · Volume as it is</span><div class="grow"></div><span class="primary">Save the sound</span></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>2B · One more goal at the bottom, "Just the sound…", that opens the formats</h3>
+      <p>No switch, but a two-step goal in a list of one-step goals, and the size column has nothing to say until you open it.</p>
+    </div>
+    <div class="opt">
+      <h3>Even out, as an album</h3>
+      <p>Volume → Even out today brings each file to the same loudness. With several files it gains a second choice:
+      <b>Each the same</b> (a mixed playlist) or <b>As an album</b> (one gain for all, so a quiet ballad stays quieter than
+      the single). No new screen.</p>
+    </div>
+  </section>
+
+  <!-- ============ 3 · TAGS ============ -->
+  <section>
+    <div class="label"><span>3 · Tags</span><h2>Edit tags: one song, or many at once</h2></div>
+    <div class="opt">
+      <h3>3A · A dialog with the fields; with several, fields that differ say "Several" <span class="rec">PICK</span></h3>
+      <p>From a song's ⋯ (Library), or several picked rows. Typing in a field sets it for all; a field left on "Several"
+      stays as each file has it. <b>Find tags online</b> looks the song up on Spotify (as the downloads do) and fills the
+      fields, cover included, for you to check before Save.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">one song</div>
+          <div class="q col w460" style="background:transparent;box-shadow:none">
+            <div class="dlg">
+              <div class="row"><div class="grow"><div class="t">Edit tags</div><div class="st">a-ha - Take On Me.mp3</div></div><span class="mut">✕</span></div>
+              <div class="row" style="margin-top:16px;gap:16px;align-items:flex-start">
+                <div style="width:96px;height:96px;border-radius:8px" class="t5"></div>
+                <div class="field grow">
+                  <span class="lab">Title</span><span class="inp">Take On Me</span>
+                  <span class="lab">Artist</span><span class="inp">a-ha</span>
+                  <span class="lab">Album</span><span class="inp">Hunting High and Low</span>
+                  <span class="lab">Track · Year</span><span class="row"><span class="inp" style="width:60px">1</span><span class="inp" style="width:80px">1985</span></span>
+                </div>
+              </div>
+              <div class="row" style="margin-top:18px"><span class="ghost"><svg class="i sm"><use href="#i-search"/></svg>Find tags online</span><div class="grow"></div><span class="ghost tall">Cancel</span><span class="primary">Save</span></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">12 songs picked</div>
+          <div class="q col w460" style="background:transparent;box-shadow:none">
+            <div class="dlg">
+              <div class="row"><div class="grow"><div class="t">Edit tags</div><div class="st">12 songs · fields left on "Several" stay as they are</div></div><span class="mut">✕</span></div>
+              <div class="row" style="margin-top:16px;gap:16px;align-items:flex-start">
+                <div style="width:96px;height:96px;border-radius:8px;border:2px dashed var(--ls);display:flex;align-items:center;justify-content:center" class="mut">Several</div>
+                <div class="field grow">
+                  <span class="lab">Title</span><span class="inp many">Several</span>
+                  <span class="lab">Artist</span><span class="inp">a-ha</span>
+                  <span class="lab">Album</span><span class="inp" style="border-color:var(--accent)">Headlines and Deadlines</span>
+                  <span class="lab">Track · Year</span><span class="row"><span class="inp many" style="width:60px">…</span><span class="inp many" style="width:80px">…</span></span>
+                </div>
+              </div>
+              <div class="row" style="margin-top:18px"><span class="ghost">Number 1–12 in order</span><div class="grow"></div><span class="ghost tall">Cancel</span><span class="primary">Save 12</span></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>3B · A table, one row per song, every field a cell</h3>
+      <p>Powerful for fixing an album in one go, but a spreadsheet: too dense at 400 px, and most edits are one or two
+      fields.</p>
+    </div>
+  </section>
+
+  <!-- ============ 4 · PICKING SEVERAL ============ -->
+  <section>
+    <div class="label"><span>4 · Doing it to several</span><h2>Picking rows in the Library</h2></div>
+    <div class="opt">
+      <h3>4A · A tick on each row's frame on hover (long-press on compact); a bar of what fits them all <span class="rec">PICK</span></h3>
+      <p>Ctrl+click and Shift+click pick too. While any are picked, a bar replaces the filters: how many, then only the
+      actions every picked one can do (Convert, Even out, Edit tags, Put in folders…, Copy files, Remove). Esc or ✕ ends it.
+      A playlist's row picks its songs.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">800 × 360 · three songs picked</div>
+          <div class="q w800" style="height:360px">
+            <div class="main">
+              <div class="hd s">Library</div>
+              <div class="bulk" style="margin-top:12px"><b style="font-size:13px">3 picked</b><span class="hint">· 11:02 · 24 MB</span><div class="grow"></div>
+                <span class="ghost"><svg class="i sm"><use href="#i-swap"/></svg>Convert</span><span class="ghost"><svg class="i sm"><use href="#i-level"/></svg>Even out</span><span class="ghost"><svg class="i sm"><use href="#i-tag"/></svg>Edit tags</span><span class="ghost"><svg class="i sm"><use href="#i-folder"/></svg>Put in folders…</span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span><span class="ghost ic"><svg class="i sm"><use href="#i-x"/></svg></span></div>
+              <div class="it sel"><span class="tick on"></span><div class="th sq" style="margin:0 6px;background:var(--raised)"></div><div class="grow"><div class="tt">a-ha - Take On Me</div><div class="sub"><span class="tag">Song</span> Spotify <span class="mono">3:45 · 7.7 MB</span></div></div></div>
+              <div class="it sel"><span class="tick on"></span><div class="th sq" style="margin:0 6px;background:var(--raised)"></div><div class="grow"><div class="tt">a-ha - The Sun Always Shines on T.V.</div><div class="sub"><span class="tag">Song</span> Spotify <span class="mono">5:08 · 9.6 MB</span></div></div></div>
+              <div class="it sel"><span class="tick on"></span><div class="th sq" style="margin:0 6px;background:var(--raised)"></div><div class="grow"><div class="tt">a-ha - Hunting High and Low</div><div class="sub"><span class="tag">Song</span> Spotify <span class="mono">2:09 · 6.8 MB</span></div></div></div>
+              <div class="it"><span class="tick"></span><div class="th t1" style="margin:0 0 0 6px"></div><div class="grow"><div class="tt">IShowSpeed · Day 3 in Tokyo</div><div class="sub"><span class="tag">Recording</span> YouTube</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>4B · A "Select" button that turns every row into a tick box</h3>
+      <p>Clearer on touch, but one more button in the header and a mode to remember to leave.</p>
+    </div>
+  </section>
+
+  <!-- ============ 5 · ORGANIZE ============ -->
+  <section>
+    <div class="label"><span>5 · Organize</span><h2>Put in folders, with every move shown first</h2></div>
+    <div class="opt">
+      <h3>5A · A dialog: how to arrange, the moves listed, then Move <span class="rec">PICK</span></h3>
+      <p>From a playlist's ⋯ or several picked songs. Choices in words (<b>Artist / Album</b>, <b>Artist</b>, <b>Album</b>,
+      <b>One folder</b>), where (the Audio folder by default), and the list of moves it will make, with lyrics and covers
+      moving along. Nothing is overwritten: a file already there keeps its place and the move says "already there". A
+      playlist's <code>.m3u8</code> is rewritten to the new places. Undo afterwards.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">12 songs of "Chill Mix"</div>
+          <div class="q col w460" style="background:transparent;box-shadow:none">
+            <div class="dlg">
+              <div class="row"><div class="grow"><div class="t">Put in folders</div><div class="st">12 songs · lyrics and covers move with them</div></div><span class="mut">✕</span></div>
+              <div class="row" style="margin-top:14px;flex-wrap:wrap"><span class="chip on">Artist / Album</span><span class="chip">Artist</span><span class="chip">Album</span><span class="chip">One folder</span></div>
+              <div class="row" style="margin-top:10px"><span class="hint">In</span><span class="inp grow">D:\Music\Neria\Audio</span><span class="ghost">Change…</span></div>
+              <div style="margin-top:12px">
+                <div class="mv"><span>Chill Mix\Khruangbin - Maria También.mp3</span>→<b>Khruangbin\Con Todo El Mundo\</b></div>
+                <div class="mv"><span>Chill Mix\Tame Impala - Borderline.mp3</span>→<b>Tame Impala\The Slow Rush\</b></div>
+                <div class="mv"><span>Chill Mix\Men I Trust - Show Me How.mp3</span>→<b>Men I Trust\Oncle Jazz\</b></div>
+                <div class="mv"><span>and 9 more</span></div>
+              </div>
+              <div class="row" style="margin-top:16px"><span class="hint grow">The playlist file is updated to the new places.</span><span class="ghost tall">Cancel</span><span class="primary">Move 12</span></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>Duplicates</h3>
+      <p>A <b>Duplicates</b> choice in the Library's Filter (only shown when there are any): the same song twice (same
+      Spotify id, or the same sound by fingerprint, as the match check already does), grouped, the bigger or newer one
+      ticked to keep, the rest to the Recycle Bin.</p>
+    </div>
+  </section>
+
+  <!-- ============ 6 · SPLIT ============ -->
+  <section>
+    <div class="label"><span>6 · Split and silence</span><h2>On the Clip page, mostly there already</h2></div>
+    <ul class="why">
+      <li><b>By chapters</b>: the clip list's "Add all chapters", then Export with "a file each". Nothing new.</li>
+      <li><b>By timestamps you paste</b> (a description's "0:00 Intro, 3:12 …"): the clip list gets <b>Paste times…</b>, which
+        turns pasted lines into named clips.</li>
+      <li><b>Cut silence at the ends</b>: a tick in the Sound dialog (Clip page) and in Compress's Advanced for sound, for
+        recordings that start with a minute of nothing.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="label"><span>Summary</span><h2>The recommended picks</h2></div>
+    <div class="tablewrap">
+    <table class="cmp">
+      <tr><th>Part</th><th>Pick</th><th>Why</th></tr>
+      <tr><td>Where</td><td>1B · no new page: Compress, the Library and the Clip page each gain their part</td><td>One place per job; the tab bar stays at five; the palette finds them all</td></tr>
+      <tr><td>Convert</td><td>2A · Video / Sound only on Compress; formats as plain goals; FLAC and WAV added</td><td>Same page, same rows, same before/after</td></tr>
+      <tr><td>Even out</td><td>Each the same / As an album, in Compress's Volume</td><td>No new screen</td></tr>
+      <tr><td>Tags</td><td>3A · Edit tags dialog, "Several" for fields that differ, Find tags online</td><td>Works for one and many; fits 400 px</td></tr>
+      <tr><td>Several</td><td>4A · ticks on hover, Ctrl/Shift+click, a bar of shared actions</td><td>No mode button; the bar only offers what fits</td></tr>
+      <tr><td>Organize</td><td>5A · Put in folders with every move listed, Undo; Duplicates as a filter</td><td>Moving files is shown before it's done</td></tr>
+      <tr><td>Split</td><td>Clip page: Paste times…, Cut silence at the ends</td><td>Builds on the clip list and Sound</td></tr>
+    </table>
+    </div>
+  </section>
+</div>
+</body>
+</html>
