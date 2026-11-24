@@ -1,0 +1,123 @@
+import { LineEdit } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { TagEdit } from "../globals.slint";
+import { PrimaryButton, GhostButton, Hint, Dialog, Thumb, Icon, Notice } from "../widgets.slint";
+
+// One field: its name on the left, the text on the right; "Several" when the files differ
+// (left alone unless you type).
+component TagField inherits HorizontalLayout {
+    in property <string> label;
+    in property <bool> several;
+    in-out property <string> text;
+    callback edited();
+    spacing: 12px;
+    Text {
+        width: Screen.compact ? 64px : 90px;
+        text: root.label;
+        color: Theme.muted;
+        font-size: 12.5px;
+        vertical-alignment: center;
+    }
+    LineEdit {
+        horizontal-stretch: 1;
+        text <=> root.text;
+        placeholder-text: root.several ? "Several" : "";
+        accessible-label: root.label;
+        edited => { root.edited(); }
+    }
+}
+
+// Edit tags (mock design/audio-tools.html 3A): one song, or many at once; Find tags online
+// fills the fields to check before saving. Rust: tags_ui.rs.
+export component TagsDialog inherits Dialog {
+    title: "Edit tags";
+    subtitle: TagEdit.subtitle;
+    card-width: 560px;
+    card-height: 520px;
+    close => { TagEdit.open = false; }
+
+    HorizontalLayout {
+        spacing: 16px;
+        // The cover: the file's own, or the one found online.
+        if !Screen.compact: VerticalLayout {
+            alignment: start;
+            Thumb {
+                width: 110px;
+                height: 110px;
+                border-radius: 8px;
+                source: TagEdit.cover;
+                if !TagEdit.has-cover: Text {
+                    text: TagEdit.count > 1 ? "Several" : "No cover";
+                    color: Theme.dim;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 8px;
+            TagField {
+                label: "Title";
+                several: TagEdit.title-several;
+                text <=> TagEdit.title;
+            }
+            TagField {
+                label: "Artist";
+                several: TagEdit.artist-several;
+                text <=> TagEdit.artist;
+            }
+            TagField {
+                label: "Album";
+                several: TagEdit.album-several;
+                text <=> TagEdit.album;
+            }
+            TagField {
+                label: "Track";
+                several: TagEdit.track-several;
+                text <=> TagEdit.track;
+            }
+            TagField {
+                label: "Year";
+                several: TagEdit.year-several;
+                text <=> TagEdit.year;
+            }
+        }
+    }
+    if TagEdit.status != "" && TagEdit.status-bad: Notice {
+        text: TagEdit.status;
+        wrap: true;
+    }
+    if TagEdit.status != "" && !TagEdit.status-bad: Hint {
+        text: TagEdit.status;
+    }
+    if TagEdit.count > 1: Hint {
+        text: "Fields left on \"Several\" stay as each file has them. Typing in one sets it for all " + TagEdit.count + ".";
+    }
+    Rectangle { vertical-stretch: 1; }
+    HorizontalLayout {
+        spacing: 10px;
+        if TagEdit.count == 1: GhostButton {
+            text: TagEdit.finding ? "Looking it up…" : "Find tags online";
+            icon: "\u{E721}";
+            clicked => { TagEdit.find-online(); }
+        }
+        if TagEdit.count > 1: GhostButton {
+            text: Screen.compact ? "Number 1–" + TagEdit.count : "Number 1–" + TagEdit.count + " in order";
+            icon: "\u{E8C4}";
+            clicked => { TagEdit.number-in-order(); }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if !Screen.compact: GhostButton {
+            text: "Cancel";
+            clicked => { TagEdit.open = false; }
+        }
+        PrimaryButton {
+            text: TagEdit.saving ? "Saving…" : TagEdit.count > 1 ? "Save " + TagEdit.count : "Save";
+            icon: "\u{E74E}";
+            enabled: !TagEdit.saving && !TagEdit.finding;
+            clicked => { TagEdit.save(); }
+        }
+    }
+}

@@ -511,6 +511,7 @@ fn detail_of(s: &mut State, it: &Item) -> LibDetail {
         spotify: it.url.contains("spotify.com"),
         can_delete: here && it.kind != Kind::Playlist,
         can_rematch: here && it.kind == Kind::Song,
+        can_tag: here && it.kind != Kind::Playlist && library::is_audio_file(&it.file),
         can_repair: here && !it.url.is_empty() && it.gaps.as_ref().is_some_and(|g| !g.holes.is_empty()),
         repairing: s.repairing.contains(&it.id),
     }
@@ -938,6 +939,7 @@ pub(crate) fn act(ui: &AppWindow, id: u64, what: &str) {
         }
         "find" => find_one(ui, &it),
         "rematch" => crate::match_ui::open_song(it.file.clone(), it.url.clone()),
+        "tags" => crate::tags_ui::open(ui, vec![it.file.clone()], it.url.clone()),
         "repair" => repair(ui, &it),
         "remove" => {
             forget(ui, &[id]);
@@ -1083,6 +1085,7 @@ pub(crate) fn thing_actions(id: u64) -> Vec<(&'static str, &'static str, &'stati
     add(d.can_copy_file, ("copy-file", "Copy file", "\u{E8C8}"));
     add(d.playlist && !d.gone, ("lyrics", "Add lyrics", "\u{E8D6}"));
     add(!d.gone, ("show", if d.playlist { "Open folder" } else { "Show in folder" }, "\u{E8B7}"));
+    add(d.can_tag, ("tags", "Edit tags", "\u{E8EC}"));
     add(d.can_rematch, ("rematch", "Pick another match", "\u{E8EE}"));
     add(d.can_repair && !d.repairing, ("repair", "Get the missed bits back", "\u{E777}"));
     add(d.can_download && d.main != 4, ("download", "Download again", "\u{E896}"));

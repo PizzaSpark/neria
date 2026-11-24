@@ -1251,6 +1251,8 @@ export struct LibDetail {
     can-delete: bool,
     // A song: Pick another match (the Download page's dialog, the new one downloaded over it).
     can-rematch: bool,
+    // A sound file here: Edit tags.
+    can-tag: bool,
     // A recording with holes it can still get back; `repairing` while it's at it.
     can-repair: bool,
     repairing: bool,
@@ -1358,4 +1360,34 @@ export global Commands {
     callback pick(int); // Enter or a click on a row
     callback go-into() -> bool; // → or Tab: a thing's actions; false when there are none
     callback back(); // ← or Backspace in an empty box: out of the second step
+}
+
+// Edit tags (Library → a song's ⋯, or several picked; mock design/audio-tools.html 3A).
+// Rust: tags_ui.rs.
+export global TagEdit {
+    in-out property <bool> open;
+    // How many files, and what the dialog says under its title.
+    in property <int> count;
+    in property <string> subtitle;
+    in-out property <string> title;
+    in-out property <string> artist;
+    in-out property <string> album;
+    in-out property <string> track;
+    in-out property <string> year;
+    // The files differ in this field: it shows "Several" and stays as each has it unless typed.
+    in property <bool> title-several;
+    in property <bool> artist-several;
+    in property <bool> album-several;
+    in property <bool> track-several;
+    in property <bool> year-several;
+    in property <image> cover;
+    in property <bool> has-cover;
+    in property <bool> finding;
+    in property <bool> saving;
+    // "Found on Spotify: check, then Save." / why it couldn't (`status-bad`).
+    in property <string> status;
+    in property <bool> status-bad;
+    callback find-online();
+    callback number-in-order();
+    callback save();
 }

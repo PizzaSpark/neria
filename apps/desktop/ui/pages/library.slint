@@ -113,6 +113,11 @@ component LibMenu inherits Menu {
         text: "Open in Spotify";
         clicked => { Library.act(d.id, "spotify"); }
     }
+    if d.can-tag: MenuItem {
+        icon: "\u{E8EC}";
+        text: "Edit tags";
+        clicked => { Library.act(d.id, "tags"); }
+    }
     if d.can-rematch: MenuItem {
         icon: "\u{E8EE}";
         text: "Pick another match";
