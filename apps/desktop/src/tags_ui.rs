@@ -120,6 +120,7 @@ fn save(ui: &AppWindow) {
     }
     if want == Tags::default() && cover.is_none() && !numbered {
         t.set_open(false);
+        show_toast(ui, "Nothing to change: the tags already say that.");
         return;
     }
     t.set_saving(true);
@@ -127,15 +128,30 @@ fn save(ui: &AppWindow) {
     std::thread::spawn(move || {
         let total = files.len();
         let mut failed = Vec::new();
+        let mut titles = Vec::new();
         for (i, f) in files.iter().enumerate() {
             let mut each = want.clone();
             if numbered {
                 each.track = Some(format!("{}/{total}", i + 1));
             }
-            if let Err(e) = tags::write(f, &each, cover.as_deref()) {
-                failed.push(format!("{}: {e}", f.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()));
+            match tags::write(f, &each, cover.as_deref()) {
+                Ok(()) => {
+                    // The Library's row says the song as its tags now do: "Artist - Title".
+                    let now = tags::read(f);
+                    if let Some(title) = now.title {
+                        let name = match now.artist {
+                            Some(a) => format!("{a} - {title}"),
+                            None => title,
+                        };
+                        titles.push((f.clone(), name));
+                    }
+                }
+                Err(e) => {
+                    failed.push(format!("{}: {e}", f.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()))
+                }
             }
         }
+        neria_core::library::retitle(&titles);
         let _ = weak.upgrade_in_event_loop(move |ui| {
             let t = ui.global::<TagEdit>();
             t.set_saving(false);

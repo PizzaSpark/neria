@@ -146,6 +146,9 @@ fn go(ui: &AppWindow) {
             });
             with(|s| s.done = Some(done));
             crate::library_ui::refresh_now(&ui);
+            if n > 0 {
+                show_toast(&ui, "Moved. The Library shows their new places (File, in each one's details).");
+            }
         });
     });
 }

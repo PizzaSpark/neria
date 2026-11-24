@@ -381,6 +381,21 @@ pub fn set_gaps(id: u64, gaps: Option<crate::record::Gaps>) -> Option<Item> {
     })
 }
 
+/// New titles for these files' records (their tags were edited), then the page is told.
+pub fn retitle(changes: &[(PathBuf, String)]) {
+    if changes.is_empty() {
+        return;
+    }
+    edit(|items| {
+        for (file, title) in changes {
+            for it in items.iter_mut().filter(|i| same_path(&i.file, file)) {
+                it.title = title.clone();
+            }
+        }
+    });
+    saved();
+}
+
 /// Lengths worked out later (the Library's thumbnails probe each file once).
 pub fn set_lengths(found: &[(u64, f64)]) {
     if found.is_empty() {

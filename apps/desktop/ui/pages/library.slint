@@ -585,45 +585,48 @@ component LibRowView inherits VerticalLayout {
             HorizontalLayout {
                 spacing: Screen.compact ? 10px : 12px;
                 min-height: 44px;
-                // Pick it with others (keyboard: Ctrl+Space on the row does the same).
-                if root.tick-shown: VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    Rectangle {
-                        width: 18px;
-                        height: 18px;
-                        border-radius: 4px;
-                        border-width: 2px;
-                        border-color: root.item.picked ? Theme.hard : Theme.edge;
-                        background: root.item.picked ? Theme.pop : transparent;
-                        accessible-role: checkbox;
-                        accessible-label: "Pick " + root.item.title;
-                        accessible-checked: root.item.picked;
-                        accessible-action-default => { Library.pick(root.item.id, 0); }
-                        if root.item.picked: Icon {
-                            text: "\u{E73E}";
-                            font-size: 11px;
-                            color: Theme.on-pop;
-                        }
-                        // keyboard: Ctrl+Space on the row picks it.
-                        TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { Library.pick(root.item.id, 0); }
-                        }
-                    }
-                }
                 VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 0;
-                    KindThumb {
+                    Rectangle {
                         width: 64px;
                         height: 36px;
-                        source: root.item.thumb;
-                        length: root.item.length;
-                        sound: root.item.sound;
-                        playlist: root.item.playlist;
-                        text: root.item.text;
-                        fade: root.item.gone ? 0.35 : root.item.offline ? 0.6 : 1;
+                        KindThumb {
+                            width: 64px;
+                            height: 36px;
+                            source: root.item.thumb;
+                            length: root.item.length;
+                            sound: root.item.sound;
+                            playlist: root.item.playlist;
+                            text: root.item.text;
+                            fade: root.item.gone ? 0.35 : root.item.offline ? 0.6 : 1;
+                        }
+                        // Pick it with others: a tick over the frame's corner, so nothing on
+                        // the row moves when it shows (keyboard: Ctrl+Space on the row).
+                        if root.tick-shown: Rectangle {
+                            x: 3px;
+                            y: 3px;
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 4px;
+                            border-width: 2px;
+                            border-color: root.item.picked ? Theme.hard : Theme.ink;
+                            background: root.item.picked ? Theme.pop : Theme.bg.with-alpha(0.8);
+                            accessible-role: checkbox;
+                            accessible-label: "Pick " + root.item.title;
+                            accessible-checked: root.item.picked;
+                            accessible-action-default => { Library.pick(root.item.id, 0); }
+                            if root.item.picked: Icon {
+                                text: "\u{E73E}";
+                                font-size: 11px;
+                                color: Theme.on-pop;
+                            }
+                            // keyboard: Ctrl+Space on the row picks it.
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { Library.pick(root.item.id, 0); }
+                            }
+                        }
                     }
                 }
                 VerticalLayout {
