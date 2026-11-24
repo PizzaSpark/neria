@@ -30,6 +30,20 @@ component FollowRow inherits VerticalLayout {
         font-size: 12px;
         wrap: word-wrap;
     }
+    // Songs taken off a followed Spotify playlist: nothing goes until you've looked.
+    if root.item.removed > 0: Notice {
+        spacing: 10px;
+        icon-size: 14px;
+        wrap: true;
+        text: root.item.removed == 1 ? "1 song in your folder was taken off it on Spotify."
+            : root.item.removed + " songs in your folder were taken off it on Spotify.";
+        GhostButton {
+            compact: true;
+            horizontal-stretch: 0;
+            text: "Review " + root.item.removed + " removed";
+            clicked => { Following.review(root.item.url); }
+        }
+    }
     // Compact: two lines, so the four controls fit a 400px window.
     HorizontalLayout {
         spacing: 6px;
@@ -1045,12 +1059,15 @@ export component SettingsDrawer inherits Rectangle {
                             Group {
                                 title: "Following";
                                 if Following.items.length == 0: Hint {
-                                    text: "Nothing yet. Paste a channel or playlist link and press Follow under its preview: Neria then downloads its new uploads by itself.";
+                                    text: "Nothing yet. Paste a channel, playlist or Spotify playlist link and press Follow under its preview: Neria then downloads what's new by itself.";
                                 }
                                 for f in Following.items: FollowRow { item: f; }
                             }
                             Hint {
                                 text: "Only uploads that are new since you followed are downloaded, into a folder named after the channel or playlist, in the kind of file you had picked. Checks run while Neria is open (the tray counts); one that was missed runs when Neria starts.";
+                            }
+                            Hint {
+                                text: "Spotify playlists: songs added to it download into its folder. Songs taken off it stay until you review them here, and only the ones you tick go to the Recycle Bin.";
                             }
                         }
 

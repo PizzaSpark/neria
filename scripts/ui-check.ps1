@@ -113,11 +113,23 @@ if (-not (Test-Path $gifFile)) { & $ff -loglevel error -y -i $video -t 4 -vf "fp
 New-Item -ItemType Directory -Force (Join-Path $home_ "cookies") | Out-Null
 "# Netscape HTTP Cookie File`n.youtube.com`tTRUE`t/`tTRUE`t0`tPREF`tx" | Set-Content -Encoding ascii (Join-Path $home_ "cookies\youtube.com.txt")
 
-# A followed channel and playlist, for Settings → Following.
+# A Spotify playlist synced before: its folder's list has a song that has since left it
+# (the preview says what's in the folder, "Download N new", and "Review 1 removed").
+$tth = "Today$([char]0x2019)s Top Hits"
+$tthDir = Join-Path $dl "Audio\$tth"
+New-Item -ItemType Directory -Force $tthDir | Out-Null
+$gone = Join-Path $tthDir "Someone - Gone.mp3"
+if (-not (Test-Path $gone)) { Copy-Item (Join-Path $media "song.mp3") $gone -ErrorAction SilentlyContinue }
+# Kept when there's one already (a real sync's list shows "N in your folder" too).
+if (-not (Test-Path (Join-Path $tthDir ".neria-sync.json"))) { [IO.File]::WriteAllText((Join-Path $tthDir ".neria-sync.json"), (@{ spotify_kind = "playlist"; spotify_id = "37i9dQZF1DXcBWIGoYBM5M"; name = $tth; tracks = @(@{ id = "gone"; stem = "Someone - Gone"; title = "Someone - Gone" }) } | ConvertTo-Json -Depth 5)) }
+
+# A followed channel and playlist, and a Spotify playlist with a removed song to review,
+# for Settings → Following.
 @(
   @{ url = "https://www.youtube.com/@kurzgesagt/videos"; name = "Kurzgesagt - In a Nutshell"; channel = $true; every = "daily"; last_check = ($now - 7200); last_new = 1 },
-  @{ url = "https://www.youtube.com/playlist?list=PL1"; name = "Lo-fi beats to study to"; every = "weekly"; paused = $true; last_check = ($now - 90000) }
-) | ConvertTo-Json | ForEach-Object { [IO.File]::WriteAllText((Join-Path $home_ "following.json"), $_) }
+  @{ url = "https://www.youtube.com/playlist?list=PL1"; name = "Lo-fi beats to study to"; every = "weekly"; paused = $true; last_check = ($now - 90000) },
+  @{ url = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"; name = $tth; every = "daily"; last_check = ($now - 600); last_new = 2; removed = @(@{ title = "Someone - Gone"; file = $gone }) }
+) | ConvertTo-Json -Depth 5 | ForEach-Object { [IO.File]::WriteAllText((Join-Path $home_ "following.json"), $_) }
 
 # What to capture: name -> dev hooks (see CLAUDE.md).
 $states = [ordered]@{
@@ -205,6 +217,7 @@ $states = [ordered]@{
   "set-lyrics" = @{ NERIA_SETTINGS = "spotify"; NERIA_LYRICS_SPOTIFY = "1" }
   "set-lyrics-in" = @{ NERIA_SETTINGS = "spotify"; NERIA_LYRICS_SPOTIFY = "signed-in" }
   "dl-spotify" = @{ NERIA_URL = "https://open.spotify.com/album/4m2880jivSbbyEGAKfITCa" }
+  "dl-spotify-sync" = @{ NERIA_URL = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M" }
   "signin"     = @{ NERIA_DIALOG = "signin" }
   "extras"     = @{ NERIA_DIALOG = "extras" }
   "advanced"   = @{ NERIA_DIALOG = "advanced" }

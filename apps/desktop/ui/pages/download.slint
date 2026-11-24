@@ -176,12 +176,16 @@ export component DownloadPage inherits Rectangle {
     property <bool> short: root.window-height < 820px;
     property <bool> no-quality: root.probe-is-spotify || root.gif-mode;
     // The Download button (in the link box, or under it on narrow windows).
+    // A Spotify album or playlist downloaded before: only what isn't in its folder yet.
+    property <bool> synced-before: root.probe-is-spotify && root.probe-state == 2 && Music.sync-have >= 0;
     property <string> dl-text: Live.on && root.probe-state == 2 ? (Live.upcoming ? "Record when it starts" : "Record")
+        : root.synced-before ? (Music.sync-new == 0 ? "Up to date" : "Download " + Music.sync-new + " new")
         : root.probe-is-spotify && root.spotify-count > 1 ? "Download " + root.spotify-count + " songs"
         : root.picking && root.pick-checked > 1 ? "Download " + root.pick-checked + " items"
         : root.dup-text != "" && root.probe-state == 2 ? "Download again"
         : "Download";
     property <bool> dl-enabled: root.tools-ready && root.url != "" && !root.probe-blocked && root.probe-state != 4 && (!root.probe-is-spotify || root.spotify-count > 0)
+        && (!root.synced-before || Music.sync-new > 0)
         && (!root.picking || root.pick-checked > 0);
     // A looked-up Spotify link: "Lyrics only" can save just its songs' lyrics.
     property <bool> lyrics-ready: root.probe-is-spotify && root.probe-state == 2 && root.spotify-count > 0 && root.tools-ready;

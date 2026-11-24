@@ -17,7 +17,7 @@ use crate::download::DownloadRequest;
 use crate::post::Item;
 use crate::queue::Queue;
 use crate::settings::{Preset, Quality, Settings};
-use crate::{folders, history, paths, probe};
+use crate::{folders, history, music, paths, probe, spotify};
 
 /// How many of a channel's newest uploads a check looks at.
 const CHANNEL_ENTRIES: usize = 40;
@@ -89,12 +89,25 @@ pub struct Followed {
     pub pending: Vec<String>,
     /// Failed checks per pending link.
     pub tries: HashMap<String, u32>,
+    /// A Spotify playlist: songs taken off it that are still in its folder, waiting for
+    /// "Review removed" (a check never deletes anything).
+    pub removed: Vec<music::Removed>,
 }
 
 impl Followed {
     /// Due for a check at `now` (paused ones never are).
     pub fn due(&self, now: u64) -> bool {
         !self.paused && now >= self.last_check.saturating_add(self.every.secs())
+    }
+
+    /// A Spotify playlist (its songs are kept by track id, not by link).
+    pub fn is_spotify(&self) -> bool {
+        spotify::parse_link(&self.url).is_some()
+    }
+
+    /// Removed songs whose file is still there.
+    pub fn removed_now(&self) -> Vec<music::Removed> {
+        self.removed.iter().filter(|r| r.file.is_file()).cloned().collect()
     }
 }
 
@@ -130,9 +143,52 @@ fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
-/// The link a check lists for `url` (a channel's Videos tab), also the key it's kept by.
+/// The link a check lists for `url` (a channel's Videos tab, a Spotify playlist's plain
+/// link), also the key it's kept by.
 pub fn list_url(url: &str) -> String {
+    if let Some(link) = spotify::parse_link(url) {
+        return spotify_url(&link.id);
+    }
     probe::channel_videos_url(url).unwrap_or_else(|| url.trim().to_string())
+}
+
+fn spotify_url(playlist_id: &str) -> String {
+    format!("https://open.spotify.com/playlist/{playlist_id}")
+}
+
+/// A Spotify link that can be followed: playlists (albums don't change, an artist's page
+/// only lists the top 10).
+pub fn spotify_followable(url: &str) -> bool {
+    spotify::parse_link(url).is_some_and(|l| l.kind == spotify::Kind::Playlist)
+}
+
+/// Follow a Spotify playlist: the songs in it now count as seen (by track id).
+pub fn follow_spotify(col: &spotify::Collection) {
+    let items: Vec<Item> = col.tracks.iter().map(song_item).collect();
+    follow(&spotify_url(&col.id), &col.name, col.cover_url.clone(), &items, Quality::Audio, Preset::default());
+}
+
+/// A Spotify song as a check sees it: its track id where a video has its link.
+fn song_item(t: &spotify::Track) -> Item {
+    Item {
+        kind: crate::post::ItemKind::Video,
+        title: format!("{} - {}", t.artist_line(), t.title),
+        duration: None,
+        thumbnail: None,
+        url: t.id.clone(),
+        playlist_index: None,
+        direct_url: None,
+        ext: String::new(),
+    }
+}
+
+/// The review is done (songs moved to the Recycle Bin or kept): stop asking about them.
+pub fn forget_removed(files: &[std::path::PathBuf]) {
+    edit(|all| {
+        for f in all.iter_mut() {
+            f.removed.retain(|r| !files.contains(&r.file));
+        }
+    });
 }
 
 pub fn list() -> Vec<Followed> {
@@ -234,18 +290,16 @@ fn settle(f: &mut Followed, items: &[Item], done: impl Fn(&str) -> bool, waiting
 /// Check one followed list now: queue its new uploads (one card). Returns how many.
 pub fn check(url: &str, settings: &Settings, queue: &Queue) -> anyhow::Result<usize> {
     let Some(f) = list().into_iter().find(|f| f.url == url) else { return Ok(0) };
+    if f.is_spotify() {
+        return check_spotify(&f, settings, queue);
+    }
     let listed = probe::list_entries(&f.url, settings, f.channel.then_some(CHANNEL_ENTRIES));
     let now = now_secs();
     let items = match listed {
         Ok(items) => items,
         Err(e) => {
             let msg = e.downcast_ref::<probe::LinkProblem>().map_or_else(|| format!("{e:#}"), |p| p.title.clone());
-            edit(|all| {
-                if let Some(f) = all.iter_mut().find(|f| f.url == url) {
-                    f.last_check = now;
-                    f.error = Some(msg.clone());
-                }
-            });
+            failed(url, now, &msg);
             anyhow::bail!(msg);
         }
     };
@@ -279,8 +333,89 @@ pub fn check(url: &str, settings: &Settings, queue: &Queue) -> anyhow::Result<us
         })
         .collect();
     let n = reqs.len();
-    let title = if n == 1 { format!("{} · 1 new", f.name) } else { format!("{} · {n} new", f.name) };
-    queue.add_group(&title, false, reqs);
+    queue.add_group(&card_title(&f.name, n), false, reqs);
+    Ok(n)
+}
+
+/// "Kurzgesagt · 2 new".
+fn card_title(name: &str, n: usize) -> String {
+    format!("{name} · {n} new")
+}
+
+/// The check couldn't list it: say so in Settings → Following (it stays followed).
+fn failed(url: &str, now: u64, msg: &str) {
+    edit(|all| {
+        if let Some(f) = all.iter_mut().find(|f| f.url == url) {
+            f.last_check = now;
+            f.error = Some(msg.to_string());
+        }
+    });
+}
+
+/// Keep what a check found removed until it's reviewed: no doubles, none whose file is gone.
+fn merge_removed(kept: &mut Vec<music::Removed>, found: Vec<music::Removed>) {
+    kept.retain(|r| r.file.is_file());
+    for r in found {
+        if !kept.iter().any(|k| k.file == r.file) {
+            kept.push(r);
+        }
+    }
+}
+
+/// A Spotify playlist: songs added since it was followed are downloaded into its folder
+/// (the same one "Download" uses, so a manual sync and a check agree), and songs taken off
+/// it that are still in the folder wait in Settings → Following for "Review removed".
+fn check_spotify(f: &Followed, settings: &Settings, queue: &Queue) -> anyhow::Result<usize> {
+    let url = f.url.as_str();
+    let now = now_secs();
+    let Some(link) = spotify::parse_link(url) else { return Ok(0) };
+    let col = match spotify::fetch(&link, settings.spotify_credentials().as_ref()) {
+        Ok(col) => col,
+        Err(e) => {
+            let text = e.to_string();
+            let msg = if text.contains("private, removed") {
+                "the playlist is private or was deleted".to_string()
+            } else if text.contains("couldn't reach") {
+                "couldn't reach Spotify".to_string()
+            } else {
+                text
+            };
+            failed(url, now, &msg);
+            anyhow::bail!(msg);
+        }
+    };
+    let dir = music::collection_dir(settings, &col);
+    let prev = music::read_manifest(&dir);
+    // Before `prepare` writes the new list over the old one.
+    let removed = music::removed_tracks(&dir, &col);
+    let jobs = music::plan_songs(&col, settings, &dir);
+    let items: Vec<Item> = col.tracks.iter().map(song_item).collect();
+    let have = |id: &str| jobs.iter().any(|j| j.track.id == id && music::have_song(&dir, prev.as_ref(), j));
+    let (new, f) = edit(|all| {
+        let Some(f) = all.iter_mut().find(|f| f.url == url) else { return (Vec::new(), None) };
+        let new = settle(f, &items, have, |id| queue.music_unfinished(id));
+        merge_removed(&mut f.removed, removed.clone());
+        f.name = col.name.clone();
+        f.last_check = now;
+        f.last_new = new.len();
+        f.error = None;
+        (new, Some(f.clone()))
+    });
+    let Some(f) = f else { return Ok(0) };
+    if new.is_empty() && removed.is_empty() {
+        return Ok(0);
+    }
+    // The playlist file and the folder's list follow Spotify's list (renames included).
+    let (_dir, jobs) = music::prepare(&col, settings)?;
+    let reqs: Vec<DownloadRequest> = jobs
+        .into_iter()
+        .filter(|j| new.iter().any(|i| i.url == j.track.id))
+        .map(DownloadRequest::music)
+        .collect();
+    let n = reqs.len();
+    if n > 0 {
+        queue.add_group(&card_title(&f.name, n), false, reqs);
+    }
     Ok(n)
 }
 
@@ -324,6 +459,37 @@ mod tests {
         let new = settle(&mut f, &[item("c")], |_| false, |_| false);
         assert!(new.is_empty());
         assert!(f.seen.contains(&"c".to_string()) && f.pending.is_empty());
+    }
+
+    #[test]
+    fn spotify_playlists_are_kept_by_their_plain_link() {
+        let id = "37i9dQZF1DXcBWIGoYBM5M";
+        let want = format!("https://open.spotify.com/playlist/{id}");
+        assert_eq!(list_url(&format!("https://open.spotify.com/intl-de/playlist/{id}?si=abc")), want);
+        assert_eq!(list_url(&format!("spotify:playlist:{id}")), want);
+        assert!(spotify_followable(&want));
+        assert!(!spotify_followable("https://open.spotify.com/album/4m2880jivSbbyEGAKfITCa"));
+        assert!(Followed { url: want, ..Default::default() }.is_spotify());
+        assert!(!Followed { url: "https://www.youtube.com/playlist?list=PL1".into(), ..Default::default() }.is_spotify());
+    }
+
+    #[test]
+    fn removed_songs_wait_once_each() {
+        let dir = std::env::temp_dir().join(format!("neria-follow-removed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("A.mp3");
+        let b = dir.join("B.mp3");
+        std::fs::write(&a, b"a").unwrap();
+        std::fs::write(&b, b"b").unwrap();
+        let r = |p: &std::path::Path| music::Removed { title: p.display().to_string(), file: p.to_path_buf() };
+        let mut kept = vec![r(&a)];
+        merge_removed(&mut kept, vec![r(&a), r(&b)]);
+        assert_eq!(kept, [r(&a), r(&b)]);
+        // A went to the Recycle Bin by hand: it's no longer asked about.
+        std::fs::remove_file(&a).unwrap();
+        merge_removed(&mut kept, Vec::new());
+        assert_eq!(kept, [r(&b)]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

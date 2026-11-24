@@ -478,7 +478,8 @@ Grouped by page. Tracks can be interleaved; within a track, top first.
     again) or failed three checks; premieres not yet live are left for later. Checks run
     one at a time while Neria runs (tray too), every minute looking for due ones; missed
     ones run 20 s after start. Channel links (`/@name`) now preview their videos instead
-    of their tabs (`probe::channel_videos_url`). Example: `--example follow`
+    of their tabs (`probe::channel_videos_url`). Example: `--example follow`.
+    Spotify playlists too since 2026-11-24 (Music 6)
 
 ### Music (Spotify and lyrics)
 Built 2026-11-14 (`lyrics.rs`, `music.rs`, Settings → Spotify → Lyrics). Ticked only where a
@@ -537,6 +538,20 @@ real-link check covered it; the rest is in `docs/TESTING-music-track.md`.
    - The default mp3 re-encodes it (lossy to lossy): suggest m4a, which keeps it as is
    - Same caution as Spotify lyrics: bulk downloads can get a YouTube account flagged, so
      suggest a spare Premium account
+6. ✅ **Sync shown, and Follow for Spotify playlists** (2026-11-24, a friend's question: "my
+   playlist got a new song, does Neria tell me?"). spotDL's sync is a command you run; this
+   is the same idea made visible and automatic (`docs/SPOTIFY.md` → Resume and sync):
+   - A playlist or album downloaded before says "N in your folder" in its preview and the
+     button reads "Download N new" / "Up to date"; only the missing songs are queued
+   - Follow works on Spotify playlists (Settings → Following, checked hourly / daily /
+     weekly): added songs download into the playlist's folder; removed ones wait for "Review
+     N removed" on the row (toast + notification once), never deleted by a check
+   - Checked: `--example follow -- <Today's Top Hits> --try-new` (followed minus its last
+     song: that song downloaded, a made-up removed song waited for review, a second check
+     found nothing new and didn't list it twice); the preview and Settings → Following at
+     1280 / 900 / 720 / 400 (`ui-check.ps1` states `dl-spotify-sync`, `set-follow`).
+     Not clicked through in the window yet: Follow on a Spotify preview, Review from Settings
+     → Following, "Up to date"
 
 ### Clip / edit
 1. **Audio controls**, two separate things so it's clear what ends up in the file:
