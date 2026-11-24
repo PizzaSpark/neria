@@ -162,6 +162,17 @@ so they get built together.
   the processor), sideways phone videos squashed when scaled
 - Notes: `docs/releases/v0.6.0.md`
 
+### v0.9.0: Capture, Phone, Library (2026-11-24)
+- **Capture** (instant replay, F8, a track per app, Never record, Quality, "clip that" by voice),
+  **Phone** (mirror by QR or cable, Clip the last 30 s, Record, Present, Wi-Fi hand-over), the
+  **Library** (everything saved, Gone / Find it…, Duplicates, pick several), the **command
+  palette** (Ctrl+K), **sound files** (Compress to M4A / MP3 / Opus / FLAC / WAV, waveform trim,
+  several parts, Even out, Cut the silence, Edit tags, Put in folders, Paste times…), **Speech to
+  text**, **Live chat** (beside the player, into clips), saved **Workflows** and your own **Tools**
+- Fixes on the way: Neria's own yt-dlp updater (onedir build, start-up 1.3 → 0.45 s), quitting
+  never hangs; CI no longer builds and uploads the exe (Actions storage), clippy 1.99's lints
+- Notes: `docs/releases/v0.9.0.md`
+
 ### v0.8.0: One live screen (2026-11-16)
 - **Watch, record and clip in the player**, items 8–10 under "Livestreams": Watch / Record on the
   preview, the player's bar by state, Twitch keeps the last 10 min while watching; "Also get the
@@ -180,11 +191,8 @@ so they get built together.
 - Notes: `docs/releases/v0.7.0.md`
 
 ## Up next (priority order)
-1. **Ship v0.9.0** (`main` pushed 2026-11-24, once CI stopped building and uploading the exe; the
-   December hold was only for Actions usage). Release
-   what's on `main` since v0.8.0: Compress for sound files (MP3 too, waveform trim),
-   several kept parts and Even out, Speech to text, Live chat, the Library page. The Capture engine can ride
-   along hidden (no UI yet)
+1. ✅ **Shipped v0.9.0** (2026-11-24; see "Shipped" above). The December hold was only for
+   Actions usage, lifted once CI stopped building and uploading the exe
 2. **Real-link checks left**: an Instagram carousel all the way through with cookies; whether
    Brave's cookies are read once Brave is fully closed; a scheduled stream / premiere recorded
    from its first second (Livestreams 2)
