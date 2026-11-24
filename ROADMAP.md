@@ -1155,7 +1155,9 @@ that's an exception, written only once the Phone tab is used.
   `NERIA_*` hooks on a scratch home (Sound only saved an .m4a, two files evened out as an
   album kept their 10 dB apart, Find tags online filled the fields and cover and Save wrote
   them, Move + Undo put files and the playlist back, silence cut 30 s to 20.4 s); ui-check
-  at every width. Left: long-press to start picking on a touch screen (Android); Find tags online for several files at once; duplicates by sound
+  at every width. Checked by hand 2026-11-24 after fixes: rows no longer blink on hover (the
+  hover area holds the row's content), the pick tick has its own column on the left, songs
+  show their own cover, edited tags retitle the row. Left: long-press to start picking on a touch screen (Android); Find tags online for several files at once; duplicates by sound
   (fingerprints) rather than by link
 - **Library page** 🚧 (built 2026-11-23, mock `design/library.html`, picks 1A · 2A · 3A ·
   4A + 4B · 5A; screenshots checked at 1280 / 900 / 720 / 400): a fifth page after Capture (on compact,
