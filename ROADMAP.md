@@ -180,7 +180,8 @@ so they get built together.
 - Notes: `docs/releases/v0.7.0.md`
 
 ## Up next (priority order)
-1. **Ship v0.9.0 in December** (nothing pushed before then, user's call 2026-11-21). Release
+1. **Ship v0.9.0** (`main` pushed 2026-11-24, once CI stopped building and uploading the exe; the
+   December hold was only for Actions usage). Release
    what's on `main` since v0.8.0: Compress for sound files (MP3 too, waveform trim),
    several kept parts and Even out, Speech to text, Live chat, the Library page. The Capture engine can ride
    along hidden (no UI yet)
