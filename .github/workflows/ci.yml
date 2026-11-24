@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**", "scripts/ui-check.ps1"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "scripts/ui-check.ps1"]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -27,11 +29,5 @@ jobs:
       # The desktop's unit tests and the UI guardrails (colours, keyboard, labels, widths).
       - name: Test app and UI rules
         run: cargo test -p neria --locked
-      - name: Build app
-        run: cargo build --release -p neria --locked
-      - name: Upload build
-        uses: actions/upload-artifact@v7
-        with:
-          name: neria-${{ github.sha }}
-          path: target/release/neria.exe
-          retention-days: 14
+      # No release build or uploaded exe here: Release (on a tag) builds the exe, and a Windows
+      # release build is the longest step (~7.5 min at 2x minutes) and the only artifact storage.
