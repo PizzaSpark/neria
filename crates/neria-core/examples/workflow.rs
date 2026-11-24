@@ -5,6 +5,10 @@
 //! `flac` / `wav` (Sound only), `gif`, or `keep` (only moved: give `--put <dir>`).
 //! Prints what the queue row would say and where the result went.
 //!
+//! `tool`: your own tool, `--program <exe or name> --words "<its words with {file} {out}…>"
+//! [--makes <ext>] [--takes videos|sound|both]` (saved to NERIA_HOME's `tools.json`, then
+//! run once; a failure prints the report).
+//!
 //! `--list`: the saved workflows (NERIA_HOME's `workflows.json`; the three starters if none),
 //! each with its sentence, and which one a link would get (`--link <url>`).
 //! `--watch <dir> <seconds> <change>`: watch a folder (files already there are left alone)
@@ -79,7 +83,27 @@ fn main() -> anyhow::Result<()> {
     }
 
     let file = PathBuf::from(&args[0]);
-    let change = change_of(&args[1]);
+    let change = if args[1] == "tool" {
+        let t = neria_core::tool::Tool {
+            name: flag("--name").unwrap_or_else(|| "My tool".into()),
+            program: flag("--program").expect("--program"),
+            words: flag("--words").expect("--words"),
+            makes: flag("--makes").unwrap_or_default(),
+            takes: match flag("--takes").as_deref() {
+                Some("sound") => neria_core::tool::Takes::Sound,
+                Some("both") => neria_core::tool::Takes::Both,
+                _ => neria_core::tool::Takes::Videos,
+            },
+            ..Default::default()
+        };
+        if let Some(p) = t.problem() {
+            println!("problem: {p}");
+        }
+        println!("it'll run: {}", neria_core::tool::sample(&t));
+        Change::Tool(neria_core::tool::save(t))
+    } else {
+        change_of(&args[1])
+    };
     let put = match flag("--put").as_deref() {
         None | Some("beside") => Put::Beside,
         Some("replace") => Put::Replace,
@@ -96,6 +120,12 @@ fn main() -> anyhow::Result<()> {
             last = stage.to_string();
         }
         let _ = f;
+    })
+    .inspect_err(|e| {
+        if let Some(r) = neria_core::tool::report(e) {
+            println!("--- report ---
+{r}");
+        }
     })?;
     println!(
         "{}: {} (made: {}, replaced: {}, moved: {:?}) in {:.1} s\n  → {}",

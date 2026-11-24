@@ -135,6 +135,17 @@ export component WorkflowDialog inherits Dialog {
                     Workflows.changed();
                 }
             }
+            // The user's own tools (Settings → Tools).
+            for t[i] in Workflows.tools: ChoiceRow {
+                title: t.name;
+                hint: t.tried ? "your tool" : "your tool · not tried yet";
+                selected: Workflows.change == 4 && Workflows.tool-at == i;
+                clicked => {
+                    Workflows.change = 4;
+                    Workflows.tool-at = i;
+                    Workflows.changed();
+                }
+            }
 
             VerticalLayout {
                 padding-top: 14px;

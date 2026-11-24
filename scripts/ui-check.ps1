@@ -211,6 +211,14 @@ $states = [ordered]@{
   "wf-folder"  = @{ NERIA_WORKFLOW = "folder" }
   "wf-run"     = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_WORKFLOW = "run" }
   "pal-wf"     = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "discord" }
+  # External tools: the editor (new, a sample saved first), Settings → Tools, Run a tool…,
+  # the palette, a workflow's Change it with the tool in it.
+  "tool-new"   = @{ NERIA_TOOL = "new" }
+  "tool-edit"  = @{ NERIA_SETTINGS = "tools"; NERIA_TOOL = "edit" }
+  "set-tools"  = @{ NERIA_SETTINGS = "tools" }
+  "tool-run"   = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_TOOL = "run" }
+  "pal-tool"   = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "upscale" }
+  "wf-tool"    = @{ NERIA_WORKFLOW = "new" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-voice-off" = @{ NERIA_SETTINGS = "voice" }

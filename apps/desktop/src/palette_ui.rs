@@ -74,6 +74,7 @@ const ACTIONS: &[Action] = &[
     a("set-0", "Settings: Download", &["folder", "quality", "format", "template", "names", "container"], "\u{E713}", ""),
     a("set-1", "Settings: Following", &["follow", "channels", "subscriptions"], "\u{E713}", ""),
     a("set-7", "Settings: Workflows", &["workflow", "automatic", "after download", "watch folder", "then"], "\u{E713}", ""),
+    a("set-8", "Settings: Tools", &["tool", "external", "command", "program", "handbrake", "script"], "\u{E713}", ""),
     a("set-2", "Settings: Spotify", &["lyrics", "numbering", "music"], "\u{E713}", ""),
     a("set-3", "Settings: Network", &["cookies", "sign in", "account", "speed", "proxy"], "\u{E713}", ""),
     a("set-4", "Settings: General", &["theme", "dark", "light", "tray", "notifications", "start", "appearance"], "\u{E713}", ""),
@@ -100,6 +101,8 @@ enum Entry {
     ChooseFile,
     /// A saved workflow: then which file.
     Workflow(u64),
+    /// One of the user's tools: then which file.
+    Tool(u64),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -111,6 +114,8 @@ enum Step {
     Action(&'static str),
     /// Which file for this saved workflow.
     Workflow(u64),
+    /// Which file for this tool.
+    Tool(u64),
 }
 
 struct State {
@@ -308,6 +313,30 @@ fn rebuild(ui: &AppWindow) {
                         );
                     }
                 }
+                // The user's own tools by name ("upscale" → which file).
+                let mut tools: Vec<(i32, neria_core::tool::Tool)> = neria_core::tool::list()
+                    .into_iter()
+                    .filter_map(|t| palette::score(q, &t.name, &["tool", "run", &t.program_name()]).map(|sc| (sc, t)))
+                    .collect();
+                tools.sort_by(|x, y| y.0.cmp(&x.0));
+                if !tools.is_empty() {
+                    push(heading("Your tools"), Entry::Heading);
+                    for (_, t) in tools.into_iter().take(PER_GROUP) {
+                        let (pre, hit, post) = split(&t.name, q);
+                        push(
+                            PalRow {
+                                pre: pre.into(),
+                                hit: hit.into(),
+                                post: post.into(),
+                                sub: t.summary().into(),
+                                icon: "\u{E90F}".into(),
+                                r#where: "Tool".into(),
+                                ..PalRow::default()
+                            },
+                            Entry::Tool(t.id),
+                        );
+                    }
+                }
                 let mut things: Vec<(i32, &Item)> = items
                     .iter()
                     .filter_map(|it| {
@@ -335,7 +364,7 @@ fn rebuild(ui: &AppWindow) {
                 }
             }
         }
-        Step::Action(_) | Step::Workflow(_) => {
+        Step::Action(_) | Step::Workflow(_) | Step::Tool(_) => {
             let wants = match step {
                 Step::Action(key) => action(key).map_or(Wants::Nothing, |a| a.wants),
                 _ => Wants::Media,
@@ -374,7 +403,7 @@ fn select(ui: &AppWindow, i: i32) {
     let into = with(|s| match s.entries.get(i.max(0) as usize) {
         Some(Entry::Thing(_)) => true,
         Some(Entry::Action(k)) => action(k).is_some_and(|a| a.wants != Wants::Nothing),
-        Some(Entry::Workflow(_)) => true,
+        Some(Entry::Workflow(_) | Entry::Tool(_)) => true,
         _ => false,
     });
     c.set_can_go_into(into);
@@ -415,6 +444,13 @@ fn show_step(ui: &AppWindow) {
             if let Some(w) = workflow::get(id) {
                 c.set_crumb(w.name.into());
                 c.set_crumb_icon("\u{E945}".into());
+            }
+            c.set_placeholder("Which file?".into());
+        }
+        Step::Tool(id) => {
+            if let Some(t) = neria_core::tool::get(id) {
+                c.set_crumb(t.name.into());
+                c.set_crumb_icon("\u{E90F}".into());
             }
             c.set_placeholder("Which file?".into());
         }
@@ -484,6 +520,7 @@ fn pick(ui: &AppWindow, i: i32) {
         }
         Entry::Action(key) if action(key).is_some_and(|a| a.wants != Wants::Nothing) => go(ui, Step::Action(key)),
         Entry::Workflow(id) => go(ui, Step::Workflow(id)),
+        Entry::Tool(id) => go(ui, Step::Tool(id)),
         Entry::Action(key) => {
             close(ui);
             run(ui, key);
@@ -515,12 +552,16 @@ fn pick(ui: &AppWindow, i: i32) {
                         crate::workflow_ui::run_on(ui, &w, &[file]);
                     }
                 }
+                Step::Tool(tid) => {
+                    close(ui);
+                    crate::tool_ui::run_one(ui, tid, file);
+                }
                 _ => {}
             }
         }
         Entry::ChooseFile => {
             let step = with(|s| s.step);
-            if !matches!(step, Step::Action(_) | Step::Workflow(_)) {
+            if !matches!(step, Step::Action(_) | Step::Workflow(_) | Step::Tool(_)) {
                 return;
             }
             close(ui);
@@ -537,6 +578,7 @@ fn pick(ui: &AppWindow, i: i32) {
                         crate::workflow_ui::run_on(ui, &w, &[file]);
                     }
                 }
+                Step::Tool(tid) => crate::tool_ui::run_one(ui, tid, file),
                 _ => {}
             }
         }

@@ -2569,12 +2569,18 @@ impl Queue {
             s.postprocessor = Some(format!("say:{}…", wf.name));
         });
         let mut last = Instant::now() - Duration::from_secs(1);
+        let tool = matches!(wf.change, workflow::Change::Tool(_));
         let result = workflow::run(wf, &file, done_dir.as_deref(), cancel, |f, stage| {
+            // A tool's every line goes in the log (the report); the row gets the latest.
+            if tool {
+                self.push_log(id, stage.to_string());
+            }
             if last.elapsed() >= Duration::from_millis(250) {
                 last = Instant::now();
                 let say = format!("say:{stage}");
                 self.update(id, true, |s| {
-                    s.progress = f;
+                    // Below 0: the program didn't say how far along it is.
+                    s.progress = f.max(0.0);
                     s.postprocessor = Some(say);
                 });
             }
@@ -2602,7 +2608,15 @@ impl Queue {
                 Ran::Done
             }
             Err(_) if cancel.load(Ordering::SeqCst) => Ran::Cancelled,
-            Err(e) => Ran::Failed(e.to_string()),
+            Err(e) => {
+                // A tool's command and output, for Copy the report.
+                if let Some(rep) = crate::tool::report(&e) {
+                    for line in rep.lines() {
+                        self.push_log(id, line.to_string());
+                    }
+                }
+                Ran::Failed(e.to_string())
+            }
         }
     }
 }

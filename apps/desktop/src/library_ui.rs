@@ -956,6 +956,7 @@ fn bulk(ui: &AppWindow, what: &str) {
         "tags" => crate::tags_ui::open(ui, files, String::new()),
         "folders" => crate::organize_ui::open(ui, items),
         "workflow" => crate::workflow_ui::open_run(ui, files),
+        "tool" => crate::tool_ui::open_run(ui, files),
         "copy" => {
             if copy_files(&files) {
                 show_toast(ui, &format!("{} files copied. Paste them into a folder or a chat (Ctrl+V).", files.len()));
@@ -1131,6 +1132,7 @@ pub(crate) fn act(ui: &AppWindow, id: u64, what: &str) {
         }
         "repair" => repair(ui, &it),
         "workflow" => crate::workflow_ui::open_run(ui, vec![it.file.clone()]),
+        "tool" => crate::tool_ui::open_run(ui, vec![it.file.clone()]),
         "remove" => {
             forget(ui, &[id]);
             show_toast(ui, if here { "Removed from the Library. The file is still there." } else { "Removed from the Library" });
@@ -1278,6 +1280,7 @@ pub(crate) fn thing_actions(id: u64) -> Vec<(&'static str, &'static str, &'stati
     add(d.can_tag, ("tags", "Edit tags", "\u{E8EC}"));
     add(d.playlist && !d.gone, ("folders", "Put in folders…", "\u{E8B7}"));
     add(d.can_compress, ("workflow", "Run a workflow…", "\u{E945}"));
+    add(d.can_compress && !neria_core::tool::list().is_empty(), ("tool", "Run a tool…", "\u{E90F}"));
     add(d.can_rematch, ("rematch", "Pick another match", "\u{E8EE}"));
     add(d.can_repair && !d.repairing, ("repair", "Get the missed bits back", "\u{E777}"));
     add(d.can_download && d.main != 4, ("download", "Download again", "\u{E896}"));

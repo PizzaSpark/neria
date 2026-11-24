@@ -275,7 +275,8 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
         }
         // A workflow's step says itself ("say:Making it smaller for Discord…").
         JobState::Processing => match s.postprocessor.as_deref().and_then(|p| p.strip_prefix("say:")) {
-            Some(said) => (said.to_string(), format!("{:.0}%", s.progress * 100.0)),
+            Some(said) if s.progress > 0.0 => (said.to_string(), format!("{:.0}%", s.progress * 100.0)),
+            Some(said) => (said.to_string(), String::new()),
             None => (postprocessor(s.postprocessor.as_deref().unwrap_or("")).into(), String::new()),
         },
         JobState::Done if s.postprocessor.as_deref() == Some("AlreadyHave") => {

@@ -247,7 +247,7 @@ so they get built together.
    that can't scale records full size), the phone on Best
 8. **Bigger ideas** (section "Later"), in this order: ✅ Library page (built 2026-11-23, every
    action tried in the real app the same day; left: the grid view, see Later), ✅ command palette (built 2026-11-24), ✅ Audio
-   tools (built 2026-11-24 into Compress, the Library and the Clip page; no page of its own), ✅ saved workflows (built 2026-11-24; see Later), external tools. Parked (user's call 2026-11-23): the browser
+   tools (built 2026-11-24 into Compress, the Library and the Clip page; no page of its own), ✅ saved workflows (built 2026-11-24; see Later), ✅ external tools (built 2026-11-24; see Later). Parked (user's call 2026-11-23): the browser
    extension (Chrome's store asks $5 once; Firefox / Edge are free) and a Tampermonkey
    userscript instead (free everywhere, but two installs and no cookies); the clipboard
    watcher covers handing links over for now
@@ -1245,9 +1245,28 @@ that's an exception, written only once the Phone tab is used.
   OBS recording; a row whose workflow step failed says why but has no Try again for the step
   (the mock had one); a builder for chains (download → clip → 9:16 → compress) only if
   people ask
-- **External tools** (instead of a plugin system): Settings → Tools lets power users add
-  their own command-line tools as actions with placeholders like `{file}`, `{in}`, `{out}`,
-  `{dir}`; jobs run in Neria's queue. No extension code loaded into Neria, nothing bundled
+- **External tools** ✅ (built 2026-11-24, mock `design/tools.html`, picks 1A · 2A · 3A · 4A ·
+  5A; instead of a plugin system): the user's own command-line programs as Neria actions
+  (`tool.rs`, `tool_ui.rs`, `tools.json`). Settings → Tools (after Workflows): name, program
+  (picked, a name found in Neria's `bin` or on PATH, or a whole command line pasted and split
+  once), its words with blanks (`{file}` `{out}` `{dir}` `{name}` `{ext}`, each passed as a
+  whole argument: no shell, so `a&b.mp4` can't run anything), It makes (a new file ending in…
+  / nothing), It takes (videos / sound files / both), It'll run (the real command for a sample
+  file), Try it on a file…. Runs from a Library row's menu and the picked-rows strip (Run a
+  tool…, once there's a tool), the palette (by name, then which file), and as a workflow's
+  Change it. One run per file, on its own queue row: the program's last line, the bar only
+  when it prints a percentage (and only forward), no console window, Cancel ends its whole
+  tree; a failure says the exit code (Windows' own in hex) and its last line, and Copy the
+  report has the command and everything it printed; a new file goes in the Library. A tool
+  runs by itself (every download, a watched folder) only after it has run once by hand and
+  finished; changing what it runs asks for that again. Nothing comes with Neria, nothing is
+  fetched or imported. Checked headless (`--example workflow -- <file> tool …`: a file named
+  `a&b clip.mp4` through ffmpeg, a failing one with its report) and in the app (a tried tool
+  as an every-download workflow on a real YouTube download: both files, the row); ui-check
+  `tool-*`, `set-tools`, `pal-tool`, `wf-tool`. Left: Try it / Change… / Run a tool… clicked
+  by hand (file pickers and the run dialog's pick aren't scripted); a `{files}` blank (all
+  files in one run) only if someone asks; a .bat / .cmd program is run by Rust through
+  cmd.exe with its arguments escaped (Rust refuses ones it can't escape safely)
 
 ## Android (on hold)
 On hold until the desktop app has every feature we want; no Android work before then.

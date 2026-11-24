@@ -1,7 +1,7 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe, ClipChat, Voice, Workflows, WfRow } from "../globals.slint";
+import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe, ClipChat, Voice, Workflows, WfRow, Tools, ExtTool } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider, Notice, ChoiceChips } from "../widgets.slint";
 
 // One group of settings under a small heading.
@@ -102,7 +102,7 @@ component WorkflowRow inherits VerticalLayout {
             border-width: 2px;
             border-color: Theme.line-strong;
             Icon {
-                text: root.item.kind == 0 ? "\u{E73F}" : root.item.kind == 1 ? "\u{E8D6}" : root.item.kind == 2 ? "\u{E8B9}" : root.item.kind == 3 ? "\u{E8B7}" : "\u{E890}";
+                text: root.item.kind == 0 ? "\u{E73F}" : root.item.kind == 1 ? "\u{E8D6}" : root.item.kind == 2 ? "\u{E8B9}" : root.item.kind == 3 ? "\u{E8B7}" : root.item.kind == 5 ? "\u{E90F}" : "\u{E890}";
                 width: parent.width;
                 height: parent.height;
                 horizontal-alignment: center;
@@ -157,6 +157,75 @@ component WorkflowRow inherits VerticalLayout {
             compact: true;
             text: root.item.on ? "Pause" : "Resume";
             clicked => { Workflows.set-on(root.item.id, !root.item.on); }
+        }
+    }
+    Divider { }
+}
+
+// One of the user's own tools: its name, program, what it takes and makes, Edit.
+component ToolLine inherits VerticalLayout {
+    in property <ExtTool> item;
+    padding-top: 10px;
+    spacing: 10px;
+    HorizontalLayout {
+        spacing: 12px;
+        Rectangle {
+            width: 34px;
+            height: 34px;
+            border-radius: 9px;
+            border-width: 2px;
+            border-color: Theme.line-strong;
+            Icon {
+                text: "\u{E90F}";
+                width: parent.width;
+                height: parent.height;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                font-size: 14px;
+                color: Theme.muted;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.item.name;
+                color: Theme.ink;
+                font-size: 13.5px;
+                font-weight: 600;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.program;
+                color: Theme.muted;
+                font-family: Theme.mono;
+                font-size: 11.5px;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.summary;
+                color: Theme.muted;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        padding-left: 46px;
+        if !root.item.tried: VerticalLayout {
+            alignment: center;
+            Tag {
+                text: "Not tried yet";
+                kind: 2;
+            }
+        }
+        GhostButton {
+            compact: true;
+            text: "Edit";
+            clicked => { Tools.edit(root.item.id); }
         }
     }
     Divider { }
@@ -785,6 +854,7 @@ export component SettingsDrawer inherits Rectangle {
         { icon: "\u{E896}", label: "Download", id: 0 },
         { icon: "\u{E728}", label: "Following", id: 1 },
         { icon: "\u{E945}", label: "Workflows", id: 7 },
+        { icon: "\u{E90F}", label: "Tools", id: 8 },
         { icon: "\u{E8D6}", label: "Spotify", id: 2 },
         { icon: "\u{E774}", label: "Network", id: 3 },
         { icon: "\u{E790}", label: "General", id: 4 },
@@ -848,7 +918,7 @@ export component SettingsDrawer inherits Rectangle {
                         // Too narrow for all five: keep the open one in view (Appearance and
                         // About sit at the end).
                         function reveal() {
-                            self.content-x = root.section >= 3 && root.section != 7 ? min(0px, self.width - self.content-width) : 0px;
+                            self.content-x = root.section >= 3 && root.section < 7 ? min(0px, self.width - self.content-width) : 0px;
                         }
                         init => { self.reveal(); }
                         changed width => { self.reveal(); }
@@ -1178,6 +1248,40 @@ export component SettingsDrawer inherits Rectangle {
                             }
                             Hint {
                                 text: "The original stays unless a workflow replaces it (it then goes to the Recycle Bin). Files you already have: Run a workflow… in a Library row's menu, or Ctrl+K and the workflow's name.";
+                            }
+                        }
+
+                        // ---- Tools ----
+                        if root.section == 8: VerticalLayout {
+                            spacing: 22px;
+                            padding-top: Screen.compact ? 14px : 0px;
+                            padding-left: Screen.compact ? 16px : 20px;
+                            padding-right: Theme.lane;
+                            padding-bottom: 22px;
+                            alignment: start;
+
+                            Group {
+                                title: "Tools";
+                                Hint {
+                                    text: Tools.items.length == 0
+                                        ? "Your own command-line programs (HandBrake, an upscaler, a script) as Neria actions: Neria fills in the file and runs them in the queue. Nothing comes with Neria."
+                                        : "Your own command-line programs. Run one from a Library row's menu, with Ctrl+K, or as a workflow's Change it.";
+                                }
+                                VerticalLayout {
+                                    for t in Tools.items: ToolLine { item: t; }
+                                }
+                                HorizontalLayout {
+                                    alignment: start;
+                                    GhostButton {
+                                        compact: true;
+                                        icon: "\u{E710}";
+                                        text: "New tool";
+                                        clicked => { Tools.new-one(); }
+                                    }
+                                }
+                            }
+                            Hint {
+                                text: "Neria starts the program itself with the words you typed, never through a shell, and keeps what it prints for the report. A tool runs by itself (every download, a watched folder) only after it has run once by hand and finished.";
                             }
                         }
 

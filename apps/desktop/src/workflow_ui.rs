@@ -49,6 +49,7 @@ fn kind_of(w: &Workflow) -> i32 {
         (_, Change::Sound(_)) => 1,
         (_, Change::Gif) => 2,
         (_, Change::Keep) => 3,
+        (_, Change::Tool(_)) => 5,
     }
 }
 
@@ -80,7 +81,9 @@ pub fn refresh(ui: &AppWindow) {
             }
         })
         .collect();
-    ui.global::<Workflows>().set_items(ModelRc::new(VecModel::from(rows)));
+    let g = ui.global::<Workflows>();
+    g.set_items(ModelRc::new(VecModel::from(rows)));
+    g.set_tools(ModelRc::new(VecModel::from(crate::tool_ui::rows())));
     show_then(ui);
 }
 
@@ -148,6 +151,14 @@ fn open_editor(ui: &AppWindow, wf: Workflow, from_then: bool) {
         ),
         Change::Sound(s) => (2, 0, s.index() as i32),
         Change::Gif => (3, 0, 0),
+        Change::Tool(id) => match neria_core::tool::list().iter().position(|t| t.id == id) {
+            Some(at) => {
+                g.set_tool_at(at as i32);
+                (4, 0, 0)
+            }
+            // Its tool was deleted: start from Make it smaller.
+            None => (1, 0, 0),
+        },
     };
     g.set_change(change);
     g.set_size(size);
@@ -193,6 +204,13 @@ fn from_editor(ui: &AppWindow) -> (Workflow, Option<String>) {
         0 => Change::Keep,
         2 => Change::Sound(SoundAs::from_index(g.get_sound_as() as usize)),
         3 => Change::Gif,
+        4 => match neria_core::tool::list().get(g.get_tool_at().max(0) as usize) {
+            Some(t) => Change::Tool(t.id),
+            None => {
+                problem = Some("Pick a tool.".to_string());
+                Change::Gif
+            }
+        },
         _ => Change::Smaller(match g.get_size() {
             1 => Size::Email,
             2 => Size::WhatsApp,
@@ -239,6 +257,16 @@ fn from_editor(ui: &AppWindow) -> (Workflow, Option<String>) {
         && p.starts_with(w)
     {
         problem.get_or_insert_with(|| "Its results can't go back into the folder it watches.".into());
+    }
+    // Its own tool runs by itself only once it has run by hand (a typo never hits every
+    // download).
+    if wf.when != When::Picked
+        && let Change::Tool(id) = wf.change
+        && let Some(t) = neria_core::tool::get(id).filter(|t| !t.tried)
+    {
+        problem.get_or_insert_with(|| {
+            format!("Runs by itself only after you've tried it once: {} hasn't run yet. Try it on a file first (Settings → Tools).", t.name)
+        });
     }
     if wf.name.is_empty() {
         problem.get_or_insert_with(|| "Give it a name.".into());

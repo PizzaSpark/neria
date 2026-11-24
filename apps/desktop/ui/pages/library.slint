@@ -5,7 +5,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SettingsGear, SectionTitle, Tag, TextLink, FilterTab, ChoiceChips, Divider, Thumb, Menu, MenuItem, KeyPress, Kbd, Notice, Dialog, Hint } from "../widgets.slint";
-import { Library, LibRow, LibDetail, LibAttached } from "../globals.slint";
+import { Library, LibRow, LibDetail, LibAttached, Tools } from "../globals.slint";
 
 // The main action's word and icon (LibRow.main).
 global LibWords {
@@ -122,6 +122,11 @@ component LibMenu inherits Menu {
         icon: "\u{E945}";
         text: "Run a workflow…";
         clicked => { Library.act(d.id, "workflow"); }
+    }
+    if d.can-compress && Tools.items.length > 0: MenuItem {
+        icon: "\u{E90F}";
+        text: "Run a tool…";
+        clicked => { Library.act(d.id, "tool"); }
     }
     if d.can-tag: MenuItem {
         icon: "\u{E8EC}";
@@ -1155,6 +1160,13 @@ component PickedStrip inherits Rectangle {
             text: Screen.compact ? "" : "Run a workflow…";
             label: "Run a workflow on them";
             clicked => { Library.bulk("workflow"); }
+        }
+        if Library.bulk-files && Tools.items.length > 0: GhostButton {
+            compact: true;
+            icon: "\u{E90F}";
+            text: Screen.compact ? "" : "Run a tool…";
+            label: "Run a tool on them";
+            clicked => { Library.bulk("tool"); }
         }
         if Library.bulk-files: GhostButton {
             compact: true;

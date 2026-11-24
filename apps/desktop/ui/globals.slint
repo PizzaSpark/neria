@@ -1452,6 +1452,18 @@ export global Organize {
     callback close();
 }
 
+// One of the user's own tools (Settings → Tools, Run a tool…, a workflow's Change it).
+export struct ExtTool {
+    id: int,
+    name: string,
+    // "realesrgan-ncnn-vulkan.exe"
+    program: string,
+    // "Takes videos · makes .mp4"
+    summary: string,
+    // Has run by hand and finished (may run by itself in a workflow).
+    tried: bool,
+}
+
 // One saved workflow (Settings → Workflows, the Then menu, Run a workflow…).
 export struct WfRow {
     id: int,
@@ -1465,7 +1477,7 @@ export struct WfRow {
     on: bool,
     // A watched folder's line: "watching D:\Drop · 3 done today".
     watching: string,
-    // Its icon: 0 smaller, 1 sound, 2 GIF, 3 folder, 4 watched folder.
+    // Its icon: 0 smaller, 1 sound, 2 GIF, 3 folder, 4 watched folder, 5 a tool.
     kind: int,
 }
 
@@ -1493,7 +1505,7 @@ export global Workflows {
     in-out property <bool> edit-open;
     in property <bool> edit-new;
     in-out property <string> name;
-    // 0 Leave it as it is, 1 Make it smaller, 2 Sound only, 3 Make a GIF.
+    // 0 Leave it as it is, 1 Make it smaller, 2 Sound only, 3 Make a GIF, 4 a tool.
     in-out property <int> change: 1;
     // Make it smaller: 0 Discord, 1 Email, 2 WhatsApp, 3 a size (`size-mb`).
     in-out property <int> size;
@@ -1507,6 +1519,9 @@ export global Workflows {
     // 4 files put in a folder (`when-folder`).
     in-out property <int> when;
     in property <[WfSite]> sites;
+    // Change it → the user's own tools (change 4: the one at `tool-at`).
+    in property <[ExtTool]> tools;
+    in-out property <int> tool-at;
     in property <string> when-folder;
     // Files already in that folder (left alone unless `do-waiting`).
     in property <int> waiting;
@@ -1526,6 +1541,42 @@ export global Workflows {
     callback set-on(int, bool);
 
     // Run a workflow… on files already saved (the Library): which one.
+    in-out property <bool> run-open;
+    in property <string> run-subtitle;
+    callback run(int);
+}
+
+// External tools (mock `design/tools.html`): the user's own command-line programs as Neria
+// actions. Rust: `tool_ui.rs`; the model and running them: `neria_core::tool`.
+export global Tools {
+    in property <[ExtTool]> items;
+    callback new-one();
+    callback edit(int);
+
+    // The editor (`dialogs/tool.slint`).
+    in-out property <bool> edit-open;
+    in property <bool> edit-new;
+    in-out property <string> name;
+    in-out property <string> program;
+    in-out property <string> words;
+    // It makes a new file ending in `makes`, or nothing.
+    in-out property <bool> makes-file: true;
+    in-out property <string> makes: "mp4";
+    // 0 videos, 1 sound files, 2 both.
+    in-out property <int> takes;
+    // The command for a sample file; why Save is greyed out; the workflows that use it.
+    in property <string> command;
+    in property <string> problem;
+    in property <bool> can-save;
+    in property <string> used-by;
+    callback changed();
+    callback pick-program();
+    callback add-blank(string);
+    callback try-it();
+    callback save();
+    callback delete();
+
+    // Run a tool… on files already saved (the Library).
     in-out property <bool> run-open;
     in property <string> run-subtitle;
     callback run(int);

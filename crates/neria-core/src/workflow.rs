@@ -114,6 +114,8 @@ pub enum Change {
     Sound(SoundAs),
     /// A GIF of a short video (a minute at most).
     Gif,
+    /// The user's own tool (`tool.rs`), by its id.
+    Tool(u64),
 }
 
 /// Where the result goes.
@@ -186,6 +188,15 @@ impl Workflow {
         self.on && self.when != When::Picked
     }
 
+    /// May run by itself: a tool it runs has run by hand and finished since it was last
+    /// changed (a typo never hits every download).
+    pub fn ready(&self) -> bool {
+        match self.change {
+            Change::Tool(id) => crate::tool::get(id).is_some_and(|t| t.tried),
+            _ => true,
+        }
+    }
+
     /// Does nothing at all (left as it is, put next to itself or in its own place).
     pub fn is_empty(&self) -> bool {
         self.change == Change::Keep && !matches!(self.put, Put::Folder(_))
@@ -206,6 +217,13 @@ impl Workflow {
             }
             Change::Sound(s) => format!("Its sound as {}", s.label()),
             Change::Gif => "A GIF of it".into(),
+            Change::Tool(id) => match crate::tool::get(id) {
+                Some(t) if t.makes_file() => format!("{} makes a .{}", t.name, t.out_ext()),
+                Some(t) => {
+                    return format!("Runs {}", t.name);
+                }
+                None => return "Its tool is gone".into(),
+            },
         };
         let place = match (&self.put, &self.when) {
             (Put::Beside, When::Folder(_)) => "in the Done folder".to_string(),
@@ -409,7 +427,7 @@ impl Pick {
 pub fn auto_for(url: &str) -> Option<Workflow> {
     let all = list();
     let site = library::site_of(url);
-    let on = |w: &&Workflow| w.on && !w.is_empty();
+    let on = |w: &&Workflow| w.on && !w.is_empty() && w.ready();
     all.iter()
         .filter(on)
         .find(|w| matches!(&w.when, When::Sites(s) if s.iter().any(|x| x.eq_ignore_ascii_case(&site))))
@@ -419,7 +437,10 @@ pub fn auto_for(url: &str) -> Option<Workflow> {
 
 /// A followed channel's new upload: the one for followed channels, else as any link.
 pub fn for_followed(url: &str) -> Option<Workflow> {
-    list().into_iter().find(|w| w.on && !w.is_empty() && w.when == When::Followed).or_else(|| auto_for(url))
+    list()
+        .into_iter()
+        .find(|w| w.on && !w.is_empty() && w.ready() && w.when == When::Followed)
+        .or_else(|| auto_for(url))
 }
 
 /// Why an automatic one was picked, for the Then menu ("For TikTok links").
@@ -473,6 +494,10 @@ pub fn run(
     if !file.is_file() {
         bail!("the file isn't there any more");
     }
+    // The user's own tool: whatever file it takes, no probing.
+    if let Change::Tool(id) = wf.change {
+        return run_tool(wf, id, file, done_dir, cancel, on);
+    }
     let info = media::file_info(file)?;
     let mut said = String::new();
     let mut kind = library::Kind::Compressed;
@@ -511,6 +536,7 @@ pub fn run(
                 Some(out.path)
             }
         }
+        Change::Tool(_) => None,
         Change::Gif => {
             if !info.has_video {
                 bail!("a sound file has no picture to make a GIF of");
@@ -539,6 +565,62 @@ pub fn run(
         }
     };
 
+    place(wf, file, made, said, kind, done_dir, on)
+}
+
+/// A tool's run: its lines go to `on` ("Upscale 2× · frame 812/1740", with its percentage
+/// when it prints one, else -1), then the new file is put where the workflow says.
+fn run_tool(
+    wf: &Workflow,
+    id: u64,
+    file: &Path,
+    done_dir: Option<&Path>,
+    cancel: &AtomicBool,
+    mut on: impl FnMut(f32, &str),
+) -> Result<Done> {
+    let Some(tool) = crate::tool::get(id) else { bail!("its tool isn't there any more") };
+    if !tool.takes.fits(file) {
+        bail!(
+            "{} takes {}",
+            tool.name,
+            match tool.takes {
+                crate::tool::Takes::Sound => "sound files only",
+                _ => "videos only",
+            }
+        );
+    }
+    let out = crate::tool::out_path(&tool, file);
+    // The bar only moves forward: a program's other numbers ("ref P L0: 64.3%") never
+    // pull it back.
+    let mut best = -1.0f32;
+    let ran = crate::tool::run(&tool, file, &out, cancel, |line, pct| {
+        if let Some(p) = pct.filter(|p| *p >= best) {
+            best = p;
+        }
+        on(best, &format!("{} · {line}", tool.name));
+    })?;
+    let kind = match &ran.out {
+        Some(p) if library::is_audio_file(p) => library::Kind::Sound,
+        Some(p) if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("gif")) => library::Kind::Gif,
+        _ => library::Kind::Video,
+    };
+    let said = match &ran.out {
+        Some(p) => crate::fmt::mb(std::fs::metadata(p).map(|m| m.len()).unwrap_or(0) as f64),
+        None => "done".into(),
+    };
+    place(wf, file, ran.out, said, kind, done_dir, on)
+}
+
+/// Put what was made where the workflow says (or move the original, left as it is).
+fn place(
+    wf: &Workflow,
+    file: &Path,
+    made: Option<PathBuf>,
+    said: String,
+    kind: library::Kind,
+    done_dir: Option<&Path>,
+    mut on: impl FnMut(f32, &str),
+) -> Result<Done> {
     let mut done = Done {
         file: file.to_path_buf(),
         made: made.is_some(),
@@ -686,7 +768,7 @@ impl Watcher {
         let all = list();
         let mut ready = Vec::new();
         let mut now: HashMap<PathBuf, (u64, SystemTime)> = HashMap::new();
-        for wf in all.iter().filter(|w| w.on) {
+        for wf in all.iter().filter(|w| w.on && w.ready()) {
             let When::Folder(dir) = &wf.when else { continue };
             for p in waiting_in(dir) {
                 let Ok(m) = std::fs::metadata(&p) else { continue };
