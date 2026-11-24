@@ -51,6 +51,8 @@ struct State {
     picked: Vec<u64>,
     anchor: Option<u64>,
     order: Vec<u64>,
+    /// The same thing saved more than once (as the Duplicates tab shows them).
+    dups: Vec<Vec<u64>>,
     settings: Option<Arc<Mutex<Settings>>>,
 }
 
@@ -543,6 +545,10 @@ fn rebuild(ui: &AppWindow) {
     let (rows, counts, sites, total, gone, empty, detail, want_frames, no_match) = with(|s| {
         let playlists = library::playlist_dirs(&s.items);
         // A playlist's songs hang under it, unless you're searching for one.
+        // The same thing saved more than once (files here only; a playlist's songs count
+        // too), newest first in each group.
+        let dups = library::duplicates(&s.items, |i| place(s, i) == Where::Here);
+        let dup_of = |id: u64| dups.iter().position(|g| g.contains(&id));
         let listed: Vec<Item> = s
             .items
             .iter()
@@ -566,7 +572,8 @@ fn rebuild(ui: &AppWindow) {
             .filter(|i| picked_site.as_ref().is_none_or(|p| &library::site_name(i) == p))
             .filter(|i| query.is_empty() || library::matches(i, &query))
             .collect();
-        let mut counts = [0i32; 7];
+        let mut counts = [0i32; 8];
+        counts[7] = dups.iter().map(|g| g.len() as i32).sum();
         for it in &base {
             counts[0] += 1;
             let t = it.kind.tab();
@@ -583,11 +590,23 @@ fn rebuild(ui: &AppWindow) {
             .filter(|i| match tab {
                 Tab::All => true,
                 Tab::Gone => place(s, i) == Where::Gone,
+                Tab::Duplicates => dup_of(i.id).is_some(),
                 t => i.kind.tab() == t,
             })
             .collect();
         library::sort(&mut shown, how);
-        let by_day = matches!(how, Sort::Newest | Sort::Oldest);
+        // Duplicates: each group together, the newest first (a playlist's songs too, which the
+        // other tabs keep under their playlist).
+        if tab == Tab::Duplicates {
+            shown = s
+                .items
+                .iter()
+                .filter(|i| dup_of(i.id).is_some() && (query.is_empty() || library::matches(i, &query)))
+                .collect();
+            shown.sort_by_key(|i| (dup_of(i.id), std::cmp::Reverse(i.at)));
+        }
+        s.dups = dups.clone();
+        let by_day = matches!(how, Sort::Newest | Sort::Oldest) && tab != Tab::Duplicates;
         let shown: Vec<Item> = shown.into_iter().cloned().collect();
         s.order = shown.iter().map(|i| i.id).collect();
         let mut rows = Vec::new();
@@ -628,7 +647,7 @@ fn rebuild(ui: &AppWindow) {
         // "Nothing from Twitch in the last 7 days."
         let mut words = vec!["Nothing".to_string()];
         if tab != Tab::All {
-            words = vec![format!("No {}", ["", "videos", "sound", "clips", "recordings", "replays", "gone files"][tab as usize])];
+            words = vec![format!("No {}", ["", "videos", "sound", "clips", "recordings", "replays", "gone files", "duplicates"][tab as usize])];
         }
         if !query.is_empty() {
             words.push(format!("matches “{query}”"));
@@ -899,6 +918,15 @@ fn pick_clear(ui: &AppWindow) {
     rebuild(ui);
 }
 
+/// Duplicates: pick every copy but the newest of each, ready to remove or delete.
+fn pick_extras(ui: &AppWindow) {
+    with(|s| {
+        s.picked = s.dups.iter().flat_map(|g| g.iter().skip(1).copied()).collect();
+        s.anchor = None;
+    });
+    rebuild(ui);
+}
+
 /// An action on everything picked.
 fn bulk(ui: &AppWindow, what: &str) {
     let (items, ids, demo) = with(|s| (picked_items(s), s.picked.clone(), s.demo));
@@ -925,6 +953,13 @@ fn bulk(ui: &AppWindow, what: &str) {
         "remove" => {
             forget(ui, &ids);
             show_toast(ui, &format!("Removed {} from the Library. The files are still there.", ids.len()));
+        }
+        // Asked first (the Delete question, for all of them).
+        "trash" => {
+            let lib = ui.global::<Library>();
+            lib.set_delete_count(items.len() as i32);
+            lib.set_delete_open(true);
+            return;
         }
         _ => {}
     }
@@ -1237,6 +1272,27 @@ pub(crate) fn thing_actions(id: u64) -> Vec<(&'static str, &'static str, &'stati
 fn delete(ui: &AppWindow) {
     let lib = ui.global::<Library>();
     lib.set_delete_open(false);
+    let many = lib.get_delete_count() > 0;
+    lib.set_delete_count(0);
+    if many {
+        let (items, demo) = with(|s| (picked_items(s), s.demo));
+        let mut gone = Vec::new();
+        let mut failed = 0;
+        for it in &items {
+            if demo || trash::delete(&it.file).is_ok() {
+                gone.push(it.id);
+            } else {
+                failed += 1;
+            }
+        }
+        forget(ui, &gone);
+        pick_clear(ui);
+        show_toast(ui, &match failed {
+            0 => format!("Moved {} to the Recycle Bin", gone.len()),
+            n => format!("Moved {} to the Recycle Bin; {n} couldn't be (open somewhere?)", gone.len()),
+        });
+        return;
+    }
     let id = lib.get_detail().id as u64;
     let Some(it) = item(id) else { return };
     if with(|s| s.demo) {
@@ -1302,6 +1358,10 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
     lib.on_pick_clear({
         let weak = ui.as_weak();
         move || pick_clear(&weak.unwrap())
+    });
+    lib.on_pick_extras({
+        let weak = ui.as_weak();
+        move || pick_extras(&weak.unwrap())
     });
     lib.on_bulk({
         let weak = ui.as_weak();
@@ -1378,7 +1438,7 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
 /// `repair`, `remove`, `find`…) plus `select`, `pick` (its tick), `bulk-<action>` (the picked strip's: `sound`, `even`, `tags`,
 /// `folders`, `copy`, `remove`), `delete` (Delete file… said yes); and, with any title, `back` (the
 /// player's Back), `library` (the page, as from the rail), `match-use` (Pick another match:
-/// Use this on its first row).
+/// Use this on its first row), `tab-<n>` (a kind tab), `extras` (Duplicates: Pick the extra copies).
 fn press_for_checks(ui: &AppWindow) {
     let Ok(steps) = std::env::var("NERIA_LIBRARY_ACT") else { return };
     let every = std::env::var("NERIA_LIBRARY_ACT_EVERY").ok().and_then(|s| s.parse().ok()).unwrap_or(4.0);
@@ -1397,6 +1457,12 @@ fn press_for_checks(ui: &AppWindow) {
                 "library" => return ui.set_page(4),
                 // Pick another match: "Use this" on its first row.
                 "match-use" => return ui.invoke_match_use(0),
+                // A kind tab (`tab-7`: Duplicates).
+                w if w.starts_with("tab-") => {
+                    ui.global::<Library>().set_tab(w[4..].parse().unwrap_or(0));
+                    return rebuild(&ui);
+                }
+                "extras" => return pick_extras(&ui),
                 _ => {}
             }
             let id = with(|s| s.items.iter().rev().find(|i| i.name().to_lowercase().contains(&title)).map(|i| i.id));

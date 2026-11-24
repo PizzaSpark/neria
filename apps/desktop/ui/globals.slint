@@ -1311,8 +1311,13 @@ export global Library {
     // A row's tick, Ctrl+click (mode 0: one), Shift+click (mode 1: from the last one).
     callback pick(int, int);
     callback pick-clear();
-    // An action on all the picked: "sound", "even", "tags", "folders", "copy", "remove".
+    // An action on all the picked: "sound", "even", "tags", "folders", "copy", "remove",
+    // "trash" (Delete files…, asked first).
     callback bulk(string);
+    // Duplicates: pick every copy but the newest of each.
+    callback pick-extras();
+    // Delete files… for this many picked (0: the one in the details).
+    in-out property <int> delete-count;
     // Sample data only (`NERIA_LIBRARY_DEMO=menu`): the picked thing's ⋯ menu shows.
     in property <bool> menu-demo;
     callback shown(bool); // the page opened (wide: pick the first row)

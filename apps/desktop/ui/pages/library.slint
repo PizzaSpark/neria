@@ -11,7 +11,7 @@ import { Library, LibRow, LibDetail, LibAttached } from "../globals.slint";
 global LibWords {
     out property <[string]> main: ["Watch", "Play", "Open", "Update playlist", "Download again", "Find it…"];
     out property <[string]> main-icon: ["\u{E768}", "\u{E768}", "\u{E8A7}", "\u{E895}", "\u{E896}", "\u{E721}"];
-    out property <[string]> tabs: ["All", "Videos", "Sound", "Clips", "Recordings", "Replays", "Gone"];
+    out property <[string]> tabs: ["All", "Videos", "Sound", "Clips", "Recordings", "Replays", "Gone", "Duplicates"];
 }
 
 // A thing's picture: a frame (videos), a square with a note (sound), a stacked square
@@ -852,7 +852,7 @@ component KindTabs inherits HorizontalLayout {
     alignment: start;
     // Hidden tabs take no room, their gap included (a `for` can't skip items).
     for t[i] in LibWords.tabs: HorizontalLayout {
-        property <bool> shown: i == Library.tab || (i == 6 ? Library.counts[6] > 0 : (!root.narrowed || Library.counts[i] > 0));
+        property <bool> shown: i == Library.tab || (i >= 6 ? Library.counts[i] > 0 : (!root.narrowed || Library.counts[i] > 0));
         padding-right: self.shown ? (Screen.compact ? 16px : 18px) : 0px;
         FilterTab {
             visible: parent.shown;
@@ -860,7 +860,7 @@ component KindTabs inherits HorizontalLayout {
             text: t;
             count: Library.counts[i];
             active: Library.tab == i;
-            attention: i == 6;
+            attention: i >= 6;
             clicked => {
                 Library.tab = i;
                 Library.changed();
@@ -1129,6 +1129,13 @@ component PickedStrip inherits Rectangle {
             text: Screen.compact ? "" : "Put in folders…";
             label: "Put them in folders";
             clicked => { Library.bulk("folders"); }
+        }
+        if Library.bulk-files: GhostButton {
+            compact: true;
+            icon: "\u{E74D}";
+            text: Screen.compact ? "" : "Delete files…";
+            label: "Delete the files";
+            clicked => { Library.bulk("trash"); }
         }
         if Library.bulk-files: GhostButton {
             compact: true;
@@ -1507,6 +1514,30 @@ export component LibraryPage inherits Rectangle {
                     Divider {
                         inset-right: Screen.compact ? 8px : Theme.lane - 12px;
                     }
+                    // Duplicates: what they are, and a quick way to the extra copies.
+                    if Library.tab == 7 && Library.counts[7] > 0 && Library.picked-count == 0: HorizontalLayout {
+                        vertical-stretch: 0;
+                        padding-right: Screen.compact ? 8px : Theme.lane - 12px;
+                        padding-top: 10px;
+                        spacing: 10px;
+                        Text {
+                            horizontal-stretch: 1;
+                            text: "Saved more than once, newest first. Pick the extra copies to remove them or delete their files.";
+                            color: Theme.muted;
+                            font-size: 12.5px;
+                            wrap: word-wrap;
+                            vertical-alignment: center;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 0;
+                            GhostButton {
+                                compact: true;
+                                text: "Pick the extra copies";
+                                clicked => { Library.pick-extras(); }
+                            }
+                        }
+                    }
                     if Library.picked-count > 0: HorizontalLayout {
                         vertical-stretch: 0;
                         padding-right: Screen.compact ? 8px : Theme.lane - 12px;
@@ -1564,13 +1595,13 @@ export component LibraryPage inherits Rectangle {
     if Library.sheet-open && Screen.compact && Library.selected != 0: DetailSheet { }
 
     if Library.delete-open: Dialog {
-        title: "Delete this file?";
+        title: Library.delete-count > 1 ? "Delete " + Library.delete-count + " files?" : "Delete this file?";
         subtitle: "It goes to the Recycle Bin, and leaves the Library.";
         card-width: 420px;
         fit: true;
-        close => { Library.delete-open = false; }
+        close => { Library.delete-open = false; Library.delete-count = 0; }
         Text {
-            text: Library.detail.title;
+            text: Library.delete-count > 0 ? Library.picked-text : Library.detail.title;
             color: Theme.ink;
             font-size: 13px;
             wrap: word-wrap;
@@ -1580,7 +1611,7 @@ export component LibraryPage inherits Rectangle {
             alignment: end;
             GhostButton {
                 text: "Keep it";
-                clicked => { Library.delete-open = false; }
+                clicked => { Library.delete-open = false; Library.delete-count = 0; }
             }
             PrimaryButton {
                 text: "Delete";

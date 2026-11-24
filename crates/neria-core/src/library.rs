@@ -113,10 +113,13 @@ pub enum Tab {
     Recordings = 4,
     Replays = 5,
     Gone = 6,
+    /// The same thing saved more than once (only shown when there are any).
+    Duplicates = 7,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 7] = [Tab::All, Tab::Videos, Tab::Sound, Tab::Clips, Tab::Recordings, Tab::Replays, Tab::Gone];
+    pub const ALL: [Tab; 8] =
+        [Tab::All, Tab::Videos, Tab::Sound, Tab::Clips, Tab::Recordings, Tab::Replays, Tab::Gone, Tab::Duplicates];
 
     pub fn from_index(i: i32) -> Tab {
         Tab::ALL.get(i.max(0) as usize).copied().unwrap_or(Tab::All)
@@ -313,6 +316,33 @@ pub fn remove(ids: &[u64]) {
 pub fn remove_file(path: &Path) {
     edit(|items| items.retain(|i| !same_path(&i.file, path)));
     saved();
+}
+
+/// The same thing saved more than once: groups of ids (newest first) with the same link or
+/// site id, kind and part (a song downloaded twice, a video in two folders). Playlists and
+/// things made from files (no link) aren't counted; nor are files already gone (`here`).
+pub fn duplicates(items: &[Item], here: impl Fn(&Item) -> bool) -> Vec<Vec<u64>> {
+    let mut groups: Vec<(String, Vec<&Item>)> = Vec::new();
+    for it in items.iter().filter(|i| i.kind != Kind::Playlist && here(i)) {
+        // A song is its Spotify link (its key is whichever YouTube Music match it got).
+        let what = if it.kind == Kind::Song && !it.url.is_empty() || it.key.is_empty() { &it.url } else { &it.key };
+        if what.is_empty() {
+            continue;
+        }
+        let key = format!("{what}|{:?}|{:?}", it.kind, it.section.map(|(a, b)| ((a * 10.0) as i64, (b * 10.0) as i64)));
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, g)) => g.push(it),
+            None => groups.push((key, vec![it])),
+        }
+    }
+    groups
+        .into_iter()
+        .filter(|(_, g)| g.len() > 1)
+        .map(|(_, mut g)| {
+            g.sort_by(|a, b| b.at.cmp(&a.at));
+            g.into_iter().map(|i| i.id).collect()
+        })
+        .collect()
 }
 
 /// These records' files are now here (Find it…), with what's attached there.
@@ -843,6 +873,30 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items.last().unwrap().url, "https://youtu.be/a");
         assert_eq!(items.last().unwrap().at, 99);
+    }
+
+    #[test]
+    fn the_same_thing_saved_twice() {
+        let link = |id, u: &str, kind, file: &str, at| Item { id, url: u.into(), at, ..Item::new(kind, file, "x") };
+        let items = vec![
+            link(1, "https://youtu.be/a", Kind::Video, "C:/1/a.mp4", 1),
+            link(2, "https://youtu.be/a", Kind::Video, "C:/2/a.mp4", 5),
+            // A clip of the same link is another thing; so is a file with no link.
+            Item { section: Some((1.0, 2.0)), ..link(3, "https://youtu.be/a", Kind::Clip, "C:/c.mp4", 2) },
+            link(4, "", Kind::Clip, "C:/d.mp4", 3),
+            link(5, "", Kind::Clip, "C:/e.mp4", 4),
+        ];
+        let g = duplicates(&items, |_| true);
+        assert_eq!(g.len(), 1);
+        assert_eq!(g[0], vec![2, 1]); // newest first
+        // Two songs from different YouTube Music matches of the same Spotify song.
+        let song = |id, key: &str, file: &str| Item {
+            key: key.into(),
+            ..link(id, "https://open.spotify.com/track/x", Kind::Song, file, id)
+        };
+        assert_eq!(duplicates(&[song(7, "Youtube:a", "C:/s1.mp3"), song(8, "Youtube:b", "C:/s2.mp3")], |_| true), vec![vec![8, 7]]);
+        // One of the two gone: no longer a pair.
+        assert!(duplicates(&items, |i| i.file != Path::new("C:/1/a.mp4")).is_empty());
     }
 
     #[test]
