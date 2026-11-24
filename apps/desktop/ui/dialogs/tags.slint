@@ -41,7 +41,7 @@ export component TagsDialog inherits Dialog {
     title: "Edit tags";
     subtitle: TagEdit.subtitle;
     card-width: 560px;
-    card-height: 520px;
+    fit: true;
     close => { TagEdit.open = false; }
 
     HorizontalLayout {
@@ -103,7 +103,6 @@ export component TagsDialog inherits Dialog {
     if TagEdit.count > 1: Hint {
         text: "Fields that differ stay as each file has them unless you type in them. What you type is set for all " + TagEdit.count + ".";
     }
-    Rectangle { vertical-stretch: 1; }
     HorizontalLayout {
         spacing: 10px;
         if TagEdit.count == 1: GhostButton {

@@ -153,6 +153,7 @@ fn save(ui: &AppWindow) {
         }
         neria_core::library::retitle(&titles);
         let _ = weak.upgrade_in_event_loop(move |ui| {
+            crate::library_ui::forget_frames(&files);
             let t = ui.global::<TagEdit>();
             t.set_saving(false);
             if failed.is_empty() {

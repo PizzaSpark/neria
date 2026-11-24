@@ -171,9 +171,9 @@ fn frame_path(file: &Path) -> PathBuf {
     library::thumbs_dir().join(format!("{:016x}.jpg", h.finish()))
 }
 
-/// Has a picture worth making (a video file that's here).
+/// Has a picture worth making: a video's frame, or a song's own cover.
 fn wants_frame(it: &Item) -> bool {
-    !it.kind.is_sound() && !it.kind.is_text() && !library::is_audio_file(&it.file)
+    !it.kind.is_text() && it.kind != Kind::Playlist
 }
 
 /// Make frames for these rows (a few at a time), then show the list again.
@@ -207,6 +207,9 @@ fn make_frames(ui: &AppWindow, ids: &[u64]) {
                 None
             } else if cached.is_file() {
                 Some(cached)
+            } else if library::is_audio_file(&file) {
+                // A song: the cover inside it, if it has one.
+                neria_core::tags::cover(&file).and_then(|c| std::fs::copy(&c, &cached).ok().map(|_| cached))
             } else {
                 info.as_ref()
                     .filter(|i| i.has_video)
@@ -833,6 +836,15 @@ fn find_gone(ui: &AppWindow) {
     );
     lib.set_found_count(1);
     lib.set_found_open(true);
+}
+
+/// These files changed inside (new tags, a new cover): make their pictures again.
+pub(crate) fn forget_frames(files: &[PathBuf]) {
+    with(|s| {
+        for f in files {
+            s.frames.remove(f);
+        }
+    });
 }
 
 /// Read the Library again now, if its page shows (files moved by Put in folders).
