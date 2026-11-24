@@ -1656,10 +1656,58 @@ export component CompareSlider inherits Rectangle {
 export component SettingsGear inherits VerticalLayout {
     alignment: center;
     horizontal-stretch: 0;
-    GhostButton {
-        compact: true;
-        icon: "\u{E713}";
-        label: "Settings";
-        clicked => { Nav.settings-open = true; }
+    HorizontalLayout {
+        // Its own height, so the page's `alignment` places it (level with the headline).
+        vertical-stretch: 0;
+        spacing: 6px;
+        // The command palette (on compact there's no rail button, and often no keyboard).
+        GhostButton {
+            compact: true;
+            icon: "\u{E721}";
+            label: "Search and do anything";
+            clicked => { Nav.palette-open = true; }
+        }
+        GhostButton {
+            compact: true;
+            icon: "\u{E713}";
+            label: "Settings";
+            clicked => { Nav.settings-open = true; }
+        }
+    }
+}
+
+// The rail's way into the command palette: a magnifier with its key under it.
+export component RailSearch inherits Rectangle {
+    height: 42px;
+    border-radius: 10px;
+    border-width: 2px;
+    border-color: Theme.line-strong;
+    background: ta.has-hover ? Theme.raised : transparent;
+    accessible-role: button;
+    accessible-label: "Search and do anything (Ctrl+K)";
+    accessible-action-default => { Nav.palette-open = true; }
+    KeyPress {
+        radius: 10px;
+        activated => { Nav.palette-open = true; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Nav.palette-open = true; }
+    }
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+        Icon {
+            text: "\u{E721}";
+            font-size: 14px;
+            color: Theme.muted;
+        }
+        Text {
+            text: "Ctrl K";
+            font-family: Theme.mono;
+            font-size: 9.5px;
+            color: Theme.muted;
+            horizontal-alignment: center;
+        }
     }
 }

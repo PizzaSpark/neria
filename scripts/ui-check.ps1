@@ -186,6 +186,11 @@ $states = [ordered]@{
   "lib-nomatch" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "nomatch" }
   "lib-delete" = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "delete" }
   "lib-menu"   = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "menu" }
+  # The command palette over the Library's sample data: empty, typed, a thing's actions, which file.
+  "pal"        = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "1" }
+  "pal-typed"  = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "rec" }
+  "pal-thing"  = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "thing:tokyo" }
+  "pal-file"   = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "action:compress" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-voice-off" = @{ NERIA_SETTINGS = "voice" }

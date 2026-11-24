@@ -7,7 +7,7 @@ import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, LiveRow, RecentItem, C
 import { Toast } from "widgets.slint";
 // Present's window (Capture page → Phone): its own window, generated for Rust too.
 export { PresentWindow } from "present-window.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached, Commands, PalRow } from "globals.slint";
 import { ClipsDialog } from "dialogs/clips.slint";
 import { GifDialog } from "dialogs/gif.slint";
 import { ChatDialog } from "dialogs/chat.slint";
@@ -25,11 +25,12 @@ import { LibraryPage } from "pages/library.slint";
 import { SettingsDrawer } from "pages/settings.slint";
 import { SetupScreen } from "pages/setup.slint";
 import { MatchDialog } from "dialogs/match.slint";
+import { PaletteBox } from "dialogs/palette.slint";
 import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, Nav, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached }
+export { Theme, Screen, Nav, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached, Commands, PalRow }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -307,178 +308,190 @@ export component AppWindow inherits Window {
     callback tools-update();
     callback theme-changed();
 
-    // Rail on the left, or tabs along the bottom on compact windows. The pages stay put
-    // when the window crosses the breakpoint, so nothing reloads.
-    HorizontalLayout {
-        if !Screen.compact: Sidebar {
-            page <=> root.page;
-            settings-open: root.drawer-open;
-            open-settings => { root.drawer-open = true; }
-        }
-
-        VerticalLayout {
-            horizontal-stretch: 1;
-            Rectangle {
-                vertical-stretch: 1;
-
-                if root.page == 0: DownloadPage {
-                    window-width: root.width;
-                    window-height: root.height;
-                    tools-ready: root.tools-ready;
-
-                    update-banner: root.update-banner;
-                    update-state: root.update-state;
-                    update-version: root.update-version;
-                    update-status: root.update-status;
-                    update-progress: root.update-progress;
-                    update-install => { root.update-install(); }
-                    update-restart => { root.update-restart(); }
-                    update-later => { root.update-later(); }
-
-                    url <=> root.url;
-                    probe-state: root.probe-state;
-                    probe-blocked: root.probe-blocked;
-                    probe-title: root.probe-title;
-                    probe-meta: root.probe-meta;
-                    probe-thumb: root.probe-thumb;
-                    probe-is-spotify: root.probe-is-spotify;
-                    quality <=> root.quality;
-                    container-index <=> root.container-index;
-                    audio-format-index <=> root.audio-format-index;
-                    gif-mode: root.gif-mode;
-                    dup-text: root.dup-text;
-                    dup-file: root.dup-file;
-                    playlist-url: root.playlist-url;
-                    paste => { root.paste(); }
-                    url-edited(t) => { root.url-edited(t); }
-                    start-download => { root.start-download(); }
-                    dup-show => { root.dup-show(); }
-                    use-playlist => { root.use-playlist(); }
-                    clip-open-link(url, title) => { root.clip-open-link(url, title); }
-
-                    video-format: root.video-format;
-                    audio-format: root.audio-format;
-                    lyrics: root.lyrics;
-                    settings-changed => { root.settings-changed(); }
-                    open-settings => {
-                        root.settings-section = 0;
-                        root.drawer-open = true;
-                    }
-                    whats-new => {
-                        root.settings-section = 6;
-                        root.drawer-open = true;
-                    }
-
-                    pick-items: root.pick-items;
-                    pick-checked: root.pick-checked;
-                    pick-note: root.pick-note;
-                    number-items <=> root.number-items;
-                    pick-toggle(i, on) => { root.pick-toggle(i, on); }
-                    pick-all(on) => { root.pick-all(on); }
-                    pick-quality(i, q) => { root.pick-quality(i, q); }
-                    pick-move(from, to) => { root.pick-move(from, to); }
-                    pick-reverse => { root.pick-reverse(); }
-
-                    spotify-count: root.spotify-count;
-                    spotify-note: root.spotify-note;
-                    sync-items: root.sync-items;
-                    review-removed => { root.sync-open = true; }
-
-                    jobs: root.jobs;
-                    active-count: root.active-count;
-                    running-count: root.running-count;
-                    paused-count: root.paused-count;
-                    finished-count: root.finished-count;
-                    pause-all => { root.pause-all(); }
-                    resume-all => { root.resume-all(); }
-                    clear-finished => { root.clear-finished(); }
-                    open-output => { root.open-output(); }
-                    cancel-job(id) => { root.cancel-job(id); }
-                    remove-job(id) => { root.remove-job(id); }
-                    retry-job(id) => { root.retry-job(id); }
-                    open-job(id) => { root.open-job(id); }
-                    clip-job(id) => { root.clip-job(id); }
-                    cmp-job(id) => { root.cmp-job(id); }
-                    match-pick(id) => { root.match-pick(id); }
-                    report-job(id) => { root.report-job(id); }
-                    play-job(id) => { root.play-job(id); }
-                    accept-job(id) => { root.accept-job(id); }
-                    filter <=> root.queue-filter;
-                    filter-counts: root.filter-counts;
-                    filter-changed(f) => { root.queue-filter-changed(f); }
-                    show-tips: root.show-tips;
-                    hide-tips => { root.hide-tips(); }
-                    output-short: root.output-short;
-                    pause-job(id) => { root.pause-job(id); }
-                    resume-job(id) => { root.resume-job(id); }
-                    toggle-group(id) => { root.toggle-group(id); }
-                }
-
-                if root.page == 1: ClipPage {
-                    tools-ready: root.tools-ready;
-                    loaded: root.clip-loaded;
-                    has-video: root.clip-has-video;
-                    has-audio: root.clip-has-audio;
-                    gif-file: root.clip-gif-file;
-                    name: root.clip-name;
-                    frame: root.clip-frame;
-                    duration: root.clip-duration;
-                    position: root.clip-position;
-                    playing: root.clip-playing;
-                    in-time <=> root.clip-in;
-                    out-time <=> root.clip-out;
-                    mode <=> root.clip-mode;
-                    loop <=> root.clip-loop;
-                    thumbs: root.clip-thumbs;
-                    wave: root.clip-wave;
-                    exporting: root.clip-exporting;
-                    export-progress: root.clip-export-progress;
-                    status: root.clip-status;
-                    has-output: root.clip-has-output;
-                    keyframes: root.clip-keyframes;
-                    keyframe-ticks: root.clip-keyframe-ticks;
-                    chapters: root.clip-chapters;
-                    is-link: root.clip-is-link;
-                    gif: root.clip-is-gif && root.x-gifs-as-gif;
-                    buffering: root.clip-buffering;
-                    quality <=> root.quality;
-                    container-index <=> root.container-index;
-                    audio-format-index <=> root.audio-format-index;
-                    video-format: root.video-format;
-                    audio-format: root.audio-format;
-                    open-file => { root.clip-open(); }
-                recent: root.recent-clip;
-                open-path(p) => { root.clip-open-path(p); }
-                    paste-link => { root.clip-paste-link(); }
-                    toggle-play => { root.clip-toggle-play(); }
-                    seek(t) => { root.clip-seek(t); }
-                    frame-step(n) => { root.clip-frame-step(n); }
-                    export-clip => { root.clip-export(); }
-                    cancel-export => { root.clip-cancel-export(); }
-                    show-output => { root.clip-show-output(); }
-                    view-queue => { root.page = 0; }
-                    settings-changed => { root.settings-changed(); }
-                    open-settings => {
-                        root.settings-section = 0;
-                        root.drawer-open = true;
-                    }
-                }
-
-                if root.page == 2: CompressPage {
-                    recent: root.recent-compress;
-                }
-
-                if root.page == 3: CapturePage { }
-
-                if root.page == 4: LibraryPage {
-                    go(page) => { root.page = page; }
-                }
+    // Ctrl+K anywhere on a page: the command palette.
+    FocusScope {
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        capture-key-pressed(event) => {
+            if event.modifiers.control && (event.text == "k" || event.text == "K") {
+                Nav.palette-open = !Nav.palette-open;
+                return accept;
             }
-
-            if Screen.compact: TabBar {
+            reject
+        }
+        // Rail on the left, or tabs along the bottom on compact windows. The pages stay put
+        // when the window crosses the breakpoint, so nothing reloads.
+        HorizontalLayout {
+            if !Screen.compact: Sidebar {
                 page <=> root.page;
                 settings-open: root.drawer-open;
-                close-settings => { root.drawer-open = false; }
+                open-settings => { root.drawer-open = true; }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Rectangle {
+                    vertical-stretch: 1;
+
+                    if root.page == 0: DownloadPage {
+                        window-width: root.width;
+                        window-height: root.height;
+                        tools-ready: root.tools-ready;
+
+                        update-banner: root.update-banner;
+                        update-state: root.update-state;
+                        update-version: root.update-version;
+                        update-status: root.update-status;
+                        update-progress: root.update-progress;
+                        update-install => { root.update-install(); }
+                        update-restart => { root.update-restart(); }
+                        update-later => { root.update-later(); }
+
+                        url <=> root.url;
+                        probe-state: root.probe-state;
+                        probe-blocked: root.probe-blocked;
+                        probe-title: root.probe-title;
+                        probe-meta: root.probe-meta;
+                        probe-thumb: root.probe-thumb;
+                        probe-is-spotify: root.probe-is-spotify;
+                        quality <=> root.quality;
+                        container-index <=> root.container-index;
+                        audio-format-index <=> root.audio-format-index;
+                        gif-mode: root.gif-mode;
+                        dup-text: root.dup-text;
+                        dup-file: root.dup-file;
+                        playlist-url: root.playlist-url;
+                        paste => { root.paste(); }
+                        url-edited(t) => { root.url-edited(t); }
+                        start-download => { root.start-download(); }
+                        dup-show => { root.dup-show(); }
+                        use-playlist => { root.use-playlist(); }
+                        clip-open-link(url, title) => { root.clip-open-link(url, title); }
+
+                        video-format: root.video-format;
+                        audio-format: root.audio-format;
+                        lyrics: root.lyrics;
+                        settings-changed => { root.settings-changed(); }
+                        open-settings => {
+                            root.settings-section = 0;
+                            root.drawer-open = true;
+                        }
+                        whats-new => {
+                            root.settings-section = 6;
+                            root.drawer-open = true;
+                        }
+
+                        pick-items: root.pick-items;
+                        pick-checked: root.pick-checked;
+                        pick-note: root.pick-note;
+                        number-items <=> root.number-items;
+                        pick-toggle(i, on) => { root.pick-toggle(i, on); }
+                        pick-all(on) => { root.pick-all(on); }
+                        pick-quality(i, q) => { root.pick-quality(i, q); }
+                        pick-move(from, to) => { root.pick-move(from, to); }
+                        pick-reverse => { root.pick-reverse(); }
+
+                        spotify-count: root.spotify-count;
+                        spotify-note: root.spotify-note;
+                        sync-items: root.sync-items;
+                        review-removed => { root.sync-open = true; }
+
+                        jobs: root.jobs;
+                        active-count: root.active-count;
+                        running-count: root.running-count;
+                        paused-count: root.paused-count;
+                        finished-count: root.finished-count;
+                        pause-all => { root.pause-all(); }
+                        resume-all => { root.resume-all(); }
+                        clear-finished => { root.clear-finished(); }
+                        open-output => { root.open-output(); }
+                        cancel-job(id) => { root.cancel-job(id); }
+                        remove-job(id) => { root.remove-job(id); }
+                        retry-job(id) => { root.retry-job(id); }
+                        open-job(id) => { root.open-job(id); }
+                        clip-job(id) => { root.clip-job(id); }
+                        cmp-job(id) => { root.cmp-job(id); }
+                        match-pick(id) => { root.match-pick(id); }
+                        report-job(id) => { root.report-job(id); }
+                        play-job(id) => { root.play-job(id); }
+                        accept-job(id) => { root.accept-job(id); }
+                        filter <=> root.queue-filter;
+                        filter-counts: root.filter-counts;
+                        filter-changed(f) => { root.queue-filter-changed(f); }
+                        show-tips: root.show-tips;
+                        hide-tips => { root.hide-tips(); }
+                        output-short: root.output-short;
+                        pause-job(id) => { root.pause-job(id); }
+                        resume-job(id) => { root.resume-job(id); }
+                        toggle-group(id) => { root.toggle-group(id); }
+                    }
+
+                    if root.page == 1: ClipPage {
+                        tools-ready: root.tools-ready;
+                        loaded: root.clip-loaded;
+                        has-video: root.clip-has-video;
+                        has-audio: root.clip-has-audio;
+                        gif-file: root.clip-gif-file;
+                        name: root.clip-name;
+                        frame: root.clip-frame;
+                        duration: root.clip-duration;
+                        position: root.clip-position;
+                        playing: root.clip-playing;
+                        in-time <=> root.clip-in;
+                        out-time <=> root.clip-out;
+                        mode <=> root.clip-mode;
+                        loop <=> root.clip-loop;
+                        thumbs: root.clip-thumbs;
+                        wave: root.clip-wave;
+                        exporting: root.clip-exporting;
+                        export-progress: root.clip-export-progress;
+                        status: root.clip-status;
+                        has-output: root.clip-has-output;
+                        keyframes: root.clip-keyframes;
+                        keyframe-ticks: root.clip-keyframe-ticks;
+                        chapters: root.clip-chapters;
+                        is-link: root.clip-is-link;
+                        gif: root.clip-is-gif && root.x-gifs-as-gif;
+                        buffering: root.clip-buffering;
+                        quality <=> root.quality;
+                        container-index <=> root.container-index;
+                        audio-format-index <=> root.audio-format-index;
+                        video-format: root.video-format;
+                        audio-format: root.audio-format;
+                        open-file => { root.clip-open(); }
+                    recent: root.recent-clip;
+                    open-path(p) => { root.clip-open-path(p); }
+                        paste-link => { root.clip-paste-link(); }
+                        toggle-play => { root.clip-toggle-play(); }
+                        seek(t) => { root.clip-seek(t); }
+                        frame-step(n) => { root.clip-frame-step(n); }
+                        export-clip => { root.clip-export(); }
+                        cancel-export => { root.clip-cancel-export(); }
+                        show-output => { root.clip-show-output(); }
+                        view-queue => { root.page = 0; }
+                        settings-changed => { root.settings-changed(); }
+                        open-settings => {
+                            root.settings-section = 0;
+                            root.drawer-open = true;
+                        }
+                    }
+
+                    if root.page == 2: CompressPage {
+                        recent: root.recent-compress;
+                    }
+
+                    if root.page == 3: CapturePage { }
+
+                    if root.page == 4: LibraryPage {
+                        go(page) => { root.page = page; }
+                    }
+                }
+
+                if Screen.compact: TabBar {
+                    page <=> root.page;
+                    settings-open: root.drawer-open;
+                    close-settings => { root.drawer-open = false; }
+                }
             }
         }
     }
@@ -535,6 +548,13 @@ export component AppWindow inherits Window {
         update-check => { root.update-check(); }
         tools-update => { root.tools-update(); }
         copy-report => { root.copy-report(); }
+    }
+
+    if Nav.palette-open: PaletteBox {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
     }
 
     if Capture.toast-text != "": CaptureToast {

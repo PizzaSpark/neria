@@ -728,7 +728,7 @@ fn relocate(ui: &AppWindow, moves: Vec<(u64, PathBuf)>) {
 
 // ───────────── Doing things ─────────────
 
-fn go_download(ui: &AppWindow, url: &str) {
+pub(crate) fn go_download(ui: &AppWindow, url: &str) {
     ui.set_page(0);
     ui.set_url(url.into());
     ui.invoke_url_edited(url.into());
@@ -847,7 +847,7 @@ fn copy_file(_: &Path) -> bool {
     false
 }
 
-fn act(ui: &AppWindow, id: u64, what: &str) {
+pub(crate) fn act(ui: &AppWindow, id: u64, what: &str) {
     let Some(it) = item(id) else { return };
     let here = with(|s| place(s, &it)) == Where::Here;
     let gone = with(|s| place(s, &it)) == Where::Gone;
@@ -891,23 +891,7 @@ fn act(ui: &AppWindow, id: u64, what: &str) {
             }
             ui.set_page(1);
         }
-        "compress" => {
-            ui.set_page(2);
-            ui.global::<Compress>().invoke_open_path(path);
-        }
-        "transcribe" => crate::transcribe_ui::open_files(ui, vec![it.file.clone()]),
-        "gif" => {
-            ui.invoke_clip_open_path(path);
-            ui.set_page(1);
-            let weak = ui.as_weak();
-            slint::Timer::single_shot(Duration::from_millis(1500), move || {
-                if let Some(ui) = weak.upgrade() {
-                    let g = ui.global::<ClipGif>();
-                    g.set_open(true);
-                    g.invoke_changed();
-                }
-            });
-        }
+        "compress" | "transcribe" | "gif" => act_on_file(ui, &it.file, what),
         "show" if it.kind == Kind::Playlist => {
             let _ = open::that(&it.file);
         }
@@ -1011,6 +995,94 @@ fn repair(ui: &AppWindow, it: &Item) {
             }
         });
     });
+}
+
+/// Compress, Transcribe, Make a GIF or Clip on any file (the Library's, or one picked from the
+/// command palette).
+pub(crate) fn act_on_file(ui: &AppWindow, file: &Path, what: &str) {
+    let path: SharedString = file.to_string_lossy().as_ref().into();
+    match what {
+        "clip" => {
+            ui.invoke_clip_open_path(path);
+            ui.set_page(1);
+        }
+        "compress" => {
+            ui.set_page(2);
+            ui.global::<Compress>().invoke_open_path(path);
+        }
+        "transcribe" => crate::transcribe_ui::open_files(ui, vec![file.to_path_buf()]),
+        "gif" => {
+            ui.invoke_clip_open_path(path);
+            ui.set_page(1);
+            let weak = ui.as_weak();
+            slint::Timer::single_shot(Duration::from_millis(1500), move || {
+                if let Some(ui) = weak.upgrade() {
+                    let g = ui.global::<ClipGif>();
+                    g.set_open(true);
+                    g.invoke_changed();
+                }
+            });
+        }
+        _ => {}
+    }
+}
+
+// ───────────── For the command palette (palette_ui.rs) ─────────────
+
+/// Everything in the Library, read now if the page hasn't read it yet (so its actions work
+/// before the page was ever opened).
+pub(crate) fn items_for_palette() -> Vec<Item> {
+    if with(|s| s.items.is_empty() && !s.loaded && !s.demo) {
+        let items = library::load();
+        with(|s| {
+            if s.items.is_empty() {
+                s.items = items;
+            }
+        });
+    }
+    with(|s| s.items.clone())
+}
+
+/// A thing's frame, when one was made already (none is made for the palette).
+pub(crate) fn frame_of(file: &Path) -> Option<slint::Image> {
+    let cached = frame_path(file);
+    cached.is_file().then(|| slint::Image::load_from_path(&cached).ok()).flatten()
+}
+
+/// What can be done with this thing, as its details and ⋯ menu offer it: (`act` name, words,
+/// Segoe Fluent glyph). The main action first.
+pub(crate) fn thing_actions(id: u64) -> Vec<(&'static str, &'static str, &'static str)> {
+    let Some(it) = item(id) else { return Vec::new() };
+    let d = with(|s| detail_of(s, &it));
+    let mut out = Vec::new();
+    match d.main {
+        0 => out.push(("watch", "Watch", "\u{E768}")),
+        1 => out.push(("watch", "Play", "\u{E768}")),
+        2 => out.push(("open-with", "Open", "\u{E7AC}")),
+        3 => out.push(("update", "Update playlist", "\u{E895}")),
+        4 => out.push(("download", "Download again", "\u{E896}")),
+        _ => out.push(("find", "Find it…", "\u{E721}")),
+    }
+    let mut add = |on: bool, a: (&'static str, &'static str, &'static str)| {
+        if on && !out.iter().any(|o| o.0 == a.0) {
+            out.push(a);
+        }
+    };
+    add(d.can_clip, ("clip", "Clip", "\u{E8C6}"));
+    add(d.can_compress, ("compress", "Compress", "\u{E73F}"));
+    add(d.can_gif, ("gif", "Make a GIF", "\u{E8B9}"));
+    add(d.can_transcribe, ("transcribe", "Transcribe", "\u{E8A5}"));
+    add(d.can_copy_file, ("copy-file", "Copy file", "\u{E8C8}"));
+    add(d.playlist && !d.gone, ("lyrics", "Add lyrics", "\u{E8D6}"));
+    add(!d.gone, ("show", if d.playlist { "Open folder" } else { "Show in folder" }, "\u{E8B7}"));
+    add(d.can_rematch, ("rematch", "Pick another match", "\u{E8EE}"));
+    add(d.can_repair && !d.repairing, ("repair", "Get the missed bits back", "\u{E777}"));
+    add(d.can_download && d.main != 4, ("download", "Download again", "\u{E896}"));
+    add(d.has_link, ("copy-link", "Copy link", "\u{E71B}"));
+    add(d.has_source, ("original", "Go to the original", "\u{E8A7}"));
+    add(d.spotify, ("spotify", "Open in Spotify", "\u{E8A7}"));
+    add(d.gone, ("find", "Find it…", "\u{E721}"));
+    out
 }
 
 /// Delete file… said yes: to the Recycle Bin, and out of the Library.

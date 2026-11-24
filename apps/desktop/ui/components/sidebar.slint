@@ -1,6 +1,6 @@
 import { Theme } from "../theme.slint";
 import { Capture, Phone } from "../globals.slint";
-import { NavItem, LogoMark } from "../widgets.slint";
+import { NavItem, LogoMark, RailSearch } from "../widgets.slint";
 
 // The nav rail on the left (wide and medium windows): logo mark, the five pages, Settings
 // at the bottom.
@@ -25,6 +25,8 @@ export component Sidebar inherits Rectangle {
             padding-bottom: 14px;
             LogoMark { }
         }
+        RailSearch { }
+        Rectangle { height: 4px; }
         NavItem {
             icon: "\u{E896}";
             label: "Download";

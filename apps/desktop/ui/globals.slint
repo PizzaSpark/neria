@@ -1307,3 +1307,46 @@ export global Library {
     callback found-one();
     callback found-close();
 }
+
+// One row of the command palette: a group's heading, an action ("Make a GIF…") or a thing
+// the Library has. The typed part of the name is `hit` (shown bold), between `pre` and `post`.
+export struct PalRow {
+    heading: bool,
+    pre: string,
+    hit: string,
+    post: string,
+    // Muted after the name ("youtube.com/watch?v=…", "Recording").
+    sub: string,
+    // Muted on the right: the page it goes to, or a thing's kind and day.
+    where: string,
+    // A Segoe Fluent glyph (actions), or the thing's frame (`thumb`, `square` for sound).
+    icon: string,
+    thumb: image,
+    has-thumb: bool,
+    square: bool,
+}
+
+// The command palette (Ctrl+K, mock design/palette.html, picks 1A · 2A · 3A + 3B · 4A · 5A):
+// type what you want to do or something you saved, Enter. Rust: palette_ui.rs.
+export global Commands {
+    // Open or not: `Nav.palette-open` (shared widgets open it).
+    in-out property <string> query;
+    in property <[PalRow]> rows;
+    // The row Enter does (never a heading).
+    in-out property <int> selected;
+    // A second step: the thing whose actions show ("VALORANT · 14:32"), or the action that
+    // wants a file ("Compress"); its frame or glyph beside it.
+    in property <string> crumb;
+    in property <image> crumb-thumb;
+    in property <bool> crumb-has-thumb;
+    in property <string> crumb-icon;
+    in property <string> placeholder: "What do you want to do?";
+    // The selected row has a second step (→ shows a thing's actions).
+    in property <bool> can-go-into;
+    callback opened();
+    callback changed(); // the query changed
+    callback move(int); // ↑ −1, ↓ +1
+    callback pick(int); // Enter or a click on a row
+    callback go-into() -> bool; // → or Tab: a thing's actions; false when there are none
+    callback back(); // ← or Backspace in an empty box: out of the second step
+}
