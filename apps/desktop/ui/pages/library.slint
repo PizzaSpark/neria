@@ -523,6 +523,7 @@ component LibRowView inherits VerticalLayout {
         }
     }
     if !root.item.heading: Rectangle {
+        height: content.preferred-height;
         accessible-role: list-item;
         accessible-label: root.item.title + ", " + root.item.tag;
         accessible-item-selected: root.selected;
@@ -543,7 +544,8 @@ component LibRowView inherits VerticalLayout {
             height: 1px;
             background: Theme.line;
         }
-        // keyboard: KeyPress below picks the row (Enter / Space).
+        // keyboard: KeyPress below picks the row (Enter / Space). It holds the row's content,
+        // so hovering a button inside still counts as hovering the row (no blinking).
         ta := TouchArea {
             mouse-cursor: pointer;
             changed has-hover => { root.hover = self.has-hover; }
@@ -563,69 +565,48 @@ component LibRowView inherits VerticalLayout {
                 }
             }
             double-clicked => { Library.act(root.item.id, "main"); }
-        }
-        KeyPress {
-            width: parent.width - Theme.lane;
-            radius: 8px;
-            activated => { root.pick(); }
-            capture-key-pressed(e) => {
-                if e.modifiers.control && e.text == " " {
-                    Library.pick(root.item.id, 0);
-                    return accept;
+            KeyPress {
+                width: parent.width - Theme.lane;
+                radius: 8px;
+                activated => { root.pick(); }
+                capture-key-pressed(e) => {
+                    if e.modifiers.control && e.text == " " {
+                        Library.pick(root.item.id, 0);
+                        return accept;
+                    }
+                    reject
                 }
-                reject
             }
-        }
-        VerticalLayout {
-            padding-left: 6px;
-            padding-right: Theme.lane + 6px;
-            padding-top: 8px;
-            padding-bottom: 8px;
-            spacing: 10px;
-            HorizontalLayout {
-                spacing: Screen.compact ? 10px : 12px;
-                min-height: 44px;
-                VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    Rectangle {
-                        width: 64px;
-                        height: 36px;
-                        KindThumb {
-                            width: 64px;
-                            height: 36px;
-                            source: root.item.thumb;
-                            length: root.item.length;
-                            sound: root.item.sound;
-                            playlist: root.item.playlist;
-                            text: root.item.text;
-                            fade: root.item.gone ? 0.35 : root.item.offline ? 0.6 : 1;
-                        }
-                        // Pick it with others: a tick in the middle of the picture, over a
-                        // dimmed frame, so nothing on the row moves (keyboard: Ctrl+Space).
-                        property <bool> square: root.item.sound || root.item.text || root.item.playlist;
-                        if root.tick-shown: Rectangle {
-                            x: parent.square ? (parent.width - parent.height) / 2 : 0px;
-                            width: parent.square ? parent.height : parent.width;
-                            height: parent.height;
-                            border-radius: 6px;
-                            background: root.item.picked ? Theme.bg.with-alpha(0.35) : Theme.bg.with-alpha(0.6);
+            content := VerticalLayout {
+                padding-left: 6px;
+                padding-right: Theme.lane + 6px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: Screen.compact ? 10px : 12px;
+                    min-height: 44px;
+                    // Pick it with others: its own column on the left, always there, so nothing
+                    // moves when the tick shows (keyboard: Ctrl+Space on the row).
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        width: 20px;
+                        Rectangle {
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 4px;
+                            border-width: root.tick-shown ? 2px : 0px;
+                            border-color: root.item.picked ? Theme.hard : Theme.edge;
+                            background: root.item.picked ? Theme.pop : transparent;
                             accessible-role: checkbox;
                             accessible-label: "Pick " + root.item.title;
                             accessible-checked: root.item.picked;
                             accessible-action-default => { Library.pick(root.item.id, 0); }
-                            Rectangle {
-                                width: 18px;
-                                height: 18px;
-                                border-radius: 4px;
-                                border-width: 2px;
-                                border-color: root.item.picked ? Theme.hard : Theme.ink;
-                                background: root.item.picked ? Theme.pop : transparent;
-                                if root.item.picked: Icon {
-                                    text: "\u{E73E}";
-                                    font-size: 11px;
-                                    color: Theme.on-pop;
-                                }
+                            if root.item.picked: Icon {
+                                text: "\u{E73E}";
+                                font-size: 11px;
+                                color: Theme.on-pop;
                             }
                             // keyboard: Ctrl+Space on the row picks it.
                             TouchArea {
@@ -634,125 +615,143 @@ component LibRowView inherits VerticalLayout {
                             }
                         }
                     }
-                }
-                VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 1;
-                    spacing: 4px;
-                    Text {
-                        text: root.item.title;
-                        color: root.item.gone ? Theme.muted : Theme.ink;
-                        font-size: 14px;
-                        font-weight: root.item.playlist ? 600 : 500;
-                        overflow: elide;
-                    }
-                    HorizontalLayout {
-                        spacing: 7px;
-                        Tag {
-                            horizontal-stretch: 0;
-                            text: root.item.tag;
-                            kind: root.item.tag-kind;
-                        }
-                        if root.item.place != "" && (!Screen.compact || root.item.gone): Text {
-                            horizontal-stretch: 0;
-                            max-width: self.preferred-width;
-                            text: root.item.place;
-                            color: Theme.muted;
-                            font-size: 12px;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-                        if !root.item.gone && (Screen.compact ? root.item.size : root.item.stats) != "": Text {
-                            horizontal-stretch: 0;
-                            max-width: self.preferred-width;
-                            text: Screen.compact ? root.item.size : root.item.stats;
-                            color: Theme.muted;
-                            font-family: Theme.mono;
-                            font-size: 11px;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-                        if root.item.marks != "": HorizontalLayout {
-                            horizontal-stretch: 0;
-                            spacing: 4px;
-                            Icon {
-                                text: "\u{E723}";
-                                font-size: 11px;
-                                color: Theme.muted;
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        Rectangle {
+                            width: 64px;
+                            height: 36px;
+                            KindThumb {
+                                width: 64px;
+                                height: 36px;
+                                source: root.item.thumb;
+                                length: root.item.length;
+                                sound: root.item.sound;
+                                playlist: root.item.playlist;
+                                text: root.item.text;
+                                fade: root.item.gone ? 0.35 : root.item.offline ? 0.6 : 1;
                             }
-                            if !Screen.compact: Text {
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        spacing: 4px;
+                        Text {
+                            text: root.item.title;
+                            color: root.item.gone ? Theme.muted : Theme.ink;
+                            font-size: 14px;
+                            font-weight: root.item.playlist ? 600 : 500;
+                            overflow: elide;
+                        }
+                        HorizontalLayout {
+                            spacing: 7px;
+                            Tag {
+                                horizontal-stretch: 0;
+                                text: root.item.tag;
+                                kind: root.item.tag-kind;
+                            }
+                            if root.item.place != "" && (!Screen.compact || root.item.gone): Text {
+                                horizontal-stretch: 0;
                                 max-width: self.preferred-width;
-                                text: root.item.marks;
+                                text: root.item.place;
                                 color: Theme.muted;
-                                font-size: 11.5px;
+                                font-size: 12px;
                                 vertical-alignment: center;
                                 overflow: elide;
                             }
-                        }
-                        Rectangle { horizontal-stretch: 1; }
-                    }
-                }
-                // Wide: the main action in words (on hover, the picked row, gone rows), Clip, ⋯.
-                if root.wide-acts: VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    HorizontalLayout {
-                        spacing: 6px;
-                        GhostButton {
-                            compact: true;
-                            icon: LibWords.main-icon[root.item.main];
-                            text: LibWords.main[root.item.main];
-                            clicked => { Library.act(root.item.id, "main"); }
-                        }
-                        if root.item.can-clip && !root.item.gone: GhostButton {
-                            compact: true;
-                            icon: "\u{E8C6}";
-                            label: "Clip";
-                            clicked => { Library.act(root.item.id, "clip"); }
-                        }
-                        GhostButton {
-                            compact: true;
-                            icon: "\u{E712}";
-                            label: "More actions";
-                            clicked => {
-                                Library.select(root.item.id);
-                                menu.show();
+                            if !root.item.gone && (Screen.compact ? root.item.size : root.item.stats) != "": Text {
+                                horizontal-stretch: 0;
+                                max-width: self.preferred-width;
+                                text: Screen.compact ? root.item.size : root.item.stats;
+                                color: Theme.muted;
+                                font-family: Theme.mono;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                overflow: elide;
                             }
+                            if root.item.marks != "": HorizontalLayout {
+                                horizontal-stretch: 0;
+                                spacing: 4px;
+                                Icon {
+                                    text: "\u{E723}";
+                                    font-size: 11px;
+                                    color: Theme.muted;
+                                }
+                                if !Screen.compact: Text {
+                                    max-width: self.preferred-width;
+                                    text: root.item.marks;
+                                    color: Theme.muted;
+                                    font-size: 11.5px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
                         }
                     }
-                }
-                // Medium and compact: one icon action, then ⋯ (compact: the sheet).
-                if !Screen.wide && !root.opened: VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    HorizontalLayout {
-                        spacing: 6px;
-                        GhostButton {
-                            compact: true;
-                            icon: LibWords.main-icon[root.item.main];
-                            label: LibWords.main[root.item.main];
-                            clicked => { Library.act(root.item.id, "main"); }
-                        }
-                        GhostButton {
-                            compact: true;
-                            icon: "\u{E712}";
-                            label: "More actions";
-                            clicked => {
-                                Library.select(root.item.id);
-                                if Screen.compact {
-                                    Library.sheet-open = true;
-                                } else {
+                    // Wide: the main action in words (on hover, the picked row, gone rows), Clip, ⋯.
+                    if root.wide-acts: VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        HorizontalLayout {
+                            spacing: 6px;
+                            GhostButton {
+                                compact: true;
+                                icon: LibWords.main-icon[root.item.main];
+                                text: LibWords.main[root.item.main];
+                                clicked => { Library.act(root.item.id, "main"); }
+                            }
+                            if root.item.can-clip && !root.item.gone: GhostButton {
+                                compact: true;
+                                icon: "\u{E8C6}";
+                                label: "Clip";
+                                clicked => { Library.act(root.item.id, "clip"); }
+                            }
+                            GhostButton {
+                                compact: true;
+                                icon: "\u{E712}";
+                                label: "More actions";
+                                clicked => {
+                                    Library.select(root.item.id);
                                     menu.show();
                                 }
                             }
                         }
                     }
+                    // Medium and compact: one icon action, then ⋯ (compact: the sheet).
+                    if !Screen.wide && !root.opened: VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        HorizontalLayout {
+                            spacing: 6px;
+                            GhostButton {
+                                compact: true;
+                                icon: LibWords.main-icon[root.item.main];
+                                label: LibWords.main[root.item.main];
+                                clicked => { Library.act(root.item.id, "main"); }
+                            }
+                            GhostButton {
+                                compact: true;
+                                icon: "\u{E712}";
+                                label: "More actions";
+                                clicked => {
+                                    Library.select(root.item.id);
+                                    if Screen.compact {
+                                        Library.sheet-open = true;
+                                    } else {
+                                        menu.show();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-            if root.opened: HorizontalLayout {
-                padding-left: 76px;
-                OpenedRow {
-                    more => { menu.show(); }
+                if root.opened: HorizontalLayout {
+                    padding-left: 76px;
+                    OpenedRow {
+                        more => { menu.show(); }
+                    }
                 }
             }
         }
