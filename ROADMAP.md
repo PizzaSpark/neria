@@ -1136,12 +1136,13 @@ that's an exception, written only once the Phone tab is used.
   sample rate under Advanced; "Extract audio" from videos; batch). **Even out loudness**
   across songs. **Tag editor** (many files at once; "Find tags online" from Spotify).
   **Organize** (Artist / Album folders, M3U playlists, duplicates). Split by timestamps /
-  remove silence. Mock `design/audio-tools.html` (2026-11-24), picks not chosen yet
-  (recommended: 1B no sixth page, each tool where its nearest cousin is: Convert / Extract
+  remove silence. Mock `design/audio-tools.html`; picks chosen 2026-11-24
+  (1B no sixth page, each tool where its nearest cousin is: Convert / Extract
   as a Video / Sound only switch on Compress (2A), Even out "as an album", Edit tags dialog
   with "Several" (3A), picking several Library rows with a bar of shared actions (4A), Put
   in folders with every move listed (5A), Duplicates as a Library filter, Paste times… and
-  Cut silence on the Clip page)
+  Cut silence on the Clip page). Organize is the one place files move (each move shown,
+  Undo); the Library's "never moves files" rule gains that exception. Not built yet
 - **Library page** 🚧 (built 2026-11-23, mock `design/library.html`, picks 1A · 2A · 3A ·
   4A + 4B · 5A; screenshots checked at 1280 / 900 / 720 / 400): a fifth page after Capture (on compact,
   Settings moves to a gear in each page's header and the tab bar shows the five pages).
