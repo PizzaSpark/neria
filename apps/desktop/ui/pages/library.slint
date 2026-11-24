@@ -113,6 +113,11 @@ component LibMenu inherits Menu {
         text: "Open in Spotify";
         clicked => { Library.act(d.id, "spotify"); }
     }
+    if d.playlist && !d.gone: MenuItem {
+        icon: "\u{E8B7}";
+        text: "Put in folders…";
+        clicked => { Library.act(d.id, "folders"); }
+    }
     if d.can-tag: MenuItem {
         icon: "\u{E8EC}";
         text: "Edit tags";
@@ -495,8 +500,8 @@ component LibRowView inherits VerticalLayout {
     // Ctrl or Shift held on the last press: pick it with others instead of opening it.
     property <bool> with-ctrl;
     property <bool> with-shift;
-    // The tick shows on hover (not on compact: no hover there) and while any are picked.
-    property <bool> tick-shown: Library.picked-count > 0 || (root.hover && !Screen.compact);
+    // The tick shows on hover and while any are picked (a touch screen will want a long-press).
+    property <bool> tick-shown: Library.picked-count > 0 || root.hover;
     if root.item.heading: HorizontalLayout {
         padding-top: 16px;
         padding-bottom: 6px;

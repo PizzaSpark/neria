@@ -1112,6 +1112,10 @@ pub(crate) fn act(ui: &AppWindow, id: u64, what: &str) {
         "find" => find_one(ui, &it),
         "rematch" => crate::match_ui::open_song(it.file.clone(), it.url.clone()),
         "tags" => crate::tags_ui::open(ui, vec![it.file.clone()], it.url.clone()),
+        "folders" => {
+            let songs: Vec<Item> = with(|s| library::songs_of(&s.items, &it).into_iter().cloned().collect());
+            crate::organize_ui::open(ui, songs);
+        }
         "repair" => repair(ui, &it),
         "remove" => {
             forget(ui, &[id]);
@@ -1258,6 +1262,7 @@ pub(crate) fn thing_actions(id: u64) -> Vec<(&'static str, &'static str, &'stati
     add(d.playlist && !d.gone, ("lyrics", "Add lyrics", "\u{E8D6}"));
     add(!d.gone, ("show", if d.playlist { "Open folder" } else { "Show in folder" }, "\u{E8B7}"));
     add(d.can_tag, ("tags", "Edit tags", "\u{E8EC}"));
+    add(d.playlist && !d.gone, ("folders", "Put in folders…", "\u{E8B7}"));
     add(d.can_rematch, ("rematch", "Pick another match", "\u{E8EE}"));
     add(d.can_repair && !d.repairing, ("repair", "Get the missed bits back", "\u{E777}"));
     add(d.can_download && d.main != 4, ("download", "Download again", "\u{E896}"));

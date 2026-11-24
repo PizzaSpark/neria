@@ -448,6 +448,8 @@ pub struct Options {
     /// Louder or quieter by this many dB (Even out "as an album": one gain for every file,
     /// from their loudness together; `album_gain`). Instead of `even`.
     pub gain: Option<f32>,
+    /// A sound file: cut the silence at its start and end (a recording's minute of nothing).
+    pub trim_silence: bool,
     /// Cut these black bars off (from `detect_bars`).
     pub crop: Option<Bars>,
 }
@@ -485,6 +487,7 @@ impl Options {
             keep_tracks: true,
             sound_only: false,
             gain: None,
+            trim_silence: false,
             crop: None,
         }
     }
@@ -537,6 +540,8 @@ pub struct Plan {
     pub measured: Option<Loudness>,
     /// Louder or quieter by this many dB (an album evened out together).
     pub gain: Option<f32>,
+    /// A sound file: silence at its start and end cut off.
+    pub trim_silence: bool,
 }
 
 impl Plan {
@@ -558,13 +563,22 @@ impl Plan {
     /// measured loudness it's the second of two passes; without, one pass (samples).
     /// loudnorm works at 192 kHz inside: back to 48 kHz after.
     pub fn audio_filter(&self, dur: f64) -> Option<String> {
-        if let Some(g) = self.gain {
-            return AudioEdit { level: Level::Gain(g), ..Default::default() }
-                .chain(dur, None)
-                .map(|c| format!("{c},aresample=48000"));
+        let level = if let Some(g) = self.gain {
+            AudioEdit { level: Level::Gain(g), ..Default::default() }.chain(dur, None)
+        } else if let Some(t) = self.even {
+            AudioEdit { level: Level::Normalize(t), ..Default::default() }.chain(dur, self.measured.as_ref())
+        } else {
+            None
+        };
+        // Silence off both ends: from the start, then the same on the reversed sound.
+        const SILENCE: &str = "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.3";
+        let trim = self.trim_silence.then(|| format!("{SILENCE},areverse,{SILENCE},areverse"));
+        match (level, trim) {
+            (None, None) => None,
+            (Some(l), None) => Some(format!("{l},aresample=48000")),
+            (None, Some(t)) => Some(t),
+            (Some(l), Some(t)) => Some(format!("{t},{l},aresample=48000")),
         }
-        let edit = AudioEdit { level: Level::Normalize(self.even?), ..Default::default() };
-        edit.chain(dur, self.measured.as_ref()).map(|c| format!("{c},aresample=48000"))
     }
 
     /// The result's file type.
@@ -647,6 +661,7 @@ pub fn plan(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Plan
     }
     p.even = opts.even.filter(|_| info.has_audio && p.audio_kbps.is_some());
     p.gain = opts.gain.filter(|_| info.has_audio && p.audio_kbps.is_some());
+    p.trim_silence = opts.trim_silence && p.sound.is_some();
     if p.gain.is_some() {
         p.even = None;
     }
@@ -829,6 +844,7 @@ fn plan_file(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Pla
         even: None,
         measured: None,
         gain: None,
+        trim_silence: false,
     })
 }
 
@@ -872,6 +888,7 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
             even: None,
             measured: None,
         gain: None,
+        trim_silence: false,
         });
     }
     let (kbps, target_bytes) = match opts.target {
@@ -932,6 +949,7 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
         even: None,
         measured: None,
         gain: None,
+        trim_silence: false,
     })
 }
 
@@ -1679,8 +1697,20 @@ mod tests {
             keep_tracks: false,
             sound_only: false,
             gain: None,
+            trim_silence: false,
             crop: None,
         }
+    }
+
+    #[test]
+    fn silence_off_both_ends() {
+        let o = Options { trim_silence: true, sound_codec: Some(SoundCodec::Aac), ..opts(Target::Quality(0.7)) };
+        let p = plan(&song(), &o, &Encoders::default()).unwrap();
+        let f = p.audio_filter(60.0).unwrap();
+        assert_eq!(f.matches("silenceremove").count(), 2);
+        assert_eq!(f.matches("areverse").count(), 2);
+        // A video's sound keeps its time with the picture: never cut.
+        assert!(!plan(&info(), &Options { trim_silence: true, ..opts(Target::Quality(0.7)) }, &Encoders::default()).unwrap().trim_silence);
     }
 
     #[test]

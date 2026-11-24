@@ -370,9 +370,75 @@ pub fn skipped_note(total: usize, picked: &[usize]) -> Option<String> {
     }
 }
 
+/// Timestamps pasted from a description or a comment ("0:00 Intro", "3:12 - Song", "[1:02:03]
+/// Finale") as named parts, each up to the next and the last to `duration`: the clip list's
+/// Paste times…. Lines without a time are skipped; fewer than two times say nothing.
+pub fn parts_from_text(text: &str, duration: f64) -> Vec<(String, f64, f64)> {
+    fn time_in(line: &str) -> Option<(f64, usize, usize)> {
+        let b = line.as_bytes();
+        let mut i = 0;
+        while i < b.len() {
+            if b[i].is_ascii_digit() && (i == 0 || !b[i - 1].is_ascii_alphanumeric()) {
+                let mut j = i;
+                while j < b.len() && (b[j].is_ascii_digit() || b[j] == b':') {
+                    j += 1;
+                }
+                let t = &line[i..j];
+                let parts: Vec<&str> = t.split(':').collect();
+                if (2..=3).contains(&parts.len()) && parts[1..].iter().all(|p| p.len() == 2) && parts.iter().all(|p| !p.is_empty()) {
+                    let secs = parts.iter().fold(0.0, |acc, p| acc * 60.0 + p.parse::<f64>().unwrap_or(0.0));
+                    return Some((secs, i, j));
+                }
+                i = j;
+            }
+            i += 1;
+        }
+        None
+    }
+    let mut found: Vec<(String, f64)> = Vec::new();
+    for line in text.lines() {
+        let Some((t, a, b)) = time_in(line) else { continue };
+        let name = format!("{} {}", &line[..a], &line[b..]);
+        let name = name.trim_matches(|c: char| c.is_whitespace() || "-–—|:()[].·•".contains(c)).trim().to_string();
+        if duration > 0.0 && t >= duration {
+            continue;
+        }
+        found.push((if name.is_empty() { format!("Part {}", found.len() + 1) } else { name }, t));
+    }
+    found.sort_by(|a, b| a.1.total_cmp(&b.1));
+    found.dedup_by(|a, b| (a.1 - b.1).abs() < 0.5);
+    if found.len() < 2 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (k, (name, t)) in found.iter().enumerate() {
+        let end = found.get(k + 1).map_or(duration, |n| n.1);
+        if end > *t {
+            out.push((name.clone(), *t, end));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parts_from_pasted_times() {
+        let text = "Tracklist:\n0:00 Intro\n3:12 - Take On Me\n[1:02:03] Finale\nthanks for watching!\n";
+        let p = parts_from_text(text, 4000.0);
+        assert_eq!(p.len(), 3);
+        assert_eq!(p[0], ("Intro".to_string(), 0.0, 192.0));
+        assert_eq!(p[1], ("Take On Me".to_string(), 192.0, 3723.0));
+        assert_eq!(p[2], ("Finale".to_string(), 3723.0, 4000.0));
+        // One time isn't a list; times past the end are left out; a bare time gets a name.
+        assert!(parts_from_text("0:00 Only", 100.0).is_empty());
+        let p = parts_from_text("1:00\n2:00 B\n9:00 too late", 300.0);
+        assert_eq!(p, vec![("Part 1".to_string(), 60.0, 120.0), ("B".to_string(), 120.0, 300.0)]);
+        // Not times: years, 12:5, version numbers.
+        assert!(parts_from_text("Since 2019\nv1.2.3\n12:5", 100.0).is_empty());
+    }
     use serde_json::json;
 
     #[test]

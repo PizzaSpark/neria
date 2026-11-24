@@ -1,6 +1,7 @@
 //! The Library: one list of everything Neria saved (`library.json` next to the exe), to find,
 //! reopen and do the next thing with. Only what Neria made: no drive scanning, files are
-//! never moved or renamed, and a file that went missing stays listed as Gone.
+//! never moved or renamed (one exception: Put in folders, `organize.rs`, which lists every
+//! move first and can be undone), and a file that went missing stays listed as Gone.
 //!
 //! Filled once from what was remembered before (`history.json`, Capture's Saved list, the
 //! Spotify folders' `.neria-sync.json`), then written wherever something is saved: the

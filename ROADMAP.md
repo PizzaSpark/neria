@@ -1142,7 +1142,21 @@ that's an exception, written only once the Phone tab is used.
   with "Several" (3A), picking several Library rows with a bar of shared actions (4A), Put
   in folders with every move listed (5A), Duplicates as a Library filter, Paste times… and
   Cut silence on the Clip page). Organize is the one place files move (each move shown,
-  Undo); the Library's "never moves files" rule gains that exception. Not built yet
+  Undo); the Library's "never moves files" rule gains that exception. ✅ Built 2026-11-24:
+  Compress has Video / Sound only, sound goals as formats (Plays everywhere M4A, MP3,
+  Smallest that sounds good Opus, Lossless FLAC, For editing WAV; `Goal::Format`), a
+  converted sound named with its new extension, Even out "As an album" (`album_gain`), Cut
+  the silence at the start and end (sound files only: a video's sound keeps time with its
+  picture, so not on the Clip page's Sound); Edit tags (`tags.rs`, `tags_ui.rs`); picking
+  several Library rows (tick on hover, Ctrl/Shift+click, Esc) with a strip of what fits them
+  all (Convert to sound, Even out, Edit tags, Put in folders…, Delete files…, Copy files,
+  Remove); Put in folders (`organize.rs`); a Duplicates tab with Pick the extra copies; the
+  clip list's Paste times… (`tracks::parts_from_text`). Each tried in the app with the
+  `NERIA_*` hooks on a scratch home (Sound only saved an .m4a, two files evened out as an
+  album kept their 10 dB apart, Find tags online filled the fields and cover and Save wrote
+  them, Move + Undo put files and the playlist back, silence cut 30 s to 20.4 s); ui-check
+  at every width. Left: long-press to start picking on a touch screen (Android); Find tags online for several files at once; duplicates by sound
+  (fingerprints) rather than by link
 - **Library page** 🚧 (built 2026-11-23, mock `design/library.html`, picks 1A · 2A · 3A ·
   4A + 4B · 5A; screenshots checked at 1280 / 900 / 720 / 400): a fifth page after Capture (on compact,
   Settings moves to a gear in each page's header and the tab bar shows the five pages).

@@ -350,6 +350,12 @@ component Advanced inherits VerticalLayout {
                 wrap: word-wrap;
             }
         }
+        // Sound files only (a video's sound keeps time with its picture).
+        if Compress.sound-mode: Tick {
+            text: "Cut the silence at the start and end";
+            checked <=> Compress.trim-silence;
+            toggled => { Compress.changed(); }
+        }
         if Compress.tracks-text != "" && !Compress.sound-file: Tick {
             text: "Keep " + Compress.tracks-text;
             checked <=> Compress.keep-tracks;

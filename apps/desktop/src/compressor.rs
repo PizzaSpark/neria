@@ -150,7 +150,7 @@ fn part_bytes(info: &FileInfo, opts: &Options) -> u64 {
 /// under `limit`, in a kind of file the apps play (an .mkv, .avi or .wma isn't, so it's
 /// still made), and nothing else asked of it (evening out the sound).
 fn fits_as_is(path: &Path, info: &FileInfo, opts: &Options, limit: u64) -> bool {
-    if opts.even.is_some() || opts.gain.is_some() {
+    if opts.even.is_some() || opts.gain.is_some() || opts.trim_silence {
         return false;
     }
     let playable = path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
@@ -222,6 +222,7 @@ impl Compressor {
             _ => Some(96),
         };
         o.keep_tracks = c.get_keep_tracks();
+        o.trim_silence = c.get_trim_silence();
         o.crop = if c.get_cut_bars() { item.bars } else { None };
         if c.get_volume() == 1 {
             o.even = Some(if c.get_loudness() == 1 { -16.0 } else { -14.0 });
@@ -539,9 +540,10 @@ impl Compressor {
         let mut can_start = !running && encoders.is_some() && !self.items.is_empty();
         let mut start_text = match (self.items.len(), sound_mode) {
             (0 | 1, false) => "Compress".to_string(),
-            (0 | 1, true) => "Save the sound".to_string(),
+            (0 | 1, true) if has_video => "Save the sound".to_string(),
+            (0 | 1, true) => "Convert".to_string(),
             (n, false) => format!("Compress {n} files"),
-            (n, true) => format!("Save {n} as sound"),
+            (n, true) => format!("Convert {n} files"),
         };
 
         match one {
@@ -820,10 +822,11 @@ impl Compressor {
                     Err(_) => 0,
                 };
                 if !self.items.is_empty() && !running {
+                    let verb = if sound_mode { "Convert" } else { "Compress" };
                     start_text = match todo {
-                        0 => "Nothing to compress".into(),
-                        1 => "Compress 1 file".into(),
-                        n => format!("Compress {n} files"),
+                        0 => format!("Nothing to {}", verb.to_lowercase()),
+                        1 => format!("{verb} 1 file"),
+                        n => format!("{verb} {n} files"),
                     };
                     if todo == 0 {
                         can_start = false;
@@ -1642,6 +1645,10 @@ pub fn dev_hooks(ui: &AppWindow) {
             "wav" => 4,
             _ => 0,
         });
+    }
+    // `NERIA_COMPRESS_TRIM_SILENCE`: Cut the silence at the start and end.
+    if std::env::var_os("NERIA_COMPRESS_TRIM_SILENCE").is_some() {
+        c.set_trim_silence(true);
     }
     // `NERIA_COMPRESS_ALBUM`: several evened out as an album.
     if std::env::var_os("NERIA_COMPRESS_ALBUM").is_some() {

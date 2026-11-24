@@ -48,6 +48,13 @@ export component ClipsDialog inherits Dialog {
             label: "Add all chapters";
             clicked => { ClipList.add-chapters(); }
         }
+        GhostButton {
+            horizontal-stretch: 0;
+            icon: "\u{E77F}";
+            text: Screen.compact ? "" : "Paste times…";
+            label: "Add clips from copied times, like 0:00 Intro on each line";
+            clicked => { ClipList.paste-times(); }
+        }
     }
 
     if root.count == 0: Hint {

@@ -92,6 +92,28 @@ pub fn add_chapters(ui: &AppWindow) {
     show(ui);
 }
 
+/// Paste times…: the clipboard's timestamps ("0:00 Intro, 3:12 …") as named clips.
+pub fn paste_times(ui: &AppWindow) {
+    let text = arboard::Clipboard::new().and_then(|mut c| c.get_text()).unwrap_or_default();
+    let dur = ui.get_clip_duration() as f64;
+    let parts = neria_core::tracks::parts_from_text(&text, dur);
+    if parts.is_empty() {
+        crate::show_toast(ui, "Copy a list of times first (like \"0:00 Intro\" on each line), then Paste times.");
+        return;
+    }
+    let n = parts.len();
+    LIST.with(|l| {
+        let mut l = l.borrow_mut();
+        for (name, start, end) in parts {
+            if !l.iter().any(|x| (x.start - start).abs() < 0.05 && (x.end - end).abs() < 0.05) {
+                l.push(Clip { name, start, end });
+            }
+        }
+    });
+    show(ui);
+    crate::show_toast(ui, &format!("{n} parts added from the copied times"));
+}
+
 pub fn remove(ui: &AppWindow, i: usize) {
     LIST.with(|l| {
         let mut l = l.borrow_mut();
@@ -151,6 +173,21 @@ pub fn install(ui: &AppWindow) {
         let w = w.clone();
         move || add_chapters(&w.unwrap())
     });
+    g.on_paste_times({
+        let w = w.clone();
+        move || paste_times(&w.unwrap())
+    });
+    // `NERIA_CLIP_PASTE_TIMES`: these times (`|` between lines) on the clipboard, then Paste
+    // times… with the clip list open, once a file is open (with `NERIA_OPEN`).
+    if let Ok(times) = std::env::var("NERIA_CLIP_PASTE_TIMES") {
+        let w = w.clone();
+        slint::Timer::single_shot(std::time::Duration::from_secs(4), move || {
+            let Some(ui) = w.upgrade() else { return };
+            let _ = arboard::Clipboard::new().and_then(|mut c| c.set_text(times.replace('|', "\n")));
+            ui.global::<ClipList>().set_open(true);
+            paste_times(&ui);
+        });
+    }
     g.on_remove({
         let w = w.clone();
         move |i| remove(&w.unwrap(), i.max(0) as usize)

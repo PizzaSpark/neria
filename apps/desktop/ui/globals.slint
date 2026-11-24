@@ -440,6 +440,8 @@ export global ClipList {
     in property <string> note;
     callback add(); // the current selection (A on the page)
     callback add-chapters();
+    // Paste times…: the clipboard's "0:00 Intro / 3:12 …" lines as named clips.
+    callback paste-times();
     callback remove(int);
     callback rename(int, string);
     callback move(int, int); // from, to
@@ -621,6 +623,8 @@ export global Compress {
     in property <bool> sound-mode;
     // Several files evened out: 0 each the same, 1 as an album (one gain for all).
     in-out property <int> album;
+    // Sound files: cut the silence at the start and end.
+    in-out property <bool> trim-silence;
 
     // ── Goal ──
     // 0 Discord, 1 email, 2 WhatsApp, 3 smaller still sharp, 4 as small as possible, 5 custom
@@ -645,8 +649,6 @@ export global Compress {
     in property <string> advanced-line; // "Plays everywhere · graphics card · 720p · sound 96 kbps"
     // 0 plays everywhere (H.264), 1 smaller (H.265), 2 smallest (AV1)
     in-out property <int> format;
-    // A sound file on its own: 0 M4A (AAC), 1 MP3, 2 Opus
-    in-out property <int> sound-format;
     in property <string> format-warning; // "May not play in Discord on some phones."
     in-out property <bool> use-gpu: true;
     in property <bool> gpu-available;
