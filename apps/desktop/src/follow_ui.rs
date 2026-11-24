@@ -185,7 +185,10 @@ fn run(ui: &AppWindow, url: String, queue: &Queue, settings: &Arc<Mutex<Settings
 
 fn removed_text(name: &str, n: usize) -> String {
     let songs = if n == 1 { "1 song".to_string() } else { format!("{n} songs") };
-    format!("{songs} in {name} {} taken off it on Spotify. Review them in Settings → Following.", if n == 1 { "was" } else { "were" })
+    format!(
+        "{songs} in {name} {} taken off it on Spotify. Review them in Settings → Following.",
+        if n == 1 { "was" } else { "were" }
+    )
 }
 
 fn tell_removed(ui: &AppWindow, name: &str, n: usize) {

@@ -60,7 +60,8 @@ pub fn highlight(query: &str, name: &str) -> Option<(usize, usize)> {
     if lower.len() != name.len() {
         return None;
     }
-    let starts = lower.match_indices(&part).find(|(i, _)| *i == 0 || !lower[..*i].ends_with(|c: char| c.is_alphanumeric()));
+    let starts =
+        lower.match_indices(&part).find(|(i, _)| *i == 0 || !lower[..*i].ends_with(|c: char| c.is_alphanumeric()));
     let (i, _) = starts.or_else(|| lower.match_indices(&part).next())?;
     Some((i, i + part.len()))
 }

@@ -298,6 +298,7 @@ fn fill_round(px: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, c: Color)
 }
 
 /// Draw `text` with `font` at (x, baseline), `alpha` over it. Returns the width.
+#[allow(clippy::too_many_arguments)]
 fn draw_text(
     px: &mut Pixmap,
     fonts: &Fonts,
@@ -479,6 +480,7 @@ fn badge_tag(b: &str) -> Option<&'static str> {
 }
 
 /// The parts of a message as items: tags, the name, then the text and pictures.
+#[allow(clippy::too_many_arguments)]
 fn items_of(
     fonts: &Fonts,
     pics: &mut Pictures,
@@ -733,8 +735,7 @@ pub fn panel(
     // Over the picture: at most 8 lines, each gone 14 s after it was said (fading in its
     // last 2 s), so the picture stays the point.
     let (max_n, life) = if look.overlay { (8usize, 14.0) } else { (usize::MAX, f64::MAX) };
-    let mut n = 0;
-    for m in shown.iter().rev() {
+    for (n, m) in shown.iter().rev().enumerate() {
         if n >= max_n || y <= 0.0 {
             break;
         }
@@ -748,7 +749,6 @@ pub fn panel(
         let paint = PixmapPaint { opacity: fade, ..PixmapPaint::default() };
         px.draw_pixmap(pad as i32, y.round() as i32, row.as_ref(), &paint, Transform::identity(), None);
         y -= gap;
-        n += 1;
     }
     px
 }

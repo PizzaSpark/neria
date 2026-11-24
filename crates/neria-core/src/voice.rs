@@ -307,12 +307,12 @@ impl Spotter {
         let mut out = Vec::new();
         while self.kws.is_ready(&self.stream) {
             self.kws.decode(&self.stream);
-            if let Some(r) = self.kws.get_result(&self.stream) {
-                if !r.keyword.is_empty() {
-                    out.push(Heard { phrase: r.keyword.replace('_', " "), at: self.fed });
-                    // Start fresh so one saying fires once.
-                    self.kws.reset(&self.stream);
-                }
+            if let Some(r) = self.kws.get_result(&self.stream)
+                && !r.keyword.is_empty()
+            {
+                out.push(Heard { phrase: r.keyword.replace('_', " "), at: self.fed });
+                // Start fresh so one saying fires once.
+                self.kws.reset(&self.stream);
             }
         }
         self.busy += t0.elapsed();
@@ -327,7 +327,9 @@ impl Spotter {
 
 /// 48 kHz stereo 16-bit → mono -1..1 (the spotter brings it to 16 kHz itself).
 pub fn mono(pcm: &[u8]) -> Vec<f32> {
-    pcm.chunks_exact(4)
+    pcm.as_chunks::<4>()
+        .0
+        .iter()
         .map(|f| {
             let l = i16::from_le_bytes([f[0], f[1]]) as f32;
             let r = i16::from_le_bytes([f[2], f[3]]) as f32;
@@ -383,7 +385,7 @@ pub fn read_file(path: &Path) -> Result<Vec<f32>> {
     let mut raw = Vec::new();
     child.stdout.take().unwrap().read_to_end(&mut raw)?;
     child.wait()?;
-    Ok(raw.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
+    Ok(raw.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
 }
 
 /// Settings → Voice, saved in `settings.json`.
@@ -647,7 +649,7 @@ pub fn try_spellings(
             (n > 0).then(|| (s.clone(), n))
         })
         .collect();
-    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out.sort_by_key(|x| std::cmp::Reverse(x.1));
     out
 }
 

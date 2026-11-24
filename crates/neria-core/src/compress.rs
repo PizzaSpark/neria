@@ -673,7 +673,11 @@ fn plan_file(info: &FileInfo, opts: &Options, encoders: &Encoders) -> Result<Pla
         if info.has_audio {
             return plan_sound(info, opts);
         }
-        bail!(if info.has_video { "This video has no sound." } else { "This file has no picture or sound to compress." });
+        bail!(if info.has_video {
+            "This video has no sound."
+        } else {
+            "This file has no picture or sound to compress."
+        });
     }
     if info.duration <= 0.0 {
         bail!("Can't tell how long this video is.");
@@ -887,8 +891,8 @@ fn plan_sound(info: &FileInfo, opts: &Options) -> Result<Plan> {
             parts: Vec::new(),
             even: None,
             measured: None,
-        gain: None,
-        trim_silence: false,
+            gain: None,
+            trim_silence: false,
         });
     }
     let (kbps, target_bytes) = match opts.target {
@@ -1710,7 +1714,11 @@ mod tests {
         assert_eq!(f.matches("silenceremove").count(), 2);
         assert_eq!(f.matches("areverse").count(), 2);
         // A video's sound keeps its time with the picture: never cut.
-        assert!(!plan(&info(), &Options { trim_silence: true, ..opts(Target::Quality(0.7)) }, &Encoders::default()).unwrap().trim_silence);
+        assert!(
+            !plan(&info(), &Options { trim_silence: true, ..opts(Target::Quality(0.7)) }, &Encoders::default())
+                .unwrap()
+                .trim_silence
+        );
     }
 
     #[test]
@@ -1720,7 +1728,12 @@ mod tests {
         let g = album_gain(&[(-8.0, 200.0), (-18.0, 200.0)], -14.0).unwrap();
         assert!((g + 3.4).abs() < 0.1, "{g}");
         assert_eq!(album_gain(&[], -14.0), None);
-        let mut p = plan(&song(), &Options { gain: Some(g), even: Some(-14.0), ..opts(Target::Quality(0.7)) }, &Encoders::default()).unwrap();
+        let mut p = plan(
+            &song(),
+            &Options { gain: Some(g), even: Some(-14.0), ..opts(Target::Quality(0.7)) },
+            &Encoders::default(),
+        )
+        .unwrap();
         assert_eq!(p.even, None);
         p.measured = None;
         assert_eq!(p.audio_filter(60.0).as_deref(), Some("volume=-3.4dB,aresample=48000"));
@@ -1728,11 +1741,8 @@ mod tests {
 
     #[test]
     fn a_videos_sound_in_each_format() {
-        let opts_for = |sc: SoundCodec| Options {
-            sound_codec: Some(sc),
-            sound_only: true,
-            ..opts(Goal::Format(sc).target())
-        };
+        let opts_for =
+            |sc: SoundCodec| Options { sound_codec: Some(sc), sound_only: true, ..opts(Goal::Format(sc).target()) };
         // Plays everywhere: AAC that sounds the same, the picture left out.
         let p = plan(&info(), &opts_for(SoundCodec::Aac), &Encoders::default()).unwrap();
         assert_eq!((p.sound, p.audio_kbps, p.ext()), (Some(SoundCodec::Aac), Some(160), "m4a"));

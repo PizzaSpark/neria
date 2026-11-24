@@ -298,7 +298,13 @@ fn starters() -> Store {
     let items = vec![
         Workflow { id: 1, name: "Discord-ready".into(), ..Workflow::default() },
         Workflow { id: 2, name: "Sound only".into(), change: Change::Sound(SoundAs::Mp3), ..Workflow::default() },
-        Workflow { id: 3, name: "Into a folder".into(), change: Change::Keep, put: Put::Folder(into), ..Workflow::default() },
+        Workflow {
+            id: 3,
+            name: "Into a folder".into(),
+            change: Change::Keep,
+            put: Put::Folder(into),
+            ..Workflow::default()
+        },
     ];
     Store { next_id: 4, items }
 }
@@ -354,7 +360,7 @@ pub fn save(mut wf: Workflow) -> u64 {
         };
         if folder_changed {
             wf.seen = match &wf.when {
-                When::Folder(dir) => waiting_in(dir).iter().map(|p| seen_key(p)).flatten().collect(),
+                When::Folder(dir) => waiting_in(dir).iter().filter_map(|p| seen_key(p)).collect(),
                 _ => Vec::new(),
             };
         } else if let Some(o) = &old {
@@ -550,12 +556,11 @@ pub fn run(
             let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "gif".into());
             let out = clip::unique_path(dir, &stem, spec.kind.ext());
             let stage = "Making a GIF…";
-            if let Err(e) = crate::sound::run_ffmpeg(
-                &gif::build_args(file, 0.0, 0.0, &spec, &out),
-                info.duration,
-                cancel,
-                |f| on(f, stage),
-            ) {
+            if let Err(e) =
+                crate::sound::run_ffmpeg(&gif::build_args(file, 0.0, 0.0, &spec, &out), info.duration, cancel, |f| {
+                    on(f, stage)
+                })
+            {
                 let _ = std::fs::remove_file(&out);
                 return Err(e);
             }
@@ -621,15 +626,8 @@ fn place(
     done_dir: Option<&Path>,
     mut on: impl FnMut(f32, &str),
 ) -> Result<Done> {
-    let mut done = Done {
-        file: file.to_path_buf(),
-        made: made.is_some(),
-        replaced: false,
-        moved: None,
-        said,
-        bytes: 0,
-        kind,
-    };
+    let mut done =
+        Done { file: file.to_path_buf(), made: made.is_some(), replaced: false, moved: None, said, bytes: 0, kind };
     match made {
         // Nothing new: the original may still be moved.
         None => {
@@ -838,10 +836,16 @@ mod tests {
             Workflow { change: Change::Keep, put: Put::Folder(PathBuf::from(r"D:\Clips")), ..Workflow::default() };
         assert_eq!(moved.what(), r"Moved to D:\Clips");
         let rep = Workflow { change: Change::Sound(SoundAs::Mp3), put: Put::Replace, when: When::Every, ..wf };
-        assert_eq!(rep.sentence(), "Every download: its sound as MP3, in place of the original. The original goes to the Recycle Bin.");
         assert_eq!(
-            Workflow { when: When::Sites(vec!["TikTok".into(), "Instagram".into(), "X".into()]), ..Workflow::default() }
-                .when_label(),
+            rep.sentence(),
+            "Every download: its sound as MP3, in place of the original. The original goes to the Recycle Bin."
+        );
+        assert_eq!(
+            Workflow {
+                when: When::Sites(vec!["TikTok".into(), "Instagram".into(), "X".into()]),
+                ..Workflow::default()
+            }
+            .when_label(),
             "TikTok, Instagram and X links"
         );
     }

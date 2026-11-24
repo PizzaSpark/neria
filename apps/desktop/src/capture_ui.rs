@@ -138,7 +138,7 @@ fn what() -> String {
 
 /// "1 min", "30 s", "5 min".
 fn keep_text(secs: u32) -> String {
-    if secs >= 60 && secs % 60 == 0 { format!("{} min", secs / 60) } else { format!("{secs} s") }
+    if secs >= 60 && secs.is_multiple_of(60) { format!("{} min", secs / 60) } else { format!("{secs} s") }
 }
 
 /// The plain status, also the tray's tooltip: "Keeping the last 1 min of VALORANT".
@@ -423,12 +423,12 @@ fn begin(ui: &AppWindow) {
         (source, p.what(), game)
     };
     ST.with(|s| s.borrow_mut().target = Some((label.clone(), game.clone())));
-    if let Source::Window(exe) = &source {
-        if !capture_pick::window_open(exe) {
-            set_phase(Phase::Waiting);
-            show(ui);
-            return;
-        }
+    if let Source::Window(exe) = &source
+        && !capture_pick::window_open(exe)
+    {
+        set_phase(Phase::Waiting);
+        show(ui);
+        return;
     }
     set_phase(Phase::Starting);
     show(ui);
@@ -511,11 +511,11 @@ fn tick(ui: &AppWindow) {
         s.ticks
     });
     // The page's list of windows follows what opens and closes.
-    if ui.get_page() == 3 && n % 3 == 0 && !crate::background_ui::in_tray() {
+    if ui.get_page() == 3 && n.is_multiple_of(3) && !crate::background_ui::in_tray() {
         refresh_sources(ui);
     }
     // The apps playing sound: levels for the track list, and new ones to take in.
-    if (ui.get_page() == 3 && !crate::background_ui::in_tray()) || (on() && n % 3 == 0) {
+    if (ui.get_page() == 3 && !crate::background_ui::in_tray()) || (on() && n.is_multiple_of(3)) {
         ask_apps(ui);
     }
     if !on() {
@@ -523,14 +523,16 @@ fn tick(ui: &AppWindow) {
     }
     let p = prefs();
     // Automatic: another game came to the front.
-    if p.automatic() && phase() == Phase::On && n % 2 == 0 {
-        if let Some(g) = capture_pick::front().game {
-            let now = ST.with(|s| s.borrow().target.as_ref().and_then(|t| t.1.clone()));
-            if !now.is_some_and(|e| e.eq_ignore_ascii_case(&g.exe)) {
-                halt();
-                begin(ui);
-                return;
-            }
+    if p.automatic()
+        && phase() == Phase::On
+        && n.is_multiple_of(2)
+        && let Some(g) = capture_pick::front().game
+    {
+        let now = ST.with(|s| s.borrow().target.as_ref().and_then(|t| t.1.clone()));
+        if !now.is_some_and(|e| e.eq_ignore_ascii_case(&g.exe)) {
+            halt();
+            begin(ui);
+            return;
         }
     }
     match phase() {
@@ -936,15 +938,16 @@ fn refresh_sources(ui: &AppWindow) {
             });
             // Nothing picked yet: the main screen, by name.
             let p = prefs();
-            if p.kind == "monitor" && p.monitor.is_empty() {
-                if let Some(m) = ST.with(|s| s.borrow().monitors.iter().find(|m| m.main).cloned()) {
-                    save_prefs(|p| {
-                        p.monitor = m.name.clone();
-                        p.monitor_index = m.index;
-                        p.label = m.name.clone();
-                    });
-                    show(&ui);
-                }
+            if p.kind == "monitor"
+                && p.monitor.is_empty()
+                && let Some(m) = ST.with(|s| s.borrow().monitors.iter().find(|m| m.main).cloned())
+            {
+                save_prefs(|p| {
+                    p.monitor = m.name.clone();
+                    p.monitor_index = m.index;
+                    p.label = m.name.clone();
+                });
+                show(&ui);
             }
             show_sources(&ui);
         });
@@ -967,7 +970,7 @@ fn show_sources(ui: &AppWindow) {
             _ => "The game in front, else the screen you're using".into(),
         },
     });
-    let picked_exe = (p.kind == "window").then(|| p.exe.clone()).unwrap_or_default();
+    let picked_exe = if p.kind == "window" { p.exe.clone() } else { Default::default() };
     for g in &programs {
         if g.game || all || g.exe.eq_ignore_ascii_case(&picked_exe) {
             rows.push(CaptureSource {
@@ -1016,16 +1019,16 @@ fn pick(ui: &AppWindow, id: &str) {
             p.kind = "window".into();
             p.exe = exe.to_string();
         });
-    } else if let Some(name) = id.strip_prefix("m:") {
-        if let Some(m) = monitors.iter().find(|m| m.name == name) {
-            save_prefs(|p| {
-                p.kind = "monitor".into();
-                p.exe.clear();
-                p.monitor = m.name.clone();
-                p.monitor_index = m.index;
-                p.label = m.name.clone();
-            });
-        }
+    } else if let Some(name) = id.strip_prefix("m:")
+        && let Some(m) = monitors.iter().find(|m| m.name == name)
+    {
+        save_prefs(|p| {
+            p.kind = "monitor".into();
+            p.exe.clear();
+            p.monitor = m.name.clone();
+            p.monitor_index = m.index;
+            p.label = m.name.clone();
+        });
     }
     show_sources(ui);
     if prefs() != before && on() {
@@ -1254,10 +1257,10 @@ pub fn toast(ui: &AppWindow, tag: &str, text: &str, undo: bool, file: Option<&Pa
     });
     let weak = ui.as_weak();
     Timer::single_shot(Duration::from_secs(8), move || {
-        if ST.with(|s| s.borrow().toast_gen) == n {
-            if let Some(ui) = weak.upgrade() {
-                hide_toast(&ui);
-            }
+        if ST.with(|s| s.borrow().toast_gen) == n
+            && let Some(ui) = weak.upgrade()
+        {
+            hide_toast(&ui);
         }
     });
 }

@@ -11,14 +11,14 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use neria_core::fingerprint::{self, Verdict};
 use neria_core::download::DownloadRequest;
+use neria_core::fingerprint::{self, Verdict};
 use neria_core::music::{self, MusicJob};
 use neria_core::queue::Queue;
 use neria_core::settings::Settings;
 use neria_core::spotify::{self, Track};
-use neria_core::{fmt, lyrics};
 use neria_core::ytmusic::{self, Candidate};
+use neria_core::{fmt, lyrics};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::{AppWindow, MatchItem, show_toast};

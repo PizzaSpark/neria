@@ -83,7 +83,11 @@ fn spotify_check(url: &str, try_new: bool, mut settings: Settings) -> anyhow::Re
     // Synced before: the folder's list, plus a song that has since left the playlist.
     let (dir, _) = music::prepare(&col, &settings)?;
     let mut m = music::read_manifest(&dir).expect("manifest written");
-    m.tracks.push(music::ManifestTrack { id: "gone".into(), stem: "Someone - Gone".into(), title: "Someone - Gone".into() });
+    m.tracks.push(music::ManifestTrack {
+        id: "gone".into(),
+        stem: "Someone - Gone".into(),
+        title: "Someone - Gone".into(),
+    });
     music::write_manifest(&dir, &m)?;
     std::fs::write(dir.join("Someone - Gone.mp3"), b"not really a song")?;
     let s = music::sync_status(&settings, &col).expect("synced before");
@@ -98,7 +102,12 @@ fn spotify_check(url: &str, try_new: bool, mut settings: Settings) -> anyhow::Re
     });
     let n = follow::check(&list, &settings, &queue)?;
     let f = follow::find(&list).expect("followed");
-    println!("check found {n} new (expected 1: {} - {}), {} removed (expected 1)", last.main_artist(), last.title, f.removed.len());
+    println!(
+        "check found {n} new (expected 1: {} - {}), {} removed (expected 1)",
+        last.main_artist(),
+        last.title,
+        f.removed.len()
+    );
     let mut left = n;
     while left > 0 {
         let Ok(s) = rx.recv_timeout(Duration::from_secs(300)) else { anyhow::bail!("timed out") };

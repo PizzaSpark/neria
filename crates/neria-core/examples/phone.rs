@@ -41,7 +41,9 @@ fn main() -> Result<()> {
                 continue;
             }
             if a.starts_with("--") {
-                skip = ["--clip", "--shot", "--keep", "--out", "--volume", "--seconds", "--tap", "--key", "--screen-on"].contains(&a.as_str());
+                skip =
+                    ["--clip", "--shot", "--keep", "--out", "--volume", "--seconds", "--tap", "--key", "--screen-on"]
+                        .contains(&a.as_str());
                 continue;
             }
             out.push(a);
@@ -87,7 +89,8 @@ fn main() -> Result<()> {
                 // A paired phone reconnects a few seconds after the server starts.
                 let mut ready = Vec::new();
                 for _ in 0..20 {
-                    ready = phone::devices()?.into_iter().filter(|d| d.state == phone::State::Ready).collect::<Vec<_>>();
+                    ready =
+                        phone::devices()?.into_iter().filter(|d| d.state == phone::State::Ready).collect::<Vec<_>>();
                     if !ready.is_empty() {
                         break;
                     }
@@ -96,7 +99,10 @@ fn main() -> Result<()> {
                 match ready.as_slice() {
                     [one] => Ok(one.serial.clone()),
                     [] => bail!("no phone connected (try `devices` or `qr`)"),
-                    _ => bail!("several phones: name one ({})", ready.iter().map(|d| d.serial.as_str()).collect::<Vec<_>>().join(", ")),
+                    _ => bail!(
+                        "several phones: name one ({})",
+                        ready.iter().map(|d| d.serial.as_str()).collect::<Vec<_>>().join(", ")
+                    ),
                 }
             }
             Some(s) => Ok(s.to_string()),
@@ -119,7 +125,9 @@ fn main() -> Result<()> {
                     d.serial,
                     d.state,
                     if d.wifi { "Wi-Fi" } else { "USB" },
-                    info.as_ref().map(|i| format!("{} · Android {} (sdk {})", i.name, i.android, i.sdk)).unwrap_or(d.model.clone()),
+                    info.as_ref()
+                        .map(|i| format!("{} · Android {} (sdk {})", i.name, i.android, i.sdk))
+                        .unwrap_or(d.model.clone()),
                     phone::problem(d).map(|p| format!("  → {p}")).unwrap_or_default()
                 );
                 if let Some(i) = info {
@@ -136,7 +144,9 @@ fn main() -> Result<()> {
         "qr" => {
             let p = phone::Pairing::new();
             print_qr(&p.qr_text())?;
-            println!("On the phone: Developer options → Wireless debugging → Pair device with QR code, then scan this.");
+            println!(
+                "On the phone: Developer options → Wireless debugging → Pair device with QR code, then scan this."
+            );
             println!("(looking for {} on the network…)", p.name);
             let began = Instant::now();
             let mut said_on = false;
@@ -215,8 +225,13 @@ fn main() -> Result<()> {
                 None
             };
             let keep: u32 = val("--keep").and_then(|s| s.parse().ok()).unwrap_or(60);
-            let buffer = if sound_only || has("--no-buffer") { None } else { Some(PhoneBuffer::start(&session, keep)?) };
-            let name = format!("{} {}", session.name, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs());
+            let buffer =
+                if sound_only || has("--no-buffer") { None } else { Some(PhoneBuffer::start(&session, keep)?) };
+            let name = format!(
+                "{} {}",
+                session.name,
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs()
+            );
             let rec = if has("--record") { Some(Recording::start(&session, &out_dir, &name)?) } else { None };
             let clip = val("--clip").and_then(|c| {
                 let (s, t) = c.split_once('@')?;
@@ -246,48 +261,50 @@ fn main() -> Result<()> {
             let mut last_frames = 0u64;
             while began.elapsed() < Duration::from_secs(secs) && session.running() {
                 let t = began.elapsed().as_secs();
-                if let (Some((s, at)), false) = (clip, done.0) {
-                    if t >= at {
-                        done.0 = true;
-                        let b = buffer.as_ref().unwrap();
-                        match b.save(s, &out_dir) {
-                            Ok(f) => println!("clipped the last {s} s → {} ({} KB)", f.display(), f.metadata()?.len() / 1024),
-                            Err(e) => println!("clip failed: {e}"),
+                if let (Some((s, at)), false) = (clip, done.0)
+                    && t >= at
+                {
+                    done.0 = true;
+                    let b = buffer.as_ref().unwrap();
+                    match b.save(s, &out_dir) {
+                        Ok(f) => {
+                            println!("clipped the last {s} s → {} ({} KB)", f.display(), f.metadata()?.len() / 1024)
                         }
+                        Err(e) => println!("clip failed: {e}"),
                     }
                 }
-                if let (Some(at), false) = (shot, done.1) {
-                    if t >= at {
-                        done.1 = true;
-                        let f = out_dir.join(format!("{name}.png"));
-                        std::fs::create_dir_all(&out_dir)?;
-                        match session.screenshot(&f) {
-                            Ok(()) => println!("screenshot → {}", f.display()),
-                            Err(e) => println!("screenshot failed: {e}"),
-                        }
+                if let (Some(at), false) = (shot, done.1)
+                    && t >= at
+                {
+                    done.1 = true;
+                    let f = out_dir.join(format!("{name}.png"));
+                    std::fs::create_dir_all(&out_dir)?;
+                    match session.screenshot(&f) {
+                        Ok(()) => println!("screenshot → {}", f.display()),
+                        Err(e) => println!("screenshot failed: {e}"),
                     }
                 }
-                if let (Some((x, y, at)), false) = (tap, done.2) {
-                    if t >= at {
-                        done.2 = true;
-                        session.touch(Touch::Down, x, y);
-                        session.touch(Touch::Up, x, y);
-                        println!("tapped {x},{y}");
-                    }
+                if let (Some((x, y, at)), false) = (tap, done.2)
+                    && t >= at
+                {
+                    done.2 = true;
+                    session.touch(Touch::Down, x, y);
+                    session.touch(Touch::Up, x, y);
+                    println!("tapped {x},{y}");
                 }
-                if let (Some((code, at)), false) = (key, done.3) {
-                    if t >= at {
-                        done.3 = true;
-                        session.press(code);
-                        println!("pressed key {code}");
-                    }
+                if let (Some((code, at)), false) = (key, done.3)
+                    && t >= at
+                {
+                    done.3 = true;
+                    session.press(code);
+                    println!("pressed key {code}");
                 }
-                if let (Some(at), false) = (screen_on, screen_done) {
-                    if t >= at {
-                        screen_done = true;
-                        session.send(phone::Control::ScreenPower(true));
-                        println!("asked the phone to turn its screen on");
-                    }
+                if let (Some(at), false) = (screen_on, screen_done)
+                    && t >= at
+                {
+                    screen_done = true;
+                    session.send(phone::Control::ScreenPower(true));
+                    println!("asked the phone to turn its screen on");
                 }
                 if last.elapsed() >= Duration::from_secs(2) {
                     last = Instant::now();
@@ -306,7 +323,11 @@ fn main() -> Result<()> {
                         l.audio_packets,
                         session.video.as_ref().map(|v| v.readers()).unwrap_or(0),
                         session.audio.as_ref().map(|v| v.readers()).unwrap_or(0),
-                        buffer.as_ref().filter(|b| !b.running()).map(|b| format!("  buffer stopped: {}", b.problem())).unwrap_or_default()
+                        buffer
+                            .as_ref()
+                            .filter(|b| !b.running())
+                            .map(|b| format!("  buffer stopped: {}", b.problem()))
+                            .unwrap_or_default()
                     );
                 }
                 std::thread::sleep(Duration::from_millis(100));
@@ -364,7 +385,8 @@ fn main() -> Result<()> {
 /// A QR code in the terminal: two rows per line with half blocks, a quiet zone around it.
 fn print_qr(text: &str) -> Result<()> {
     let (w, m) = phone::qr(text)?;
-    let dark = |x: isize, y: isize| x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < w && m[y as usize * w + x as usize];
+    let dark =
+        |x: isize, y: isize| x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < w && m[y as usize * w + x as usize];
     let q = 2isize;
     let mut y = -q;
     while y < w as isize + q {
@@ -390,7 +412,18 @@ fn fake_h264() -> Result<Vec<u8>> {
     let f = std::env::temp_dir().join("neria-fake-phone.h264");
     if !f.is_file() {
         let st = neria_core::proc::command(neria_core::paths::tool("ffmpeg"))
-            .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=540x1200:rate=30", "-t", "6"])
+            .args([
+                "-hide_banner",
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=540x1200:rate=30",
+                "-t",
+                "6",
+            ])
             .args(["-c:v", "libx264", "-preset", "veryfast", "-bf", "0", "-g", "60", "-pix_fmt", "yuv420p"])
             .args(["-x264-params", "aud=1", "-f", "h264"])
             .arg(&f)

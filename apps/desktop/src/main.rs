@@ -17,7 +17,6 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 mod background_ui;
 mod bulk_ui;
 mod capture_ui;
-mod phone_ui;
 mod chat_ui;
 mod clipper;
 mod clips_ui;
@@ -28,13 +27,13 @@ mod extras_ui;
 mod follow_ui;
 mod gif_ui;
 mod library_ui;
-mod palette_ui;
-mod tags_ui;
-mod organize_ui;
 mod live_ui;
 mod match_ui;
 mod names_ui;
 mod order_ui;
+mod organize_ui;
+mod palette_ui;
+mod phone_ui;
 mod picture_ui;
 mod present_ui;
 mod recent_ui;
@@ -43,11 +42,12 @@ mod signin;
 mod signin_ui;
 mod sound_ui;
 mod spotify_ui;
+mod tags_ui;
 mod timeline_ui;
+mod tool_ui;
 mod transcribe_ui;
 mod updates_ui;
 mod voice_ui;
-mod tool_ui;
 mod workflow_ui;
 
 slint::include_modules!();
@@ -1245,7 +1245,8 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                 ui.global::<Music>().invoke_add_lyrics();
             }
             if let Ok(section) = std::env::var("NERIA_SETTINGS") {
-                let names = ["download", "following", "spotify", "network", "general", "voice", "about", "workflows", "tools"];
+                let names =
+                    ["download", "following", "spotify", "network", "general", "voice", "about", "workflows", "tools"];
                 let section = if section.eq_ignore_ascii_case("appearance") { "general".into() } else { section };
                 if let Some(i) = names.iter().position(|n| section.eq_ignore_ascii_case(n)) {
                     ui.set_settings_section(i as i32);
@@ -2192,7 +2193,10 @@ fn main() -> anyhow::Result<()> {
     // hang forever (after mirroring a phone: one thread left, the window still up, the exe
     // locked); ending the process skips those calls.
     unsafe {
-        let _ = windows::Win32::System::Threading::TerminateProcess(windows::Win32::System::Threading::GetCurrentProcess(), 0);
+        let _ = windows::Win32::System::Threading::TerminateProcess(
+            windows::Win32::System::Threading::GetCurrentProcess(),
+            0,
+        );
     }
     Ok(())
 }

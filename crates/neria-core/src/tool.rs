@@ -220,7 +220,9 @@ pub fn fill(tool: &Tool, file: &Path, out: &Path) -> (PathBuf, Vec<String>) {
 /// The command as a person would type it, pieces with spaces quoted (the editor's It'll
 /// run, the report).
 pub fn shown(program: &Path, args: &[String]) -> String {
-    let q = |s: &str| if s.is_empty() || s.contains([' ', '\t', '&', '(', ')']) { format!("\"{s}\"") } else { s.to_string() };
+    let q = |s: &str| {
+        if s.is_empty() || s.contains([' ', '\t', '&', '(', ')']) { format!("\"{s}\"") } else { s.to_string() }
+    };
     let mut out = q(&program.display().to_string());
     for a in args {
         out.push(' ');
@@ -323,9 +325,12 @@ pub fn run(
     };
     // Both streams, line by line (a `\r` progress line counts as a line too).
     let (tx, rx) = mpsc::channel::<String>();
-    for stream in [child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>), child.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>)]
-        .into_iter()
-        .flatten()
+    for stream in [
+        child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+        child.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+    ]
+    .into_iter()
+    .flatten()
     {
         let tx = tx.clone();
         std::thread::spawn(move || {

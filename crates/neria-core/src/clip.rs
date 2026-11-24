@@ -181,7 +181,12 @@ pub fn build_args(req: &ClipRequest, start: f64, measured: Option<&sound::Loudne
             a.extend(["-map".into(), if mix.is_some() { "[aout]".into() } else { "0:a:0?".into() }]);
         }
         if mix.is_some() {
-            a.extend(["-metadata:s:a:0".into(), "title=Everything".into(), "-metadata:s:a:0".into(), "handler_name=Everything".into()]);
+            a.extend([
+                "-metadata:s:a:0".into(),
+                "title=Everything".into(),
+                "-metadata:s:a:0".into(),
+                "handler_name=Everything".into(),
+            ]);
             if req.tracks_apart {
                 for (n, t) in req.tracks.iter().filter(|t| t.on).enumerate() {
                     a.extend(["-map".into(), format!("[k{}]", t.index)]);

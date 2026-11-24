@@ -272,9 +272,7 @@ pub fn plan_songs(col: &Collection, settings: &crate::settings::Settings, dir: &
 pub fn have_song(dir: &Path, prev: Option<&Manifest>, job: &MusicJob) -> bool {
     existing_file(dir, &job.stem).is_some()
         || prev.is_some_and(|m| {
-            m.tracks
-                .iter()
-                .any(|t| !t.id.is_empty() && t.id == job.track.id && existing_file(dir, &t.stem).is_some())
+            m.tracks.iter().any(|t| !t.id.is_empty() && t.id == job.track.id && existing_file(dir, &t.stem).is_some())
         })
 }
 

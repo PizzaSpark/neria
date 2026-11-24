@@ -340,7 +340,7 @@ pub fn duplicates(items: &[Item], here: impl Fn(&Item) -> bool) -> Vec<Vec<u64>>
         .into_iter()
         .filter(|(_, g)| g.len() > 1)
         .map(|(_, mut g)| {
-            g.sort_by(|a, b| b.at.cmp(&a.at));
+            g.sort_by_key(|x| std::cmp::Reverse(x.at));
             g.into_iter().map(|i| i.id).collect()
         })
         .collect()
@@ -353,12 +353,12 @@ pub fn relocate(moves: &[(u64, PathBuf)]) {
             if let Some(it) = items.iter_mut().find(|i| i.id == *id) {
                 if let Some(src) = &it.source {
                     // A source in the same folder moved with it.
-                    if let (Some(from_dir), Some(name)) = (it.file.parent(), src.file_name()) {
-                        if src.parent() == Some(from_dir) {
-                            let moved = to.with_file_name(name);
-                            if moved.is_file() {
-                                it.source = Some(moved);
-                            }
+                    if let (Some(from_dir), Some(name)) = (it.file.parent(), src.file_name())
+                        && src.parent() == Some(from_dir)
+                    {
+                        let moved = to.with_file_name(name);
+                        if moved.is_file() {
+                            it.source = Some(moved);
                         }
                     }
                 }
@@ -678,7 +678,7 @@ pub fn sort(items: &mut [&Item], how: Sort) {
     match how {
         Sort::Newest => items.sort_by(|a, b| b.at.cmp(&a.at).then(b.id.cmp(&a.id))),
         Sort::Oldest => items.sort_by(|a, b| a.at.cmp(&b.at).then(a.id.cmp(&b.id))),
-        Sort::Biggest => items.sort_by(|a, b| b.size.unwrap_or(0).cmp(&a.size.unwrap_or(0))),
+        Sort::Biggest => items.sort_by_key(|i| std::cmp::Reverse(i.size.unwrap_or(0))),
         Sort::Name => items.sort_by_key(|a| a.name().to_lowercase()),
     }
 }
@@ -919,7 +919,10 @@ mod tests {
             key: key.into(),
             ..link(id, "https://open.spotify.com/track/x", Kind::Song, file, id)
         };
-        assert_eq!(duplicates(&[song(7, "Youtube:a", "C:/s1.mp3"), song(8, "Youtube:b", "C:/s2.mp3")], |_| true), vec![vec![8, 7]]);
+        assert_eq!(
+            duplicates(&[song(7, "Youtube:a", "C:/s1.mp3"), song(8, "Youtube:b", "C:/s2.mp3")], |_| true),
+            vec![vec![8, 7]]
+        );
         // One of the two gone: no longer a pair.
         assert!(duplicates(&items, |i| i.file != Path::new("C:/1/a.mp4")).is_empty());
     }
@@ -955,7 +958,10 @@ mod tests {
         assert_eq!(Kind::Song.tab(), Tab::Sound);
         assert_eq!(Kind::ReplayPhone.tab(), Tab::Replays);
         assert_eq!(Kind::Transcript.tab(), Tab::All);
-        let it = Item { site: "YouTube".into(), ..Item::new(Kind::Recording, "D:/v/Day 3 in Tokyo.mp4", "IShowSpeed · Day 3") };
+        let it = Item {
+            site: "YouTube".into(),
+            ..Item::new(Kind::Recording, "D:/v/Day 3 in Tokyo.mp4", "IShowSpeed · Day 3")
+        };
         assert!(matches(&it, "tokyo youtube"));
         assert!(matches(&it, "SPEED"));
         assert!(matches(&it, "recording"));
@@ -986,7 +992,17 @@ mod tests {
     fn attached_files_by_name() {
         let dir = temp("attached");
         let video = dir.join("Talk.mp4");
-        for f in ["Talk.mp4", "Talk.chat.json", "Talk.txt", "Talk.en.srt", "Talk.en-US.vtt", "Talk 2.mp4", "Talk 2.txt", "Talky.srt", "Talk.jpg"] {
+        for f in [
+            "Talk.mp4",
+            "Talk.chat.json",
+            "Talk.txt",
+            "Talk.en.srt",
+            "Talk.en-US.vtt",
+            "Talk 2.mp4",
+            "Talk 2.txt",
+            "Talky.srt",
+            "Talk.jpg",
+        ] {
             std::fs::write(dir.join(f), b"x").unwrap();
         }
         let names: Vec<String> =

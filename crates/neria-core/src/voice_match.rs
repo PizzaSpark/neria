@@ -447,7 +447,9 @@ pub fn read_wav(path: &Path) -> Result<Vec<f32>> {
         if id == b"data" {
             let end = (i + 8 + len).min(b.len());
             return Ok(b[i + 8..end]
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
                 .collect());
         }

@@ -54,10 +54,10 @@ fn vk_of(key: &str) -> Option<u32> {
         return (n <= 9).then_some(0x60 + n);
     }
     let mut c = key.chars();
-    if let (Some(ch), None) = (c.next(), c.next()) {
-        if ch.is_ascii_alphanumeric() {
-            return Some(ch.to_ascii_uppercase() as u32);
-        }
+    if let (Some(ch), None) = (c.next(), c.next())
+        && ch.is_ascii_alphanumeric()
+    {
+        return Some(ch.to_ascii_uppercase() as u32);
     }
     Some(match key {
         "insert" | "ins" => 0x2D,

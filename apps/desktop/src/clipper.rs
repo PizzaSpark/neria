@@ -1173,10 +1173,10 @@ pub fn install(
             let mut c = clipper.borrow_mut();
             // A live stream keeps playing: saving the last bit (its button or "clip that")
             // is fetched from the site, and pausing would leave you behind live.
-            if let Some(mpv) = &c.mpv {
-                if !ui.global::<ClipLive>().get_on() {
-                    let _ = mpv.set_property("pause", "yes");
-                }
+            if let Some(mpv) = &c.mpv
+                && !ui.global::<ClipLive>().get_on()
+            {
+                let _ = mpv.set_property("pause", "yes");
             }
             let clips = crate::clips_ui::clips();
             let input = match c.source.clone() {

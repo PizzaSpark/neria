@@ -58,7 +58,7 @@ fn through_queue(url: &str, args: &[String]) -> anyhow::Result<()> {
         from_start: args.get(1).is_some_and(|m| m == "start"),
         with_earlier: args.get(1).is_some_and(|m| m == "both"),
         // As the app passes it from the link's preview.
-        started_at: opt(&args, "--started").and_then(|v| v.parse().ok()),
+        started_at: opt(args, "--started").and_then(|v| v.parse().ok()),
         ..Default::default()
     });
     let id = queue.add(req);
@@ -72,8 +72,10 @@ fn through_queue(url: &str, args: &[String]) -> anyhow::Result<()> {
         }
     }
     if let Some(r) = queue.report(id) {
-        println!("-- log
-{r}");
+        println!(
+            "-- log
+{r}"
+        );
     }
     println!("-- Stop (recordings running: {})", queue.recording_count());
     queue.stop(id);

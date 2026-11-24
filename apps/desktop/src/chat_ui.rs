@@ -34,6 +34,8 @@ struct Loading {
     done: Option<Result<ChatFile, String>>,
 }
 
+/// What the rows were last drawn for; the same key means nothing to draw again.
+type DrawKey = (i64, u64, i32, String, u32, u32, usize, bool, usize);
 #[derive(Default)]
 struct State {
     url: Option<String>,
@@ -56,7 +58,7 @@ struct State {
     picked: HashSet<String>,
     /// Rows scrolled back from the newest shown.
     back: usize,
-    last_key: Option<(i64, u64, i32, String, u32, u32, usize, bool, usize)>,
+    last_key: Option<DrawKey>,
     fonts: Option<Fonts>,
     pics: Pictures,
     /// Drawn rows: (id, width px, dark) → image and its height in px.

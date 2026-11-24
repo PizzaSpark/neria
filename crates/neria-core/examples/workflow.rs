@@ -63,7 +63,11 @@ fn main() -> anyhow::Result<()> {
             ..Workflow::default()
         };
         let id = workflow::save(wf);
-        println!("watching {} for {secs} s (workflow {id}); left alone: {}", dir.display(), workflow::waiting_in(&dir).len());
+        println!(
+            "watching {} for {secs} s (workflow {id}); left alone: {}",
+            dir.display(),
+            workflow::waiting_in(&dir).len()
+        );
         let mut watcher = workflow::Watcher::default();
         let end = Instant::now() + Duration::from_secs(secs);
         let cancel = AtomicBool::new(false);
@@ -123,8 +127,10 @@ fn main() -> anyhow::Result<()> {
     })
     .inspect_err(|e| {
         if let Some(r) = neria_core::tool::report(e) {
-            println!("--- report ---
-{r}");
+            println!(
+                "--- report ---
+{r}"
+            );
         }
     })?;
     println!(

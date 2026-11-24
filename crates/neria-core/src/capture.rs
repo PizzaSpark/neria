@@ -636,10 +636,10 @@ impl Prefs {
     /// "Everything" is built from the other apps one by one.
     pub fn plan_from(&self, game: Option<(&str, &str)>, playing: &[capture_sound::AppSound]) -> SoundPlan {
         let mut apps: Vec<(String, String)> = Vec::new();
-        if let Some((exe, name)) = game {
-            if !self.is_never(exe) {
-                apps.push((exe.to_string(), name.to_string()));
-            }
+        if let Some((exe, name)) = game
+            && !self.is_never(exe)
+        {
+            apps.push((exe.to_string(), name.to_string()));
         }
         for a in playing {
             if !self.is_never(&a.exe) && !apps.iter().any(|(e, _)| same_exe(e, &a.exe)) {
@@ -1052,10 +1052,10 @@ fn record(
         let _ = c.wait();
     }
     let err = errors.join().unwrap_or_default();
-    if !stopped.load(Ordering::SeqCst) {
-        if let Some(line) = err.lines().rev().find(|l| !l.trim().is_empty()) {
-            bail!("Recording stopped: {}", line.trim());
-        }
+    if !stopped.load(Ordering::SeqCst)
+        && let Some(line) = err.lines().rev().find(|l| !l.trim().is_empty())
+    {
+        bail!("Recording stopped: {}", line.trim());
     }
     Ok(())
 }

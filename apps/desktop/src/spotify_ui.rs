@@ -166,7 +166,11 @@ pub fn enqueue(ui: &AppWindow, url: &str, slot: &PendingSlot, settings: &Setting
                 let jobs: Vec<_> = jobs.into_iter().filter(|j| missing.contains(&j.track.id)).collect();
                 let n = jobs.len();
                 if n > 0 {
-                    queue.add_group(&format!("{} · {n} new", p.collection.name), false, jobs.into_iter().map(DownloadRequest::music));
+                    queue.add_group(
+                        &format!("{} · {n} new", p.collection.name),
+                        false,
+                        jobs.into_iter().map(DownloadRequest::music),
+                    );
                 }
             }
             None => queue.add_group(&p.collection.name, false, jobs.into_iter().map(DownloadRequest::music)),

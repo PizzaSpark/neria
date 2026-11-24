@@ -242,7 +242,9 @@ fn render(win: &PresentWindow) {
             }
             if !p.shown_frame {
                 let t = p.target.as_ref().unwrap();
-                let image = slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(t.tex.0, [w as u32, h as u32].into()).build();
+                let image =
+                    slint::BorrowedOpenGLTextureBuilder::new_gl_2d_rgba_texture(t.tex.0, [w as u32, h as u32].into())
+                        .build();
                 win.set_frame(image);
                 win.set_has_frame(true);
                 win.set_frame_w(dw as i32);

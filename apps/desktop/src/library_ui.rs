@@ -253,7 +253,7 @@ fn thousands(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -393,8 +393,12 @@ fn row_of(s: &mut State, it: &Item) -> LibRow {
         stats: if gone { String::new() } else { stats.join(" · ") }.into(),
         size: it.size.filter(|b| *b > 0 && !gone).map(|b| fmt::mb(b as f64)).unwrap_or_default().into(),
         marks: marks(it).into(),
-        length: if it.kind.is_sound() || it.kind.is_text() { String::new() } else { length.map(fmt::duration).unwrap_or_default() }
-            .into(),
+        length: if it.kind.is_sound() || it.kind.is_text() {
+            String::new()
+        } else {
+            length.map(fmt::duration).unwrap_or_default()
+        }
+        .into(),
         thumb: image_of(s, &it.file),
         sound: it.kind.is_sound() || (library::is_audio_file(&it.file) && it.kind != Kind::Playlist),
         playlist: it.kind == Kind::Playlist,
@@ -539,9 +543,8 @@ fn rebuild(ui: &AppWindow) {
     let how = Sort::from_index(lib.get_sort());
     let site_pick = lib.get_site();
     let selected = lib.get_selected() as u64;
-    let sites_before: Vec<String> = (0..lib.get_sites().row_count())
-        .filter_map(|i| lib.get_sites().row_data(i).map(|s| s.to_string()))
-        .collect();
+    let sites_before: Vec<String> =
+        (0..lib.get_sites().row_count()).filter_map(|i| lib.get_sites().row_data(i).map(|s| s.to_string())).collect();
     let picked_site = sites_before.get(site_pick.max(0) as usize).cloned().filter(|_| site_pick > 0);
     let since = library::since(date, library::now(), local_midnight());
 
@@ -556,9 +559,7 @@ fn rebuild(ui: &AppWindow) {
             .items
             .iter()
             .filter(|i| {
-                !query.is_empty()
-                    || i.kind == Kind::Playlist
-                    || i.file.parent().is_none_or(|p| !playlists.contains(p))
+                !query.is_empty() || i.kind == Kind::Playlist || i.file.parent().is_none_or(|p| !playlists.contains(p))
             })
             .cloned()
             .collect();
@@ -650,7 +651,10 @@ fn rebuild(ui: &AppWindow) {
         // "Nothing from Twitch in the last 7 days."
         let mut words = vec!["Nothing".to_string()];
         if tab != Tab::All {
-            words = vec![format!("No {}", ["", "videos", "sound", "clips", "recordings", "replays", "gone files", "duplicates"][tab as usize])];
+            words = vec![format!(
+                "No {}",
+                ["", "videos", "sound", "clips", "recordings", "replays", "gone files", "duplicates"][tab as usize]
+            )];
         }
         if !query.is_empty() {
             words.push(format!("matches “{query}”"));
@@ -659,7 +663,10 @@ fn rebuild(ui: &AppWindow) {
             words.push(format!("from {p}"));
         }
         if date > 0 {
-            words.push(["", "today", "in the last 7 days", "in the last 30 days", "in the last 12 months"][date as usize].into());
+            words.push(
+                ["", "today", "in the last 7 days", "in the last 30 days", "in the last 12 months"][date as usize]
+                    .into(),
+            );
         }
         let no_match = format!("{}.", words.join(" "));
         (rows, counts, sites, total, gone, empty, detail, want, no_match)
@@ -683,7 +690,8 @@ fn rebuild(ui: &AppWindow) {
     lib.set_total(total.into());
     lib.set_gone(gone as i32);
     lib.set_gone_text(
-        format!("{gone} file{} moved or deleted since they were saved.", if gone == 1 { " was" } else { "s were" }).into(),
+        format!("{gone} file{} moved or deleted since they were saved.", if gone == 1 { " was" } else { "s were" })
+            .into(),
     );
     lib.set_empty(empty);
     lib.set_no_match(no_match.into());
@@ -1135,7 +1143,10 @@ pub(crate) fn act(ui: &AppWindow, id: u64, what: &str) {
         "tool" => crate::tool_ui::open_run(ui, vec![it.file.clone()]),
         "remove" => {
             forget(ui, &[id]);
-            show_toast(ui, if here { "Removed from the Library. The file is still there." } else { "Removed from the Library" });
+            show_toast(
+                ui,
+                if here { "Removed from the Library. The file is still there." } else { "Removed from the Library" },
+            );
         }
         _ => {}
     }
@@ -1178,7 +1189,9 @@ fn repair(ui: &AppWindow, it: &Item) {
             let got = gaps.missed() - left.as_ref().map_or(0.0, |g| g.missed());
             let msg = match result {
                 Ok(left) if left.is_empty() => format!("Got back all {} missed", fmt::duration(gaps.missed())),
-                Ok(_) if got > 0.0 => format!("Got back {} of {} missed", fmt::duration(got), fmt::duration(gaps.missed())),
+                Ok(_) if got > 0.0 => {
+                    format!("Got back {} of {} missed", fmt::duration(got), fmt::duration(gaps.missed()))
+                }
                 Ok(_) => "Fetched the missed bits, but they didn't line up with the recording".to_string(),
                 Err(e) => format!("Couldn't get them back: {e}"),
             };
@@ -1310,10 +1323,13 @@ fn delete(ui: &AppWindow) {
         }
         forget(ui, &gone);
         pick_clear(ui);
-        show_toast(ui, &match failed {
-            0 => format!("Moved {} to the Recycle Bin", gone.len()),
-            n => format!("Moved {} to the Recycle Bin; {n} couldn't be (open somewhere?)", gone.len()),
-        });
+        show_toast(
+            ui,
+            &match failed {
+                0 => format!("Moved {} to the Recycle Bin", gone.len()),
+                n => format!("Moved {} to the Recycle Bin; {n} couldn't be (open somewhere?)", gone.len()),
+            },
+        );
         return;
     }
     let id = lib.get_detail().id as u64;
@@ -1405,8 +1421,7 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         let weak = ui.as_weak();
         move || {
             let ui = weak.unwrap();
-            let ids: Vec<u64> =
-                with(|s| s.items.iter().filter(|i| place(s, i) == Where::Gone).map(|i| i.id).collect());
+            let ids: Vec<u64> = with(|s| s.items.iter().filter(|i| place(s, i) == Where::Gone).map(|i| i.id).collect());
             let n = ids.len();
             forget(&ui, &ids);
             show_toast(&ui, &format!("Removed {n} gone file{} from the Library", if n == 1 { "" } else { "s" }));
@@ -1532,7 +1547,12 @@ fn demo(ui: &AppWindow) {
     let mut n = 0;
     let mut mk = |kind: Kind, file: &Path, title: &str, ago: u64, f: &dyn Fn(&mut Item)| {
         n += 1;
-        let mut it = Item { id: n, at: now - ago, size: std::fs::metadata(file).ok().map(|m| m.len()), ..Item::new(kind, file, title) };
+        let mut it = Item {
+            id: n,
+            at: now - ago,
+            size: std::fs::metadata(file).ok().map(|m| m.len()),
+            ..Item::new(kind, file, title)
+        };
         f(&mut it);
         it
     };
@@ -1603,7 +1623,9 @@ fn demo(ui: &AppWindow) {
     ];
     // The playlist's songs sit in its folder.
     let pl = dir.join("Chill Mix");
-    for (k, t) in ["Khruangbin - Maria También", "Men I Trust - Show Me How", "Mild High Club - Homage"].iter().enumerate() {
+    for (k, t) in
+        ["Khruangbin - Maria También", "Men I Trust - Show Me How", "Mild High Club - Homage"].iter().enumerate()
+    {
         let f = pl.join(format!("{t}.mp3"));
         items.push(mk(Kind::Song, &f, t, d + 2 * h, &|i| {
             i.site = "Spotify".into();
@@ -1612,21 +1634,45 @@ fn demo(ui: &AppWindow) {
     }
     let gone_too = matches!(which.as_str(), "gone" | "found");
     if gone_too {
-        items.push(mk(Kind::Video, &dir.join("gone").join("Lecture 7 · Fourier series.mp4"), "Lecture 7 · Fourier series", 4 * d, &|i| {
-            i.site = "YouTube".into();
-            i.url = "https://www.youtube.com/watch?v=fourier7".into();
-            i.length = Some(2900.0);
-        }));
-        items.push(mk(Kind::ReplayPc, &dir.join("gone").join("VALORANT 2 Nov 22.10.mp4"), "VALORANT · 2 Nov, 22:10", 6 * d, &|i| {
-            i.length = Some(60.0);
-        }));
-        items.push(mk(Kind::ReplayPc, &dir.join("gone").join("VALORANT 2 Nov 22.40.mp4"), "VALORANT · 2 Nov, 22:40", 6 * d + h, &|i| {
-            i.length = Some(60.0);
-        }));
+        items.push(mk(
+            Kind::Video,
+            &dir.join("gone").join("Lecture 7 · Fourier series.mp4"),
+            "Lecture 7 · Fourier series",
+            4 * d,
+            &|i| {
+                i.site = "YouTube".into();
+                i.url = "https://www.youtube.com/watch?v=fourier7".into();
+                i.length = Some(2900.0);
+            },
+        ));
+        items.push(mk(
+            Kind::ReplayPc,
+            &dir.join("gone").join("VALORANT 2 Nov 22.10.mp4"),
+            "VALORANT · 2 Nov, 22:10",
+            6 * d,
+            &|i| {
+                i.length = Some(60.0);
+            },
+        ));
+        items.push(mk(
+            Kind::ReplayPc,
+            &dir.join("gone").join("VALORANT 2 Nov 22.40.mp4"),
+            "VALORANT · 2 Nov, 22:40",
+            6 * d + h,
+            &|i| {
+                i.length = Some(60.0);
+            },
+        ));
         let free = ('E'..='Z').rev().find(|l| !Path::new(&format!("{l}:\\")).exists()).unwrap_or('Q');
-        items.push(mk(Kind::ReplayPhone, Path::new(&format!("{free}:\\Phone\\Brawl Stars 0.30.mp4")), "POCO X7 Pro · Brawl Stars", 7 * d, &|i| {
-            i.length = Some(30.0);
-        }));
+        items.push(mk(
+            Kind::ReplayPhone,
+            Path::new(&format!("{free}:\\Phone\\Brawl Stars 0.30.mp4")),
+            "POCO X7 Pro · Brawl Stars",
+            7 * d,
+            &|i| {
+                i.length = Some(30.0);
+            },
+        ));
     }
     if which == "empty" {
         items.clear();
@@ -1634,7 +1680,11 @@ fn demo(ui: &AppWindow) {
     let places: HashMap<u64, Where> = items
         .iter()
         .map(|i| {
-            let w = if i.kind == Kind::Playlist || i.file.starts_with(&pl) { Where::Here } else { library::where_is(&i.file) };
+            let w = if i.kind == Kind::Playlist || i.file.starts_with(&pl) {
+                Where::Here
+            } else {
+                library::where_is(&i.file)
+            };
             // Sample files that aren't in the scratch home still show as here (except the
             // gone ones on purpose).
             let w = if w == Where::Gone && !i.file.starts_with(dir.join("gone")) { Where::Here } else { w };

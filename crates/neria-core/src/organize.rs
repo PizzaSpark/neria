@@ -185,7 +185,10 @@ mod tests {
             Path::new("D:/Music/Daft Punk/Random Access Memories")
         );
         assert_eq!(folder_for(r, Arrange::Artist, None, None), Path::new("D:/Music/Unknown artist"));
-        assert_eq!(folder_for(r, Arrange::Album, Some("AC/DC"), Some("Back in Black")), Path::new("D:/Music/Back in Black"));
+        assert_eq!(
+            folder_for(r, Arrange::Album, Some("AC/DC"), Some("Back in Black")),
+            Path::new("D:/Music/Back in Black")
+        );
         assert_eq!(folder_for(r, Arrange::One, Some("a"), Some("b")), r);
         assert_eq!(folder_for(r, Arrange::Artist, Some("AC/DC"), None), Path::new("D:/Music/AC DC"));
     }

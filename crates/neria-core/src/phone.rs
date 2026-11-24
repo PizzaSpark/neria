@@ -1197,10 +1197,10 @@ fn deliver(fan: &mut Fan, chunk: &Chunk, key: bool, header: Option<Chunk>) {
                 return true;
             }
             c.need_key = false;
-            if let Some(h) = &header {
-                if c.tx.try_send(h.clone()).is_err() {
-                    return false;
-                }
+            if let Some(h) = &header
+                && c.tx.try_send(h.clone()).is_err()
+            {
+                return false;
             }
         }
         match c.tx.try_send(chunk.clone()) {
@@ -1303,10 +1303,10 @@ impl Feed {
             if !fan.gop.is_empty() {
                 // A still screen sends sound but no key frames: past the limit the oldest sound
                 // goes (the key frame stays), so a reader joining much later still can.
-                if fan.gop.len() >= 2 * BACKLOG {
-                    if let Some(i) = fan.gop.iter().skip(1).position(|c| c.audio) {
-                        fan.gop.remove(i + 1);
-                    }
+                if fan.gop.len() >= 2 * BACKLOG
+                    && let Some(i) = fan.gop.iter().skip(1).position(|c| c.audio)
+                {
+                    fan.gop.remove(i + 1);
                 }
                 fan.gop.push(Kept { chunk: block.clone(), audio: true });
             }
@@ -1333,17 +1333,17 @@ fn stamp(fan: &mut Fan, pts: u64) -> u64 {
 
 fn add(fan: &Mutex<Fan>, video: bool) -> Receiver<Chunk> {
     let mut f = fan.lock().unwrap();
-    if let (true, None, Some(cfg)) = (video, &f.mkv, f.config.clone()) {
-        if !f.gop.is_empty() {
-            // Joins mid-stream: SPS/PPS, then everything since the last key frame.
-            let (tx, rx) = sync_channel(BACKLOG + f.gop.len() + 1);
-            let _ = tx.try_send(cfg);
-            for k in &f.gop {
-                let _ = tx.try_send(k.chunk.clone());
-            }
-            f.clients.push(Client { tx, need_key: false });
-            return rx;
+    if let (true, None, Some(cfg)) = (video, &f.mkv, f.config.clone())
+        && !f.gop.is_empty()
+    {
+        // Joins mid-stream: SPS/PPS, then everything since the last key frame.
+        let (tx, rx) = sync_channel(BACKLOG + f.gop.len() + 1);
+        let _ = tx.try_send(cfg);
+        for k in &f.gop {
+            let _ = tx.try_send(k.chunk.clone());
         }
+        f.clients.push(Client { tx, need_key: false });
+        return rx;
     }
     // The replay buffer joining mid-stream: its header, then everything since the last key
     // frame, so it needn't wait for the phone's next one (which never comes while the screen
@@ -2067,10 +2067,10 @@ impl Session {
         }
         let mut g = self.control.lock().unwrap();
         // Dropped when 512 are waiting (the phone stopped reading): better than a hung window.
-        if let Some(tx) = g.as_ref() {
-            if let Err(std::sync::mpsc::TrySendError::Disconnected(_)) = tx.try_send(c.bytes()) {
-                *g = None;
-            }
+        if let Some(tx) = g.as_ref()
+            && let Err(std::sync::mpsc::TrySendError::Disconnected(_)) = tx.try_send(c.bytes())
+        {
+            *g = None;
         }
     }
 
@@ -2482,7 +2482,7 @@ fn apply_volume(pcm: &mut [u8], vol: f32) {
     if (vol - 1.0).abs() < 1e-3 {
         return;
     }
-    for s in pcm.chunks_exact_mut(2) {
+    for s in pcm.as_chunks_mut::<2>().0 {
         let v = (i16::from_le_bytes([s[0], s[1]]) as f32 * vol).clamp(-32768.0, 32767.0) as i16;
         s.copy_from_slice(&v.to_le_bytes());
     }
@@ -2841,7 +2841,7 @@ mod tests {
     fn speaker_queue_stays_short() {
         let mut q: VecDeque<u8> = (0..10_000u32).map(|i| i as u8).collect();
         trim_queue(&mut q, 4000, 1000);
-        assert!(q.len() <= 1003 && q.len() % 4 == 0);
+        assert!(q.len() <= 1003 && q.len().is_multiple_of(4));
         let mut pcm = 1000i16.to_le_bytes().to_vec();
         apply_volume(&mut pcm, 0.5);
         assert_eq!(i16::from_le_bytes([pcm[0], pcm[1]]), 500);

@@ -1416,7 +1416,13 @@ pub fn repair_holes(rec: &Recording, stop: &AtomicBool) -> Result<usize> {
 /// Library's "Get the missed bits back"). Works while the site still has that stretch: a
 /// YouTube stream's last hour while it's live and its video after; Twitch only while live.
 /// Returns the holes still missing (empty: all back).
-pub fn get_holes_back(file: &Path, url: &str, gaps: &Gaps, settings: &Settings, stop: &AtomicBool) -> Result<Vec<Hole>> {
+pub fn get_holes_back(
+    file: &Path,
+    url: &str,
+    gaps: &Gaps,
+    settings: &Settings,
+    stop: &AtomicBool,
+) -> Result<Vec<Hole>> {
     let dir = file.parent().context("The recording has no folder")?;
     let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let work = crate::clip::unique_path(dir, &format!(".{stem}"), "fill");
@@ -1558,8 +1564,10 @@ fn splice_fills(work: &Path, file: &Path, starts_at: f64) -> Vec<f64> {
             continue;
         }
         let joined = work.join(format!("spliced.{ext}"));
-        let mut args: Vec<String> =
-            ["-f", "concat", "-safe", "0", "-i", &s(&list), "-map", "0", "-c", "copy"].iter().map(|x| x.to_string()).collect();
+        let mut args: Vec<String> = ["-f", "concat", "-safe", "0", "-i", &s(&list), "-map", "0", "-c", "copy"]
+            .iter()
+            .map(|x| x.to_string())
+            .collect();
         if ext == "mp4" {
             args.extend(["-movflags", "+faststart"].map(String::from));
         }

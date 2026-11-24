@@ -42,7 +42,7 @@ struct State {
 
 thread_local! {
     static STATE: RefCell<State> =
-        RefCell::new(State { target: Target::None, cancel: None, download: None, saved: Vec::new() });
+        const { RefCell::new(State { target: Target::None, cancel: None, download: None, saved: Vec::new() }) };
 }
 
 const VIEW_GET: i32 = 0;

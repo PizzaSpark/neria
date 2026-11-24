@@ -412,11 +412,8 @@ fn check_spotify(f: &Followed, settings: &Settings, queue: &Queue) -> anyhow::Re
     }
     // The playlist file and the folder's list follow Spotify's list (renames included).
     let (_dir, jobs) = music::prepare(&col, settings)?;
-    let reqs: Vec<DownloadRequest> = jobs
-        .into_iter()
-        .filter(|j| new.iter().any(|i| i.url == j.track.id))
-        .map(DownloadRequest::music)
-        .collect();
+    let reqs: Vec<DownloadRequest> =
+        jobs.into_iter().filter(|j| new.iter().any(|i| i.url == j.track.id)).map(DownloadRequest::music).collect();
     let n = reqs.len();
     if n > 0 {
         queue.add_group(&card_title(&f.name, n), false, reqs);
@@ -475,7 +472,9 @@ mod tests {
         assert!(spotify_followable(&want));
         assert!(!spotify_followable("https://open.spotify.com/album/4m2880jivSbbyEGAKfITCa"));
         assert!(Followed { url: want, ..Default::default() }.is_spotify());
-        assert!(!Followed { url: "https://www.youtube.com/playlist?list=PL1".into(), ..Default::default() }.is_spotify());
+        assert!(
+            !Followed { url: "https://www.youtube.com/playlist?list=PL1".into(), ..Default::default() }.is_spotify()
+        );
     }
 
     #[test]

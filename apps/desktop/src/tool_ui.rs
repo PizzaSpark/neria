@@ -132,7 +132,10 @@ fn run_on(ui: &AppWindow, t: &Tool, files: &[PathBuf]) {
     }
     crate::workflow_ui::run_on(ui, &as_workflow(t), &fit);
     if !skip.is_empty() {
-        show_toast(ui, &format!("{} is running on {}; {} it doesn't take were left out", t.name, fit.len(), skip.len()));
+        show_toast(
+            ui,
+            &format!("{} is running on {}; {} it doesn't take were left out", t.name, fit.len(), skip.len()),
+        );
     }
 }
 

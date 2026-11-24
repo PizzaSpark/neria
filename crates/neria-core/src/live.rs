@@ -450,7 +450,13 @@ mod tests {
             earlier: Some((720.0, 3230.0)),
             ..LiveStats::default()
         };
-        let t = Tape::new(&TapeInput { now, went_live: now - 3300.0, origin_known: true, rec: Some(&st), ..Default::default() });
+        let t = Tape::new(&TapeInput {
+            now,
+            went_live: now - 3300.0,
+            origin_known: true,
+            rec: Some(&st),
+            ..Default::default()
+        });
         assert_eq!(t.from, 0.0);
         assert!(t.recording && !t.early_in);
         assert!((t.early - 720.0 / 3300.0).abs() < 1e-4);

@@ -271,6 +271,7 @@ pub fn put_into(
                     a.extend(["-movflags".into(), "+faststart".into()]);
                 }
                 a.push(s(out));
+                #[allow(clippy::redundant_closure)] // `on` is borrowed immutably here
                 crate::sound::run_ffmpeg(&a, len, cancel, |p| on(p)).map(|_| ())
             }
             How::Panel | How::Overlay => {

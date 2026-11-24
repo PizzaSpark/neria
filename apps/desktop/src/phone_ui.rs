@@ -238,7 +238,7 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         let weak = ui.as_weak();
         move || present(&weak.unwrap())
     });
-    p.on_front(|| crate::present_ui::bring_to_front());
+    p.on_front(crate::present_ui::bring_to_front);
     p.on_switch_usb({
         let weak = ui.as_weak();
         move || {
@@ -319,8 +319,8 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             save_prefs(|p| p.volume = v);
         }
     });
-    p.on_touch(|kind, x, y| touch(kind, x, y));
-    p.on_scroll(|x, y, dy| scroll(x, y, dy));
+    p.on_touch(touch);
+    p.on_scroll(scroll);
     p.on_press(|code| with_session(|s| s.press(code)));
     p.on_rotate(|| with_session(|s| s.send(Control::Rotate)));
     p.on_typed(|text| typed(&text));
@@ -1203,10 +1203,8 @@ fn live(ui: &AppWindow) {
     if !s.running() {
         let why = s.problem.lock().unwrap().clone();
         // The cable came out: carry on over Wi-Fi when the phone is there too.
-        if !s.serial.contains(':') && !s.serial.contains("._adb-tls-connect.") {
-            if fall_back_to_wifi(ui, &s, &why) {
-                return;
-            }
+        if !s.serial.contains(':') && !s.serial.contains("._adb-tls-connect.") && fall_back_to_wifi(ui, &s, &why) {
+            return;
         }
         stop(ui, None);
         p.set_status(format!("{} stopped", s.name).into());
@@ -1322,7 +1320,7 @@ fn live(ui: &AppWindow) {
 }
 
 fn keep_text(secs: u32) -> String {
-    if secs % 60 == 0 { format!("{} min", secs / 60) } else { format!("{secs} s") }
+    if secs.is_multiple_of(60) { format!("{} min", secs / 60) } else { format!("{secs} s") }
 }
 
 /// Where saves go: the Videos folder (Audio for sound alone, Photos for screenshots).
@@ -1407,11 +1405,11 @@ fn screenshot(ui: &AppWindow) {
     let shot = UI.with(|u| {
         u.borrow().mpv.as_ref().map(|m| m.command(&["screenshot-to-file", &file.to_string_lossy(), "video"]))
     });
-    if let Some(Ok(())) = shot {
-        if file.is_file() {
-            show_screenshot(ui, &file);
-            return;
-        }
+    if let Some(Ok(())) = shot
+        && file.is_file()
+    {
+        show_screenshot(ui, &file);
+        return;
     }
     let weak = ui.as_weak();
     std::thread::spawn(move || {
@@ -1449,9 +1447,9 @@ fn present(ui: &AppWindow) {
     let (w, h) = s.size();
     let weak = ui.as_weak();
     let hooks = crate::present_ui::Hooks {
-        touch: Box::new(|k, x, y| touch(k, x, y)),
-        scroll: Box::new(|x, y, d| scroll(x, y, d)),
-        typed: Box::new(|t| typed(t)),
+        touch: Box::new(touch),
+        scroll: Box::new(scroll),
+        typed: Box::new(typed),
         press: Box::new(|c| with_session(|s| s.press(c))),
         // Closed by hand: the page's picture comes back.
         closed: Box::new(move || {
@@ -1531,11 +1529,11 @@ fn watch_cable(ui: &AppWindow) {
         let usb = phone::other_way(&devices, &id, false);
         let _ = weak.upgrade_in_event_loop(move |ui| {
             UI.with(|u| u.borrow_mut().watching = false);
-            if let Some(usb) = usb {
-                if UI.with(|u| u.borrow().session.as_ref().is_some_and(|x| Arc::ptr_eq(x, &s))) {
-                    UI.with(|u| u.borrow_mut().usb_offer = Some(usb));
-                    ui.global::<Phone>().set_usb_offer(true);
-                }
+            if let Some(usb) = usb
+                && UI.with(|u| u.borrow().session.as_ref().is_some_and(|x| Arc::ptr_eq(x, &s)))
+            {
+                UI.with(|u| u.borrow_mut().usb_offer = Some(usb));
+                ui.global::<Phone>().set_usb_offer(true);
             }
         });
     });
@@ -1605,10 +1603,12 @@ fn scroll(x: f32, y: f32, dy: f32) {
 fn presenting_ended(ui: &AppWindow) {
     let Some(s) = UI.with(|u| u.borrow().session.clone()) else { return };
     let pr = prefs();
-    if pr.place.here() && s.audio.is_some() && UI.with(|u| u.borrow().speaker.is_none()) {
-        if let Ok(sp) = Speaker::start(&s, pr.volume) {
-            UI.with(|u| u.borrow_mut().speaker = Some(sp));
-        }
+    if pr.place.here()
+        && s.audio.is_some()
+        && UI.with(|u| u.borrow().speaker.is_none())
+        && let Ok(sp) = Speaker::start(&s, pr.volume)
+    {
+        UI.with(|u| u.borrow_mut().speaker = Some(sp));
     }
     if let Some(v) = &s.video {
         load_picture(ui, &v.url());
@@ -1956,10 +1956,8 @@ fn demo_frame(w: u32, h: u32) -> slint::Image {
             let t = ((y as f32 / h as f32) * 0.85 + (x as f32 / w as f32) * 0.15).clamp(0.0, 1.0);
             let k = stops.windows(2).find(|s| t >= s[0].0 && t <= s[1].0).unwrap_or(&stops[2..4]);
             let f = (t - k[0].0) / (k[1].0 - k[0].0).max(1e-3);
-            let mut c = [0u8; 3];
-            for i in 0..3 {
-                c[i] = (k[0].1[i] as f32 + (k[1].1[i] as f32 - k[0].1[i] as f32) * f) as u8;
-            }
+            let mut c: [u8; 3] =
+                std::array::from_fn(|i| (k[0].1[i] as f32 + (k[1].1[i] as f32 - k[0].1[i] as f32) * f) as u8);
             let (fx, fy) = (x as f32 / w as f32, y as f32 / h as f32);
             let card = (0.1..0.9).contains(&fx) && ((0.2..0.52).contains(&fy) || (0.58..0.68).contains(&fy));
             let bar = fy < 0.035;

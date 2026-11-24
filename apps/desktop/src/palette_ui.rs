@@ -43,23 +43,69 @@ struct Action {
     wants: Wants,
 }
 
-const fn a(key: &'static str, name: &'static str, words: &'static [&'static str], icon: &'static str, to: &'static str) -> Action {
+const fn a(
+    key: &'static str,
+    name: &'static str,
+    words: &'static [&'static str],
+    icon: &'static str,
+    to: &'static str,
+) -> Action {
     Action { key, name, words, icon, to, wants: Wants::Nothing }
 }
 
-const fn f(key: &'static str, name: &'static str, words: &'static [&'static str], icon: &'static str, to: &'static str, wants: Wants) -> Action {
+const fn f(
+    key: &'static str,
+    name: &'static str,
+    words: &'static [&'static str],
+    icon: &'static str,
+    to: &'static str,
+    wants: Wants,
+) -> Action {
     Action { key, name, words, icon, to, wants }
 }
 
 /// Everything the palette can do, in the order shown before anything is learnt.
 const ACTIONS: &[Action] = &[
     f("clip", "Clip a file…", &["cut", "trim", "part", "open", "video"], "\u{E8C6}", "Clip", Wants::Media),
-    f("compress", "Make a file smaller…", &["compress", "shrink", "size", "discord", "email", "whatsapp", "mb"], "\u{E73F}", "Compress", Wants::Media),
-    a("replay", "Turn on instant replay", &["replay", "record", "game", "screen", "clip that", "last minute"], "\u{E7C8}", "Capture"),
-    a("download", "Download a link…", &["get", "save", "grab", "paste", "youtube", "spotify", "mp3", "song", "playlist", "live", "stream", "record"], "\u{E896}", "Download"),
-    f("sound", "Convert to a sound file…", &["convert", "extract audio", "audio", "mp3", "m4a", "flac", "wav", "opus", "sound only"], "\u{E8D6}", "Compress", Wants::Media),
+    f(
+        "compress",
+        "Make a file smaller…",
+        &["compress", "shrink", "size", "discord", "email", "whatsapp", "mb"],
+        "\u{E73F}",
+        "Compress",
+        Wants::Media,
+    ),
+    a(
+        "replay",
+        "Turn on instant replay",
+        &["replay", "record", "game", "screen", "clip that", "last minute"],
+        "\u{E7C8}",
+        "Capture",
+    ),
+    a(
+        "download",
+        "Download a link…",
+        &["get", "save", "grab", "paste", "youtube", "spotify", "mp3", "song", "playlist", "live", "stream", "record"],
+        "\u{E896}",
+        "Download",
+    ),
+    f(
+        "sound",
+        "Convert to a sound file…",
+        &["convert", "extract audio", "audio", "mp3", "m4a", "flac", "wav", "opus", "sound only"],
+        "\u{E8D6}",
+        "Compress",
+        Wants::Media,
+    ),
     f("gif", "Make a GIF…", &["gif", "webp", "meme", "animated"], "\u{E8B9}", "Clip", Wants::Video),
-    f("transcribe", "Transcribe…", &["text", "captions", "subtitles", "srt", "speech", "words", "whisper"], "\u{E8A5}", "Speech to text", Wants::Media),
+    f(
+        "transcribe",
+        "Transcribe…",
+        &["text", "captions", "subtitles", "srt", "speech", "words", "whisper"],
+        "\u{E8A5}",
+        "Speech to text",
+        Wants::Media,
+    ),
     a("clip-link", "Clip part of a link…", &["cut", "trim", "youtube", "twitch", "part"], "\u{E71B}", "Clip"),
     a("save-replay", "Save the last minute", &["save", "replay", "clip that", "keep"], "\u{E74E}", "Capture"),
     a("phone", "Mirror my phone", &["android", "phone", "scrcpy", "screen", "record"], "\u{E8EA}", "Capture"),
@@ -71,13 +117,31 @@ const ACTIONS: &[Action] = &[
     a("page-2", "Go to Compress", &["page"], "\u{E73F}", ""),
     a("page-3", "Go to Capture", &["page", "replay"], "\u{E7C8}", ""),
     a("page-4", "Go to the Library", &["page", "saved", "history"], "\u{E8F1}", ""),
-    a("set-0", "Settings: Download", &["folder", "quality", "format", "template", "names", "container"], "\u{E713}", ""),
+    a(
+        "set-0",
+        "Settings: Download",
+        &["folder", "quality", "format", "template", "names", "container"],
+        "\u{E713}",
+        "",
+    ),
     a("set-1", "Settings: Following", &["follow", "channels", "subscriptions"], "\u{E713}", ""),
-    a("set-7", "Settings: Workflows", &["workflow", "automatic", "after download", "watch folder", "then"], "\u{E713}", ""),
+    a(
+        "set-7",
+        "Settings: Workflows",
+        &["workflow", "automatic", "after download", "watch folder", "then"],
+        "\u{E713}",
+        "",
+    ),
     a("set-8", "Settings: Tools", &["tool", "external", "command", "program", "handbrake", "script"], "\u{E713}", ""),
     a("set-2", "Settings: Spotify", &["lyrics", "numbering", "music"], "\u{E713}", ""),
     a("set-3", "Settings: Network", &["cookies", "sign in", "account", "speed", "proxy"], "\u{E713}", ""),
-    a("set-4", "Settings: General", &["theme", "dark", "light", "tray", "notifications", "start", "appearance"], "\u{E713}", ""),
+    a(
+        "set-4",
+        "Settings: General",
+        &["theme", "dark", "light", "tray", "notifications", "start", "appearance"],
+        "\u{E713}",
+        "",
+    ),
     a("set-5", "Settings: Voice", &["clip that", "phrase", "mic", "voice"], "\u{E713}", ""),
     a("set-6", "Settings: About", &["version", "update", "tools", "licence"], "\u{E713}", ""),
 ];
@@ -177,7 +241,14 @@ fn heading(text: &str) -> PalRow {
 
 fn action_row(a: &Action, query: &str) -> PalRow {
     let (pre, hit, post) = split(a.name, query);
-    PalRow { pre: pre.into(), hit: hit.into(), post: post.into(), r#where: a.to.into(), icon: a.icon.into(), ..PalRow::default() }
+    PalRow {
+        pre: pre.into(),
+        hit: hit.into(),
+        post: post.into(),
+        r#where: a.to.into(),
+        icon: a.icon.into(),
+        ..PalRow::default()
+    }
 }
 
 fn thing_row(it: &Item, query: &str, with_day: bool) -> PalRow {
@@ -236,18 +307,29 @@ fn rebuild(ui: &AppWindow) {
     };
     let newest = |items: &[Item]| {
         let mut v: Vec<Item> = items.to_vec();
-        v.sort_by(|a, b| b.at.cmp(&a.at));
+        v.sort_by_key(|x| std::cmp::Reverse(x.at));
         v
     };
     match step {
         Step::Top => {
             // A link typed or pasted in the box, else the one on the clipboard (2A).
-            let link = if looks_like_link(q) { Some(q.to_string()) } else if q.is_empty() { copied } else { None };
+            let link = if looks_like_link(q) {
+                Some(q.to_string())
+            } else if q.is_empty() {
+                copied
+            } else {
+                None
+            };
             if let Some(url) = link {
                 push(heading(if q.is_empty() { "Copied link" } else { "Link" }), Entry::Heading);
                 let words = if q.is_empty() { "Download the copied link" } else { "Download this link" };
                 push(
-                    PalRow { pre: words.into(), sub: short_link(&url).into(), icon: "\u{E896}".into(), ..PalRow::default() },
+                    PalRow {
+                        pre: words.into(),
+                        sub: short_link(&url).into(),
+                        icon: "\u{E896}".into(),
+                        ..PalRow::default()
+                    },
                     Entry::Link(url),
                 );
             }
@@ -278,7 +360,7 @@ fn rebuild(ui: &AppWindow) {
                         palette::score(q, name, a.words).map(|sc| (sc + used.count(a.key).min(20) as i32 * 3, a, name))
                     })
                     .collect();
-                found.sort_by(|x, y| y.0.cmp(&x.0));
+                found.sort_by_key(|x| std::cmp::Reverse(x.0));
                 if !found.is_empty() {
                     push(heading("Do"), Entry::Heading);
                     for (_, a, name) in found.into_iter().take(PER_GROUP) {
@@ -294,7 +376,7 @@ fn rebuild(ui: &AppWindow) {
                     .into_iter()
                     .filter_map(|w| palette::score(q, &w.name, &["workflow", "run"]).map(|sc| (sc, w)))
                     .collect();
-                flows.sort_by(|x, y| y.0.cmp(&x.0));
+                flows.sort_by_key(|x| std::cmp::Reverse(x.0));
                 if !flows.is_empty() {
                     push(heading("Workflows"), Entry::Heading);
                     for (_, w) in flows.into_iter().take(PER_GROUP) {
@@ -318,7 +400,7 @@ fn rebuild(ui: &AppWindow) {
                     .into_iter()
                     .filter_map(|t| palette::score(q, &t.name, &["tool", "run", &t.program_name()]).map(|sc| (sc, t)))
                     .collect();
-                tools.sort_by(|x, y| y.0.cmp(&x.0));
+                tools.sort_by_key(|x| std::cmp::Reverse(x.0));
                 if !tools.is_empty() {
                     push(heading("Your tools"), Entry::Heading);
                     for (_, t) in tools.into_iter().take(PER_GROUP) {
@@ -358,7 +440,13 @@ fn rebuild(ui: &AppWindow) {
                 if palette::score(q, label, &[]).is_some() {
                     let (pre, hit, post) = split(label, q);
                     push(
-                        PalRow { pre: pre.into(), hit: hit.into(), post: post.into(), icon: icon.into(), ..PalRow::default() },
+                        PalRow {
+                            pre: pre.into(),
+                            hit: hit.into(),
+                            post: post.into(),
+                            icon: icon.into(),
+                            ..PalRow::default()
+                        },
                         Entry::Do(id, what),
                     );
                 }
@@ -388,7 +476,10 @@ fn rebuild(ui: &AppWindow) {
                     push(row, Entry::File(it.id));
                 }
             }
-            push(PalRow { pre: "Choose a file…".into(), icon: "\u{E8B7}".into(), ..PalRow::default() }, Entry::ChooseFile);
+            push(
+                PalRow { pre: "Choose a file…".into(), icon: "\u{E8B7}".into(), ..PalRow::default() },
+                Entry::ChooseFile,
+            );
         }
     }
     let first = entries.iter().position(|e| !matches!(e, Entry::Heading)).unwrap_or(0);
@@ -591,7 +682,8 @@ pub fn install(ui: &AppWindow) {
         let weak = ui.as_weak();
         move || {
             let ui = weak.unwrap();
-            let copied = arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok()).filter(|t| looks_like_link(t));
+            let copied =
+                arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok()).filter(|t| looks_like_link(t));
             let items = crate::library_ui::items_for_palette();
             with(|s| {
                 s.step = Step::Top;
@@ -667,7 +759,13 @@ pub fn install(ui: &AppWindow) {
             slint::Timer::single_shot(std::time::Duration::from_millis(200), move || {
                 let Some(ui) = weak.upgrade() else { return };
                 if let Some(title) = typed.strip_prefix("thing:") {
-                    let id = with(|s| s.items.iter().rev().find(|i| i.name().to_lowercase().contains(&title.to_lowercase())).map(|i| i.id));
+                    let id = with(|s| {
+                        s.items
+                            .iter()
+                            .rev()
+                            .find(|i| i.name().to_lowercase().contains(&title.to_lowercase()))
+                            .map(|i| i.id)
+                    });
                     if let Some(id) = id {
                         go(&ui, Step::Thing(id));
                     }

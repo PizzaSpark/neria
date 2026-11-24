@@ -280,10 +280,8 @@ fn changed(ui: &AppWindow) {
     let g = ui.global::<Workflows>();
     let (wf, problem) = from_editor(ui);
     let picked = with(|s| s.sites.clone());
-    let sites: Vec<WfSite> = workflow::SITES
-        .iter()
-        .map(|n| WfSite { name: (*n).into(), on: picked.iter().any(|p| p == n) })
-        .collect();
+    let sites: Vec<WfSite> =
+        workflow::SITES.iter().map(|n| WfSite { name: (*n).into(), on: picked.iter().any(|p| p == n) }).collect();
     g.set_sites(ModelRc::new(VecModel::from(sites)));
     g.set_put_folder(with(|s| s.put_folder.clone()).map(|p| p.display().to_string()).unwrap_or_default().into());
     let when_folder = with(|s| s.when_folder.clone());

@@ -232,11 +232,11 @@ fn main() -> anyhow::Result<()> {
         if !buffer.running() {
             anyhow::bail!("stopped: {}", buffer.problem.lock().unwrap());
         }
-        if let Some(r) = run {
-            if began.elapsed() >= Duration::from_secs(r) {
-                save(&buffer, o.keep, &out);
-                break;
-            }
+        if let Some(r) = run
+            && began.elapsed() >= Duration::from_secs(r)
+        {
+            save(&buffer, o.keep, &out);
+            break;
         }
         match rx.recv_timeout(Duration::from_millis(200)) {
             Ok(l) if l.trim() == "q" => break,

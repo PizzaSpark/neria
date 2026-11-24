@@ -2536,7 +2536,6 @@ impl Queue {
     }
 }
 
-
 /// The Library's record of a finished download: what kind of thing it is, from the request.
 /// How a workflow run went.
 enum Ran {

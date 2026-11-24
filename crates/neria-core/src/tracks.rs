@@ -385,7 +385,10 @@ pub fn parts_from_text(text: &str, duration: f64) -> Vec<(String, f64, f64)> {
                 }
                 let t = &line[i..j];
                 let parts: Vec<&str> = t.split(':').collect();
-                if (2..=3).contains(&parts.len()) && parts[1..].iter().all(|p| p.len() == 2) && parts.iter().all(|p| !p.is_empty()) {
+                if (2..=3).contains(&parts.len())
+                    && parts[1..].iter().all(|p| p.len() == 2)
+                    && parts.iter().all(|p| !p.is_empty())
+                {
                     let secs = parts.iter().fold(0.0, |acc, p| acc * 60.0 + p.parse::<f64>().unwrap_or(0.0));
                     return Some((secs, i, j));
                 }

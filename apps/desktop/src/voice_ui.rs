@@ -140,14 +140,14 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             // and a changed phrase hasn't been tested: its tag goes.
             let v = ui.global::<Voice>();
             let rows = v.get_phrases();
-            if let Some(mut row) = slint::Model::row_data(&rows, i) {
-                if row.text != text {
-                    let heard = prefs().heard(&text);
-                    row.tag = heard.map(|n| format!("Heard {n} of 3")).unwrap_or_default().into();
-                    row.kind = if heard.is_some_and(|n| n >= 3) { 1 } else { 2 };
-                    row.text = text.clone();
-                    slint::Model::set_row_data(&rows, i, row);
-                }
+            if let Some(mut row) = slint::Model::row_data(&rows, i)
+                && row.text != text
+            {
+                let heard = prefs().heard(&text);
+                row.tag = heard.map(|n| format!("Heard {n} of 3")).unwrap_or_default().into();
+                row.kind = if heard.is_some_and(|n| n >= 3) { 1 } else { 2 };
+                row.text = text.clone();
+                slint::Model::set_row_data(&rows, i, row);
             }
             saved_mark(&ui, i as i32);
             check_phrase(&ui, &text);
@@ -218,10 +218,10 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                 });
                 let weak = ui.as_weak();
                 Timer::single_shot(Duration::from_millis(1500), move || {
-                    if ST.with(|s| s.borrow().saved_gen) == n {
-                        if let Some(ui) = weak.upgrade() {
-                            ui.global::<Voice>().set_saved_set("".into());
-                        }
+                    if ST.with(|s| s.borrow().saved_gen) == n
+                        && let Some(ui) = weak.upgrade()
+                    {
+                        ui.global::<Voice>().set_saved_set("".into());
                     }
                 });
             }
@@ -260,10 +260,10 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
     v.on_test_stop(|| {
         // The mic thread sees the stop and reports what it has.
         ST.with(|s| {
-            if let Some(m) = &s.borrow().mic {
-                if matches!(m.mode, Mode::Test(..)) {
-                    m.stop.store(true, Ordering::Relaxed);
-                }
+            if let Some(m) = &s.borrow().mic
+                && matches!(m.mode, Mode::Test(..))
+            {
+                m.stop.store(true, Ordering::Relaxed);
             }
         })
     });
@@ -510,7 +510,12 @@ fn test_phrase() -> Option<(usize, String)> {
     let i = ST.with(|s| s.borrow().test_index);
     match p.phrases.get(i).map(|t| t.trim().to_string()).filter(|t| !voice::words(t).is_empty()) {
         Some(t) => Some((i, t)),
-        None => p.phrases.iter().enumerate().find(|(_, t)| !voice::words(t).is_empty()).map(|(i, t)| (i, t.trim().to_string())),
+        None => p
+            .phrases
+            .iter()
+            .enumerate()
+            .find(|(_, t)| !voice::words(t).is_empty())
+            .map(|(i, t)| (i, t.trim().to_string())),
     }
 }
 
@@ -524,10 +529,10 @@ fn saved_mark(ui: &AppWindow, i: i32) {
     });
     let weak = ui.as_weak();
     Timer::single_shot(Duration::from_millis(1500), move || {
-        if ST.with(|s| s.borrow().saved_gen) == n {
-            if let Some(ui) = weak.upgrade() {
-                ui.global::<Voice>().set_saved_phrase(-1);
-            }
+        if ST.with(|s| s.borrow().saved_gen) == n
+            && let Some(ui) = weak.upgrade()
+        {
+            ui.global::<Voice>().set_saved_phrase(-1);
         }
     });
 }
@@ -728,10 +733,11 @@ fn run_mic(mode: &Mode, stop: &AtomicBool, send: &dyn Fn(Msg)) -> Result<(), (St
                         if b - a <= 3.0 && fed - words_at > 2.5 {
                             let s = ((a - 0.15 - recent_from).max(0.0) * 16_000.0) as usize;
                             let e = (((b + 0.15 - recent_from) * 16_000.0) as usize).min(recent.len());
-                            if s < e && mine.matches(&recent[s..e]) {
-                                if let Some(first) = phrases.first() {
-                                    send(Msg::Heard(voice::words(first).join(" ")));
-                                }
+                            if s < e
+                                && mine.matches(&recent[s..e])
+                                && let Some(first) = phrases.first()
+                            {
+                                send(Msg::Heard(voice::words(first).join(" ")));
                             }
                         }
                     }
@@ -768,12 +774,10 @@ fn run_mic(mode: &Mode, stop: &AtomicBool, send: &dyn Fn(Msg)) -> Result<(), (St
             boxes[turn] = 1;
             send(Msg::Boxes(boxes.clone()));
             // A short breath before the next turn, so one saying can't count twice.
-            if got {
-                if let Some(sp) = spotter.as_mut() {
-                    let pause = vec![0f32; (capture_sound::RATE as f64 * 0.4) as usize];
-                    sp.feed(capture_sound::RATE, &pause);
-                    kept.extend(voice::to_16k(&pause));
-                }
+            if got && let Some(sp) = spotter.as_mut() {
+                let pause = vec![0f32; (capture_sound::RATE as f64 * 0.4) as usize];
+                sp.feed(capture_sound::RATE, &pause);
+                kept.extend(voice::to_16k(&pause));
             }
             turn_start = kept.len() as f64 / 16_000.0;
             turn_peak = 0.0;
@@ -844,14 +848,14 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
             })
             .collect();
         let parts: Vec<Vec<f32>> = turn_sound.iter().map(|(_, p)| p.clone()).collect();
-        if let Some(mine) = voice_match::Samples::from_sound(&parts) {
-            if voice_match::add_set(&parts).is_ok() {
-                learned = mine.len();
-                ST.with(|s| s.borrow_mut().samples_gen += 1);
-                for ((i, _), ok) in turn_sound.iter().zip(mine.self_check()) {
-                    if ok && boxes[*i] == 3 {
-                        boxes[*i] = 2;
-                    }
+        if let Some(mine) = voice_match::Samples::from_sound(&parts)
+            && voice_match::add_set(&parts).is_ok()
+        {
+            learned = mine.len();
+            ST.with(|s| s.borrow_mut().samples_gen += 1);
+            for ((i, _), ok) in turn_sound.iter().zip(mine.self_check()) {
+                if ok && boxes[*i] == 3 {
+                    boxes[*i] = 2;
                 }
             }
         }
@@ -912,9 +916,7 @@ fn test_done(ui: &AppWindow, boxes: Vec<i32>, audio: Vec<f32>, sayings: Vec<(f64
             let v = ui.global::<Voice>();
             v.set_test(0);
             if alternatives.is_empty() {
-                v.set_test_note(
-                    "It missed some. Say it a little louder or closer, or pick other words.".into(),
-                );
+                v.set_test_note("It missed some. Say it a little louder or closer, or pick other words.".into());
                 return;
             }
             let better: Vec<_> = found.into_iter().filter(|(_, n)| *n > heard).take(3).collect();
@@ -1018,10 +1020,10 @@ fn toast(ui: &AppWindow, tag: &str, text: &str, kind: i32, undo: bool) {
     });
     let weak = ui.as_weak();
     Timer::single_shot(Duration::from_secs(8), move || {
-        if ST.with(|s| s.borrow().toast_gen) == n {
-            if let Some(ui) = weak.upgrade() {
-                hide_toast(&ui);
-            }
+        if ST.with(|s| s.borrow().toast_gen) == n
+            && let Some(ui) = weak.upgrade()
+        {
+            hide_toast(&ui);
         }
     });
 }
@@ -1187,7 +1189,9 @@ fn show_demo(ui: &AppWindow, what: &str) {
     v.set_phrases(ModelRc::new(VecModel::from(vec![row("clip that", "Heard 3 of 3", 1), row("hi hello", "", 2)])));
     v.set_saved_phrase(if what == "saved" { 1 } else { -1 });
     v.set_boxes(ModelRc::new(VecModel::from(vec![2, 2, 2])));
-    v.set_test_note("Heard you every time. These three are saved as a new voice below: give it a name (Me, Jake…).".into());
+    v.set_test_note(
+        "Heard you every time. These three are saved as a new voice below: give it a name (Me, Jake…).".into(),
+    );
     v.set_samples(6);
     v.set_sets(ModelRc::new(VecModel::from(vec![
         VoiceSet { id: "set-1".into(), name: "Me".into(), samples: 3 },

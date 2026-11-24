@@ -105,9 +105,7 @@ fn show(ui: &AppWindow, moves: &[Move], files: &[PathBuf], root: &Path) {
     o.set_moves(ModelRc::from(Rc::new(VecModel::from(rows))));
     let go = moves.iter().filter(|m| !m.blocked).count();
     let n = files.len();
-    o.set_subtitle(
-        format!("{n} song{} · lyrics move with them", if n == 1 { "" } else { "s" }).into(),
-    );
+    o.set_subtitle(format!("{n} song{} · lyrics move with them", if n == 1 { "" } else { "s" }).into());
     o.set_can_go(go > 0);
     o.set_go_text(if go == 1 { "Move 1".into() } else { format!("Move {go}").into() });
     o.set_busy(false);
@@ -191,7 +189,9 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         move || {
             let ui = weak.unwrap();
             let start = with(|s| s.root.clone());
-            if let Some(d) = rfd::FileDialog::new().set_title("Put them in which folder?").set_directory(start).pick_folder() {
+            if let Some(d) =
+                rfd::FileDialog::new().set_title("Put them in which folder?").set_directory(start).pick_folder()
+            {
                 with(|s| s.root = d);
                 replan(&ui);
             }
