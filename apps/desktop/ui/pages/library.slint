@@ -578,7 +578,8 @@ component LibRowView inherits VerticalLayout {
                 }
             }
             content := VerticalLayout {
-                padding-left: 6px;
+                // Room before the tick, so it sits inside the hover / picked panel.
+                padding-left: 14px;
                 padding-right: Theme.lane + 6px;
                 padding-top: 8px;
                 padding-bottom: 8px;
