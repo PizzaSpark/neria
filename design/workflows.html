@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neria Workflows</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#141416; --panel:#1b1b1e; --raised:#222226; --line:#26262a; --ls:#34343a;
+    --ink:#f1efe9; --muted:#8e8c88; --dim:#6e6c68; --edge:#6d6c6e; --pop:#ffd23f; --onpop:#1a1405;
+    --hard:#000; --popsh:#9a6f00; --ok:#7fd6a4; --okbg:#173326; --warn:#f5b14a; --warnbg:#3a2a12;
+    --bad:#ff7b72; --badbg:#3a1a1a; --live:#ff6b6f; --livebg:#3d1719; --accent:#ffd23f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e9e5da; color: #151412; font-family: "Inter Tight", sans-serif; padding: 40px 16px 90px; overflow-x: hidden; }
+  .page { max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 30px/1.15 "Space Grotesk", sans-serif; }
+  .lead { color: #5b574e; margin-top: 10px; max-width: 880px; line-height: 1.55; font-size: 15px; }
+  .lead b, .why b, .opt p b, li b, td b { color: #151412; }
+  section { margin-top: 54px; }
+  .label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .label h2 { font: 700 20px "Space Grotesk", sans-serif; }
+  .label span { font: 500 11.5px "JetBrains Mono", monospace; color: #7a7568; text-transform: uppercase; letter-spacing: .06em; }
+  .why { color: #5b574e; font-size: 14px; line-height: 1.55; max-width: 880px; margin-bottom: 18px; }
+  ul.why { padding-left: 20px; } ul.why li { margin: 4px 0; }
+  .opt { margin-top: 30px; }
+  .opt h3 { font: 700 16px "Space Grotesk", sans-serif; }
+  .opt h3 .rec { font: 500 11px "JetBrains Mono", monospace; background: #151412; color: var(--pop); padding: 2px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+  .opt p { font-size: 13.5px; color: #5b574e; max-width: 880px; line-height: 1.5; margin: 4px 0 12px; }
+  .pair { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 24px; }
+  .cap { font: 500 11px "JetBrains Mono", monospace; color: #7a7568; margin-bottom: 6px; }
+  .scroll { overflow-x: auto; max-width: 100%; }
+  .scroll > div { min-width: 0; }
+
+  /* app frame */
+  .q { background: var(--bg); color: var(--ink); border-radius: 10px; font-size: 13px;
+       box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 22px 50px -22px rgba(0,0,0,.5); flex: none; overflow: hidden; display: flex; }
+  .q.col { flex-direction: column; }
+  .w1000 { width: 1000px; } .w800 { width: 800px; } .w400 { width: 400px; } .w460 { width: 460px; } .w340 { width: 340px; }
+  .main { flex: 1; min-width: 0; padding: 22px 24px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .mut { color: var(--muted); }
+  .mono { font: 500 11.5px "JetBrains Mono", monospace; }
+  .hd { font: 700 30px/1.1 "Space Grotesk", sans-serif; }
+  .hd.s { font-size: 24px; }
+  .tag { font: 700 10.5px "Space Grotesk", sans-serif; padding: 3px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .tag.live { background: var(--livebg); color: var(--live); }
+  .tag.warn { background: var(--warnbg); color: var(--warn); }
+  .tag.bad { background: var(--badbg); color: var(--bad); }
+  .tag.ok { background: var(--okbg); color: var(--ok); }
+  .ghost { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+           color: var(--ink); font: 500 12.5px "Inter Tight", sans-serif; white-space: nowrap; flex: none; background: none; }
+  .ghost.ic { width: 30px; padding: 0; }
+  .ghost.tall { height: 41px; padding: 0 14px; font-size: 13.5px; }
+  .primary { height: 41px; padding: 0 16px; background: var(--pop); color: var(--onpop); border: 2px solid var(--hard); border-radius: 10px;
+             box-shadow: 3px 3px 0 var(--popsh); font: 700 14px "Space Grotesk", sans-serif; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; flex: none; }
+  .lnk { color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .chip { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; font-size: 12.5px; white-space: nowrap; gap: 6px; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .chip .v { color: var(--dim); font-size: 10px; }
+  svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  svg.i.sm { width: 15px; height: 15px; }
+
+  /* rail */
+  .rail { width: 80px; flex: none; border-right: 1px solid var(--line); padding: 16px 8px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .logo { width: 38px; height: 38px; border-radius: 10px; background: var(--pop); border: 2px solid var(--hard); box-shadow: 3px 3px 0 var(--popsh); margin-bottom: 14px;
+          font: 700 19px "Space Grotesk", sans-serif; color: var(--onpop); display: flex; align-items: center; justify-content: center; }
+  .nav { width: 64px; padding: 8px 0 6px; border-radius: 10px; border: 2px solid transparent; color: var(--dim); display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; }
+  .nav.on { border-color: var(--ls); background: var(--panel); color: var(--ink); }
+  .nav.new { position: relative; }
+  .rail .sp { flex: 1; }
+
+  /* compact tab bar */
+  .tabbar { display: flex; border-top: 1px solid var(--line); padding: 6px 4px 8px; background: var(--bg); }
+  .tabbar .nav { flex: 1; width: auto; min-width: 0; padding: 6px 0 4px; font-size: 10.5px; }
+
+  /* filter tabs */
+  .ftabs { display: flex; gap: 18px; border-bottom: 1px solid var(--line); margin-top: 16px; flex-wrap: nowrap; overflow: hidden; }
+  .ftab { padding: 8px 0 9px; color: var(--muted); font-size: 13px; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .ftab .n { font: 500 11px "JetBrains Mono", monospace; color: var(--dim); margin-left: 5px; }
+  .ftab.on { color: var(--ink); border-color: var(--ink); }
+  .ftab.on .n { color: var(--ink); }
+  .ftab.warn .n { color: var(--warn); }
+
+  .search { height: 41px; flex: 1; min-width: 0; background: var(--panel); border: 2px solid var(--ls); border-radius: 10px; display: flex; align-items: center; gap: 9px; padding: 0 12px; color: var(--muted); font-size: 13.5px; }
+  .search .key { margin-left: auto; }
+  .key { font: 500 11px "JetBrains Mono", monospace; border: 1px solid var(--ls); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--muted); }
+  .menu-btn { height: 30px; padding: 0 10px; border: 2px solid var(--ls); border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); white-space: nowrap; flex: none; }
+  .menu-btn .v { color: var(--dim); font-size: 10px; }
+  .menu-btn.set { border-color: var(--accent); }
+
+  /* day heading + rows */
+  .day { font: 700 11px "Space Grotesk", sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; padding: 16px 0 6px; display: flex; gap: 8px; }
+  .day .mono { color: var(--dim); font-size: 10.5px; letter-spacing: 0; text-transform: none; font-weight: 400; }
+  .it { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  .it.sel { background: var(--panel); border-radius: 8px; border-bottom-color: transparent; box-shadow: inset 0 0 0 1px var(--ls); }
+  .it .tt { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .it .sub { display: flex; gap: 7px; align-items: center; margin-top: 4px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
+  .it .sub .mono { font-size: 11px; }
+  .att { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); font-size: 11.5px; }
+  .att svg { width: 13px; height: 13px; }
+  .it.gone .th { opacity: .35; filter: grayscale(1); }
+  .it.gone .tt { color: var(--muted); }
+  .acts { display: flex; gap: 6px; flex: none; }
+
+  /* thumbs */
+  .th { width: 64px; height: 36px; border-radius: 6px; flex: none; position: relative; overflow: hidden; }
+  .th.sq { width: 36px; height: 36px; margin: 0 14px; }
+  .th.stack { box-shadow: 4px -4px 0 -1px var(--bg), 4px -4px 0 0 var(--ls); margin-top: 4px; }
+  .th .d { position: absolute; right: 3px; bottom: 3px; font: 500 9px "JetBrains Mono", monospace; background: rgba(0,0,0,.72); color: #fff; padding: 0 3px; border-radius: 3px; }
+  .t1 { background: linear-gradient(135deg,#3b5bdb,#8e2de2 60%,#ff6b6f); }
+  .t2 { background: linear-gradient(160deg,#0f2027,#2c5364 55%,#7fd6a4); }
+  .t3 { background: radial-gradient(circle at 30% 40%,#ffe29f,#ffa99f 40%,#3a1c71); }
+  .t4 { background: linear-gradient(135deg,#ff9a3c,#ff5e62 50%,#2b1a3a); }
+  .t5 { background: linear-gradient(120deg,#1d2b64,#4b6cb7 50%,#f8cdda); }
+  .t6 { background: linear-gradient(145deg,#232526,#5a6a5a 60%,#c9d6a3); }
+  .t7 { background: linear-gradient(135deg,#f7971e,#ffd200); }
+  .t8 { background: linear-gradient(160deg,#41295a,#2f0743 50%,#ff6b6f); }
+  .t9 { background: linear-gradient(135deg,#355c7d,#6c5b7b 50%,#c06c84); }
+
+  /* detail column */
+  .detail { width: 320px; flex: none; border-left: 1px solid var(--line); padding: 22px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .detail .big { width: 100%; height: 158px; border-radius: 10px; position: relative; }
+  .detail .ttl { font: 600 17px/1.3 "Inter Tight", sans-serif; }
+  .kv { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; font-size: 12.5px; }
+  .kv > span:nth-child(odd) { color: var(--muted); }
+  .kv .mono { font-size: 11px; word-break: break-all; }
+  .h5 { font: 700 13px "Space Grotesk", sans-serif; margin-top: 4px; }
+  .attrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .attrow:first-of-type { border-top: 1px solid var(--line); }
+  .attrow .mono { font-size: 10.5px; color: var(--dim); }
+  .wrapacts { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 18px 14px; margin-top: 14px; }
+  .tile .pic { height: 99px; border-radius: 10px; position: relative; }
+  .tile .pic .d { position: absolute; right: 6px; bottom: 6px; font: 500 10px "JetBrains Mono", monospace; background: rgba(0,0,0,.72); color: #fff; padding: 1px 4px; border-radius: 4px; }
+  .tile .pic .k { position: absolute; left: 6px; top: 6px; }
+  .tile .tt { font-size: 13px; font-weight: 500; margin-top: 7px; line-height: 1.3; height: 34px; overflow: hidden; }
+  .tile .sub { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+
+  /* sheet, menu, banner, empty */
+  .sheet { background: var(--panel); border-top: 1px solid var(--ls); border-radius: 14px 14px 0 0; padding: 10px 16px 16px; }
+  .sheet .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--ls); margin: 0 auto 12px; }
+  .scrim { background: rgba(0,0,0,.5); }
+  .menu { background: var(--panel); border: 1px solid var(--ls); border-radius: 12px; padding: 6px; width: 230px; box-shadow: 0 14px 30px -10px rgba(0,0,0,.6); }
+  .mi { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 7px; font-size: 13px; }
+  .mi.hov { background: var(--raised); }
+  .mi .key { margin-left: auto; }
+  .mi.bad { color: var(--bad); }
+  .msep { height: 1px; background: var(--line); margin: 5px 4px; }
+  .banner { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .starts .s { display: flex; gap: 14px; align-items: center; padding: 14px 4px; border-bottom: 1px solid var(--line); }
+  .starts .s:first-child { border-top: 1px solid var(--line); }
+  .starts .ico { width: 36px; height: 36px; border-radius: 9px; border: 2px solid var(--ls); display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+
+  table.cmp { border-collapse: collapse; font-size: 13.5px; max-width: 1000px; margin-top: 8px; }
+  table.cmp td, table.cmp th { text-align: left; padding: 7px 16px 7px 0; border-bottom: 1px solid #d6d0c2; vertical-align: top; }
+  table.cmp th { font: 700 11.5px "Space Grotesk", sans-serif; color: #7a7568; text-transform: uppercase; letter-spacing: .05em; }
+  table.cmp td.m, table.cmp code { font: 500 12px "JetBrains Mono", monospace; }
+  .tablewrap { overflow-x: auto; max-width: 100%; }
+  code { font: 500 12.5px "JetBrains Mono", monospace; }
+  @media (max-width: 600px) { body { padding: 28px 16px 60px; } h1 { font-size: 25px; } }
+  /* audio tools */
+  .goal { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .goal:first-child { border-top: 1px solid var(--line); }
+  .radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--edge); flex: none; }
+  .radio.on { border-color: var(--ink); box-shadow: inset 0 0 0 3px var(--bg), inset 0 0 0 8px var(--ink); }
+  .goal b { font-weight: 600; }
+  .goal .h { color: var(--muted); font-size: 12px; }
+  .goal .v { margin-left: auto; font: 500 11.5px "JetBrains Mono", monospace; color: var(--muted); }
+  .seg { display: inline-flex; border: 2px solid var(--ls); border-radius: 10px; padding: 2px; gap: 2px; }
+  .seg span { padding: 5px 12px; border-radius: 7px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .seg span.on { background: var(--ink); color: var(--bg); }
+  .field { display: grid; grid-template-columns: 90px 1fr; gap: 8px 12px; align-items: center; font-size: 12.5px; }
+  .field .lab { color: var(--muted); }
+  .inp { height: 32px; border: 2px solid var(--ls); border-radius: 8px; background: var(--panel); display: flex; align-items: center; padding: 0 10px; color: var(--ink); font-size: 12.5px; }
+  .inp.many { color: var(--dim); font-style: italic; }
+  .dlg { background: var(--panel); border: 1px solid var(--ls); border-radius: 14px; padding: 20px 22px; box-shadow: 0 24px 60px -16px rgba(0,0,0,.8); }
+  .dlg .t { font: 700 18px "Space Grotesk", sans-serif; }
+  .dlg .st { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .bulk { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--raised); border: 1px solid var(--ls); border-radius: 12px; flex-wrap: wrap; }
+  .tick { width: 16px; height: 16px; border-radius: 4px; border: 2px solid var(--edge); flex: none; }
+  .tick.on { background: var(--pop); border-color: var(--hard); }
+  .mv { display: flex; gap: 10px; font: 500 11.5px "JetBrains Mono", monospace; padding: 6px 0; border-bottom: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; }
+  .mv b { color: var(--ink); font-weight: 500; }
+  .tile2 { border: 2px solid var(--ls); border-radius: 12px; padding: 14px; display: flex; gap: 12px; align-items: flex-start; }
+  .tile2 .ico { width: 36px; height: 36px; border-radius: 9px; border: 2px solid var(--ls); display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+  .note { position: absolute; font: 500 10.5px "JetBrains Mono", monospace; color: #151412; background: #ffd23f; border: 2px solid #000; border-radius: 6px; padding: 2px 6px; box-shadow: 2px 2px 0 #9a6f00; white-space: nowrap; }
+  /* workflows */
+  .ext { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+  .ghost.on { border-color: var(--ink); }
+  .ghost .k { color: var(--dim); }
+  .link { height: 44px; border: 2px solid var(--ls); border-radius: 11px; display: flex; align-items: center; padding: 0 4px 0 12px; gap: 8px; background: var(--panel); }
+  .link .u { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 12px "JetBrains Mono", monospace; color: var(--muted); }
+  .split { display: inline-flex; }
+  .split .primary { border-radius: 10px 0 0 10px; height: 34px; font-size: 13px; padding: 0 12px; box-shadow: none; }
+  .split .primary.arr { border-radius: 0 10px 10px 0; border-left: 1px solid var(--hard); padding: 0 8px; }
+  .prev { display: flex; gap: 14px; margin-top: 16px; align-items: flex-start; }
+  .prev .big { width: 150px; height: 84px; border-radius: 10px; flex: none; }
+  .sec { font: 700 12px "Space Grotesk", sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin: 16px 0 6px; }
+  .sw { width: 34px; height: 20px; border-radius: 10px; background: var(--raised); border: 2px solid var(--ls); position: relative; flex: none; }
+  .sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--edge); }
+  .sw.on { background: var(--pop); border-color: var(--hard); }
+  .sw.on::after { left: 16px; background: var(--onpop); }
+  .wf { display: flex; gap: 12px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--line); }
+  .wf:first-of-type { border-top: 1px solid var(--line); }
+  .wf .ico { width: 34px; height: 34px; border-radius: 9px; border: 2px solid var(--ls); display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+  .wf .tt { font-size: 13.5px; font-weight: 600; }
+  .wf .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .when { font: 500 10.5px "JetBrains Mono", monospace; color: var(--muted); background: var(--raised); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+  .when.auto { color: var(--pop); background: #3a3212; }
+  .drawer { display: flex; }
+  .drawer .nav2 { width: 160px; flex: none; border-right: 1px solid var(--line); padding: 14px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .drawer .nav2 div { padding: 7px 10px; border-radius: 8px; font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .drawer .nav2 div.on { background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ls); }
+  .step { border: 2px solid var(--ls); border-radius: 12px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; font-size: 13px; background: var(--panel); }
+  .step .n { width: 22px; height: 22px; border-radius: 6px; background: var(--raised); display: flex; align-items: center; justify-content: center; font: 700 11px "Space Grotesk", sans-serif; color: var(--muted); flex: none; }
+  .arrow { color: var(--dim); text-align: center; font-size: 13px; line-height: 1; padding: 3px 0; }
+  .job { display: flex; gap: 12px; align-items: center; padding: 11px 4px; border-bottom: 1px solid var(--line); }
+  .bar { height: 4px; border-radius: 2px; background: var(--raised); margin-top: 7px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--pop); }
+  .steps { display: inline-flex; gap: 4px; align-items: center; }
+  .steps b { width: 7px; height: 7px; border-radius: 50%; background: var(--ls); display: inline-block; }
+  .steps b.d { background: var(--ok); }
+  .steps b.a { background: var(--pop); }
+</style>
+</head>
+<body>
+<!-- icon sprites -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.5 8.5 20 18M8.5 15.5 20 6"/></symbol>
+  <symbol id="i-cmp" viewBox="0 0 24 24"><path d="M4 9h6V3M20 15h-6v6M10 9 3 2M14 15l7 7"/></symbol>
+  <symbol id="i-cap" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-lib" viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="16" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><path d="m16.5 5.2 3.6-1 3 15.4-3.7 1z"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6h14M5 11h14M5 16h9"/></symbol>
+  <symbol id="i-cc" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 10.5a2 2 0 1 0 0 3M17 10.5a2 2 0 1 0 0 3"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"/></symbol>
+  <symbol id="i-find" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/><circle cx="13" cy="13.5" r="2.5"/><path d="m15 15.5 2 2"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-rows" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/></symbol>
+  <symbol id="i-level" viewBox="0 0 24 24"><path d="M4 14v-4M8 17V7M12 20V4M16 17V7M20 14v-4"/></symbol>
+  <symbol id="i-split" viewBox="0 0 24 24"><path d="M12 3v18M4 8h5M4 16h5M15 8h5M15 16h5"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14l-4-4M20 16H6l4 4"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H14a4 4 0 0 1 4 4v5.5"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-gif" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 10H8v4h2v-2M13 10v4M16 14v-4h2M16 12h1.5"/></symbol>
+</svg>
+
+<div class="page">
+  <h1>Saved workflows: what happens after a file is saved</h1>
+  <p class="lead">The roadmap says: <b>simple "after download" actions first</b> (extract audio, compress for Discord, move to a
+  folder), a builder only if people want chains like download → clip → 9:16 → compress, and a <b>watched folder</b> that
+  compresses or converts whatever lands in it. Neria already does each step on its own (Compress's goals, Sound only, Make a
+  GIF, Transcript). A workflow just remembers a pair of them under a name and runs them without asking. Five questions
+  below, one option marked <span class="mono">PICK</span> in each (my recommendation; nothing is built yet).</p>
+
+  <section>
+    <div class="label"><span>Ground rules</span><h2>What a workflow is, and what it isn't</h2></div>
+    <ul class="why">
+      <li><b>One change, then one place.</b> "Make it smaller for Discord, then put it in Clips". Every step is something a page
+        already does, with the same words (Compress's goals, Sound only's formats, Make a GIF).</li>
+      <li><b>The original stays unless you say so.</b> The default makes a copy next to it, as Compress does. "Replace the
+        original" is a choice you make in the workflow, in plain words, never the default.</li>
+      <li><b>It runs in the queue, on the download's own row.</b> No second row, no new screen to watch. A step that fails
+        leaves the download saved, with a note (as a transcript that fails does today).</li>
+      <li><b>Three to start with</b>, so it's useful before you make one: <b>Discord-ready</b> (smaller for Discord, a copy),
+        <b>Sound only</b> (MP3, a copy), <b>Into a folder</b> (moved to a folder you pick). Edit or delete them freely.</li>
+      <li><b>No new page.</b> Picked on the Download page, kept in Settings, run on files from the Library and the palette.</li>
+    </ul>
+  </section>
+
+  <!-- ============ 1 · PICKING ============ -->
+  <section>
+    <div class="label"><span>1 · Picking one for a download</span><h2>Where you say "and then…"</h2></div>
+
+    <div class="opt">
+      <h3>1A · A "Then" button in the row under the quality chips, beside Transcript <span class="rec">PICK</span></h3>
+      <p>It reads what will happen ("Then: Discord-ready") before you press Download, the same way the captions and
+      Transcript buttons do. It opens a short menu: your workflows, Nothing, New workflow…. A workflow that runs by itself for
+      this link (section 3: "every download", or "TikTok links") shows already picked, and the menu says why, so it's
+      never a surprise. A pick is for this link only; the next link starts from Nothing (or from the automatic one).</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">1000 × 520 · a TikTok link pasted</div>
+          <div class="q w1000" style="height:520px;position:relative">
+            <div class="rail">
+              <div class="logo">N</div>
+              <div class="nav on"><svg class="i"><use href="#i-dl"/></svg>Download</div>
+              <div class="nav"><svg class="i"><use href="#i-clip"/></svg>Clip</div>
+              <div class="nav"><svg class="i"><use href="#i-cmp"/></svg>Compress</div>
+              <div class="nav"><svg class="i"><use href="#i-cap"/></svg>Capture</div>
+              <div class="nav"><svg class="i"><use href="#i-lib"/></svg>Library</div>
+              <div class="sp"></div>
+              <div class="nav"><svg class="i"><use href="#i-set"/></svg>Settings</div>
+            </div>
+            <div class="main">
+              <div class="hd">Grab anything.</div>
+              <div class="mut" style="margin-top:6px">YouTube, Spotify, TikTok, Instagram, X, Twitch and 1,800+ more sites.</div>
+              <div class="link" style="margin-top:18px"><span class="u">https://www.tiktok.com/@chef.ari/video/7439120556</span>
+                <span class="ghost">Paste</span>
+                <span class="split"><span class="primary"><svg class="i sm"><use href="#i-dl"/></svg>Download</span><span class="primary arr"><svg class="i sm"><use href="#i-down"/></svg></span></span></div>
+              <div class="prev">
+                <div class="big t4"></div>
+                <div class="grow">
+                  <div style="font-weight:600;font-size:14px">The 10-minute crispy rice everyone asks for</div>
+                  <div class="mut" style="font-size:12px;margin-top:3px">TikTok · chef.ari · 0:58 · 1080 × 1920</div>
+                  <div class="ext" style="margin-top:10px">
+                    <span class="chip on">Best quality</span><span class="chip">Compatible</span><span class="chip">Smallest file</span><span class="chip">Audio only</span>
+                  </div>
+                  <div class="ext">
+                    <span class="ghost"><svg class="i sm"><use href="#i-text"/></svg>Transcript</span>
+                    <span class="ghost on"><svg class="i sm"><use href="#i-flow"/></svg>Then: Discord-ready</span>
+                  </div>
+                </div>
+              </div>
+              <div class="sec" style="margin-top:26px">Queue</div>
+              <div class="hint">Your downloads show up here.</div>
+            </div>
+            <div class="menu" style="position:absolute;left:510px;top:300px;width:290px">
+              <div class="hint" style="padding:6px 10px 4px">After it's saved</div>
+              <div class="mi"><span class="radio"></span>Nothing</div>
+              <div class="mi hov"><span class="radio on"></span><div class="grow">Discord-ready<div class="hint">For TikTok links · a copy under 10 MB</div></div></div>
+              <div class="mi"><span class="radio"></span><div class="grow">Sound only<div class="hint">A copy as MP3</div></div></div>
+              <div class="mi"><span class="radio"></span><div class="grow">Into a folder<div class="hint">Moved to D:\Cooking</div></div></div>
+              <div class="msep"></div>
+              <div class="mi"><svg class="i sm"><use href="#i-plus"/></svg>New workflow…</div>
+              <div class="mi"><svg class="i sm"><use href="#i-set"/></svg>Edit workflows…</div>
+            </div>
+            <div class="note" style="left:700px;top:262px">picked by itself: "For TikTok links"</div>
+          </div>
+        </div>
+        <div>
+          <div class="cap">400 × 640 · compact: the same button, its menu a sheet</div>
+          <div class="q col w400" style="height:640px">
+            <div class="main" style="padding:16px">
+              <div class="hd s">Grab anything.</div>
+              <div class="link" style="margin-top:14px"><span class="u">https://www.tiktok.com/@chef.ari/vid…</span>
+                <span class="split"><span class="primary"><svg class="i sm"><use href="#i-dl"/></svg></span><span class="primary arr"><svg class="i sm"><use href="#i-down"/></svg></span></span></div>
+              <div class="prev"><div class="big t4" style="width:96px;height:54px"></div>
+                <div class="grow"><div style="font-weight:600;font-size:13px;line-height:1.3">The 10-minute crispy rice everyone asks for</div><div class="mut" style="font-size:11.5px;margin-top:3px">TikTok · 0:58</div></div></div>
+              <div class="ext"><span class="chip on">Best</span><span class="chip">Compatible</span><span class="chip">Smallest</span><span class="chip">Audio</span></div>
+              <div class="ext"><span class="ghost"><svg class="i sm"><use href="#i-text"/></svg>Transcript</span><span class="ghost on"><svg class="i sm"><use href="#i-flow"/></svg>Then: Discord-ready</span></div>
+            </div>
+            <div style="flex:1"></div>
+            <div class="sheet">
+              <div class="grab"></div>
+              <div style="font:700 15px 'Space Grotesk',sans-serif;margin-bottom:6px">After it's saved</div>
+              <div class="goal"><span class="radio"></span>Nothing</div>
+              <div class="goal"><span class="radio on"></span><div><b>Discord-ready</b><div class="h">For TikTok links · a copy under 10 MB</div></div></div>
+              <div class="goal"><span class="radio"></span><div><b>Sound only</b><div class="h">A copy as MP3</div></div></div>
+              <div class="goal"><span class="radio"></span><div><b>Into a folder</b><div class="h">Moved to D:\Cooking</div></div></div>
+              <div class="row" style="margin-top:12px"><span class="ghost">New workflow…</span><span class="lnk">Edit workflows…</span></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="opt">
+      <h3>1B · In the Download button's ▾ menu: "Download, then Discord-ready"</h3>
+      <p>No new button, one click. But nothing on the page says a workflow will run (an automatic one would be invisible),
+      and the menu already holds Download now, Paste &amp; download and Download later…; three workflows make it eight lines.</p>
+      <div class="menu" style="width:280px">
+        <div class="mi">Download now</div>
+        <div class="mi">Paste &amp; download</div>
+        <div class="mi">Download later…</div>
+        <div class="msep"></div>
+        <div class="mi hov"><svg class="i sm"><use href="#i-flow"/></svg>Download, then Discord-ready</div>
+        <div class="mi"><svg class="i sm"><use href="#i-flow"/></svg>Download, then Sound only</div>
+        <div class="mi"><svg class="i sm"><use href="#i-flow"/></svg>Download, then Into a folder</div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>1C · Only automatic: rules in Settings, nothing to pick on the page</h3>
+      <p>Least to look at, but no way to say "this one time, make it smaller", and a rule you set a month ago quietly changes
+      what Download does.</p>
+    </div>
+  </section>
+
+  <!-- ============ 2 · WHAT ============ -->
+  <section>
+    <div class="label"><span>2 · What's in one</span><h2>Making or editing a workflow</h2></div>
+
+    <div class="opt">
+      <h3>2A · Two questions: change it how, then put it where <span class="rec">PICK</span></h3>
+      <p>The "change" rows are the ones you know from Compress (same words, same sizes), plus Make a GIF. "Then" says where the
+      result goes and what happens to the original, with "Replace the original" spelled out. Covers every example in the
+      roadmap except a clip in the middle (that needs you to pick In and Out, so it stays on the Clip page). The line at the
+      bottom says the whole thing back in one sentence.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">dialog, 480 wide</div>
+          <div class="dlg" style="width:480px;color:var(--ink);font-size:13px">
+            <div class="t">Discord-ready</div>
+            <div class="field" style="margin-top:14px"><span class="lab">Name</span><span class="inp">Discord-ready</span></div>
+            <div class="sec">Change it</div>
+            <div class="goal"><span class="radio"></span>Leave it as it is</div>
+            <div class="goal"><span class="radio on"></span><div class="grow" style="white-space:nowrap"><b>Make it smaller</b> <span class="h">for</span></div>
+              <span class="seg"><span class="on">Discord</span><span>Email</span><span>WhatsApp</span><span>A size…</span></span></div>
+            <div class="goal"><span class="radio"></span><div class="grow"><b>Sound only</b> <span class="h">as</span></div><span class="ghost">MP3 <svg class="i sm"><use href="#i-down"/></svg></span></div>
+            <div class="goal"><span class="radio"></span><div class="grow"><b>Make a GIF</b> <span class="h">short videos only</span></div></div>
+            <div class="sec">Then</div>
+            <div class="goal"><span class="radio on"></span><div class="grow">Save it next to the original</div></div>
+            <div class="goal"><span class="radio"></span><div class="grow">Save it in a folder <span class="h">(with "Leave it as it is": moves it)</span></div><span class="ghost"><svg class="i sm"><use href="#i-folder"/></svg>Pick…</span></div>
+            <div class="goal"><span class="radio"></span><div class="grow">Replace the original <span class="h">(the original goes to the Recycle Bin)</span></div></div>
+            <div class="sec">When</div>
+            <div class="goal"><span class="radio"></span>When I pick it</div>
+            <div class="goal"><span class="radio on"></span><div class="grow">For links from</div><span class="ghost">TikTok <svg class="i sm"><use href="#i-down"/></svg></span></div>
+            <div class="goal" style="color:var(--muted)"><span class="radio"></span>More in section 3…</div>
+            <div class="hint" style="margin:14px 0 0;padding:10px 12px;background:var(--raised);border-radius:9px;color:var(--ink)">TikTok links: a copy under 10 MB, saved next to the original.</div>
+            <div class="row" style="margin-top:16px"><span class="lnk" style="color:var(--bad)">Delete</span><span class="grow"></span><span class="ghost tall">Cancel</span><span class="primary">Save</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="opt">
+      <h3>2B · A chain of steps you build (+ Add step)</h3>
+      <p>The roadmap's download → clip → 9:16 → compress. It can do anything, but it lets you build things that make no
+      sense (a GIF, then Sound only), and the clip step still needs In and Out from somewhere. The roadmap says: only if people
+      ask. With 2A, this is a later "Add another step" link, not a different design.</p>
+      <div style="width:360px;background:var(--bg);color:var(--ink);padding:16px;border-radius:10px">
+        <div class="step"><span class="n">1</span>Download</div><div class="arrow">↓</div>
+        <div class="step"><span class="n">2</span><div class="grow">Clip <span class="mut">· first 0:30</span></div></div><div class="arrow">↓</div>
+        <div class="step"><span class="n">3</span><div class="grow">Picture <span class="mut">· 9:16, centre</span></div></div><div class="arrow">↓</div>
+        <div class="step"><span class="n">4</span><div class="grow">Make it smaller <span class="mut">· Discord</span></div></div>
+        <div class="ghost" style="margin-top:10px"><svg class="i sm"><use href="#i-plus"/></svg>Add step</div>
+      </div>
+    </div>
+
+    <div class="opt">
+      <h3>2C · Only the three starters, nothing to edit</h3>
+      <p>Simplest, but "Into a folder" needs your folder, and Discord-ready can't become WhatsApp-ready.</p>
+    </div>
+  </section>
+
+  <!-- ============ 3 · WHEN ============ -->
+  <section>
+    <div class="label"><span>3 · When it runs</span><h2>Picked by hand, or by itself</h2></div>
+
+    <div class="opt">
+      <h3>3A · "When" is part of the workflow <span class="rec">PICK</span></h3>
+      <p>One list to understand, not workflows plus rules. The choices:</p>
+      <table class="cmp">
+        <tr><th>When</th><th>What it means</th></tr>
+        <tr><td><b>When I pick it</b></td><td>Only from the Then button, the Library and the palette (the default)</td></tr>
+        <tr><td><b>Every download</b></td><td>Picked by itself for every link (you can still switch it to Nothing for one)</td></tr>
+        <tr><td><b>For links from</b> TikTok, Instagram…</td><td>Picked by itself for those sites (several may be ticked)</td></tr>
+        <tr><td><b>For channels I follow</b></td><td>New uploads from Following get it (the one place nobody's there to press a button)</td></tr>
+        <tr><td><b>For files put in a folder</b></td><td>The watched folder (section 4)</td></tr>
+      </table>
+      <p style="margin-top:10px">Two automatic ones for the same link: the more specific wins (TikTok links over Every download), and
+      the Then button shows which one it picked. Nothing ever runs two workflows on one file.</p>
+    </div>
+
+    <div class="opt">
+      <h3>3B · Workflows, plus a separate list of rules ("TikTok links → Discord-ready")</h3>
+      <p>More flexible (one workflow, many rules), but two lists to read to know what happens, for a case nobody has yet.</p>
+    </div>
+  </section>
+
+  <!-- ============ 4 · WATCHED FOLDER ============ -->
+  <section>
+    <div class="label"><span>4 · The watched folder</span><h2>Files dropped in a folder get a workflow</h2></div>
+
+    <div class="opt">
+      <h3>4A · A workflow's "When: for files put in a folder" <span class="rec">PICK</span></h3>
+      <p>Pick the folder; anything that lands there (from your phone's sync, OBS, a browser download) gets the workflow, in the
+      queue like a download. The results go in a <b>Done</b> folder inside it (so they're never picked up again), originals
+      stay where they are unless "Replace" was chosen. Neria waits until a file stops growing, skips half-finished ones
+      (<span class="mono">.part</span>, <span class="mono">.crdownload</span>, <span class="mono">.tmp</span>) and files it made
+      itself, and does a file once (remembered by name, size and time). Files already in the folder when you turn it on are left
+      alone, with a "Do the 12 already there" button. Runs while Neria is open or in the tray; the tray says so.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">the When part of the dialog</div>
+          <div class="dlg" style="width:480px;color:var(--ink);font-size:13px">
+            <div class="sec" style="margin-top:0">When</div>
+            <div class="goal"><span class="radio"></span>When I pick it</div>
+            <div class="goal"><span class="radio"></span>Every download</div>
+            <div class="goal"><span class="radio"></span>For links from…</div>
+            <div class="goal"><span class="radio"></span>For channels I follow</div>
+            <div class="goal"><span class="radio on"></span><div class="grow">For files put in a folder</div></div>
+            <div class="row" style="padding:8px 0 0 28px;gap:8px"><span class="inp grow mono" style="font-size:11.5px">D:\Recordings\To shrink</span><span class="ghost">Change…</span></div>
+            <div class="hint" style="padding:8px 0 0 28px">Results go to <span class="mono">To shrink\Done</span>. 12 files are there already: <span class="lnk">do them too</span></div>
+            <div class="row" style="margin-top:16px"><span class="grow"></span><span class="ghost tall">Cancel</span><span class="primary">Save</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="opt">
+      <h3>4B · A "Watch a folder" switch on the Compress page</h3>
+      <p>Close to the work it does, but it would use whatever goal the page has at the time: change the goal for one file and
+      the folder quietly changes too. And it couldn't move files or make GIFs.</p>
+    </div>
+  </section>
+
+  <!-- ============ 5 · MANAGE ============ -->
+  <section>
+    <div class="label"><span>5 · Where they're kept</span><h2>Settings → Workflows, and run from anywhere</h2></div>
+
+    <div class="opt">
+      <h3>5A · A Workflows section in Settings, after Following <span class="rec">PICK</span></h3>
+      <p>Each row: the name, what it does in one line, when (yellow when it runs by itself), a switch to pause an automatic one,
+      Edit. The watched folder's row says what it's done. On files you already have: a Library row's ⋯ and the picked-rows
+      strip get <b>Run a workflow…</b>; the palette finds each workflow by name ("discord-ready" → which file).</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">Settings drawer, 800 wide</div>
+          <div class="q w800 drawer" style="height:470px">
+            <div class="nav2">
+              <div style="font:700 15px 'Space Grotesk',sans-serif;color:var(--ink);padding:4px 10px 10px">Settings</div>
+              <div><svg class="i sm"><use href="#i-dl"/></svg>Download</div>
+              <div><svg class="i sm"><use href="#i-sync"/></svg>Following</div>
+              <div class="on"><svg class="i sm"><use href="#i-flow"/></svg>Workflows</div>
+              <div><svg class="i sm"><use href="#i-note"/></svg>Spotify</div>
+              <div><svg class="i sm"><use href="#i-link"/></svg>Network</div>
+              <div><svg class="i sm"><use href="#i-set"/></svg>General</div>
+              <div><svg class="i sm"><use href="#i-sound"/></svg>Voice</div>
+            </div>
+            <div class="main">
+              <div style="font:700 15px 'Space Grotesk',sans-serif">Workflows</div>
+              <div class="hint" style="margin:4px 0 14px">What happens to a file after it's saved. Pick one with Then on the Download page, or let one run by itself.</div>
+              <div class="wf"><span class="ico"><svg class="i sm"><use href="#i-cmp"/></svg></span>
+                <div class="grow"><div class="tt">Discord-ready</div><div class="sub">A copy under 10 MB, next to the original</div></div>
+                <span class="when auto">TikTok links</span><span class="sw on"></span><span class="ghost">Edit</span></div>
+              <div class="wf"><span class="ico"><svg class="i sm"><use href="#i-sound"/></svg></span>
+                <div class="grow"><div class="tt">Sound only</div><div class="sub">A copy as MP3</div></div>
+                <span class="when">When I pick it</span><span class="ghost">Edit</span></div>
+              <div class="wf"><span class="ico"><svg class="i sm"><use href="#i-folder"/></svg></span>
+                <div class="grow"><div class="tt">Into a folder</div><div class="sub">Moved to D:\Cooking</div></div>
+                <span class="when">When I pick it</span><span class="ghost">Edit</span></div>
+              <div class="wf"><span class="ico"><svg class="i sm"><use href="#i-eye"/></svg></span>
+                <div class="grow"><div class="tt">Shrink recordings</div><div class="sub">Smaller to 50 MB · watching D:\Recordings\To shrink · 3 done today</div></div>
+                <span class="when auto">Folder</span><span class="sw on"></span><span class="ghost">Edit</span></div>
+              <div class="ghost" style="margin-top:14px"><svg class="i sm"><use href="#i-plus"/></svg>New workflow</div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="opt">
+      <h3>5B · A page of its own</h3>
+      <p>A sixth tab for something you set up once and then forget is the wrong trade (the same reason Audio tools got none).</p>
+    </div>
+  </section>
+
+  <!-- ============ 6 · QUEUE ============ -->
+  <section>
+    <div class="label"><span>6 · While it runs</span><h2>In the queue</h2></div>
+
+    <div class="opt">
+      <h3>6A · The download's own row carries on <span class="rec">PICK</span></h3>
+      <p>The row says the step it's on, with dots for the steps. Done, it names the workflow and the result; Show file opens the
+      result, ⋯ has Show the original. Both are in the Library; the result's details say "Made by Discord-ready from …". A
+      step that fails: the download is still saved, the row says what didn't happen, with Try again.</p>
+      <div class="scroll"><div class="pair">
+        <div>
+          <div class="cap">queue, 800 wide</div>
+          <div style="width:800px;background:var(--bg);color:var(--ink);padding:10px 20px;border-radius:10px">
+            <div class="job"><div class="th t4"></div><div class="grow">
+                <div class="tt" style="font-size:13.5px;font-weight:500">The 10-minute crispy rice everyone asks for</div>
+                <div class="row mut" style="font-size:12px;margin-top:3px"><span class="steps"><b class="d"></b><b class="a"></b></span>Making it smaller for Discord · 46% · about 20 s left</div>
+                <div class="bar"><i style="width:46%"></i></div></div>
+              <span class="ghost">Cancel</span></div>
+            <div class="job"><div class="th t2"></div><div class="grow">
+                <div class="tt" style="font-size:13.5px;font-weight:500">Lo-fi beats to study to: 3 hour mix</div>
+                <div class="row mut" style="font-size:12px;margin-top:3px"><span class="tag ok">Saved</span><svg class="i sm"><use href="#i-flow"/></svg>Sound only · <span class="mono">Lo-fi beats… .mp3</span> · 164 MB</div></div>
+              <span class="ghost">Show file</span><span class="ghost ic"><svg class="i sm"><use href="#i-more"/></svg></span></div>
+            <div class="job" style="border-bottom:none"><div class="th t1"></div><div class="grow">
+                <div class="tt" style="font-size:13.5px;font-weight:500">Insane clutch, 1v4 on Ascent</div>
+                <div class="row mut" style="font-size:12px;margin-top:3px"><span class="tag warn">Saved</span>But not made smaller: it can't fit 10 MB at 4 minutes long</div></div>
+              <span class="ghost">Try again</span><span class="ghost">Show file</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="opt">
+      <h3>6B · A second row for the workflow's step</h3>
+      <p>Clearer that two things happened, but twice the rows for every download, and cancelling one row doesn't say what
+      happens to the other.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="label"><span>Summary</span><h2>The picks I'd make</h2></div>
+    <div class="tablewrap">
+    <table class="cmp">
+      <tr><th>Part</th><th>Pick</th><th>Why</th></tr>
+      <tr><td>Picking</td><td>1A · a "Then" button beside Transcript, its menu a sheet on compact</td><td>You see what will happen before pressing Download</td></tr>
+      <tr><td>What</td><td>2A · change it (Smaller / Sound only / GIF / nothing), then where (next to / a folder / replace)</td><td>Every roadmap example, no builder; a step can be added later</td></tr>
+      <tr><td>When</td><td>3A · part of the workflow: I pick it, every download, sites, followed channels, a folder</td><td>One list, no separate rules</td></tr>
+      <tr><td>Folder</td><td>4A · a workflow's When; results in Done inside it; old files only when asked</td><td>The same workflows, nothing new to learn</td></tr>
+      <tr><td>Kept</td><td>5A · Settings → Workflows; Run a workflow… in the Library and the palette</td><td>No sixth page</td></tr>
+      <tr><td>Queue</td><td>6A · the download's own row carries on</td><td>One row per thing you asked for</td></tr>
+    </table>
+    </div>
+  </section>
+</div>
+</body>
+</html>

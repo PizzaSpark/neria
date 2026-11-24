@@ -219,6 +219,7 @@ pub fn set_info(ui: &AppWindow, info: &MediaInfo, settings: &Settings) {
         s.chapters = info.chapters.clone();
         s.ch_picked = vec![true; s.chapters.len()];
         s.url = ui.get_url().trim().to_string();
+        crate::workflow_ui::on_preview(ui, &s.url);
         // Last time's languages: the creator's version if there is one, else auto-generated.
         for lang in &settings.caption_langs {
             let found = s
@@ -238,6 +239,7 @@ pub fn set_info(ui: &AppWindow, info: &MediaInfo, settings: &Settings) {
 /// No video previewed (cleared, a playlist, an error).
 pub fn clear(ui: &AppWindow) {
     crate::transcribe_ui::reset_download(ui);
+    crate::workflow_ui::on_preview(ui, "");
     STATE.with(|s| *s.borrow_mut() = State::default());
     ui.global::<Extras>().set_open(0);
     refresh_buttons(ui);
@@ -257,6 +259,11 @@ pub fn requests(ui: &AppWindow, base: DownloadRequest, settings: &Settings) -> V
         for r in reqs.iter_mut().filter(|r| !r.captions_only()) {
             r.transcribe = Some(spec.clone());
         }
+    }
+    // Then: a saved workflow on each file saved (or Nothing, as picked).
+    let pick = crate::workflow_ui::download_pick();
+    for r in reqs.iter_mut().filter(|r| !r.captions_only()) {
+        r.workflow = pick.clone();
     }
     reqs
 }

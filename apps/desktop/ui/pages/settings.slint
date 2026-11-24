@@ -1,7 +1,7 @@
 import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
 import { Formats } from "../types.slint";
-import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe, ClipChat, Voice } from "../globals.slint";
+import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe, ClipChat, Voice, Workflows, WfRow } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider, Notice, ChoiceChips } from "../widgets.slint";
 
 // One group of settings under a small heading.
@@ -82,6 +82,81 @@ component FollowRow inherits VerticalLayout {
             compact: true;
             text: "Unfollow";
             clicked => { Following.unfollow(root.item.url); }
+        }
+    }
+    Divider { }
+}
+
+// A saved workflow: its icon, name, what it makes, when it runs (yellow when it runs by
+// itself), a switch to pause an automatic one, Edit.
+component WorkflowRow inherits VerticalLayout {
+    in property <WfRow> item;
+    padding-top: 10px;
+    spacing: 10px;
+    HorizontalLayout {
+        spacing: 12px;
+        Rectangle {
+            width: 34px;
+            height: 34px;
+            border-radius: 9px;
+            border-width: 2px;
+            border-color: Theme.line-strong;
+            Icon {
+                text: root.item.kind == 0 ? "\u{E73F}" : root.item.kind == 1 ? "\u{E8D6}" : root.item.kind == 2 ? "\u{E8B9}" : root.item.kind == 3 ? "\u{E8B7}" : "\u{E890}";
+                width: parent.width;
+                height: parent.height;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                font-size: 14px;
+                color: Theme.muted;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.item.name;
+                color: root.item.auto && !root.item.on ? Theme.muted : Theme.ink;
+                font-size: 13.5px;
+                font-weight: 600;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.watching != "" ? root.item.what + " · " + root.item.watching : root.item.what;
+                color: Theme.muted;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+        }
+        if !Screen.compact: VerticalLayout {
+            alignment: center;
+            Tag {
+                text: root.item.auto && !root.item.on ? "Paused" : root.item.when;
+                kind: root.item.auto && root.item.on ? 1 : 0;
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        padding-left: 46px;
+        if Screen.compact: VerticalLayout {
+            alignment: center;
+            Tag {
+                text: root.item.auto && !root.item.on ? "Paused" : root.item.when;
+                kind: root.item.auto && root.item.on ? 1 : 0;
+            }
+        }
+        GhostButton {
+            compact: true;
+            text: "Edit";
+            clicked => { Workflows.edit(root.item.id); }
+        }
+        if root.item.auto: GhostButton {
+            compact: true;
+            text: root.item.on ? "Pause" : "Resume";
+            clicked => { Workflows.set-on(root.item.id, !root.item.on); }
         }
     }
     Divider { }
@@ -704,14 +779,17 @@ export component SettingsDrawer inherits Rectangle {
 
     changed section => { scroll.content-y = 0; }
 
-    property <[{icon: string, label: string}]> sections: [
-        { icon: "\u{E896}", label: "Download" },
-        { icon: "\u{E728}", label: "Following" },
-        { icon: "\u{E8D6}", label: "Spotify" },
-        { icon: "\u{E774}", label: "Network" },
-        { icon: "\u{E790}", label: "General" },
-        { icon: "\u{E720}", label: "Voice" },
-        { icon: "\u{E946}", label: "About" },
+    // In the order they show; `id` is the section's number (Workflows came later, so it's 7
+    // but sits after Following).
+    property <[{icon: string, label: string, id: int}]> sections: [
+        { icon: "\u{E896}", label: "Download", id: 0 },
+        { icon: "\u{E728}", label: "Following", id: 1 },
+        { icon: "\u{E945}", label: "Workflows", id: 7 },
+        { icon: "\u{E8D6}", label: "Spotify", id: 2 },
+        { icon: "\u{E774}", label: "Network", id: 3 },
+        { icon: "\u{E790}", label: "General", id: 4 },
+        { icon: "\u{E720}", label: "Voice", id: 5 },
+        { icon: "\u{E946}", label: "About", id: 6 },
     ];
 
     // Esc closes it, from anywhere inside; it takes the keyboard when it opens.
@@ -770,7 +848,7 @@ export component SettingsDrawer inherits Rectangle {
                         // Too narrow for all five: keep the open one in view (Appearance and
                         // About sit at the end).
                         function reveal() {
-                            self.content-x = root.section >= 4 ? min(0px, self.width - self.content-width) : 0px;
+                            self.content-x = root.section >= 3 && root.section != 7 ? min(0px, self.width - self.content-width) : 0px;
                         }
                         init => { self.reveal(); }
                         changed width => { self.reveal(); }
@@ -785,8 +863,8 @@ export component SettingsDrawer inherits Rectangle {
                                 show-icon: false;
                                 icon: s.icon;
                                 label: s.label;
-                                active: root.section == i;
-                                clicked => { root.section = i; }
+                                active: root.section == s.id;
+                                clicked => { root.section = s.id; }
                             }
                         }
                     }
@@ -809,8 +887,8 @@ export component SettingsDrawer inherits Rectangle {
                         for s[i] in root.sections: SectionLink {
                             icon: s.icon;
                             label: s.label;
-                            active: root.section == i;
-                            clicked => { root.section = i; }
+                            active: root.section == s.id;
+                            clicked => { root.section = s.id; }
                         }
                     }
 
@@ -1068,6 +1146,38 @@ export component SettingsDrawer inherits Rectangle {
                             }
                             Hint {
                                 text: "Spotify playlists: songs added to it download into its folder. Songs taken off it stay until you review them here, and only the ones you tick go to the Recycle Bin.";
+                            }
+                        }
+
+                        // ---- Workflows ----
+                        if root.section == 7: VerticalLayout {
+                            spacing: 22px;
+                            padding-top: Screen.compact ? 14px : 0px;
+                            padding-left: Screen.compact ? 16px : 20px;
+                            padding-right: Theme.lane;
+                            padding-bottom: 22px;
+                            alignment: start;
+
+                            Group {
+                                title: "Workflows";
+                                Hint {
+                                    text: "What happens to a file after it's saved. Pick one with Then under a video's preview, or let one run by itself.";
+                                }
+                                VerticalLayout {
+                                    for w in Workflows.items: WorkflowRow { item: w; }
+                                }
+                                HorizontalLayout {
+                                    alignment: start;
+                                    GhostButton {
+                                        compact: true;
+                                        icon: "\u{E710}";
+                                        text: "New workflow";
+                                        clicked => { Workflows.new-one(); }
+                                    }
+                                }
+                            }
+                            Hint {
+                                text: "The original stays unless a workflow replaces it (it then goes to the Recycle Bin). Files you already have: Run a workflow… in a Library row's menu, or Ctrl+K and the workflow's name.";
                             }
                         }
 

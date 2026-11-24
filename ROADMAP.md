@@ -247,7 +247,7 @@ so they get built together.
    that can't scale records full size), the phone on Best
 8. **Bigger ideas** (section "Later"), in this order: ✅ Library page (built 2026-11-23, every
    action tried in the real app the same day; left: the grid view, see Later), ✅ command palette (built 2026-11-24), ✅ Audio
-   tools (built 2026-11-24 into Compress, the Library and the Clip page; no page of its own), saved workflows, external tools. Parked (user's call 2026-11-23): the browser
+   tools (built 2026-11-24 into Compress, the Library and the Clip page; no page of its own), ✅ saved workflows (built 2026-11-24; see Later), external tools. Parked (user's call 2026-11-23): the browser
    extension (Chrome's store asks $5 once; Firefox / Edge are free) and a Tampermonkey
    userscript instead (free everywhere, but two installs and no cookies); the clipboard
    watcher covers handing links over for now
@@ -1221,9 +1221,30 @@ that's an exception, written only once the Phone tab is used.
   (`NERIA_PALETTE` + `NERIA_PALETTE_ENTER`); ui-check `pal*` at every width; Ctrl+K and the
   keys checked by hand the same day. Left: on the Clip page at 400 px the header's four icons
   cut the title shorter once a file is open
-- **Saved workflows**: simple "after download" actions first (extract audio, compress for
-  Discord, move to folder); a builder only if people want chains like download → clip → 9:16
-  → compress. Watched folder: auto-compress/convert files dropped into a folder
+- **Saved workflows** ✅ (built 2026-11-24, mock `design/workflows.html`, picks 1A · 2A · 3A ·
+  4A · 5A · 6A): what happens to a file after it's saved (`workflow.rs`, `workflow_ui.rs`,
+  `workflows.json`). One change (Make it smaller for Discord / email / WhatsApp / a size,
+  Sound only as MP3 / M4A / Opus / FLAC / WAV, Make a GIF of a video up to a minute, or left
+  as it is) then one place (next to the original, a folder, or replacing it: the original to
+  the Recycle Bin). When: picked (a Then button beside Transcript under a video's preview),
+  every download, links from ticked sites, new uploads of followed channels, or files put in a
+  watched folder (taken once they stop growing, `.part` / `.crdownload` skipped, files already
+  there left alone unless ticked, results in its Done folder); the more specific wins, never
+  two on one file. Starters: Discord-ready, Sound only, Into a folder. Settings → Workflows
+  (Edit, Pause / Resume an automatic one, New workflow), the editor says it all back in one
+  sentence (or why Save is greyed out); Run a workflow… in a Library row's menu and the
+  picked-rows strip; the palette finds a workflow by name, then which file. It runs on the
+  download's own queue row ("Saving its sound as MP3… 40%", then "Sound only: MP3, 0.5 MB";
+  Show opens the result); a step that fails leaves the download saved, with a note; a new file
+  is its own Library record ("made by …", the original its source). Checked headless
+  (`--example workflow`: smaller, already small enough, Sound only, GIF, moved, replaced, a
+  watched folder) and in the app (an automatic Sound only on a real YouTube download, the
+  row and both Library records); ui-check `set-wf`, `wf-*`, `pal-wf`, `lib-menu` at every
+  width. Left: the Then menu and the editor's folder pickers clicked by hand (screenshots
+  can't open a pop-up or a file dialog); a watched folder in the running app with a real
+  OBS recording; a row whose workflow step failed says why but has no Try again for the step
+  (the mock had one); a builder for chains (download → clip → 9:16 → compress) only if
+  people ask
 - **External tools** (instead of a plugin system): Settings → Tools lets power users add
   their own command-line tools as actions with placeholders like `{file}`, `{in}`, `{out}`,
   `{dir}`; jobs run in Neria's queue. No extension code loaded into Neria, nothing bundled

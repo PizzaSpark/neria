@@ -1,6 +1,65 @@
 import { Theme, Screen } from "../theme.slint";
-import { Extras, Transcribe } from "../globals.slint";
-import { GhostButton } from "../widgets.slint";
+import { Extras, Transcribe, Workflows } from "../globals.slint";
+import { GhostButton, Menu, MenuItem, KeyPress } from "../widgets.slint";
+
+// One line of the Then menu: a round mark, the workflow's name and what it does.
+component ThenItem inherits Rectangle {
+    in property <string> title;
+    in property <string> hint;
+    in property <bool> selected;
+    callback clicked();
+    height: col.preferred-height;
+    border-radius: 8px;
+    accessible-role: radio-button;
+    accessible-label: root.title;
+    accessible-description: root.hint;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.clicked(); }
+    background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
+    KeyPress {
+        radius: 8px;
+        activated => { root.clicked(); }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    col := HorizontalLayout {
+        padding: 8px;
+        padding-left: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border-width: root.selected ? 5px : 2px;
+                border-color: root.selected ? Theme.ink : Theme.edge;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 1px;
+            Text {
+                text: root.title;
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: 13px;
+                font-weight: root.selected ? 600 : 500;
+                overflow: elide;
+            }
+            if root.hint != "": Text {
+                text: root.hint;
+                color: Theme.muted;
+                font-family: Theme.body;
+                font-size: 11.5px;
+                overflow: elide;
+            }
+        }
+    }
+}
 
 // Under the quality chips of a single video: small buttons saying what's picked
 // ("Captions: English", "Audio: Original", "Chapters: all 9"), each opening its picker.
@@ -36,6 +95,64 @@ export component ExtrasRow inherits FlexboxLayout {
         text: Extras.transcript-text;
         on: Extras.transcript-on;
         clicked => { Transcribe.open-for-download(); }
+    }
+    // Then: a saved workflow after it's saved (Discord-ready, Sound only…), or Nothing.
+    holder := Rectangle {
+        width: then-btn.preferred-width;
+        height: 30px;
+        then-btn := GhostButton {
+            width: parent.width;
+            compact: true;
+            icon: "\u{E945}";
+            text: Workflows.then-text;
+            on: Workflows.picked != 0;
+            trail: "\u{E70D}";
+            clicked => { then-menu.show(); }
+        }
+        then-menu := PopupWindow {
+            // Under the button, kept inside the window on narrow ones.
+            x: min(0px, Screen.width - 12px - holder.absolute-position.x - 290px);
+            y: parent.height + 4px;
+            Menu {
+                width: 290px;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    Text {
+                        text: "After it's saved";
+                        color: Theme.muted;
+                        font-family: Theme.body;
+                        font-size: 11.5px;
+                        height: 24px;
+                        vertical-alignment: center;
+                    }
+                }
+                ThenItem {
+                    title: "Nothing";
+                    selected: Workflows.picked == 0;
+                    clicked => { Workflows.pick(0); }
+                }
+                for w in Workflows.items: ThenItem {
+                    title: w.name;
+                    hint: Workflows.picked == w.id && Workflows.picked-why != "" ? Workflows.picked-why + " · " + w.what : w.what;
+                    selected: Workflows.picked == w.id;
+                    clicked => { Workflows.pick(w.id); }
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+                MenuItem {
+                    icon: "\u{E710}";
+                    text: "New workflow…";
+                    clicked => { Workflows.new-one(); }
+                }
+                MenuItem {
+                    icon: "\u{E713}";
+                    text: "Edit workflows…";
+                    clicked => { Workflows.open-settings(); }
+                }
+            }
+        }
     }
     if Extras.no-captions: Text {
         text: "No captions on this video";

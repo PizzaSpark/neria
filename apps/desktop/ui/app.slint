@@ -7,7 +7,7 @@ import { MatchItem, ToolRow, SyncItem, PickItem, JobItem, LiveRow, RecentItem, C
 import { Toast } from "widgets.slint";
 // Present's window (Capture page → Phone): its own window, generated for Rust too.
 export { PresentWindow } from "present-window.slint";
-import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached, Commands, PalRow, TagEdit, Organize, OrgMove } from "globals.slint";
+import { Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached, Commands, PalRow, TagEdit, Organize, OrgMove, Workflows, WfRow, WfSite } from "globals.slint";
 import { ClipsDialog } from "dialogs/clips.slint";
 import { GifDialog } from "dialogs/gif.slint";
 import { ChatDialog } from "dialogs/chat.slint";
@@ -28,11 +28,12 @@ import { MatchDialog } from "dialogs/match.slint";
 import { PaletteBox } from "dialogs/palette.slint";
 import { TagsDialog } from "dialogs/tags.slint";
 import { OrganizeDialog } from "dialogs/organize.slint";
+import { WorkflowDialog, RunWorkflowDialog } from "dialogs/workflow.slint";
 import { SyncDialog } from "dialogs/sync.slint";
 import { SpotifyHeadsUp } from "dialogs/spotify.slint";
 import { DropOverlay, DropChoice } from "dialogs/drop.slint";
 
-export { Theme, Screen, Nav, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached, Commands, PalRow, TagEdit, Organize, OrgMove }
+export { Theme, Screen, Nav, MatchItem, ToolRow, SyncItem, PickItem, JobItem, RecentItem, ChapterMark, Fmt, Accounts, SiteItem, Extras, TrackRow, Background, QueueActions, Presets, Names, NamePiece, Bulk, Watch, Following, FollowItem, Music, ClipSound, ClipTrack, ClipGif, ClipPicture, ClipList, ClipItem, ClipLive, LiveTapeView, ClipView, Compress, CmpGoal, CmpFile, CmpPart, Live, LiveRow, Transcribe, ClipChat, ChatRow, Voice, VoicePhrase, VoiceSpelling, VoiceSet, Capture, CaptureSource, CaptureSaved, CaptureTrack, CaptureApp, Phone, PhoneRow, QualityRow, Library, LibRow, LibDetail, LibAttached, Commands, PalRow, TagEdit, Organize, OrgMove, Workflows, WfRow, WfSite }
 
 export component AppWindow inherits Window {
     title: "Neria";
@@ -553,6 +554,20 @@ export component AppWindow inherits Window {
     }
 
     if Organize.open: OrganizeDialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+    }
+
+    if Workflows.run-open: RunWorkflowDialog {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+    }
+
+    if Workflows.edit-open: WorkflowDialog {
         x: 0;
         y: 0;
         width: root.width;

@@ -369,6 +369,15 @@ pub fn relocate(moves: &[(u64, PathBuf)]) {
     });
 }
 
+/// A file moved by a workflow (Into a folder): the records of it follow.
+pub fn relocate_file(from: &Path, to: &Path) {
+    let ids: Vec<(u64, PathBuf)> =
+        load().into_iter().filter(|i| i.file == from).map(|i| (i.id, to.to_path_buf())).collect();
+    if !ids.is_empty() {
+        relocate(&ids);
+    }
+}
+
 /// A recording's holes after "Get the missed bits back": what's still missing (none: the
 /// record forgets them), its size and length now. Returns the record as it is now.
 pub fn set_gaps(id: u64, gaps: Option<crate::record::Gaps>) -> Option<Item> {

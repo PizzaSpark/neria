@@ -203,6 +203,14 @@ $states = [ordered]@{
   "pal-typed"  = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "rec" }
   "pal-thing"  = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "thing:tokyo" }
   "pal-file"   = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "action:compress" }
+  # Saved workflows: Settings → Workflows, the editor (new, the first, a watched folder),
+  # Run a workflow…, the palette finding one by name.
+  "set-wf"     = @{ NERIA_SETTINGS = "workflows" }
+  "wf-new"     = @{ NERIA_WORKFLOW = "new" }
+  "wf-edit"    = @{ NERIA_SETTINGS = "workflows"; NERIA_WORKFLOW = "edit" }
+  "wf-folder"  = @{ NERIA_WORKFLOW = "folder" }
+  "wf-run"     = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_WORKFLOW = "run" }
+  "pal-wf"     = @{ NERIA_PAGE = "library"; NERIA_LIBRARY_DEMO = "1"; NERIA_PALETTE = "discord" }
   "set-dl"     = @{ NERIA_SETTINGS = "download" }
   "set-about"  = @{ NERIA_SETTINGS = "about" }
   "set-voice-off" = @{ NERIA_SETTINGS = "voice" }

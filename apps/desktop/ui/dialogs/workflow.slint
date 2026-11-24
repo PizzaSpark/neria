@@ -1,0 +1,334 @@
+import { ScrollView, LineEdit } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { Workflows } from "../globals.slint";
+import { PrimaryButton, GhostButton, SectionTitle, Hint, Dialog, ChoiceChips, ChoiceRow, Chip, Tick, TextLink } from "../widgets.slint";
+
+// A folder line under a choice: the path, and Change… / Pick….
+component FolderLine inherits HorizontalLayout {
+    in property <string> path;
+    callback pick();
+    spacing: 8px;
+    padding-left: Screen.compact ? 0 : 30px;
+    padding-top: 6px;
+    padding-bottom: 4px;
+    Text {
+        text: root.path == "" ? "No folder yet" : root.path;
+        color: root.path == "" ? Theme.muted : Theme.ink;
+        font-family: Theme.mono;
+        font-size: 11.5px;
+        vertical-alignment: center;
+        overflow: elide;
+        horizontal-stretch: 1;
+    }
+    GhostButton {
+        compact: true;
+        icon: "\u{E8B7}";
+        text: root.path == "" ? "Pick…" : "Change…";
+        label: "Pick a folder";
+        clicked => { root.pick(); }
+    }
+}
+
+// Making or editing a saved workflow (mock `design/workflows.html` 2A, 3A, 4A): change it how,
+// then put it where, and when it runs; the last line says it all back in one sentence.
+export component WorkflowDialog inherits Dialog {
+    title: Workflows.edit-new ? "New workflow" : Workflows.name;
+    card-width: 600px;
+    card-height: 1000px;
+    close => { Workflows.edit-open = false; }
+
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            spacing: 6px;
+            padding-right: Theme.lane;
+
+            HorizontalLayout {
+                spacing: 12px;
+                padding-bottom: 6px;
+                Text {
+                    text: "Name";
+                    color: Theme.muted;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    width: 50px;
+                }
+                LineEdit {
+                    text <=> Workflows.name;
+                    placeholder-text: "Discord-ready";
+                    edited => { Workflows.changed(); }
+                }
+            }
+
+            SectionTitle { text: "Change it"; }
+            ChoiceRow {
+                title: "Leave it as it is";
+                hint: "only move it";
+                selected: Workflows.change == 0;
+                clicked => {
+                    Workflows.change = 0;
+                    Workflows.put = 1;
+                    Workflows.changed();
+                }
+            }
+            ChoiceRow {
+                title: "Make it smaller";
+                hint: "a copy that fits where it's going";
+                selected: Workflows.change == 1;
+                clicked => {
+                    Workflows.change = 1;
+                    Workflows.changed();
+                }
+            }
+            if Workflows.change == 1: VerticalLayout {
+                padding-left: Screen.compact ? 0 : 30px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 8px;
+                ChoiceChips {
+                    options: ["Discord", "Email", "WhatsApp", "A size"];
+                    current <=> Workflows.size;
+                    changed => { Workflows.changed(); }
+                }
+                if Workflows.size == 3: HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    LineEdit {
+                        width: 90px;
+                        text <=> Workflows.size-mb;
+                        input-type: decimal;
+                        edited => { Workflows.changed(); }
+                    }
+                    Text {
+                        text: "MB";
+                        color: Theme.muted;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            ChoiceRow {
+                title: "Sound only";
+                hint: "a song or podcast out of a video";
+                selected: Workflows.change == 2;
+                clicked => {
+                    Workflows.change = 2;
+                    Workflows.changed();
+                }
+            }
+            if Workflows.change == 2: VerticalLayout {
+                padding-left: Screen.compact ? 0 : 30px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                ChoiceChips {
+                    options: ["MP3", "M4A", "Opus", "FLAC", "WAV"];
+                    current <=> Workflows.sound-as;
+                    changed => { Workflows.changed(); }
+                }
+            }
+            ChoiceRow {
+                title: "Make a GIF";
+                hint: "videos up to a minute";
+                selected: Workflows.change == 3;
+                clicked => {
+                    Workflows.change = 3;
+                    Workflows.changed();
+                }
+            }
+
+            VerticalLayout {
+                padding-top: 14px;
+                spacing: 6px;
+                SectionTitle { text: "Then"; }
+                if Workflows.change == 0: ChoiceRow {
+                    title: "Move it to a folder";
+                    selected: true;
+                    clicked => { Workflows.pick-put-folder(); }
+                }
+                if Workflows.change != 0: ChoiceRow {
+                    title: "Save it next to the original";
+                    hint: Workflows.when == 4 ? "in a Done folder inside the watched one" : "";
+                    selected: Workflows.put == 0;
+                    clicked => {
+                        Workflows.put = 0;
+                        Workflows.changed();
+                    }
+                }
+                if Workflows.change != 0: ChoiceRow {
+                    title: "Save it in a folder";
+                    selected: Workflows.put == 1;
+                    clicked => {
+                        Workflows.put = 1;
+                        Workflows.changed();
+                    }
+                }
+                if Workflows.put == 1 || Workflows.change == 0: FolderLine {
+                    path: Workflows.put-folder;
+                    pick => { Workflows.pick-put-folder(); }
+                }
+                if Workflows.change != 0: ChoiceRow {
+                    title: "Replace the original";
+                    hint: "the original goes to the Recycle Bin";
+                    stacked: true;
+                    selected: Workflows.put == 2;
+                    clicked => {
+                        Workflows.put = 2;
+                        Workflows.changed();
+                    }
+                }
+            }
+
+            VerticalLayout {
+                padding-top: 14px;
+                spacing: 6px;
+                SectionTitle { text: "When"; }
+                ChoiceRow {
+                    title: "When I pick it";
+                    hint: "Then on the Download page, the Library";
+                    selected: Workflows.when == 0;
+                    clicked => {
+                        Workflows.when = 0;
+                        Workflows.changed();
+                    }
+                }
+                ChoiceRow {
+                    title: "Every download";
+                    selected: Workflows.when == 1;
+                    clicked => {
+                        Workflows.when = 1;
+                        Workflows.changed();
+                    }
+                }
+                ChoiceRow {
+                    title: "For links from";
+                    selected: Workflows.when == 2;
+                    clicked => {
+                        Workflows.when = 2;
+                        Workflows.changed();
+                    }
+                }
+                if Workflows.when == 2: FlexboxLayout {
+                    spacing: 7px;
+                    padding-left: Screen.compact ? 0 : 30px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+                    for s[i] in Workflows.sites: Chip {
+                        text: s.name;
+                        selected: s.on;
+                        clicked => { Workflows.toggle-site(i); }
+                    }
+                }
+                ChoiceRow {
+                    title: "For channels I follow";
+                    hint: "their new uploads";
+                    selected: Workflows.when == 3;
+                    clicked => {
+                        Workflows.when = 3;
+                        Workflows.changed();
+                    }
+                }
+                ChoiceRow {
+                    title: "For files put in a folder";
+                    hint: "a watched folder";
+                    selected: Workflows.when == 4;
+                    clicked => {
+                        if Workflows.when-folder == "" {
+                            Workflows.pick-when-folder();
+                        }
+                        Workflows.when = 4;
+                        Workflows.changed();
+                    }
+                }
+                if Workflows.when == 4: FolderLine {
+                    path: Workflows.when-folder;
+                    pick => { Workflows.pick-when-folder(); }
+                }
+                if Workflows.when == 4 && Workflows.waiting > 0: HorizontalLayout {
+                    padding-left: Screen.compact ? 0 : 30px;
+                    Tick {
+                        text: Workflows.waiting == 1 ? "Do the 1 file already there too" : "Do the " + Workflows.waiting + " files already there too";
+                        checked <=> Workflows.do-waiting;
+                    }
+                }
+                if Workflows.when == 4: Hint {
+                    text: "Neria takes a file once it stops growing, while it's open or in the tray. The results go in a Done folder inside it.";
+                }
+            }
+
+        }
+    }
+
+    // What it'll do in one sentence, or why Save is greyed out: always in view.
+    Rectangle {
+        background: Theme.raised;
+        border-radius: 9px;
+        height: said.preferred-height + 20px;
+        said := Text {
+            x: 12px;
+            width: parent.width - 24px;
+            text: Workflows.problem != "" ? Workflows.problem : Workflows.sentence;
+            color: Workflows.problem != "" ? Theme.warn : Theme.ink;
+            font-family: Theme.body;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+        if !Workflows.edit-new: VerticalLayout {
+            alignment: center;
+            TextLink {
+                text: "Delete";
+                clicked => { Workflows.delete(); }
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+        GhostButton {
+            text: "Cancel";
+            clicked => { Workflows.edit-open = false; }
+        }
+        PrimaryButton {
+            text: "Save";
+            enabled: Workflows.can-save;
+            clicked => { Workflows.save(); }
+        }
+    }
+}
+
+// Run a workflow… on files already saved (the Library): pick one, it runs in the queue.
+export component RunWorkflowDialog inherits Dialog {
+    title: "Run a workflow";
+    subtitle: Workflows.run-subtitle;
+    card-width: 520px;
+    fit: true;
+    close => { Workflows.run-open = false; }
+
+    VerticalLayout {
+        spacing: 0;
+        for w in Workflows.items: ChoiceRow {
+            title: w.name;
+            hint: w.what;
+            stacked: true;
+            selected: false;
+            clicked => { Workflows.run(w.id); }
+        }
+    }
+    HorizontalLayout {
+        alignment: end;
+        spacing: 12px;
+        GhostButton {
+            text: "New workflow…";
+            clicked => {
+                Workflows.run-open = false;
+                Workflows.new-one();
+            }
+        }
+        GhostButton {
+            text: "Cancel";
+            clicked => { Workflows.run-open = false; }
+        }
+    }
+}

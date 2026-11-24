@@ -85,6 +85,14 @@ pub struct DownloadRequest {
     /// link clip with Chat set on the Clip page).
     #[serde(default)]
     pub chat: Option<crate::chat_out::ChatJob>,
+    /// A saved workflow after it's saved (Then on the Download page; `Auto` is decided by
+    /// the queue from the link: `workflow::auto_for`).
+    #[serde(default)]
+    pub workflow: crate::workflow::Pick,
+    /// A file already on this PC, not a link: no download, only `workflow` runs on it (Run a
+    /// workflow… in the Library, a watched folder).
+    #[serde(default)]
+    pub local: Option<PathBuf>,
 }
 
 impl Default for DownloadRequest {
@@ -126,6 +134,8 @@ impl DownloadRequest {
             gif_spec: None,
             transcribe: None,
             chat: None,
+            workflow: Default::default(),
+            local: None,
             live_window: None,
             live: None,
         }

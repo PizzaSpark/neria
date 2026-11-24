@@ -1451,3 +1451,82 @@ export global Organize {
     callback undo();
     callback close();
 }
+
+// One saved workflow (Settings → Workflows, the Then menu, Run a workflow…).
+export struct WfRow {
+    id: int,
+    name: string,
+    // What it makes: "A copy for Discord (under 20 MB), next to the original".
+    what: string,
+    // When: "When I pick it", "TikTok links", "Folder".
+    when: string,
+    // Runs by itself (not only when picked); its switch pauses it.
+    auto: bool,
+    on: bool,
+    // A watched folder's line: "watching D:\Drop · 3 done today".
+    watching: string,
+    // Its icon: 0 smaller, 1 sound, 2 GIF, 3 folder, 4 watched folder.
+    kind: int,
+}
+
+// A site "For links from" can tick.
+export struct WfSite {
+    name: string,
+    on: bool,
+}
+
+// Saved workflows (mock `design/workflows.html`): what happens to a file after it's saved.
+// Rust: `workflow_ui.rs`; the model and running them: `neria_core::workflow`.
+export global Workflows {
+    in property <[WfRow]> items;
+
+    // Then on the Download page: the one picked for this link (0: Nothing), the button's
+    // words, and why an automatic one is picked ("For TikTok links").
+    in property <int> picked;
+    in property <string> then-text: "Then";
+    in property <string> picked-why;
+    callback pick(int);
+    // Edit workflows…: Settings → Workflows.
+    callback open-settings();
+
+    // The editor (`dialogs/workflow.slint`).
+    in-out property <bool> edit-open;
+    in property <bool> edit-new;
+    in-out property <string> name;
+    // 0 Leave it as it is, 1 Make it smaller, 2 Sound only, 3 Make a GIF.
+    in-out property <int> change: 1;
+    // Make it smaller: 0 Discord, 1 Email, 2 WhatsApp, 3 a size (`size-mb`).
+    in-out property <int> size;
+    in-out property <string> size-mb: "50";
+    // Sound only: 0 MP3, 1 M4A, 2 Opus, 3 FLAC, 4 WAV.
+    in-out property <int> sound-as;
+    // 0 next to the original, 1 a folder (`put-folder`), 2 replace the original.
+    in-out property <int> put;
+    in property <string> put-folder;
+    // 0 when I pick it, 1 every download, 2 links from (`sites`), 3 channels I follow,
+    // 4 files put in a folder (`when-folder`).
+    in-out property <int> when;
+    in property <[WfSite]> sites;
+    in property <string> when-folder;
+    // Files already in that folder (left alone unless `do-waiting`).
+    in property <int> waiting;
+    in-out property <bool> do-waiting;
+    // The whole thing in one sentence; why Save is greyed out.
+    in property <string> sentence;
+    in property <bool> can-save;
+    in property <string> problem;
+    callback changed();
+    callback toggle-site(int);
+    callback pick-put-folder();
+    callback pick-when-folder();
+    callback new-one();
+    callback edit(int);
+    callback save();
+    callback delete();
+    callback set-on(int, bool);
+
+    // Run a workflow… on files already saved (the Library): which one.
+    in-out property <bool> run-open;
+    in property <string> run-subtitle;
+    callback run(int);
+}

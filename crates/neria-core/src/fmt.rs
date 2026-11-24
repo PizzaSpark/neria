@@ -249,7 +249,10 @@ pub fn live_row(s: &JobSnapshot, now: f64, compact: bool) -> Option<LiveRow> {
 pub fn job_lines(s: &JobSnapshot) -> (String, String) {
     match s.state {
         JobState::Queued if !s.starts.is_empty() => (format!("Starts at {}", s.starts), String::new()),
-        JobState::Queued => ("Waiting in queue…".into(), String::new()),
+        JobState::Queued => match &s.workflow {
+            Some(name) => ("Waiting in queue…".into(), format!("then {name}")),
+            None => ("Waiting in queue…".into(), String::new()),
+        },
         JobState::Downloading => {
             let status = if s.stages > 1 {
                 format!("Downloading {}/{}", (s.stage + 1).min(s.stages), s.stages)
@@ -270,7 +273,11 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
             }
             (status, parts.join("  ·  "))
         }
-        JobState::Processing => (postprocessor(s.postprocessor.as_deref().unwrap_or("")).into(), String::new()),
+        // A workflow's step says itself ("say:Making it smaller for Discord…").
+        JobState::Processing => match s.postprocessor.as_deref().and_then(|p| p.strip_prefix("say:")) {
+            Some(said) => (said.to_string(), format!("{:.0}%", s.progress * 100.0)),
+            None => (postprocessor(s.postprocessor.as_deref().unwrap_or("")).into(), String::new()),
+        },
         JobState::Done if s.postprocessor.as_deref() == Some("AlreadyHave") => {
             ("Already downloaded".into(), String::new())
         }
@@ -299,6 +306,7 @@ pub fn job_lines(s: &JobSnapshot) -> (String, String) {
             if !size.is_empty() {
                 parts.push(size);
             }
+            parts.extend(s.workflow_said.clone());
             (name, parts.join("  ·  "))
         }
         JobState::Failed => (s.error.clone().unwrap_or_else(|| "Download failed".into()), String::new()),

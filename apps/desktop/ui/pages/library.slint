@@ -118,6 +118,11 @@ component LibMenu inherits Menu {
         text: "Put in folders…";
         clicked => { Library.act(d.id, "folders"); }
     }
+    if d.can-compress: MenuItem {
+        icon: "\u{E945}";
+        text: "Run a workflow…";
+        clicked => { Library.act(d.id, "workflow"); }
+    }
     if d.can-tag: MenuItem {
         icon: "\u{E8EC}";
         text: "Edit tags";
@@ -1143,6 +1148,13 @@ component PickedStrip inherits Rectangle {
             text: Screen.compact ? "" : "Put in folders…";
             label: "Put them in folders";
             clicked => { Library.bulk("folders"); }
+        }
+        if Library.bulk-files: GhostButton {
+            compact: true;
+            icon: "\u{E945}";
+            text: Screen.compact ? "" : "Run a workflow…";
+            label: "Run a workflow on them";
+            clicked => { Library.bulk("workflow"); }
         }
         if Library.bulk-files: GhostButton {
             compact: true;

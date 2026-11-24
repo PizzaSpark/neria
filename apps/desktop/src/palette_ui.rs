@@ -10,6 +10,7 @@ use std::rc::Rc;
 use chrono::{Local, TimeZone};
 use neria_core::library::{self, Item, Kind};
 use neria_core::palette::{self, Used};
+use neria_core::workflow;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::{AppWindow, Capture, Commands, Music, Nav, PalRow, Phone};
@@ -72,6 +73,7 @@ const ACTIONS: &[Action] = &[
     a("page-4", "Go to the Library", &["page", "saved", "history"], "\u{E8F1}", ""),
     a("set-0", "Settings: Download", &["folder", "quality", "format", "template", "names", "container"], "\u{E713}", ""),
     a("set-1", "Settings: Following", &["follow", "channels", "subscriptions"], "\u{E713}", ""),
+    a("set-7", "Settings: Workflows", &["workflow", "automatic", "after download", "watch folder", "then"], "\u{E713}", ""),
     a("set-2", "Settings: Spotify", &["lyrics", "numbering", "music"], "\u{E713}", ""),
     a("set-3", "Settings: Network", &["cookies", "sign in", "account", "speed", "proxy"], "\u{E713}", ""),
     a("set-4", "Settings: General", &["theme", "dark", "light", "tray", "notifications", "start", "appearance"], "\u{E713}", ""),
@@ -96,6 +98,8 @@ enum Entry {
     File(u64),
     /// …or picked from disk.
     ChooseFile,
+    /// A saved workflow: then which file.
+    Workflow(u64),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -105,6 +109,8 @@ enum Step {
     Thing(u64),
     /// Which file for this action (3B).
     Action(&'static str),
+    /// Which file for this saved workflow.
+    Workflow(u64),
 }
 
 struct State {
@@ -278,6 +284,30 @@ fn rebuild(ui: &AppWindow) {
                         );
                     }
                 }
+                // Saved workflows by name ("discord-ready" → which file).
+                let mut flows: Vec<(i32, workflow::Workflow)> = workflow::list()
+                    .into_iter()
+                    .filter_map(|w| palette::score(q, &w.name, &["workflow", "run"]).map(|sc| (sc, w)))
+                    .collect();
+                flows.sort_by(|x, y| y.0.cmp(&x.0));
+                if !flows.is_empty() {
+                    push(heading("Workflows"), Entry::Heading);
+                    for (_, w) in flows.into_iter().take(PER_GROUP) {
+                        let (pre, hit, post) = split(&w.name, q);
+                        push(
+                            PalRow {
+                                pre: pre.into(),
+                                hit: hit.into(),
+                                post: post.into(),
+                                sub: w.what().into(),
+                                icon: "\u{E945}".into(),
+                                r#where: "Workflow".into(),
+                                ..PalRow::default()
+                            },
+                            Entry::Workflow(w.id),
+                        );
+                    }
+                }
                 let mut things: Vec<(i32, &Item)> = items
                     .iter()
                     .filter_map(|it| {
@@ -305,8 +335,11 @@ fn rebuild(ui: &AppWindow) {
                 }
             }
         }
-        Step::Action(key) => {
-            let wants = action(key).map_or(Wants::Nothing, |a| a.wants);
+        Step::Action(_) | Step::Workflow(_) => {
+            let wants = match step {
+                Step::Action(key) => action(key).map_or(Wants::Nothing, |a| a.wants),
+                _ => Wants::Media,
+            };
             let files: Vec<Item> = newest(&items)
                 .into_iter()
                 .filter(|it| {
@@ -341,6 +374,7 @@ fn select(ui: &AppWindow, i: i32) {
     let into = with(|s| match s.entries.get(i.max(0) as usize) {
         Some(Entry::Thing(_)) => true,
         Some(Entry::Action(k)) => action(k).is_some_and(|a| a.wants != Wants::Nothing),
+        Some(Entry::Workflow(_)) => true,
         _ => false,
     });
     c.set_can_go_into(into);
@@ -374,6 +408,13 @@ fn show_step(ui: &AppWindow) {
             if let Some(a) = action(key) {
                 c.set_crumb(a.name.trim_end_matches('…').into());
                 c.set_crumb_icon(a.icon.into());
+            }
+            c.set_placeholder("Which file?".into());
+        }
+        Step::Workflow(id) => {
+            if let Some(w) = workflow::get(id) {
+                c.set_crumb(w.name.into());
+                c.set_crumb_icon("\u{E945}".into());
             }
             c.set_placeholder("Which file?".into());
         }
@@ -442,6 +483,7 @@ fn pick(ui: &AppWindow, i: i32) {
             crate::library_ui::go_download(ui, &url);
         }
         Entry::Action(key) if action(key).is_some_and(|a| a.wants != Wants::Nothing) => go(ui, Step::Action(key)),
+        Entry::Workflow(id) => go(ui, Step::Workflow(id)),
         Entry::Action(key) => {
             close(ui);
             run(ui, key);
@@ -457,23 +499,45 @@ fn pick(ui: &AppWindow, i: i32) {
             crate::library_ui::act(ui, id, what);
         }
         Entry::File(id) => {
-            let Step::Action(key) = with(|s| s.step) else { return };
-            Used::picked(key);
-            close(ui);
-            ui.set_drawer_open(false);
+            let step = with(|s| s.step);
             let file = with(|s| s.items.iter().find(|i| i.id == id).map(|i| i.file.clone()));
-            if let Some(file) = file {
-                crate::library_ui::act_on_file(ui, &file, key);
+            let Some(file) = file else { return };
+            match step {
+                Step::Action(key) => {
+                    Used::picked(key);
+                    close(ui);
+                    ui.set_drawer_open(false);
+                    crate::library_ui::act_on_file(ui, &file, key);
+                }
+                Step::Workflow(wid) => {
+                    close(ui);
+                    if let Some(w) = workflow::get(wid) {
+                        crate::workflow_ui::run_on(ui, &w, &[file]);
+                    }
+                }
+                _ => {}
             }
         }
         Entry::ChooseFile => {
-            let Step::Action(key) = with(|s| s.step) else { return };
+            let step = with(|s| s.step);
+            if !matches!(step, Step::Action(_) | Step::Workflow(_)) {
+                return;
+            }
             close(ui);
             let picked: Option<PathBuf> = rfd::FileDialog::new().set_title("Which file?").pick_file();
-            if let Some(file) = picked {
-                Used::picked(key);
-                ui.set_drawer_open(false);
-                crate::library_ui::act_on_file(ui, &file, key);
+            let Some(file) = picked else { return };
+            match step {
+                Step::Action(key) => {
+                    Used::picked(key);
+                    ui.set_drawer_open(false);
+                    crate::library_ui::act_on_file(ui, &file, key);
+                }
+                Step::Workflow(wid) => {
+                    if let Some(w) = workflow::get(wid) {
+                        crate::workflow_ui::run_on(ui, &w, &[file]);
+                    }
+                }
+                _ => {}
             }
         }
     }

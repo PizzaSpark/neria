@@ -3741,6 +3741,7 @@ dependencies = [
  "sherpa-onnx",
  "tar",
  "tiny-skia 0.11.4",
+ "trash",
  "tungstenite",
  "windows",
  "windows-core",

@@ -329,6 +329,11 @@ pub fn check(url: &str, settings: &Settings, queue: &Queue) -> anyhow::Result<us
             req.dir = Some(dir.clone());
             req.thumbnail = it.thumbnail.clone();
             req.duration = it.duration;
+            // A workflow for followed channels (else as any link of its site).
+            req.workflow = match crate::workflow::for_followed(&it.url) {
+                Some(wf) => crate::workflow::Pick::Use(Box::new(wf)),
+                None => crate::workflow::Pick::Nothing,
+            };
             req
         })
         .collect();

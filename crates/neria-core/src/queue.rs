@@ -13,7 +13,7 @@ use crate::settings::Quality;
 use crate::settings::Settings;
 use crate::spotify::Track;
 use crate::ytmusic::Candidate;
-use crate::{disk, fingerprint, gif, history, library, music, paths, probe, proc, report, tools};
+use crate::{disk, fingerprint, gif, history, library, music, paths, probe, proc, report, tools, workflow};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,6 +97,12 @@ pub struct JobSnapshot {
     /// A recording: "Start clip" was pressed; the clip starts here (seconds into what's
     /// recorded) and ends at "End clip".
     pub clip_from: Option<f64>,
+    /// The saved workflow it gets after it's saved (its name), for the row.
+    pub workflow: Option<String>,
+    /// What the workflow did ("Discord-ready: a copy, 9.6 MB"), once it ran.
+    pub workflow_said: Option<String>,
+    /// The original, where it is, when the row's file is the workflow's result.
+    pub original: Option<PathBuf>,
 }
 
 impl JobSnapshot {
@@ -134,6 +140,9 @@ impl JobSnapshot {
             recording: false,
             no_retry: false,
             clip_from: None,
+            workflow: None,
+            workflow_said: None,
+            original: None,
         }
     }
 
@@ -548,9 +557,18 @@ impl Queue {
             req.start_at = Some(at);
             req.start_label = label;
         }
+        // Not said: the workflow that runs by itself for this link, if any.
+        if req.workflow == workflow::Pick::Auto {
+            let takes = req.music.is_none() && req.live.is_none() && !req.captions_only() && req.local.is_none();
+            req.workflow = match workflow::auto_for(&req.url).filter(|_| takes) {
+                Some(wf) => workflow::Pick::Use(Box::new(wf)),
+                None => workflow::Pick::Nothing,
+            };
+        }
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let title = if req.title_hint.is_empty() { req.url.clone() } else { req.title_hint.clone() };
         let mut snap = JobSnapshot::new(id, group, title);
+        snap.workflow = req.workflow.workflow().map(|w| w.name.clone());
         snap.group_title = self.group_title(group);
         snap.music = req.music.as_ref().is_some_and(|m| m.mode == music::Mode::Song);
         snap.gif = req.gif;
@@ -1387,6 +1405,30 @@ impl Queue {
         if let Some(e) = self.inner.entries.lock().unwrap().iter_mut().find(|e| e.snap.id == id) {
             e.log.clear();
         }
+        // A file already here (Run a workflow…, a watched folder): only its workflow runs.
+        if let Some(file) = req.local.clone() {
+            self.update(id, true, |s| s.file = Some(file.clone()));
+            let ran = match req.workflow.workflow() {
+                Some(wf) => self.run_workflow(id, wf, &cancel),
+                None => Ran::Done,
+            };
+            self.update(id, true, |s| {
+                s.postprocessor = None;
+                match ran {
+                    Ran::Done => {
+                        s.state = JobState::Done;
+                        s.progress = 1.0;
+                    }
+                    Ran::Cancelled => s.state = JobState::Cancelled,
+                    Ran::Failed(e) => {
+                        s.state = JobState::Failed;
+                        s.error = Some(e);
+                    }
+                }
+            });
+            self.pump();
+            return;
+        }
         // "Lyrics only" / "Add lyrics": no matching, no download.
         if let Some(job) = req.music.clone().filter(|m| m.mode != music::Mode::Song) {
             let lrc = job.dir.join(format!("{}.lrc", job.stem));
@@ -1759,6 +1801,17 @@ impl Queue {
             }
         }
 
+        // A saved workflow (Then on the Download page, or one that runs by itself): last, on
+        // the finished file. One that fails leaves the download saved, with a note.
+        let mut workflow_note = None;
+        if let (Some(wf), Ok(true), false) = (req.workflow.workflow(), &result, cancelled) {
+            match self.run_workflow(id, wf, &cancel) {
+                Ran::Done => {}
+                Ran::Cancelled => cancelled = true,
+                Ran::Failed(e) => workflow_note = Some(format!("Saved, but not {}: {e}", wf.name)),
+            }
+        }
+
         self.update(id, true, |s| {
             if let Some(e) = &tag_error {
                 s.error = Some(format!("Saved, but tagging failed: {e}"));
@@ -1766,7 +1819,9 @@ impl Queue {
             if lyrics_status.is_some() {
                 s.lyrics = lyrics_status.clone();
             }
-            if let Some(e) = gif_error.as_ref().or(transcript_note.as_ref()).or(chat_note.as_ref()) {
+            if let Some(e) =
+                gif_error.as_ref().or(transcript_note.as_ref()).or(chat_note.as_ref()).or(workflow_note.as_ref())
+            {
                 s.note = Some(e.clone());
                 s.note_strong = false;
             }
@@ -2073,7 +2128,8 @@ impl Queue {
             entries.iter().find(|e| e.snap.id == id).map(|e| e.snap.clone())
         };
         let Some(s) = snap.filter(|s| s.state == JobState::Done) else { return };
-        let Some(file) = s.file.clone() else { return };
+        // A workflow's copy is its own record (`run_workflow`): this one is the download.
+        let Some(file) = s.original.clone().or_else(|| s.file.clone()) else { return };
         library::add(library_item(req, &s, &file));
         // A clip, a song or just the captions isn't "the video": pasting it again shouldn't
         // say you have it (and "Download again" would overwrite the caption file's name).
@@ -2482,6 +2538,75 @@ impl Queue {
 
 
 /// The Library's record of a finished download: what kind of thing it is, from the request.
+/// How a workflow run went.
+enum Ran {
+    Done,
+    Cancelled,
+    Failed(String),
+}
+
+impl Queue {
+    /// Run a saved workflow on the job's file: the row says each step, then what it made;
+    /// a new file is a record of its own in the Library.
+    fn run_workflow(&self, id: u64, wf: &workflow::Workflow, cancel: &AtomicBool) -> Ran {
+        let (file, title) = {
+            let entries = self.inner.entries.lock().unwrap();
+            match entries.iter().find(|e| e.snap.id == id) {
+                Some(e) => (e.snap.file.clone(), e.snap.title.clone()),
+                None => return Ran::Done,
+            }
+        };
+        // Nothing to work on (a post's photos, a folder): not an error, just nothing to do.
+        let Some(file) = file.filter(|f| f.is_file()) else { return Ran::Done };
+        // A watched folder's file: the result goes in its Done folder.
+        let done_dir = match &wf.when {
+            workflow::When::Folder(dir) if file.parent() == Some(dir.as_path()) => Some(workflow::done_dir(dir)),
+            _ => None,
+        };
+        self.update(id, true, |s| {
+            s.state = JobState::Processing;
+            s.progress = 0.0;
+            s.postprocessor = Some(format!("say:{}…", wf.name));
+        });
+        let mut last = Instant::now() - Duration::from_secs(1);
+        let result = workflow::run(wf, &file, done_dir.as_deref(), cancel, |f, stage| {
+            if last.elapsed() >= Duration::from_millis(250) {
+                last = Instant::now();
+                let say = format!("say:{stage}");
+                self.update(id, true, |s| {
+                    s.progress = f;
+                    s.postprocessor = Some(say);
+                });
+            }
+        });
+        match result {
+            Ok(done) => {
+                let keep_original = done.made && !done.replaced;
+                self.update(id, true, |s| {
+                    if keep_original {
+                        s.original = Some(file.clone());
+                    }
+                    s.file = Some(done.file.clone());
+                    s.workflow_said = Some(format!("{}: {}", wf.name, done.said));
+                });
+                if keep_original {
+                    library::add(library::Item {
+                        source: Some(file),
+                        size: Some(done.bytes),
+                        note: format!("made by {}", wf.name),
+                        ..library::Item::new(done.kind, &done.file, title)
+                    });
+                } else if let Some(to) = &done.moved {
+                    library::relocate_file(&file, to);
+                }
+                Ran::Done
+            }
+            Err(_) if cancel.load(Ordering::SeqCst) => Ran::Cancelled,
+            Err(e) => Ran::Failed(e.to_string()),
+        }
+    }
+}
+
 fn library_item(req: &DownloadRequest, s: &JobSnapshot, file: &Path) -> library::Item {
     use library::Kind;
     let section = req.section.or_else(|| req.live_window.map(|(a, b)| (0.0, b - a)));
