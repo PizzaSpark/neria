@@ -246,8 +246,8 @@ so they get built together.
    compared on the same game moment at each choice, a real game, AMD (untested here; a route
    that can't scale records full size), the phone on Best
 8. **Bigger ideas** (section "Later"), in this order: ✅ Library page (built 2026-11-23, every
-   action tried in the real app the same day; left: the grid view, see Later), ✅ command palette (built 2026-11-24), Audio
-   tools page, saved workflows, external tools. Parked (user's call 2026-11-23): the browser
+   action tried in the real app the same day; left: the grid view, see Later), ✅ command palette (built 2026-11-24), ✅ Audio
+   tools (built 2026-11-24 into Compress, the Library and the Clip page; no page of its own), saved workflows, external tools. Parked (user's call 2026-11-23): the browser
    extension (Chrome's store asks $5 once; Firefox / Edge are free) and a Tampermonkey
    userscript instead (free everywhere, but two installs and no cookies); the clipboard
    watcher covers handing links over for now
