@@ -246,7 +246,7 @@ so they get built together.
    compared on the same game moment at each choice, a real game, AMD (untested here; a route
    that can't scale records full size), the phone on Best
 8. **Bigger ideas** (section "Later"), in this order: ✅ Library page (built 2026-11-23, every
-   action tried in the real app the same day; left: the grid view, see Later), command palette, Audio
+   action tried in the real app the same day; left: the grid view, see Later), ✅ command palette (built 2026-11-24), Audio
    tools page, saved workflows, external tools. Parked (user's call 2026-11-23): the browser
    extension (Chrome's store asks $5 once; Firefox / Edge are free) and a Tampermonkey
    userscript instead (free everywhere, but two installs and no cookies); the clipboard
@@ -1176,13 +1176,14 @@ that's an exception, written only once the Phone tab is used.
   1A a box over the dimmed page, 2A empty box = copied link + 3 recent things + 3 common
   actions, 3A + 3B thing → its actions or action → which file, 4A "Do" above "Saved" (5
   each), 5A a rail button with Ctrl K / on compact a magnifier next to the gear and a sheet.
-  🚧 Built 2026-11-24 (`palette_ui.rs`, `ui/dialogs/palette.slint`, matching in
+  ✅ Built 2026-11-24 (`palette_ui.rs`, `ui/dialogs/palette.slint`, matching in
   `neria_core::palette`, picks remembered in `palette.json`): 24 actions (pages, Settings
   sections, Clip / Compress / Make a GIF / Transcribe a file, instant replay on / off / save,
   the phone, Add lyrics, Follow, updates) found by their own words too, the Library's
   things with their ⋯ actions, a copied or typed link. Each Enter tried in the app
-  (`NERIA_PALETTE` + `NERIA_PALETTE_ENTER`); ui-check `pal*` at every width. Left: Ctrl+K,
-  ↑ ↓, → / ← and Esc by hand on a real keyboard
+  (`NERIA_PALETTE` + `NERIA_PALETTE_ENTER`); ui-check `pal*` at every width; Ctrl+K and the
+  keys checked by hand the same day. Left: on the Clip page at 400 px the header's four icons
+  cut the title shorter once a file is open
 - **Saved workflows**: simple "after download" actions first (extract audio, compress for
   Discord, move to folder); a builder only if people want chains like download → clip → 9:16
   → compress. Watched folder: auto-compress/convert files dropped into a folder
