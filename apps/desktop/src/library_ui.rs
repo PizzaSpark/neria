@@ -46,6 +46,11 @@ struct State {
     demo: bool,
     /// Recordings getting their missed bits back now.
     repairing: std::collections::HashSet<u64>,
+    /// Several picked (in the order they were picked), the last one for Shift+click, and the
+    /// rows' order as shown (for Shift+click's range).
+    picked: Vec<u64>,
+    anchor: Option<u64>,
+    order: Vec<u64>,
     settings: Option<Arc<Mutex<Settings>>>,
 }
 
@@ -391,6 +396,7 @@ fn row_of(s: &mut State, it: &Item) -> LibRow {
         text: it.kind.is_text(),
         main: main_action(it, gone),
         can_clip: is_media(it) && !gone && !offline,
+        picked: false,
     }
 }
 
@@ -583,6 +589,7 @@ fn rebuild(ui: &AppWindow) {
         library::sort(&mut shown, how);
         let by_day = matches!(how, Sort::Newest | Sort::Oldest);
         let shown: Vec<Item> = shown.into_iter().cloned().collect();
+        s.order = shown.iter().map(|i| i.id).collect();
         let mut rows = Vec::new();
         let mut want = Vec::new();
         let mut i = 0;
@@ -601,7 +608,9 @@ fn rebuild(ui: &AppWindow) {
                 if want.len() < 60 && !s.frames.contains_key(&it.file) {
                     want.push(it.id);
                 }
-                rows.push(row_of(s, it));
+                let mut row = row_of(s, it);
+                row.picked = s.picked.contains(&it.id);
+                rows.push(row);
             }
             i += n;
         }
@@ -645,6 +654,7 @@ fn rebuild(ui: &AppWindow) {
         lib.set_site(at as i32);
     }
     lib.set_rows(model(rows));
+    show_picked(ui);
     lib.set_counts(model(counts.to_vec()));
     lib.set_sites(model(site_names));
     lib.set_site_counts(model(site_n));
@@ -806,16 +816,143 @@ fn find_gone(ui: &AppWindow) {
     lib.set_found_open(true);
 }
 
+/// Read the Library again now, if its page shows (files moved by Put in folders).
+pub(crate) fn refresh_now(ui: &AppWindow) {
+    if let Some(settings) = with(|s| s.settings.clone())
+        && ui.get_page() == 4
+    {
+        load(ui, settings);
+    }
+}
+
+// ───────────── Several picked ─────────────
+
+/// The picked records (a playlist stands for its songs), here.
+fn picked_items(s: &State) -> Vec<Item> {
+    let mut out: Vec<Item> = Vec::new();
+    for id in &s.picked {
+        let Some(it) = s.items.iter().find(|i| i.id == *id) else { continue };
+        let these: Vec<Item> = if it.kind == Kind::Playlist {
+            library::songs_of(&s.items, it).into_iter().cloned().collect()
+        } else {
+            vec![it.clone()]
+        };
+        for t in these {
+            if place(s, &t) == Where::Here && !out.iter().any(|o| o.id == t.id) {
+                out.push(t);
+            }
+        }
+    }
+    out
+}
+
+/// The strip above the list: how many, and which actions fit them all.
+fn show_picked(ui: &AppWindow) {
+    let lib = ui.global::<Library>();
+    let (n, items) = with(|s| (s.picked.len(), picked_items(s)));
+    lib.set_picked_count(n as i32);
+    let bytes: u64 = items.iter().filter_map(|i| i.size).sum();
+    lib.set_picked_text(
+        if bytes > 0 { format!("{n} picked · {}", fmt::mb(bytes as f64)) } else { format!("{n} picked") }.into(),
+    );
+    let sound = |i: &Item| library::is_audio_file(&i.file) && i.kind != Kind::Playlist;
+    let media = |i: &Item| is_media(i);
+    let any = !items.is_empty();
+    lib.set_bulk_sound(any && items.iter().all(sound));
+    lib.set_bulk_media(any && items.iter().all(media) && !items.iter().all(sound));
+    lib.set_bulk_files(any && items.iter().all(|i| i.file.is_file()));
+}
+
+/// A row's tick or Ctrl+click (`range` false), or Shift+click: from the last picked to this.
+fn pick(ui: &AppWindow, id: u64, range: bool) {
+    with(|s| {
+        match (range, s.anchor) {
+            (true, Some(a)) => {
+                let (Some(x), Some(y)) = (s.order.iter().position(|i| *i == a), s.order.iter().position(|i| *i == id))
+                else {
+                    return;
+                };
+                for i in &s.order[x.min(y)..=x.max(y)] {
+                    if !s.picked.contains(i) {
+                        s.picked.push(*i);
+                    }
+                }
+            }
+            _ => {
+                if let Some(p) = s.picked.iter().position(|i| *i == id) {
+                    s.picked.remove(p);
+                } else {
+                    s.picked.push(id);
+                }
+            }
+        }
+        s.anchor = Some(id);
+    });
+    rebuild(ui);
+}
+
+fn pick_clear(ui: &AppWindow) {
+    with(|s| {
+        s.picked.clear();
+        s.anchor = None;
+    });
+    rebuild(ui);
+}
+
+/// An action on everything picked.
+fn bulk(ui: &AppWindow, what: &str) {
+    let (items, ids, demo) = with(|s| (picked_items(s), s.picked.clone(), s.demo));
+    let files: Vec<PathBuf> = items.iter().map(|i| i.file.clone()).collect();
+    match what {
+        "sound" | "even" => {
+            let c = ui.global::<Compress>();
+            c.set_sound_only(1);
+            if what == "even" {
+                c.set_volume(1);
+            }
+            ui.set_page(2);
+            crate::compressor::open_files(ui, files);
+        }
+        "tags" => crate::tags_ui::open(ui, files, String::new()),
+        "folders" => crate::organize_ui::open(ui, items),
+        "copy" => {
+            if copy_files(&files) {
+                show_toast(ui, &format!("{} files copied. Paste them into a folder or a chat (Ctrl+V).", files.len()));
+            } else {
+                show_toast(ui, "Couldn't copy the files. Try again.");
+            }
+        }
+        "remove" => {
+            forget(ui, &ids);
+            show_toast(ui, &format!("Removed {} from the Library. The files are still there.", ids.len()));
+        }
+        _ => {}
+    }
+    if what != "folders" && !demo {
+        pick_clear(ui);
+    }
+}
+
 /// Put the file itself on the clipboard (paste into Discord, a chat or a folder).
-#[cfg(windows)]
 fn copy_file(path: &Path) -> bool {
+    copy_files(&[path.to_path_buf()])
+}
+
+/// Put these files on the clipboard, as Explorer's Copy does.
+#[cfg(windows)]
+fn copy_files(paths: &[PathBuf]) -> bool {
     use std::os::windows::ffi::OsStrExt;
     use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
     use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
     use windows::Win32::System::Memory::{GMEM_MOVEABLE, GMEM_ZEROINIT, GlobalAlloc, GlobalLock, GlobalUnlock};
     use windows::Win32::System::Ole::CF_HDROP;
     use windows::Win32::UI::Shell::DROPFILES;
-    let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0, 0]).collect();
+    let mut wide: Vec<u16> = Vec::new();
+    for p in paths {
+        wide.extend(p.as_os_str().encode_wide());
+        wide.push(0);
+    }
+    wide.push(0);
     let head = std::mem::size_of::<DROPFILES>();
     unsafe {
         let Ok(mem) = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, head + wide.len() * 2) else { return false };
@@ -844,7 +981,7 @@ fn copy_file(path: &Path) -> bool {
 }
 
 #[cfg(not(windows))]
-fn copy_file(_: &Path) -> bool {
+fn copy_files(_: &[PathBuf]) -> bool {
     false
 }
 
@@ -1158,6 +1295,18 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         let weak = ui.as_weak();
         move |id, what| act(&weak.unwrap(), id as u64, what.as_str())
     });
+    lib.on_pick({
+        let weak = ui.as_weak();
+        move |id, mode| pick(&weak.unwrap(), id as u64, mode == 1)
+    });
+    lib.on_pick_clear({
+        let weak = ui.as_weak();
+        move || pick_clear(&weak.unwrap())
+    });
+    lib.on_bulk({
+        let weak = ui.as_weak();
+        move |what| bulk(&weak.unwrap(), what.as_str())
+    });
     lib.on_open_file(|path| {
         let _ = open::that(path.as_str());
     });
@@ -1226,7 +1375,8 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
 /// `<part of a title>=<action>` steps, `;` between, one every `NERIA_LIBRARY_ACT_EVERY`
 /// seconds (default 4). Actions are `act`'s (`watch`, `clip`, `compress`, `transcribe`, `gif`,
 /// `show`, `copy-file`, `copy-link`, `download`, `update`, `lyrics`, `original`, `rematch`,
-/// `repair`, `remove`, `find`…) plus `select`, `delete` (Delete file… said yes); and, with any title, `back` (the
+/// `repair`, `remove`, `find`…) plus `select`, `pick` (its tick), `bulk-<action>` (the picked strip's: `sound`, `even`, `tags`,
+/// `folders`, `copy`, `remove`), `delete` (Delete file… said yes); and, with any title, `back` (the
 /// player's Back), `library` (the page, as from the rail), `match-use` (Pick another match:
 /// Use this on its first row).
 fn press_for_checks(ui: &AppWindow) {
@@ -1258,6 +1408,8 @@ fn press_for_checks(ui: &AppWindow) {
             select(&ui, id);
             match what.as_str() {
                 "select" => {}
+                "pick" => pick(&ui, id, false),
+                w if w.starts_with("bulk-") => bulk(&ui, &w[5..]),
                 "delete" => delete(&ui),
                 _ => act(&ui, id, &what),
             }

@@ -30,6 +30,7 @@ mod gif_ui;
 mod library_ui;
 mod palette_ui;
 mod tags_ui;
+mod organize_ui;
 mod live_ui;
 mod match_ui;
 mod names_ui;
@@ -2103,6 +2104,7 @@ fn main() -> anyhow::Result<()> {
     library_ui::install(&ui, settings.clone());
     palette_ui::install(&ui);
     tags_ui::install(&ui);
+    organize_ui::install(&ui, settings.clone());
     phone_ui::install(&ui, settings.clone());
     sound_ui::install(&ui);
     let _gone_timer = watch_gone(&ui);

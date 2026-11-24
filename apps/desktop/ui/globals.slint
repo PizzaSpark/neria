@@ -1202,6 +1202,8 @@ export struct LibRow {
     // Watch (0) · Play (1) · Open (2) · Update playlist (3) · Download again (4) · Find it… (5).
     main: int,
     can-clip: bool,
+    // Picked with others (its tick is on; the strip above the list acts on all of them).
+    picked: bool,
 }
 
 // A file that belongs to the picked thing (its chat, transcript, captions), or one of a
@@ -1298,6 +1300,19 @@ export global Library {
     in-out property <bool> sheet-open;
     // Delete file…: asks first (to the Recycle Bin).
     in-out property <bool> delete-open;
+    // Several picked (mock design/audio-tools.html 4A): how many, "3 picked · 24 MB", and
+    // which actions fit them all (sound files: Even out, Edit tags, Put in folders; video or
+    // sound: Convert to sound; files here: Copy files).
+    in property <int> picked-count;
+    in property <string> picked-text;
+    in property <bool> bulk-sound;
+    in property <bool> bulk-media;
+    in property <bool> bulk-files;
+    // A row's tick, Ctrl+click (mode 0: one), Shift+click (mode 1: from the last one).
+    callback pick(int, int);
+    callback pick-clear();
+    // An action on all the picked: "sound", "even", "tags", "folders", "copy", "remove".
+    callback bulk(string);
     // Sample data only (`NERIA_LIBRARY_DEMO=menu`): the picked thing's ⋯ menu shows.
     in property <bool> menu-demo;
     callback shown(bool); // the page opened (wide: pick the first row)
@@ -1390,4 +1405,35 @@ export global TagEdit {
     callback find-online();
     callback number-in-order();
     callback save();
+}
+
+// One move Put in folders will make: from, to (relative to the folder), `warn` when a file is
+// already there (it stays).
+export struct OrgMove {
+    from: string,
+    to: string,
+    warn: bool,
+}
+
+// Put in folders (Library → several songs or a playlist; mock design/audio-tools.html 5A).
+// Rust: organize_ui.rs.
+export global Organize {
+    in-out property <bool> open;
+    in property <string> subtitle;
+    // 0 Artist / Album, 1 Artist, 2 Album, 3 One folder.
+    in-out property <int> arrange;
+    in property <string> root;
+    in property <[OrgMove]> moves;
+    in property <bool> can-go;
+    in property <string> go-text: "Move";
+    in property <bool> busy;
+    // Moved: what happened, Undo.
+    in property <bool> done;
+    in property <string> hint;
+    in property <string> status;
+    callback changed();
+    callback change-root();
+    callback go();
+    callback undo();
+    callback close();
 }

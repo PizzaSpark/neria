@@ -11,17 +11,25 @@ component TagField inherits HorizontalLayout {
     in-out property <string> text;
     callback edited();
     spacing: 12px;
-    Text {
+    VerticalLayout {
         width: Screen.compact ? 64px : 90px;
-        text: root.label;
-        color: Theme.muted;
-        font-size: 12.5px;
-        vertical-alignment: center;
+        alignment: center;
+        Text {
+            text: root.label;
+            color: Theme.muted;
+            font-size: 12.5px;
+        }
+        // The files differ here: left as each has it unless something is typed.
+        if root.several: Text {
+            text: "differs";
+            color: Theme.warn;
+            font-size: 11px;
+        }
     }
     LineEdit {
         horizontal-stretch: 1;
         text <=> root.text;
-        placeholder-text: root.several ? "Several" : "";
+        placeholder-text: root.several ? "Leave as each has it" : "";
         accessible-label: root.label;
         edited => { root.edited(); }
     }
@@ -93,7 +101,7 @@ export component TagsDialog inherits Dialog {
         text: TagEdit.status;
     }
     if TagEdit.count > 1: Hint {
-        text: "Fields left on \"Several\" stay as each file has them. Typing in one sets it for all " + TagEdit.count + ".";
+        text: "Fields that differ stay as each file has them unless you type in them. What you type is set for all " + TagEdit.count + ".";
     }
     Rectangle { vertical-stretch: 1; }
     HorizontalLayout {

@@ -22,6 +22,7 @@ pub mod gif;
 pub mod history;
 pub mod hotkey;
 pub mod library;
+pub mod organize;
 pub mod palette;
 pub mod live;
 pub mod lyrics;

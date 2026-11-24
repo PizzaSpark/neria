@@ -1,0 +1,102 @@
+import { ListView } from "std-widgets.slint";
+import { Theme, Screen } from "../theme.slint";
+import { Organize } from "../globals.slint";
+import { PrimaryButton, GhostButton, Hint, Dialog, ChoiceChips, Divider, ListRow, Notice } from "../widgets.slint";
+
+// Put in folders (mock design/audio-tools.html 5A): how to arrange, where, every move listed
+// before anything moves; after: what happened, and Undo. Rust: organize_ui.rs.
+export component OrganizeDialog inherits Dialog {
+    title: Organize.done ? "Moved" : "Put in folders";
+    subtitle: Organize.subtitle;
+    card-width: 620px;
+    card-height: 560px;
+    close => { Organize.close(); }
+
+    if !Organize.done: ChoiceChips {
+        options: ["Artist / Album", "Artist", "Album", "One folder"];
+        current <=> Organize.arrange;
+        changed => { Organize.changed(); }
+    }
+    if !Organize.done: HorizontalLayout {
+        spacing: 10px;
+        Text {
+            text: "In";
+            color: Theme.muted;
+            font-size: 12.5px;
+            vertical-alignment: center;
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: Organize.root;
+            color: Theme.ink;
+            font-family: Theme.mono;
+            font-size: 11.5px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        GhostButton {
+            compact: true;
+            text: "Change…";
+            clicked => { Organize.change-root(); }
+        }
+    }
+    VerticalLayout {
+        vertical-stretch: 1;
+        Divider { inset-right: Theme.lane; }
+        ListView {
+            vertical-stretch: 1;
+            for m in Organize.moves: ListRow {
+                height: Screen.compact ? 50px : 38px;
+                VerticalLayout {
+                    padding-right: Theme.lane;
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: m.from;
+                        color: Theme.muted;
+                        font-family: Theme.mono;
+                        font-size: 11px;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: "→ " + m.to;
+                        color: m.warn ? Theme.warn : Theme.ink;
+                        font-family: Theme.mono;
+                        font-size: 11px;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+    if Organize.status != "": Notice {
+        text: Organize.status;
+        wrap: true;
+    }
+    if Organize.hint != "": Hint { text: Organize.hint; }
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: end;
+        if Organize.done: GhostButton {
+            text: "Undo";
+            icon: "\u{E7A7}";
+            clicked => { Organize.undo(); }
+        }
+        if !Organize.done && !Screen.compact: GhostButton {
+            text: "Cancel";
+            clicked => { Organize.close(); }
+        }
+        PrimaryButton {
+            text: Organize.done ? "Done" : Organize.busy ? "Moving…" : Organize.go-text;
+            icon: Organize.done ? "\u{E73E}" : "\u{E8DE}";
+            enabled: !Organize.busy && (Organize.done || Organize.can-go);
+            clicked => {
+                if Organize.done {
+                    Organize.close();
+                } else {
+                    Organize.go();
+                }
+            }
+        }
+    }
+}

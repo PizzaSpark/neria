@@ -1369,6 +1369,14 @@ impl Compressor {
     }
 }
 
+/// These files on the page instead of what it had (the Library's picked rows).
+pub fn open_files(ui: &AppWindow, paths: Vec<PathBuf>) {
+    with(|c| {
+        c.clear(ui);
+        c.add(ui, paths);
+    });
+}
+
 pub fn install(ui: &AppWindow, file_for_job: impl Fn(u64) -> Option<PathBuf> + 'static) -> Rc<RefCell<Compressor>> {
     let cmp = Rc::new(RefCell::new(Compressor::default()));
     CMP.with(|c| *c.borrow_mut() = Some(cmp.clone()));
