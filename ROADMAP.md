@@ -162,6 +162,16 @@ so they get built together.
   the processor), sideways phone videos squashed when scaled
 - Notes: `docs/releases/v0.6.0.md`
 
+### v0.9.1: Capture settings, the graphics card for clips, calmer moves (2026-11-26)
+- **Settings → Capture** (OBS-style: the page's choices in Settings too, Encoder out of
+  Advanced), **Settings → General → Video work on** (clips, Sound/Picture, GIFs as MP4 and
+  burn-ins on the graphics card, made again on the processor when it refuses), Speech to text's
+  models and engine listed with sizes, each model removable on its own
+- Moves: the drawer slides, a pill to the open section, a plain fade between pages, every page on
+  the same edges; File names chips that really drag; shared controls behave like shadcn / Radix
+- Fixes: Settings cut off the end of long sections; Capture's wrapped Encoder chips overlapped Sound
+- Notes: `docs/releases/v0.9.1.md`
+
 ### v0.9.0: Capture, Phone, Library (2026-11-24)
 - **Capture** (instant replay, F8, a track per app, Never record, Quality, "clip that" by voice),
   **Phone** (mirror by QR or cable, Clip the last 30 s, Record, Present, Wi-Fi hand-over), the
