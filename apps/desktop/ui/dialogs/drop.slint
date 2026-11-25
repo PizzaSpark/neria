@@ -25,8 +25,8 @@ export component DropOverlay inherits Rectangle {
         background: root.ok ? Theme.pop.with-alpha(0.07) : transparent;
         VerticalLayout {
             alignment: center;
-            spacing: 10px;
-            padding: 26px;
+            spacing: 12px;
+            padding: 24px;
             HorizontalLayout {
                 alignment: center;
                 padding-bottom: 8px;
@@ -109,7 +109,7 @@ export component DropChoice inherits Dialog {
         }
     }
     if Screen.compact: VerticalLayout {
-        spacing: 10px;
+        spacing: 12px;
         if !root.several: ChoiceTile {
             icon: "\u{E8C6}";
             title: "Clip it";

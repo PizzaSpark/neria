@@ -5,6 +5,7 @@ import { PrimaryButton, GhostButton, SectionTitle, Hint, Dialog, ChoiceChips, Ch
 
 // Clip page → Chat: whether the clip gets its chat, how (a track you turn on, or drawn onto
 // the picture), and which messages (everything in the clip, highlights, the ones picked).
+// ui-rules: what's typed here applies as it's typed, so closing loses nothing.
 export component ChatDialog inherits Dialog {
     title: "Chat in this clip";
     subtitle: ClipChat.range-text;
@@ -46,7 +47,7 @@ export component ChatDialog inherits Dialog {
                 }
             }
             if ClipChat.how == 2: VerticalLayout {
-                padding-left: Screen.compact ? 0 : 30px;
+                padding-left: Screen.compact ? 0 : 36px; // under a ChoiceRow's label (6 + 18 + 12)
                 padding-top: 8px;
                 padding-bottom: 4px;
                 spacing: 8px;
@@ -108,7 +109,7 @@ export component ChatDialog inherits Dialog {
                     }
                 }
                 if ClipChat.which == 1: VerticalLayout {
-                    padding-left: Screen.compact ? 0 : 30px;
+                    padding-left: Screen.compact ? 0 : 36px; // under a ChoiceRow's label (6 + 18 + 12)
                     padding-top: 6px;
                     spacing: 4px;
                     LineEdit {
@@ -118,7 +119,7 @@ export component ChatDialog inherits Dialog {
                     }
                 }
                 VerticalLayout {
-                    padding-top: 10px;
+                    padding-top: 12px;
                     spacing: 2px;
                     Tick {
                         text: "Leave out bots and !commands";

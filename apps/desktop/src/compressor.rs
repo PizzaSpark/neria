@@ -294,7 +294,7 @@ impl Compressor {
 
     fn add(&mut self, ui: &AppWindow, paths: Vec<PathBuf>) {
         if self.running.is_some() {
-            crate::show_toast(ui, "Wait for the files being compressed to finish, then add more.");
+            crate::toast_info(ui, "Wait for the files being compressed to finish, then add more.");
             return;
         }
         let mut found = Vec::new();
@@ -309,7 +309,7 @@ impl Compressor {
                     .collect();
                 inside.sort();
                 if inside.is_empty() {
-                    crate::show_toast(ui, "There are no videos or sound files in that folder.");
+                    crate::toast_info(ui, "There are no videos or sound files in that folder.");
                 }
                 found.extend(inside);
             } else {
@@ -1042,7 +1042,7 @@ impl Compressor {
                         &ui,
                         crate::cmp_player::Sample { key, file: path, at, len: s.secs, after: s.path, has_video },
                     ),
-                    Err(e) => crate::show_toast(&ui, &format!("Couldn't make a sample: {e}")),
+                    Err(e) => crate::toast_problem(&ui, &format!("Couldn't make a sample: {e}")),
                 }
             });
         });
@@ -1508,11 +1508,11 @@ pub fn install(ui: &AppWindow, file_for_job: impl Fn(u64) -> Option<PathBuf> + '
                 let g = ui.global::<Compress>();
                 let (a, b) = (g.get_trim_in() as f64, g.get_trim_out() as f64);
                 if b - a < 0.5 {
-                    crate::show_toast(&ui, "That part is too short: move Out further from In.");
+                    crate::toast_info(&ui, "That part is too short: move Out further from In.");
                     return;
                 }
                 if c.parts.iter().any(|&(x, y)| a < y - 0.05 && b > x + 0.05) {
-                    crate::show_toast(&ui, "That part overlaps one you kept. Move it, or take the other one off.");
+                    crate::toast_info(&ui, "That part overlaps one you kept. Move it, or take the other one off.");
                     return;
                 }
                 // Kept in time order (joined that way too).

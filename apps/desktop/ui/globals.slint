@@ -73,6 +73,8 @@ export global Extras {
 
 // Running in the background: the close question, "Download later", notifications.
 export global Background {
+    // Something was changed in its editor since it opened, not saved yet (Dialog `dirty`).
+    in-out property <bool> later-dirty;
     // Closing while downloads are going: "Keep going in the tray" / "Stop and quit".
     in-out property <bool> ask-open;
     in property <int> going; // downloads running or waiting (scheduled ones included)
@@ -900,6 +902,8 @@ export global Voice {
     in property <int> heard-kind: 1;
     in property <bool> heard-undo;
     in property <bool> heard-show;
+    // × on that toast.
+    callback heard-closed();
     // Stopped for this stream from the mark's menu ("Not listening").
     in property <bool> paused;
     // The mark with the mic gone: open Settings → Voice.
@@ -1394,6 +1398,8 @@ export global Commands {
 // Edit tags (Library → a song's ⋯, or several picked; mock design/audio-tools.html 3A).
 // Rust: tags_ui.rs.
 export global TagEdit {
+    // Something was changed in its editor since it opened, not saved yet (Dialog `dirty`).
+    in-out property <bool> dirty;
     in-out property <bool> open;
     // How many files, and what the dialog says under its title.
     in property <int> count;
@@ -1490,6 +1496,8 @@ export struct WfSite {
 // Saved workflows (mock `design/workflows.html`): what happens to a file after it's saved.
 // Rust: `workflow_ui.rs`; the model and running them: `neria_core::workflow`.
 export global Workflows {
+    // Something was changed in its editor since it opened, not saved yet (Dialog `dirty`).
+    in-out property <bool> dirty;
     in property <[WfRow]> items;
 
     // Then on the Download page: the one picked for this link (0: Nothing), the button's
@@ -1549,6 +1557,8 @@ export global Workflows {
 // External tools (mock `design/tools.html`): the user's own command-line programs as Neria
 // actions. Rust: `tool_ui.rs`; the model and running them: `neria_core::tool`.
 export global Tools {
+    // Something was changed in its editor since it opened, not saved yet (Dialog `dirty`).
+    in-out property <bool> dirty;
     in property <[ExtTool]> items;
     callback new-one();
     callback edit(int);

@@ -170,7 +170,7 @@ fn run(ui: &AppWindow, url: String, queue: &Queue, settings: &Arc<Mutex<Settings
             if let Err(e) = &result
                 && ui.get_drawer_open()
             {
-                crate::show_toast(&ui, &format!("Couldn't check it: {e}"));
+                crate::toast_problem(&ui, &format!("Couldn't check it: {e}"));
             }
             // Songs taken off a followed Spotify playlist: say so once (nothing is deleted).
             if let Some(f) = after
@@ -193,7 +193,7 @@ fn removed_text(name: &str, n: usize) -> String {
 
 fn tell_removed(ui: &AppWindow, name: &str, n: usize) {
     let text = removed_text(name, n);
-    crate::show_toast(ui, &text);
+    crate::toast_info(ui, &text);
     crate::background_ui::notify(
         ui,
         crate::background_ui::Note {

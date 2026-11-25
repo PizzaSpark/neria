@@ -9,7 +9,7 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 
 use neria_core::lyrics::spotify_lyrics;
 
-use crate::{Accounts, AppWindow, Music, SiteItem, Theme, show_toast};
+use crate::{Accounts, AppWindow, Music, SiteItem, Theme, show_toast, toast_info, toast_problem};
 
 static OPEN: AtomicBool = AtomicBool::new(false);
 
@@ -64,11 +64,11 @@ fn reprobe(ui: &AppWindow) {
 pub fn start(ui: &AppWindow, site: &str) {
     let Some(site) = cookies::site_of_host(site.trim().trim_start_matches("https://").trim_start_matches("http://"))
     else {
-        show_toast(ui, "That doesn't look like a site. Type its address, e.g. vimeo.com.");
+        toast_info(ui, "That doesn't look like a site. Type its address, e.g. vimeo.com.");
         return;
     };
     if OPEN.swap(true, Ordering::SeqCst) {
-        show_toast(ui, "A sign-in window is already open.");
+        toast_info(ui, "A sign-in window is already open.");
         return;
     }
     let Ok(exe) = std::env::current_exe() else {
@@ -81,7 +81,7 @@ pub fn start(ui: &AppWindow, site: &str) {
         Ok(c) => c,
         Err(_) => {
             OPEN.store(false, Ordering::SeqCst);
-            show_toast(ui, "Couldn't open the sign-in window.");
+            toast_problem(ui, "Couldn't open the sign-in window.");
             return;
         }
     };
@@ -145,7 +145,7 @@ pub fn install(ui: &AppWindow) {
                     show_toast(&ui, &format!("Cookies kept for {list}. Each site only gets its own."));
                     reprobe(&ui);
                 }
-                Err(e) => show_toast(&ui, &format!("Couldn't import it: {e}")),
+                Err(e) => toast_problem(&ui, &format!("Couldn't import it: {e}")),
             }
         }
     });

@@ -14,7 +14,7 @@ use neria_core::spotify::{self, Collection, Kind, Link};
 use neria_core::{fmt, follow, probe};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
-use crate::{AppWindow, Music, SyncItem, show_toast};
+use crate::{AppWindow, Music, SyncItem, show_toast, toast_info, toast_problem};
 
 /// A looked-up Spotify link waiting for the Download button.
 pub struct Pending {
@@ -279,7 +279,7 @@ pub fn install_lyrics(ui: &AppWindow, slot: PendingSlot, settings: Arc<Mutex<Set
                     let what = if n == 1 { "this song".to_string() } else { format!("{n} songs") };
                     show_toast(&ui, &format!("Saving the lyrics of {what}: .lrc when synced, .txt with the words."));
                 }
-                Err(e) => show_toast(&ui, &format!("Couldn't prepare the folder: {e}")),
+                Err(e) => toast_problem(&ui, &format!("Couldn't prepare the folder: {e}")),
             }
         }
     });
@@ -297,7 +297,7 @@ pub fn install_lyrics(ui: &AppWindow, slot: PendingSlot, settings: Arc<Mutex<Set
                 None => rfd::FileDialog::new().set_directory(&start).pick_folder(),
             };
             let Some(dir) = picked else { return };
-            show_toast(&weak.unwrap(), "Reading the songs in that folder…");
+            toast_info(&weak.unwrap(), "Reading the songs in that folder…");
             let (weak, queue) = (weak.clone(), queue.clone());
             std::thread::spawn(move || {
                 let (jobs, have, untagged) = music::add_lyrics_jobs(&dir, &current);

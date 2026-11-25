@@ -4,7 +4,7 @@ import { Tools } from "../globals.slint";
 import { PrimaryButton, GhostButton, SectionTitle, Hint, Dialog, ChoiceChips, ChoiceRow, TextLink, KeyPress } from "../widgets.slint";
 
 // A field with its label above it.
-component Field inherits VerticalLayout {
+component LabelledField inherits VerticalLayout {
     in property <string> label;
     spacing: 4px;
     Text {
@@ -28,13 +28,13 @@ component Blank inherits Rectangle {
     accessible-role: button;
     accessible-label: "Add " + root.text;
     accessible-action-default => { root.clicked(); }
-    KeyPress {
+    kp := KeyPress {
         radius: 7px;
         activated => { root.clicked(); }
     }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { kp.take(); root.clicked(); }
     }
     t := Text {
         text: root.text;
@@ -49,6 +49,9 @@ component Blank inherits Rectangle {
 // Making or editing one of the user's own tools (mock `design/tools.html` 2A): the program,
 // its words with blanks, what it makes and takes, and the real command it'll run.
 export component ToolDialog inherits Dialog {
+    // Changes not saved yet: closing asks first (Discard your changes?).
+    dirty: Tools.dirty;
+    init => { Tools.dirty = false; }
     title: Tools.edit-new ? "New tool" : Tools.name;
     card-width: 620px;
     card-height: 900px;
@@ -57,25 +60,29 @@ export component ToolDialog inherits Dialog {
     ScrollView {
         vertical-stretch: 1;
         VerticalLayout {
-            spacing: 10px;
+            spacing: 12px;
             padding-right: Theme.lane;
 
-            Field {
+            LabelledField {
                 label: "Name";
                 LineEdit {
                     text <=> Tools.name;
                     placeholder-text: "Upscale 2×";
-                    edited => { Tools.changed(); }
+                    edited => { Tools.dirty = true; Tools.changed(); }
+                    // Enter saves, as Save does.
+                    accepted => { if Tools.can-save { Tools.save(); } }
                 }
             }
-            Field {
+            LabelledField {
                 label: "Program";
                 HorizontalLayout {
                     spacing: 8px;
                     LineEdit {
                         text <=> Tools.program;
                         placeholder-text: "HandBrakeCLI.exe, or paste a whole command";
-                        edited => { Tools.changed(); }
+                        edited => { Tools.dirty = true; Tools.changed(); }
+                        // Enter saves, as Save does.
+                        accepted => { if Tools.can-save { Tools.save(); } }
                     }
                     GhostButton {
                         horizontal-stretch: 0;
@@ -85,12 +92,14 @@ export component ToolDialog inherits Dialog {
                     }
                 }
             }
-            Field {
+            LabelledField {
                 label: "Its words";
                 LineEdit {
                     text <=> Tools.words;
                     placeholder-text: "-i {file} -o {out}";
-                    edited => { Tools.changed(); }
+                    edited => { Tools.dirty = true; Tools.changed(); }
+                    // Enter saves, as Save does.
+                    accepted => { if Tools.can-save { Tools.save(); } }
                 }
             }
             HorizontalLayout {
@@ -136,11 +145,11 @@ export component ToolDialog inherits Dialog {
                     selected: Tools.makes-file;
                     clicked => {
                         Tools.makes-file = true;
-                        Tools.changed();
+                        Tools.dirty = true; Tools.changed();
                     }
                 }
                 if Tools.makes-file: HorizontalLayout {
-                    padding-left: Screen.compact ? 0 : 30px;
+                    padding-left: Screen.compact ? 0 : 36px; // under a ChoiceRow's label (6 + 18 + 12)
                     padding-top: 4px;
                     padding-bottom: 4px;
                     alignment: start;
@@ -155,7 +164,9 @@ export component ToolDialog inherits Dialog {
                         width: 100px;
                         text <=> Tools.makes;
                         placeholder-text: "mp4";
-                        edited => { Tools.changed(); }
+                        edited => { Tools.dirty = true; Tools.changed(); }
+                        // Enter saves, as Save does.
+                        accepted => { if Tools.can-save { Tools.save(); } }
                     }
                 }
                 ChoiceRow {
@@ -164,7 +175,7 @@ export component ToolDialog inherits Dialog {
                     selected: !Tools.makes-file;
                     clicked => {
                         Tools.makes-file = false;
-                        Tools.changed();
+                        Tools.dirty = true; Tools.changed();
                     }
                 }
             }
@@ -176,7 +187,7 @@ export component ToolDialog inherits Dialog {
                 ChoiceChips {
                     options: ["Videos", "Sound files", "Both"];
                     current <=> Tools.takes;
-                    changed => { Tools.changed(); }
+                    changed => { Tools.dirty = true; Tools.changed(); }
                 }
             }
 

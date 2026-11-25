@@ -1,6 +1,6 @@
 import { ComboBox, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { Menu, MenuItem, PrimaryButton, GhostButton, IconButton, TextLink, ChoiceChips, PageTitle, SettingsGear, Notice, Divider, Thumb, Tick, Tag, Icon, KeyPress, SectionTitle, FilterTab } from "../widgets.slint";
+import { Menu, MenuItem, PrimaryButton, GhostButton, IconButton, TextLink, ChoiceChips, PageTitle, SettingsGear, Notice, Divider, Thumb, Tick, Tag, Icon, KeyPress, SectionTitle, FilterTab, Toast, Head, Hint } from "../widgets.slint";
 import { Capture, CaptureSource, CaptureTrack, CaptureApp, Voice, Phone } from "../globals.slint";
 import { SavedList } from "../components/saved-list.slint";
 import { QualityChoice } from "../components/quality-choice.slint";
@@ -9,21 +9,6 @@ import { PhonePane } from "phone.slint";
 // The Capture page (mock: design/capture.html, picks 1A · 2A · 3A · 4A): instant replay of a
 // game, a window or a monitor; its Phone tab is `phone.slint` (design/phone.html). The status and its buttons stay at the top; what to record,
 // how much, the sound and the key scroll under it; then the clips it saved.
-
-// A small heading over a group of choices.
-component Head inherits Text {
-    color: Theme.ink;
-    font-family: Theme.display;
-    font-size: 14px;
-    font-weight: 700;
-}
-
-component Hint inherits Text {
-    color: Theme.muted;
-    font-family: Theme.body;
-    font-size: 12px;
-    wrap: word-wrap;
-}
 
 // One thing to record: a round mark (ink when picked), its icon, name and hint, "Game".
 component SourceRow inherits Rectangle {
@@ -37,7 +22,7 @@ component SourceRow inherits Rectangle {
     accessible-checkable: true;
     accessible-checked: root.selected;
     accessible-action-default => { root.clicked(); }
-    KeyPress {
+    kp := KeyPress {
         radius: 8px;
         activated => { root.clicked(); }
     }
@@ -45,7 +30,7 @@ component SourceRow inherits Rectangle {
     border-radius: 8px;
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { kp.take(); root.clicked(); }
     }
     Rectangle {
         x: 0;
@@ -88,7 +73,7 @@ component SourceRow inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 1px;
+            spacing: 2px;
             Text {
                 text: root.item.name;
                 color: Theme.ink;
@@ -134,7 +119,7 @@ component TrackRow inherits Rectangle {
         padding-top: 6px;
         padding-bottom: 6px;
         padding-left: 4px;
-        spacing: 10px;
+        spacing: 8px;
         Text {
             width: 18px;
             text: root.track.n;
@@ -215,7 +200,7 @@ component NeverList inherits FlexboxLayout {
         border-width: 2px;
         border-color: Theme.line-strong;
         chip := HorizontalLayout {
-            padding-left: 10px;
+            padding-left: 8px;
             padding-right: 2px;
             spacing: 2px;
             Text {
@@ -263,7 +248,7 @@ component NeverList inherits FlexboxLayout {
 // The save key: the key in a box and Change; while picking, "Press a key…" takes the next
 // key pressed (Esc puts the old one back).
 component KeyBox inherits HorizontalLayout {
-    spacing: 10px;
+    spacing: 8px;
     alignment: start;
     Rectangle {
         min-width: max(110px, keytext.preferred-width + 24px);
@@ -331,17 +316,17 @@ component ListenBadge inherits VerticalLayout {
         accessible-role: button;
         accessible-label: Voice.mic-missing ? "Mic not found: open Settings, Voice" : Voice.listen-text + ". Open Settings, Voice";
         accessible-action-default => { Voice.mark-clicked(); }
-        KeyPress {
+        kp := KeyPress {
             radius: 9px;
             activated => { Voice.mark-clicked(); }
         }
         ta := TouchArea {
             mouse-cursor: pointer;
-            clicked => { Voice.mark-clicked(); }
+            clicked => { kp.take(); Voice.mark-clicked(); }
         }
         row := HorizontalLayout {
-            padding-left: 9px;
-            padding-right: 9px;
+            padding-left: 8px;
+            padding-right: 8px;
             spacing: 6px;
             Icon {
                 text: "\u{E720}";
@@ -380,7 +365,7 @@ component StatusBand inherits VerticalLayout {
     property <bool> running: Capture.state == 1 || Capture.state == 2 || Capture.state == 3;
     Divider { }
     HorizontalLayout {
-        spacing: 14px;
+        spacing: 12px;
         if Capture.state != 0: VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
@@ -392,7 +377,7 @@ component StatusBand inherits VerticalLayout {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 3px;
+            spacing: 4px;
             Text {
                 text: Capture.status;
                 color: Theme.ink;
@@ -550,7 +535,7 @@ component Choices inherits VerticalLayout {
         toggled => { Capture.changed(); }
     }
     HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         Tick {
             horizontal-stretch: 0;
             text: "Mic";
@@ -609,7 +594,7 @@ export component CapturePage inherits Rectangle {
         padding-bottom: Screen.compact ? 12px : 28px;
         padding-left: max(Screen.pad, (parent.width - 1240px) / 2);
         padding-right: max(Screen.pad, (parent.width - 1240px) / 2);
-        spacing: Screen.compact ? 12px : 14px;
+        spacing: Screen.compact ? 12px : 16px;
 
         HorizontalLayout {
             spacing: 12px;
@@ -626,19 +611,23 @@ export component CapturePage inherits Rectangle {
 
         // This PC / Phone: calm tabs (they change the view, not a setting).
         HorizontalLayout {
-            spacing: 22px;
+            spacing: 24px;
             vertical-stretch: 0;
             alignment: start;
             FilterTab {
                 text: "This PC";
                 show-count: false;
                 active: Phone.tab == 0;
+                place: 0;
+                places: 2;
                 clicked => { Phone.tab = 0; Phone.shown(false); }
             }
             FilterTab {
                 text: Phone.name != "" ? Phone.name : "Phone";
                 show-count: false;
                 active: Phone.tab == 1;
+                place: 1;
+                places: 2;
                 clicked => { Phone.tab = 1; Phone.shown(true); }
             }
         }
@@ -652,11 +641,11 @@ export component CapturePage inherits Rectangle {
         if Phone.tab == 0: ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
-                spacing: 18px;
+                spacing: 20px;
                 padding-right: Theme.lane;
                 padding-top: 4px;
                 if Screen.wide: HorizontalLayout {
-                    spacing: 26px;
+                    spacing: 24px;
                     SourceList {
                         horizontal-stretch: 1;
                     }
@@ -673,61 +662,27 @@ export component CapturePage inherits Rectangle {
 }
 
 // After a save, over any page: "Saved" / 'Heard "clip that"', what, Undo, Open in clipper.
-export component CaptureToast inherits Rectangle {
-    in property <length> widest;
-    width: min(row.preferred-width, root.widest);
-    height: 46px;
-    border-radius: 12px;
-    background: Theme.panel;
-    border-width: 1px;
-    border-color: Theme.line-strong;
-    row := HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 8px;
-        spacing: 10px;
-        if Capture.toast-tag != "": VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            Tag {
-                text: Screen.compact ? "Saved" : Capture.toast-tag;
-                kind: 1;
-            }
+export component CaptureToast inherits Toast {
+    tag: Capture.toast-tag == "" ? "" : Screen.compact ? "Saved" : Capture.toast-tag;
+    text: Capture.toast-text;
+    closed => { Capture.toast-closed(); }
+    if Capture.toast-undo: VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 0;
+        TextLink {
+            text: "Undo";
+            clicked => { Capture.undo(); }
         }
-        Text {
-            text: Capture.toast-text;
-            color: Theme.ink;
-            font-family: Theme.body;
-            font-size: 12.5px;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-        if Capture.toast-undo: VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            TextLink {
-                text: "Undo";
-                clicked => { Capture.undo(); }
-            }
-        }
-        if Capture.toast-file != "": VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            GhostButton {
-                compact: true;
-                text: Screen.compact ? "Open" : "Open in clipper";
-                icon: "\u{E8C6}";
-                label: "Open the saved clip in the clipper";
-                clicked => { Capture.open-clip(Capture.toast-file); }
-            }
-        }
-        VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            IconButton {
-                icon: "\u{E711}";
-                label: "Close";
-                clicked => { Capture.toast-closed(); }
-            }
+    }
+    if Capture.toast-file != "": VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 0;
+        GhostButton {
+            compact: true;
+            text: Screen.compact ? "Open" : "Open in clipper";
+            icon: "\u{E8C6}";
+            label: "Open the saved clip in the clipper";
+            clicked => { Capture.open-clip(Capture.toast-file); }
         }
     }
 }

@@ -1,6 +1,6 @@
 import { Theme, Screen } from "../theme.slint";
 import { Fmt } from "../types.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, Chip, PageTitle, SettingsGear, Notice, Divider, Tag, Hint, CropFrame } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, ChoiceChips, Chip, PageTitle, SettingsGear, Notice, Divider, Tag, Hint, CropFrame, Toast } from "../widgets.slint";
 import { QualityRow } from "../components/quality-row.slint";
 import { RecentList } from "../components/recent-list.slint";
 import { RecentItem, ChapterMark } from "../types.slint";
@@ -8,7 +8,7 @@ import { Timeline, ChapterStrip } from "../components/timeline.slint";
 import { Presets, Watch, ClipSound, ClipGif, ClipPicture, ClipList, ClipLive, ClipView, QueueActions, Transcribe, ClipChat, Voice } from "../globals.slint";
 import { ChatPanel } from "../components/chat-panel.slint";
 import { LiveTimeline } from "../components/live-timeline.slint";
-import { Menu, MenuItem, TextLink, LiveTape, KeyPress } from "../widgets.slint";
+import { Menu, MenuItem, TextLink, LiveTape, KeyPress, Backdrop } from "../widgets.slint";
 
 // The timeline's zoom: out, in, fit the clip, the whole video, and how much is on screen.
 // Ctrl+scroll on the timeline (or a touchpad pinch) and + / − do the same.
@@ -93,17 +93,17 @@ component ListenMark inherits VerticalLayout {
         accessible-label: Voice.mic-missing ? "Mic not found: open Settings, Voice"
             : Voice.paused ? "Not listening. Open the voice menu" : Voice.listen-text + ", keeps the last " + root.short + ". Open the voice menu";
         accessible-action-default => { root.open(); }
-        KeyPress {
+        kp := KeyPress {
             radius: 9px;
             activated => { root.open(); }
         }
         ta := TouchArea {
             mouse-cursor: pointer;
-            clicked => { root.open(); }
+            clicked => { kp.take(); root.open(); }
         }
         row := HorizontalLayout {
-            padding-left: 9px;
-            padding-right: 9px;
+            padding-left: 8px;
+            padding-right: 8px;
             spacing: 6px;
             Icon {
                 text: "\u{E720}";
@@ -148,7 +148,7 @@ component ListenMark inherits VerticalLayout {
                 text: "When you say it, keep the last:";
             }
             for k[i] in root.keeps: MenuItem {
-                icon: Voice.keep == i ? "\u{E73E}" : "";
+                checked: Voice.keep == i;
                 text: k;
                 clicked => { Voice.keep-picked(i); }
             }
@@ -163,46 +163,25 @@ component ListenMark inherits VerticalLayout {
 
 // What "clip that" just did, on the picture: 'Heard "clip that"' · "Clipped the last 30 s"
 // · Undo / Show. Gone after a few seconds.
-component HeardToast inherits Rectangle {
-    width: min(row.preferred-width, self.widest);
-    in property <length> widest;
-    height: 42px;
-    border-radius: 12px;
-    background: Theme.panel;
-    border-width: 1px;
-    border-color: Theme.line-strong;
-    row := HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 14px;
-        spacing: 10px;
-        if Voice.heard-tag != "": VerticalLayout {
-            alignment: center;
-            Tag {
-                text: Screen.compact ? "Heard" : Voice.heard-tag;
-                kind: Voice.heard-kind;
-            }
+component HeardToast inherits Toast {
+    tag: Voice.heard-tag == "" ? "" : Screen.compact ? "Heard" : Voice.heard-tag;
+    tag-kind: Voice.heard-kind;
+    text: Voice.heard-text;
+    closed => { Voice.heard-closed(); }
+    if Voice.heard-undo: VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 0;
+        TextLink {
+            text: "Undo";
+            clicked => { Voice.undo(); }
         }
-        Text {
-            text: Voice.heard-text;
-            color: Theme.ink;
-            font-family: Theme.body;
-            font-size: 12.5px;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-        if Voice.heard-undo: VerticalLayout {
-            alignment: center;
-            TextLink {
-                text: "Undo";
-                clicked => { Voice.undo(); }
-            }
-        }
-        if Voice.heard-show: VerticalLayout {
-            alignment: center;
-            TextLink {
-                text: "Show";
-                clicked => { Voice.show(); }
-            }
+    }
+    if Voice.heard-show: VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 0;
+        TextLink {
+            text: "Show";
+            clicked => { Voice.show(); }
         }
     }
 }
@@ -263,6 +242,7 @@ component RecordMenu inherits VerticalLayout {
         text: "Record";
         icon: "\u{E7C8}";
         has-menu: ClipLive.from-start != "";
+        menu-label: "More ways to record";
         enabled: root.enabled;
         clicked => { Watch.record(); }
         menu-clicked => { menu.show(); }
@@ -448,6 +428,7 @@ component ExportButton inherits HorizontalLayout {
         icon: root.icon;
         enabled: root.enabled;
         has-menu: root.has-menu;
+        menu-label: "More ways to export";
         menu-clicked => { menu.show(); }
         clicked => { root.clicked(); }
     }
@@ -704,7 +685,7 @@ export component ClipPage inherits FocusScope {
         padding: Screen.compact ? Screen.pad : 28px;
         padding-right: root.chat-tall ? 20px : (Screen.compact ? Screen.pad : 28px);
         padding-bottom: Screen.compact ? 12px : 28px;
-        spacing: Screen.compact ? 8px : 14px;
+        spacing: Screen.compact ? 8px : 16px;
 
         HorizontalLayout {
             spacing: Screen.compact ? 6px : 12px;
@@ -767,10 +748,10 @@ export component ClipPage inherits FocusScope {
         if !root.loaded: VerticalLayout {
             vertical-stretch: 1;
             alignment: start;
-            spacing: 14px;
+            spacing: 16px;
             HorizontalLayout {
                 alignment: start;
-                spacing: 10px;
+                spacing: 8px;
                 PrimaryButton {
                     text: "Paste link";
                     icon: "\u{E71B}";
@@ -1595,16 +1576,14 @@ export component ClipPage inherits FocusScope {
     }
 
     // Compact: the chat over the lower part of the page (closed with its ×).
-    if ClipChat.sheet && root.loaded && ClipChat.available: Rectangle {
+    // A click above it, Esc or its × closes it; the wheel doesn't reach the page (`Backdrop`).
+    if ClipChat.sheet && root.loaded && ClipChat.available: Backdrop {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        // keyboard: the sheet's own × closes it.
-        TouchArea {
-            clicked => { ClipChat.sheet = false; }
-        }
+        label: "Live chat";
+        close => { ClipChat.sheet = false; }
         ChatPanel {
             x: 0;
             y: parent.height * 0.25;

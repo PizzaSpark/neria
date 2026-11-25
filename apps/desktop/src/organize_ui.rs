@@ -13,7 +13,7 @@ use neria_core::organize::{self, Arrange, Done, Move};
 use neria_core::settings::Settings;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::{AppWindow, OrgMove, Organize, show_toast};
+use crate::{AppWindow, OrgMove, Organize, show_toast, toast_info};
 
 #[derive(Default)]
 struct State {
@@ -50,7 +50,7 @@ fn short(p: &Path, root: &Path) -> String {
 pub fn open(ui: &AppWindow, items: Vec<Item>) {
     let files: Vec<PathBuf> = items.iter().map(|i| i.file.clone()).filter(|f| library::is_audio_file(f)).collect();
     if files.is_empty() {
-        show_toast(ui, "Only songs and sound files go in folders.");
+        toast_info(ui, "Only songs and sound files go in folders.");
         return;
     }
     let root = with(|s| s.settings.clone())

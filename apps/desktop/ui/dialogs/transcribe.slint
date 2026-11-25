@@ -47,9 +47,7 @@ export component TranscribeDialog inherits Dialog {
             Tick {
                 text: "Use my NVIDIA graphics card";
                 checked <=> Transcribe.use-gpu;
-            }
-            Hint {
-                text: "About 20 times faster: a 30-minute talk in under a minute instead of about 15. Adds a bigger download (685 MB).";
+                hint: "About 20 times faster: a 30-minute talk in under a minute instead of about 15. Adds a bigger download (685 MB).";
             }
         }
         Rectangle { vertical-stretch: 1; }
@@ -95,7 +93,7 @@ export component TranscribeDialog inherits Dialog {
     if root.view == 1: ScrollView {
         vertical-stretch: 1;
         VerticalLayout {
-            spacing: 18px;
+            spacing: 20px;
             padding-right: Theme.lane;
             if Transcribe.has-selection: Part {
                 title: "What";
@@ -218,7 +216,7 @@ export component TranscribeDialog inherits Dialog {
     // At work.
     if root.view == 2: VerticalLayout {
         vertical-stretch: 1;
-        spacing: 10px;
+        spacing: 12px;
         Bar { value: Transcribe.progress; }
         Text {
             text: Transcribe.status;
@@ -251,7 +249,7 @@ export component TranscribeDialog inherits Dialog {
     // Saved, or not.
     if root.view == 3: VerticalLayout {
         vertical-stretch: 1;
-        spacing: 10px;
+        spacing: 12px;
         Text {
             text: Transcribe.result;
             color: Theme.ok;
@@ -285,7 +283,7 @@ export component TranscribeDialog inherits Dialog {
     }
     if root.view == 4: VerticalLayout {
         vertical-stretch: 1;
-        spacing: 10px;
+        spacing: 12px;
         Notice {
             text: Transcribe.error;
             color: Theme.bad;

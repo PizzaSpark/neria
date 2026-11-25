@@ -98,7 +98,7 @@ pub fn paste_times(ui: &AppWindow) {
     let dur = ui.get_clip_duration() as f64;
     let parts = neria_core::tracks::parts_from_text(&text, dur);
     if parts.is_empty() {
-        crate::show_toast(ui, "Copy a list of times first (like \"0:00 Intro\" on each line), then Paste times.");
+        crate::toast_info(ui, "Copy a list of times first (like \"0:00 Intro\" on each line), then Paste times.");
         return;
     }
     let n = parts.len();

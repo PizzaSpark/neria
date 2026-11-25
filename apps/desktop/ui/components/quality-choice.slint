@@ -72,13 +72,13 @@ export component QualityChoice inherits VerticalLayout {
             accessible-role: button;
             accessible-label: (root.open ? "Hide" : "Show") + " advanced quality options";
             accessible-action-default => { root.open = !root.open; }
-            KeyPress {
+            kp := KeyPress {
                 radius: 6px;
                 activated => { root.open = !root.open; }
             }
             ta := TouchArea {
                 mouse-cursor: pointer;
-                clicked => { root.open = !root.open; }
+                clicked => { kp.take(); root.open = !root.open; }
             }
             HorizontalLayout {
                 spacing: 8px;
@@ -113,15 +113,15 @@ export component QualityChoice inherits VerticalLayout {
         }
     }
     if root.open: HorizontalLayout {
-        padding-left: 5px;
+        padding-left: 4px;
         padding-top: 4px;
-        spacing: 14px;
+        spacing: 12px;
         Rectangle {
             width: 2px;
             background: Theme.line;
         }
         VerticalLayout {
-            spacing: 10px;
+            spacing: 12px;
             padding-top: 2px;
             padding-bottom: 2px;
             VerticalLayout {

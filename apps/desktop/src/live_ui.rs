@@ -292,14 +292,14 @@ pub fn install(ui: &AppWindow, queue: &Queue) {
         let (queue, weak) = (queue.clone(), ui.as_weak());
         move |id| {
             queue.clip_start(id as u64);
-            crate::show_toast(&weak.unwrap(), "Clip started 10 s back. Press End clip when it's over.");
+            crate::toast_info(&weak.unwrap(), "Clip started 10 s back. Press End clip when it's over.");
         }
     });
     actions.on_clip_end({
         let (queue, weak) = (queue.clone(), ui.as_weak());
         move |id| {
             queue.clip_end(id as u64);
-            crate::show_toast(&weak.unwrap(), "Saving the clip… the recording goes on.");
+            crate::toast_info(&weak.unwrap(), "Saving the clip… the recording goes on.");
         }
     });
     actions.on_clip_drop({
@@ -317,7 +317,7 @@ pub fn install(ui: &AppWindow, queue: &Queue) {
             // Ends where the player is when you're watching it behind live.
             let ago = if ui.global::<crate::Watch>().get_on() { crate::clipper::behind_live(&ui) } else { 0.0 };
             queue.clip_back(id as u64, secs as f64, ago);
-            crate::show_toast(&ui, &format!("Saving the last {}…", fmt::duration(secs as f64)));
+            crate::toast_info(&ui, &format!("Saving the last {}…", fmt::duration(secs as f64)));
         }
     });
 }

@@ -14,7 +14,7 @@ use neria_core::settings::Quality;
 use neria_core::workflow::{self, Change, Pick, Put, Size, SoundAs, When, Workflow};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::{AppWindow, WfRow, WfSite, Workflows, show_toast};
+use crate::{AppWindow, WfRow, WfSite, Workflows, show_toast, toast_info};
 
 #[derive(Default)]
 struct State {
@@ -332,7 +332,7 @@ fn pick_folder(title: &str, start: Option<&Path>) -> Option<PathBuf> {
 pub fn open_run(ui: &AppWindow, files: Vec<PathBuf>) {
     let files: Vec<PathBuf> = files.into_iter().filter(|f| f.is_file()).collect();
     if files.is_empty() {
-        show_toast(ui, "Those files aren't there any more.");
+        toast_info(ui, "Those files aren't there any more.");
         return;
     }
     let sub = match files.as_slice() {

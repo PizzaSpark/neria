@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use neria_core::tags::{self, Tags};
 use slint::ComponentHandle;
 
-use crate::{AppWindow, TagEdit, show_toast};
+use crate::{AppWindow, TagEdit, show_toast, toast_info};
 
 #[derive(Default)]
 struct State {
@@ -120,7 +120,7 @@ fn save(ui: &AppWindow) {
     }
     if want == Tags::default() && cover.is_none() && !numbered {
         t.set_open(false);
-        show_toast(ui, "Nothing to change: the tags already say that.");
+        toast_info(ui, "Nothing to change: the tags already say that.");
         return;
     }
     t.set_saving(true);

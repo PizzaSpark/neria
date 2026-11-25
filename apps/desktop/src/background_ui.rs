@@ -296,7 +296,7 @@ fn play_sound(ui: &AppWindow, failed: bool) {
             TOLD_MISSING.with(|t| t.set((done || !failed, fail || failed)));
             let name = if failed { b.get_own_failed() } else { b.get_own_done() };
             let name = if name.is_empty() { "Your sound".to_string() } else { name.to_string() };
-            crate::show_toast(
+            crate::toast_problem(
                 ui,
                 &format!(
                     "{name} is gone from Neria's folder, so the chime played. Pick it again in Settings → General."
@@ -332,7 +332,7 @@ fn pick_sound(ui: &AppWindow, settings: &Arc<Mutex<Settings>>, failed: bool, cha
     let staged = match stage_sound(&src, &dest) {
         Ok(p) => p,
         Err(msg) => {
-            crate::show_toast(ui, &msg);
+            crate::toast_problem(ui, &msg);
             to_ui(ui, &settings.lock().unwrap());
             return;
         }
@@ -340,7 +340,7 @@ fn pick_sound(ui: &AppWindow, settings: &Arc<Mutex<Settings>>, failed: bool, cha
     let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     // The menu shows what's in use until the new sound has played.
     to_ui(ui, &settings.lock().unwrap());
-    crate::show_toast(ui, &format!("Trying {name}…"));
+    crate::toast_info(ui, &format!("Trying {name}…"));
     let (weak, settings) = (ui.as_weak(), settings.clone());
     std::thread::spawn(move || {
         let played = play_file(&staged, true);
@@ -354,7 +354,7 @@ fn pick_sound(ui: &AppWindow, settings: &Arc<Mutex<Settings>>, failed: bool, cha
                 Err(format!("Windows couldn't play {name}. Try another WAV, or save it again as a plain WAV."))
             };
             if let Err(msg) = kept {
-                crate::show_toast(&ui, &msg);
+                crate::toast_problem(&ui, &msg);
                 to_ui(&ui, &settings.lock().unwrap());
                 return;
             }

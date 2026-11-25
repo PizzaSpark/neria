@@ -132,7 +132,7 @@ fn open_dialog(ui: &AppWindow, target: Target, subtitle: String) {
     if busy {
         // One at a time: show the one going.
         t.set_open(true);
-        crate::show_toast(ui, "Neria is already transcribing something. It'll be done first.");
+        crate::toast_info(ui, "Neria is already transcribing something. It'll be done first.");
         return;
     }
     refresh(ui);
@@ -305,12 +305,12 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         move || {
             let ui = weak.unwrap();
             if STATE.with(|s| s.borrow().cancel.is_some()) {
-                crate::show_toast(&ui, "Speech to text is busy. Remove it once it's done.");
+                crate::toast_info(&ui, "Speech to text is busy. Remove it once it's done.");
                 return;
             }
             match transcribe::remove() {
                 Ok(()) => crate::show_toast(&ui, "Speech to text removed from this PC."),
-                Err(e) => crate::show_toast(&ui, &format!("Couldn't remove it all: {e}")),
+                Err(e) => crate::toast_problem(&ui, &format!("Couldn't remove it all: {e}")),
             }
             reset_download(&ui);
             refresh(&ui);
@@ -322,12 +322,12 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
         move || {
             let ui = weak.unwrap();
             if STATE.with(|s| s.borrow().cancel.is_some()) {
-                crate::show_toast(&ui, "Speech to text is busy. Remove it once it's done.");
+                crate::toast_info(&ui, "Speech to text is busy. Remove it once it's done.");
                 return;
             }
             match transcribe::remove_model(transcribe::Model::Best) {
                 Ok(()) => crate::show_toast(&ui, "The Best quality model is off this PC. Fast stays."),
-                Err(e) => crate::show_toast(&ui, &format!("Couldn't remove it: {e}")),
+                Err(e) => crate::toast_problem(&ui, &format!("Couldn't remove it: {e}")),
             }
             // Back to Fast, which is still there.
             let t = ui.global::<Transcribe>();
@@ -534,7 +534,7 @@ fn start(ui: &AppWindow) {
                 t.set_error(plain_error(&e).into());
                 t.set_view(VIEW_FAILED);
                 if !t.get_open() {
-                    crate::show_toast(&ui, "The transcript failed. Open Transcribe again to see why.");
+                    crate::toast_problem(&ui, "The transcript failed. Open Transcribe again to see why.");
                 }
                 return;
             }

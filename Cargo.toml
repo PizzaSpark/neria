@@ -18,3 +18,9 @@ lto = "thin"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# Debug builds of the app keep line numbers, not full debug info: the UI's generated code is
+# one huge file, and full debug info for it took the compile past 5 GB of RAM (it swapped for
+# half an hour with a game running). Backtraces still point at the right lines.
+[profile.dev.package.neria]
+debug = "line-tables-only"

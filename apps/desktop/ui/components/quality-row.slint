@@ -29,7 +29,7 @@ export component QualityRow inherits VerticalLayout {
     spacing: 8px;
     alignment: start;
     HorizontalLayout {
-        spacing: 7px;
+        spacing: 8px;
         if !root.spotify: ChoiceChips {
             options: Screen.compact ? ["Best", "Compatible", "Smallest", "Audio"]
                 : ["Best quality", "Compatible", "Smallest file", "Audio only"];
@@ -91,7 +91,7 @@ export component QualityRow inherits VerticalLayout {
     }
     // The old chips, for people who want the numbers: one labelled row each.
     if Presets.advanced && !root.spotify && !root.audio && Presets.preset != 2: HorizontalLayout {
-        spacing: 7px;
+        spacing: 8px;
         alignment: start;
         vertical-stretch: 0;
         Text {
@@ -113,7 +113,7 @@ export component QualityRow inherits VerticalLayout {
         }
     }
     if Presets.advanced && !root.spotify && !root.audio && Presets.preset == 0: HorizontalLayout {
-        spacing: 7px;
+        spacing: 8px;
         alignment: start;
         vertical-stretch: 0;
         Text {
@@ -135,7 +135,7 @@ export component QualityRow inherits VerticalLayout {
         }
     }
     if Presets.advanced && !root.spotify && root.audio: HorizontalLayout {
-        spacing: 7px;
+        spacing: 8px;
         alignment: start;
         vertical-stretch: 0;
         Text {

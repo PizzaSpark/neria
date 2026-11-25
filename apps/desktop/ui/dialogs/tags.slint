@@ -31,13 +31,21 @@ component TagField inherits HorizontalLayout {
         text <=> root.text;
         placeholder-text: root.several ? "Leave as each has it" : "";
         accessible-label: root.label;
-        edited => { root.edited(); }
+        edited => {
+            TagEdit.dirty = true;
+            root.edited();
+        }
+        // Enter saves, as Save does.
+        accepted => { if !TagEdit.saving && !TagEdit.finding { TagEdit.save(); } }
     }
 }
 
 // Edit tags (mock design/audio-tools.html 3A): one song, or many at once; Find tags online
 // fills the fields to check before saving. Rust: tags_ui.rs.
 export component TagsDialog inherits Dialog {
+    // Changes not saved yet: closing asks first (Discard your changes?).
+    dirty: TagEdit.dirty;
+    init => { TagEdit.dirty = false; }
     title: "Edit tags";
     subtitle: TagEdit.subtitle;
     card-width: 560px;
@@ -104,7 +112,7 @@ export component TagsDialog inherits Dialog {
         text: "Fields that differ stay as each file has them unless you type in them. What you type is set for all " + TagEdit.count + ".";
     }
     HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         if TagEdit.count == 1: GhostButton {
             text: TagEdit.finding ? "Looking it up…" : "Find tags online";
             icon: "\u{E721}";

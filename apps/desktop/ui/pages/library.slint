@@ -4,7 +4,7 @@
 // sheet from the bottom (compact). Watch (Play for sound) is the one yellow action.
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SettingsGear, SectionTitle, Tag, TextLink, FilterTab, ChoiceChips, Divider, Thumb, Menu, MenuItem, KeyPress, Kbd, Notice, Dialog, Hint } from "../widgets.slint";
+import { Icon, PrimaryButton, GhostButton, IconButton, PageTitle, SettingsGear, SectionTitle, Tag, TextLink, FilterTab, ChoiceChips, Divider, Thumb, Menu, MenuItem, KeyPress, Kbd, Notice, Dialog, Hint, Sheet, TextBox } from "../widgets.slint";
 import { Library, LibRow, LibDetail, LibAttached, Tools } from "../globals.slint";
 
 // The main action's word and icon (LibRow.main).
@@ -232,7 +232,7 @@ component DetailBody inherits VerticalLayout {
     if root.show-keys: VerticalLayout {
         spacing: 6px;
         for k[i] in d.keys: HorizontalLayout {
-            spacing: 10px;
+            spacing: 8px;
             Text {
                 width: 70px;
                 text: k;
@@ -265,7 +265,7 @@ component DetailBody inherits VerticalLayout {
             HorizontalLayout {
                 padding-top: 6px;
                 padding-bottom: 6px;
-                spacing: 10px;
+                spacing: 8px;
                 Icon {
                     horizontal-stretch: 0;
                     text: a.label == "Chat" ? "\u{E8BD}" : a.label == "Lyrics" ? "\u{E8D6}" : a.label == "Captions" ? "\u{E7F0}" : "\u{E8A5}";
@@ -300,7 +300,7 @@ component DetailBody inherits VerticalLayout {
             HorizontalLayout {
                 padding-top: 6px;
                 padding-bottom: 6px;
-                spacing: 10px;
+                spacing: 8px;
                 Icon {
                     horizontal-stretch: 0;
                     text: "\u{E8A5}";
@@ -336,9 +336,9 @@ component DetailBody inherits VerticalLayout {
         Divider { }
         for s in d.songs: VerticalLayout {
             HorizontalLayout {
-                padding-top: 5px;
-                padding-bottom: 5px;
-                spacing: 10px;
+                padding-top: 4px;
+                padding-bottom: 4px;
+                spacing: 8px;
                 Text {
                     horizontal-stretch: 1;
                     text: s.label;
@@ -397,7 +397,7 @@ component DetailColumn inherits Rectangle {
         background: Theme.line;
     }
     if Library.selected == 0: VerticalLayout {
-        padding: 22px;
+        padding: 24px;
         alignment: start;
         Hint {
             text: Library.empty ? "What you save shows up here, with what you can do next." : "Pick something to see where it came from and what you can do next.";
@@ -408,7 +408,7 @@ component DetailColumn inherits Rectangle {
         width: parent.width - 1px;
         VerticalLayout {
             padding: 20px;
-            padding-top: 22px;
+            padding-top: 24px;
             spacing: 12px;
             alignment: start;
             KindThumb {
@@ -466,7 +466,7 @@ component DetailColumn inherits Rectangle {
 component OpenedRow inherits VerticalLayout {
     property <LibDetail> d: Library.detail;
     callback more();
-    spacing: 10px;
+    spacing: 12px;
     padding-bottom: 4px;
     DetailBody {
         show-keys: false;
@@ -566,6 +566,7 @@ component LibRowView inherits VerticalLayout {
                 }
             }
             clicked => {
+                kp.take();
                 if root.with-shift {
                     Library.pick(root.item.id, 1);
                 } else if root.with-ctrl || Library.picked-count > 0 {
@@ -575,7 +576,7 @@ component LibRowView inherits VerticalLayout {
                 }
             }
             double-clicked => { Library.act(root.item.id, "main"); }
-            KeyPress {
+            kp := KeyPress {
                 width: parent.width - Theme.lane;
                 radius: 8px;
                 activated => { root.pick(); }
@@ -589,13 +590,13 @@ component LibRowView inherits VerticalLayout {
             }
             content := VerticalLayout {
                 // Room before the tick, so it sits inside the hover / picked panel.
-                padding-left: 14px;
+                padding-left: 12px;
                 padding-right: Theme.lane + 6px;
                 padding-top: 8px;
                 padding-bottom: 8px;
-                spacing: 10px;
+                spacing: 12px;
                 HorizontalLayout {
-                    spacing: Screen.compact ? 10px : 12px;
+                    spacing: Screen.compact ? 8px : 12px;
                     min-height: 44px;
                     // Pick it with others: its own column on the left, always there, so nothing
                     // moves when the tick shows (keyboard: Ctrl+Space on the row).
@@ -622,7 +623,7 @@ component LibRowView inherits VerticalLayout {
                             // keyboard: Ctrl+Space on the row picks it.
                             TouchArea {
                                 mouse-cursor: pointer;
-                                clicked => { Library.pick(root.item.id, 0); }
+                                clicked => { kp.take(); Library.pick(root.item.id, 0); }
                             }
                         }
                     }
@@ -656,7 +657,7 @@ component LibRowView inherits VerticalLayout {
                             overflow: elide;
                         }
                         HorizontalLayout {
-                            spacing: 7px;
+                            spacing: 8px;
                             Tag {
                                 horizontal-stretch: 0;
                                 text: root.item.tag;
@@ -759,6 +760,7 @@ component LibRowView inherits VerticalLayout {
                     }
                 }
                 if root.opened: HorizontalLayout {
+                    // ui-rules: lines up with the text beside the thumbnail (16 + 48 + 12)
                     padding-left: 76px;
                     OpenedRow {
                         more => { menu.show(); }
@@ -775,97 +777,41 @@ component LibRowView inherits VerticalLayout {
 }
 
 // The search box: what's typed filters as you type; Esc clears it.
-component SearchBox inherits Rectangle {
+component SearchBox inherits TextBox {
     // Bumped by Ctrl+F. Wide and medium: it takes the keyboard when the page opens, so you
     // can just start typing.
     in property <int> find;
-    changed find => { input.focus(); }
+    changed find => { self.focus-input(); }
     init => {
         if !Screen.compact {
-            input.focus();
+            self.focus-input();
         }
     }
-    height: 41px;
-    border-radius: 10px;
-    background: Theme.panel;
-    border-width: 2px;
-    border-color: input.has-focus ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
-    animate border-color { duration: 100ms; }
-    // keyboard: Tab reaches the text input itself.
-    ta := TouchArea {
-        mouse-cursor: MouseCursor.text;
-        clicked => { input.focus(); }
+    small: true;
+    icon: "\u{E721}";
+    placeholder: Screen.wide ? "Search titles, sites, file names…" : "Search…";
+    label: "Search the Library";
+    escape-clears: true;
+    text <=> Library.query;
+    edited => { Library.changed(); }
+    cleared => { Library.changed(); }
+    if Library.query != "": VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 0;
+        TextLink {
+            text: "Clear";
+            clicked => {
+                Library.query = "";
+                Library.changed();
+                root.focus-input();
+            }
+        }
     }
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 8px;
-        spacing: 9px;
-        Icon {
-            horizontal-stretch: 0;
-            text: "\u{E721}";
-            font-size: 13px;
-            color: Theme.muted;
-        }
-        Rectangle {
-            horizontal-stretch: 1;
-            if Library.query == "": Text {
-                x: 0;
-                width: parent.width;
-                height: parent.height;
-                text: Screen.wide ? "Search titles, sites, file names…" : "Search…";
-                color: Theme.muted;
-                font-size: 13.5px;
-                vertical-alignment: center;
-                overflow: elide;
-            }
-            FocusScope {
-                x: 0;
-                width: parent.width;
-                height: parent.height;
-                focus-on-click: false;
-                focus-on-tab-navigation: false;
-                key-pressed(event) => {
-                    if event.text == Key.Escape && Library.query != "" {
-                        Library.query = "";
-                        Library.changed();
-                        return accept;
-                    }
-                    reject
-                }
-                input := TextInput {
-                    x: 0;
-                    width: parent.width;
-                    height: parent.height;
-                    text <=> Library.query;
-                    color: Theme.ink;
-                    font-size: 13.5px;
-                    vertical-alignment: center;
-                    single-line: true;
-                    accessible-label: "Search the Library";
-                    selection-background-color: Theme.pop.with-alpha(0.45);
-                    selection-foreground-color: Theme.ink;
-                    edited => { Library.changed(); }
-                }
-            }
-        }
-        if Library.query != "": VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            TextLink {
-                text: "Clear";
-                clicked => {
-                    Library.query = "";
-                    Library.changed();
-                    input.focus();
-                }
-            }
-        }
-        if Library.query == "" && Screen.wide: VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            Kbd {
-                text: "Ctrl F";
-            }
+    if Library.query == "" && Screen.wide: VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 0;
+        Kbd {
+            text: "Ctrl F";
         }
     }
 }
@@ -877,9 +823,13 @@ component KindTabs inherits HorizontalLayout {
     // Hidden tabs take no room, their gap included (a `for` can't skip items).
     for t[i] in LibWords.tabs: HorizontalLayout {
         property <bool> shown: i == Library.tab || (i >= 6 ? Library.counts[i] > 0 : (!root.narrowed || Library.counts[i] > 0));
-        padding-right: self.shown ? (Screen.compact ? 16px : 18px) : 0px;
+        padding-right: self.shown ? 16px : 0px;
         FilterTab {
             visible: parent.shown;
+            // Hidden ones are skipped by Tab and the arrow keys.
+            enabled: parent.shown;
+            first: i == 0;
+            last: i == LibWords.tabs.length - 1;
             width: parent.shown ? self.min-width : 0px;
             text: t;
             count: Library.counts[i];
@@ -894,83 +844,54 @@ component KindTabs inherits HorizontalLayout {
 }
 
 // Compact: Site, Date and Sort as chips in a sheet (Filter).
-component FilterSheet inherits Rectangle {
-    callback close();
-    background: Theme.scrim;
-    // keyboard: the × button closes it.
-    TouchArea {
-        clicked => { root.close(); }
+component FilterSheet inherits Sheet {
+    title: "Filter";
+    HorizontalLayout {
+        SectionTitle {
+            horizontal-stretch: 1;
+            text: "Filter";
+            vertical-alignment: center;
+        }
+        if Library.site != 0 || Library.date != 0 || Library.sort != 0: TextLink {
+            text: "Clear filters";
+            clicked => {
+                Library.site = 0;
+                Library.date = 0;
+                Library.sort = 0;
+                Library.changed();
+            }
+        }
+        IconButton {
+            icon: "\u{E711}";
+            label: "Close";
+            clicked => { root.close(); }
+        }
     }
-    Rectangle {
-        y: root.height - self.height;
-        height: min(col.preferred-height, root.height - 40px);
-        border-radius: 14px;
-        background: Theme.panel;
-        border-width: 1px;
-        border-color: Theme.line-strong;
-        clip: true;
-        TouchArea { }
-        col := VerticalLayout {
-            padding: 16px;
-            padding-top: 10px;
-            spacing: 10px;
-            HorizontalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 40px;
-                    height: 4px;
-                    border-radius: 2px;
-                    background: Theme.line-strong;
-                }
-            }
-            HorizontalLayout {
-                SectionTitle {
-                    horizontal-stretch: 1;
-                    text: "Filter";
-                    vertical-alignment: center;
-                }
-                if Library.site != 0 || Library.date != 0 || Library.sort != 0: TextLink {
-                    text: "Clear filters";
-                    clicked => {
-                        Library.site = 0;
-                        Library.date = 0;
-                        Library.sort = 0;
-                        Library.changed();
-                    }
-                }
-                IconButton {
-                    icon: "\u{E711}";
-                    label: "Close";
-                    clicked => { root.close(); }
-                }
-            }
-            Hint { text: "Site"; }
-            ChoiceChips {
-                options: Library.sites;
-                current: Library.site;
-                changed => {
-                    Library.site = self.current;
-                    Library.changed();
-                }
-            }
-            Hint { text: "Date"; }
-            ChoiceChips {
-                options: Library.dates;
-                current: Library.date;
-                changed => {
-                    Library.date = self.current;
-                    Library.changed();
-                }
-            }
-            Hint { text: "Sort"; }
-            ChoiceChips {
-                options: Library.sorts;
-                current: Library.sort;
-                changed => {
-                    Library.sort = self.current;
-                    Library.changed();
-                }
-            }
+    Hint { text: "Site"; }
+    ChoiceChips {
+        options: Library.sites;
+        current: Library.site;
+        changed => {
+            Library.site = self.current;
+            Library.changed();
+        }
+    }
+    Hint { text: "Date"; }
+    ChoiceChips {
+        options: Library.dates;
+        current: Library.date;
+        changed => {
+            Library.date = self.current;
+            Library.changed();
+        }
+    }
+    Hint { text: "Sort"; }
+    ChoiceChips {
+        options: Library.sorts;
+        current: Library.sort;
+        changed => {
+            Library.sort = self.current;
+            Library.changed();
         }
     }
 }
@@ -987,116 +908,83 @@ component DetailSheet inherits Rectangle {
             more.show();
         }
     }
-    background: Theme.scrim;
-    // keyboard: Esc closes it (the FocusScope below), as does the ×.
-    TouchArea {
-        clicked => { Library.sheet-open = false; }
-    }
-    init => { keys.focus(); }
-    keys := FocusScope {
-        focus-on-click: false;
-        key-pressed(event) => {
-            if event.text == Key.Escape {
-                Library.sheet-open = false;
-                return accept;
-            }
-            reject
-        }
-    }
-    Rectangle {
-        y: root.height - self.height;
-        height: col.preferred-height;
-        border-radius: 14px;
-        background: Theme.panel;
-        border-width: 1px;
-        border-color: Theme.line-strong;
-        clip: true;
-        TouchArea { }
-        col := VerticalLayout {
-            padding: 16px;
-            padding-top: 10px;
+    // A click above it, Esc or the × closes it (`Sheet`).
+    Sheet {
+        width: root.width;
+        height: root.height;
+        title: root.d.title;
+        close => { Library.sheet-open = false; }
+        HorizontalLayout {
             spacing: 12px;
-            HorizontalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 40px;
-                    height: 4px;
-                    border-radius: 2px;
-                    background: Theme.line-strong;
+            VerticalLayout {
+                alignment: start;
+                horizontal-stretch: 0;
+                KindThumb {
+                    width: 112px;
+                    height: 63px;
+                    source: d.thumb;
+                    length: d.length;
+                    sound: d.sound;
+                    playlist: d.playlist;
+                    text: d.text;
+                    fade: d.gone ? 0.35 : d.offline != "" ? 0.6 : 1;
+                    icon-size: 20px;
                 }
             }
-            HorizontalLayout {
-                spacing: 12px;
-                VerticalLayout {
-                    alignment: start;
-                    horizontal-stretch: 0;
-                    KindThumb {
-                        width: 112px;
-                        height: 63px;
-                        source: d.thumb;
-                        length: d.length;
-                        sound: d.sound;
-                        playlist: d.playlist;
-                        text: d.text;
-                        fade: d.gone ? 0.35 : d.offline != "" ? 0.6 : 1;
-                        icon-size: 20px;
-                    }
-                }
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    spacing: 6px;
-                    Text {
-                        text: d.title;
-                        color: Theme.ink;
-                        font-size: 14.5px;
-                        font-weight: 600;
-                        wrap: word-wrap;
-                    }
-                    HorizontalLayout {
-                        alignment: start;
-                        Tag {
-                            text: d.offline != "" ? d.offline : d.tag;
-                            kind: d.tag-kind;
-                        }
-                    }
-                }
-                VerticalLayout {
-                    alignment: start;
-                    horizontal-stretch: 0;
-                    IconButton {
-                        icon: "\u{E711}";
-                        label: "Close";
-                        clicked => { Library.sheet-open = false; }
-                    }
-                }
-            }
-            ScrollView {
-                height: min(body.preferred-height, root.height * 0.36);
-                body := VerticalLayout {
-                    padding-right: 12px;
-                    DetailBody {
-                        value-width: root.width - 32px - 12px - 80px;
-                    }
-                }
-            }
-            HorizontalLayout {
+            VerticalLayout {
+                horizontal-stretch: 1;
                 spacing: 6px;
-                MoreActions {
-                    with-clip: true;
+                Text {
+                    text: d.title;
+                    color: Theme.ink;
+                    font-size: 14.5px;
+                    font-weight: 600;
+                    wrap: word-wrap;
                 }
-                VerticalLayout {
+                HorizontalLayout {
                     alignment: start;
-                    horizontal-stretch: 0;
-                    GhostButton {
-                        compact: true;
-                        icon: "\u{E712}";
-                        label: "More actions";
-                        clicked => { more.show(); }
+                    Tag {
+                        text: d.offline != "" ? d.offline : d.tag;
+                        kind: d.tag-kind;
                     }
                 }
             }
-            MainAction { }
+            VerticalLayout {
+                alignment: start;
+                horizontal-stretch: 0;
+                IconButton {
+                    icon: "\u{E711}";
+                    label: "Close";
+                    clicked => { Library.sheet-open = false; }
+                }
+            }
         }
+        ScrollView {
+            height: min(body.preferred-height, root.height * 0.36);
+            body := VerticalLayout {
+                padding-right: 12px;
+                DetailBody {
+                    value-width: root.width - 32px - 12px - 80px;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            MoreActions {
+                with-clip: true;
+            }
+            VerticalLayout {
+                alignment: start;
+                horizontal-stretch: 0;
+                GhostButton {
+                    compact: true;
+                    icon: "\u{E712}";
+                    label: "More actions";
+                    clicked => { more.show(); }
+                }
+            }
+        }
+        MainAction { }
     }
     more := PopupWindow {
         x: root.width - 256px;
@@ -1207,10 +1095,10 @@ component StartRow inherits VerticalLayout {
     in property <string> go;
     callback clicked();
     HorizontalLayout {
-        padding-top: 14px;
-        padding-bottom: 14px;
+        padding-top: 16px;
+        padding-bottom: 16px;
         padding-left: 4px;
-        spacing: 14px;
+        spacing: 12px;
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
@@ -1230,7 +1118,7 @@ component StartRow inherits VerticalLayout {
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 1;
-            spacing: 3px;
+            spacing: 4px;
             Text {
                 text: root.title;
                 color: Theme.ink;
@@ -1264,7 +1152,7 @@ component GoneBanner inherits VerticalLayout {
     HorizontalLayout {
         padding-top: 8px;
         padding-bottom: 8px;
-        spacing: 10px;
+        spacing: 8px;
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
@@ -1316,7 +1204,7 @@ component FoundStrip inherits VerticalLayout {
         wrap: word-wrap;
     }
     HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
@@ -1395,7 +1283,7 @@ export component LibraryPage inherits Rectangle {
             VerticalLayout {
                 horizontal-stretch: 1;
                 padding: Screen.compact ? Screen.pad : 24px;
-                padding-top: Screen.compact ? Screen.pad : 22px;
+                padding-top: Screen.pad;
                 padding-right: Screen.compact ? Screen.pad - 8px : 12px;
                 padding-bottom: 0px;
                 spacing: 0px;
@@ -1425,7 +1313,10 @@ export component LibraryPage inherits Rectangle {
                             compact: true;
                             text: Library.sorts[Library.sort];
                             on: Library.sort != 0;
-                            clicked => { sort-menu.show(); }
+                            clicked => {
+                                root.open-menu(self.absolute-position.x, self.absolute-position.y + self.height);
+                                sort-menu.show();
+                            }
                         }
                     }
                     if Screen.compact: SettingsGear { }
@@ -1498,12 +1389,18 @@ export component LibraryPage inherits Rectangle {
                         if !Screen.wide && !Screen.compact: MenuButton {
                             text: Library.site == 0 ? "Site" : Library.sites[Library.site];
                             on: Library.site != 0;
-                            clicked => { site-menu.show(); }
+                            clicked => {
+                                root.open-menu(self.absolute-position.x, self.absolute-position.y + self.height);
+                                site-menu.show();
+                            }
                         }
                         if !Screen.wide && !Screen.compact: MenuButton {
                             text: Library.date == 0 ? "Date" : Library.dates[Library.date];
                             on: Library.date != 0;
-                            clicked => { date-menu.show(); }
+                            clicked => {
+                                root.open-menu(self.absolute-position.x, self.absolute-position.y + self.height);
+                                date-menu.show();
+                            }
                         }
                         if Screen.compact: MenuButton {
                             text: "Filter";
@@ -1512,20 +1409,26 @@ export component LibraryPage inherits Rectangle {
                         }
                     }
                     if Screen.wide: HorizontalLayout {
-                        padding-top: 10px;
+                        padding-top: 12px;
                         padding-right: Theme.lane - 12px;
                         spacing: 6px;
                         MenuButton {
                             compact: true;
                             text: "Site: " + (Library.site == 0 ? "any" : Library.sites[Library.site]);
                             on: Library.site != 0;
-                            clicked => { site-menu.show(); }
+                            clicked => {
+                                root.open-menu(self.absolute-position.x, self.absolute-position.y + self.height);
+                                site-menu.show();
+                            }
                         }
                         MenuButton {
                             compact: true;
                             text: "Date: " + (Library.date == 0 ? "any time" : Library.dates[Library.date]);
                             on: Library.date != 0;
-                            clicked => { date-menu.show(); }
+                            clicked => {
+                                root.open-menu(self.absolute-position.x, self.absolute-position.y + self.height);
+                                date-menu.show();
+                            }
                         }
                         if root.filtered: TextLink {
                             text: "Clear filters";
@@ -1536,7 +1439,10 @@ export component LibraryPage inherits Rectangle {
                             compact: true;
                             text: Library.sorts[Library.sort];
                             on: Library.sort != 0;
-                            clicked => { sort-menu.show(); }
+                            clicked => {
+                                root.open-menu(self.absolute-position.x, self.absolute-position.y + self.height);
+                                sort-menu.show();
+                            }
                         }
                     }
                     Rectangle { height: Screen.compact ? 8px : 12px; }
@@ -1556,8 +1462,8 @@ export component LibraryPage inherits Rectangle {
                     if Library.tab == 7 && Library.counts[7] > 0 && Library.picked-count == 0: HorizontalLayout {
                         vertical-stretch: 0;
                         padding-right: Screen.compact ? 8px : Theme.lane - 12px;
-                        padding-top: 10px;
-                        spacing: 10px;
+                        padding-top: 12px;
+                        spacing: 8px;
                         Text {
                             horizontal-stretch: 1;
                             text: "Saved more than once, newest first. Pick the extra copies to remove them or delete their files.";
@@ -1645,7 +1551,7 @@ export component LibraryPage inherits Rectangle {
             wrap: word-wrap;
         }
         HorizontalLayout {
-            spacing: 10px;
+            spacing: 8px;
             alignment: end;
             GhostButton {
                 text: "Keep it";
@@ -1659,14 +1565,22 @@ export component LibraryPage inherits Rectangle {
         }
     }
 
-    // The menus' pop-ups, under their buttons.
+    // The menus' pop-ups, under the button that opened them (`open-menu` keeps where it is),
+    // kept inside the window.
+    property <length> menu-x;
+    property <length> menu-y;
+    function open-menu(x: length, y: length) {
+        root.menu-x = x - root.absolute-position.x;
+        root.menu-y = y - root.absolute-position.y + 4px;
+    }
     site-menu := PopupWindow {
-        x: Screen.wide ? 24px : root.width - 360px;
-        y: Screen.wide ? 150px : 120px;
+        x: max(8px, min(root.menu-x, root.width - 240px - 8px));
+        y: root.menu-y;
         Menu {
             width: 240px;
+            tallest: root.height - root.menu-y - 16px;
             for s[i] in Library.sites: MenuItem {
-                icon: Library.site == i ? "\u{E73E}" : "";
+                checked: Library.site == i;
                 text: s;
                 shortcut: i == 0 ? "" : Library.site-counts[i];
                 clicked => {
@@ -1677,12 +1591,13 @@ export component LibraryPage inherits Rectangle {
         }
     }
     date-menu := PopupWindow {
-        x: Screen.wide ? 150px : root.width - 250px;
-        y: Screen.wide ? 150px : 120px;
+        x: max(8px, min(root.menu-x, root.width - 200px - 8px));
+        y: root.menu-y;
         Menu {
             width: 200px;
+            tallest: root.height - root.menu-y - 16px;
             for s[i] in Library.dates: MenuItem {
-                icon: Library.date == i ? "\u{E73E}" : "";
+                checked: Library.date == i;
                 text: s;
                 clicked => {
                     Library.date = i;
@@ -1692,12 +1607,13 @@ export component LibraryPage inherits Rectangle {
         }
     }
     sort-menu := PopupWindow {
-        x: Screen.wide ? root.width - 320px - 12px - 200px - Theme.lane : root.width - 230px;
-        y: Screen.wide ? 150px : 64px;
+        x: max(8px, min(root.menu-x, root.width - 200px - 8px));
+        y: root.menu-y;
         Menu {
             width: 200px;
+            tallest: root.height - root.menu-y - 16px;
             for s[i] in Library.sorts: MenuItem {
-                icon: Library.sort == i ? "\u{E73E}" : "";
+                checked: Library.sort == i;
                 text: s;
                 clicked => {
                     Library.sort = i;

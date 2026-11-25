@@ -11,7 +11,7 @@ use neria_core::tool::{self, Takes, Tool};
 use neria_core::workflow::{self, Change, Workflow};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::{AppWindow, ExtTool, Tools, show_toast};
+use crate::{AppWindow, ExtTool, Tools, show_toast, toast_info};
 
 #[derive(Default)]
 struct State {
@@ -127,7 +127,7 @@ fn run_on(ui: &AppWindow, t: &Tool, files: &[PathBuf]) {
             Takes::Sound => "sound files",
             _ => "videos",
         };
-        show_toast(ui, &format!("{} takes {what} only.", t.name));
+        crate::toast_info(ui, &format!("{} takes {what} only.", t.name));
         return;
     }
     crate::workflow_ui::run_on(ui, &as_workflow(t), &fit);
@@ -143,7 +143,7 @@ fn run_on(ui: &AppWindow, t: &Tool, files: &[PathBuf]) {
 pub fn open_run(ui: &AppWindow, files: Vec<PathBuf>) {
     let files: Vec<PathBuf> = files.into_iter().filter(|f| f.is_file()).collect();
     if files.is_empty() {
-        show_toast(ui, "Those files aren't there any more.");
+        toast_info(ui, "Those files aren't there any more.");
         return;
     }
     let sub = match files.as_slice() {
@@ -209,7 +209,7 @@ pub fn install(ui: &AppWindow) {
     g.on_try_it(move || {
         let ui = w.unwrap();
         let Some(t) = save(&ui) else {
-            show_toast(&ui, "Fill in what's missing first.");
+            toast_info(&ui, "Fill in what's missing first.");
             return;
         };
         let picked = rfd::FileDialog::new().set_title(format!("Try {} on which file?", t.name)).pick_file();

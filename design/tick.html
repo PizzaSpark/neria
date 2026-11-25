@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickbox options</title>
+<style>
+  :root { --pop: #ffd23f; --on-pop: #1a1405; }
+  .dark { --bg: #1b1b1e; --ink: #f1efe9; --muted: #8e8c88; --edge: #6d6c6e; --line: #34343a; --hard: #000; --focus: #f1efe9; }
+  .light { --bg: #fffdf8; --ink: #151412; --muted: #6b665c; --edge: #888376; --line: #cfc7b4; --hard: #151412; --focus: #151412; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0e0e10; color: #f1efe9; font: 13px/1.4 "Inter Tight", "Segoe UI", system-ui, sans-serif; }
+  header { max-width: 1180px; margin: 0 auto; padding: 24px 24px 8px; }
+  h1 { font: 700 22px "Space Grotesk", "Segoe UI", sans-serif; margin: 0 0 6px; }
+  header p { color: #8e8c88; margin: 0; max-width: 780px; }
+  .grid { max-width: 1180px; margin: 0 auto; padding: 16px 24px 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 16px; }
+  .opt h2 { font: 700 15px "Space Grotesk", "Segoe UI", sans-serif; margin: 0 0 2px; }
+  .opt p { color: #8e8c88; font-size: 12px; margin: 0 0 10px; min-height: 34px; }
+  .panel { background: var(--bg); color: var(--ink); border-radius: 12px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 10px; border: 1px solid #34343a; }
+  .tick { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+  .tick .hint { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .b { flex: none; display: grid; place-items: center; }
+  .b svg { display: block; }
+
+  /* Now: 20px, 6px radius, 2px edge; on = ink slab with an 11px hairline glyph. */
+  .now .b { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--edge); }
+  .now .b.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font: 11px "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif; }
+
+  /* A: shadcn's proportions: 18px, 5px radius; on = ink with a 2px rounded check filling it. */
+  .a .b { width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--edge); }
+  .a .b.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .a .b.on svg { width: 14px; height: 14px; }
+
+  /* B: Play: sticker yellow with the hard outline and a hard black check. */
+  .p .b { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--edge); }
+  .p .b.on { background: var(--pop); border-color: var(--hard); color: var(--on-pop); box-shadow: 2px 2px 0 var(--hard); }
+  .p .b.on svg { width: 15px; height: 15px; }
+
+  .focus .b { outline: 2px solid var(--focus); outline-offset: 3px; }
+  .hover .b:not(.on) { border-color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tickbox: three ways</h1>
+  <p>Now the tick is an 11 px icon-font glyph with a hairline stroke in a 20 px white square, so "on" reads as a bright block with a speck. shadcn's checkbox (its source: 16 px box, 4 px radius, Lucide's check at 14 px with a 2 px rounded stroke) lets the tick fill the box. A keeps Neria's ink colour with shadcn's proportions; B makes "on" playful, as DESIGN.md says controls should be.</p>
+</header>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<div class="grid">
+  <section class="opt now">
+    <h2>Now</h2>
+    <p>Hairline glyph, white slab.</p>
+    <div class="panel dark">
+      <label class="tick"><span class="b on">&#xE73E;</span><span>Embed thumbnail as cover art</span></label>
+      <label class="tick hover"><span class="b"></span><span>Also save the thumbnail as a .jpg</span></label>
+      <label class="tick focus"><span class="b on">&#xE73E;</span><span>Save live chat with recordings<span class="hint">Next to the video, as .chat.json</span></span></label>
+    </div>
+    <div class="panel light">
+      <label class="tick"><span class="b on">&#xE73E;</span><span>Embed thumbnail as cover art</span></label>
+      <label class="tick"><span class="b"></span><span>Also save the thumbnail as a .jpg</span></label>
+    </div>
+  </section>
+
+  <section class="opt a">
+    <h2>A · shadcn's proportions (calm)</h2>
+    <p>18 px, a bold rounded check that fills the box. Same ink colour, just legible.</p>
+    <div class="panel dark">
+      <label class="tick"><span class="b on"><svg><use href="#check"/></svg></span><span>Embed thumbnail as cover art</span></label>
+      <label class="tick hover"><span class="b"></span><span>Also save the thumbnail as a .jpg</span></label>
+      <label class="tick focus"><span class="b on"><svg><use href="#check"/></svg></span><span>Save live chat with recordings<span class="hint">Next to the video, as .chat.json</span></span></label>
+    </div>
+    <div class="panel light">
+      <label class="tick"><span class="b on"><svg><use href="#check"/></svg></span><span>Embed thumbnail as cover art</span></label>
+      <label class="tick"><span class="b"></span><span>Also save the thumbnail as a .jpg</span></label>
+    </div>
+  </section>
+
+  <section class="opt p">
+    <h2>B · Play (yellow)</h2>
+    <p>On = sticker yellow, hard outline and shadow, black check. Matches the main button.</p>
+    <div class="panel dark">
+      <label class="tick"><span class="b on"><svg><use href="#check"/></svg></span><span>Embed thumbnail as cover art</span></label>
+      <label class="tick hover"><span class="b"></span><span>Also save the thumbnail as a .jpg</span></label>
+      <label class="tick focus"><span class="b on"><svg><use href="#check"/></svg></span><span>Save live chat with recordings<span class="hint">Next to the video, as .chat.json</span></span></label>
+    </div>
+    <div class="panel light">
+      <label class="tick"><span class="b on"><svg><use href="#check"/></svg></span><span>Embed thumbnail as cover art</span></label>
+      <label class="tick"><span class="b"></span><span>Also save the thumbnail as a .jpg</span></label>
+    </div>
+  </section>
+</div>
+</body>
+</html>

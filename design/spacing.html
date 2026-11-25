@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spacing options</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #141416; --panel: #1b1b1e; --raised: #222226; --line: #26262a; --line-strong: #34343a;
+    --edge: #6d6c6e; --ink: #f1efe9; --muted: #8e8c88; --dim: #6e6c68; --pop: #ffd23f; --hard: #000;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0e0e10; color: var(--ink); font: 13px/1.35 "Inter Tight", system-ui, sans-serif; }
+  header { padding: 24px 24px 8px; max-width: 1240px; margin: 0 auto; }
+  h1 { font: 700 22px "Space Grotesk"; margin: 0 0 6px; }
+  header p { color: var(--muted); margin: 0; max-width: 820px; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 16px; padding: 16px 24px 32px; max-width: 1240px; margin: 0 auto; }
+  .col h2 { font: 700 15px "Space Grotesk"; margin: 0 0 4px; }
+  .col .why { color: var(--muted); font-size: 12px; margin: 0 0 12px; min-height: 48px; }
+  .drawer { background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; }
+
+  /* One Settings section; every gap comes from the column's variables. */
+  .sec { padding: var(--pad); display: flex; flex-direction: column; gap: var(--groups); }
+  .group { display: flex; flex-direction: column; gap: var(--title); }
+  .group > .title { font: 700 15px "Space Grotesk"; }
+  .items { display: flex; flex-direction: column; gap: var(--between); }
+  .setting { display: flex; flex-direction: column; gap: var(--hint); }
+  .tick { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+  .box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--edge); flex: none; display: grid; place-items: center; }
+  .box.on { background: var(--ink); border-color: var(--ink); color: var(--bg); font-size: 12px; font-weight: 700; }
+  .hint { color: var(--muted); font-size: 12px; padding-left: var(--hint-indent); }
+  .path { font: 11.5px "JetBrains Mono"; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row .label { flex: 1; }
+  .btns { display: flex; gap: 8px; }
+  .ghost { height: 41px; padding: 0 14px; border: 2px solid var(--line-strong); border-radius: 10px; display: inline-flex; align-items: center; font-weight: 500; }
+  .combo { width: 150px; height: 36px; border-radius: 6px; background: var(--raised); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; }
+
+  /* Now: what the code does today. */
+  .now { --pad: 0 22px 22px 20px; --groups: 22px; --title: 8px; --between: 8px; --hint: 8px; --hint-indent: 0px; }
+  /* A: shadcn's rule, on a 4px scale. */
+  .a { --pad: 0 24px 24px 24px; --groups: 32px; --title: 12px; --between: 16px; --hint: 4px; --hint-indent: 30px; }
+  /* B: the same rule, roomier. */
+  .b { --pad: 0 28px 28px 28px; --groups: 40px; --title: 16px; --between: 20px; --hint: 6px; --hint-indent: 30px; }
+  .top { padding: 20px 0 0; }
+
+  table { border-collapse: collapse; margin: 0 auto 40px; font-size: 12.5px; }
+  td, th { border-bottom: 1px solid var(--line); padding: 8px 14px; text-align: left; }
+  th { font: 600 12px "Space Grotesk"; color: var(--muted); }
+  td.n { font-family: "JetBrains Mono"; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+  @media (max-width: 520px) { header, .cols, .wrap { padding-left: 16px; padding-right: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Spacing: three ways, same Settings section</h1>
+  <p>Look at which grey line belongs to which tickbox. Today every gap is 8 px, so a hint sits as close to the next setting as to its own. A and B use the rule from shadcn's form layout (its Field components): tight inside a setting, loose between settings, every value on a 4 px scale.</p>
+</header>
+
+<div class="cols">
+  <section class="col">
+    <h2>Now</h2>
+    <p class="why">Everything 8 px apart; groups 22. Hints float between two settings.</p>
+    <div class="drawer now"><div class="top"></div><div class="sec">
+      <div class="group"><div class="title">Save to</div>
+        <div class="path">D:\Videos\Neria</div>
+        <div class="btns"><span class="ghost">Change…</span><span class="ghost">Open folder</span></div>
+        <div class="tick"><span class="box on">✓</span>Sort into Audio, Video and Photos folders</div>
+        <div class="hint">Playlists and posts get a folder of their own, inside Audio, Video or Photos when everything in it is one kind.</div>
+        <div class="tick"><span class="box on">✓</span>Number playlist and post items in order (01, 02…)</div>
+        <div class="tick"><span class="box"></span>Offer links I copy in other apps</div>
+        <div class="hint">A strip on the Download page lets you download or preview it. Neria only looks at a lone link.</div>
+      </div>
+      <div class="group"><div class="title">Video</div>
+        <div class="row"><span class="label">Container</span><span class="combo">mp4 <span>⌄</span></span></div>
+        <div class="tick"><span class="box"></span>Prefer H.264 (plays everywhere, max 1080p on YouTube)</div>
+        <div class="tick"><span class="box"></span>Embed subtitles</div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="col">
+    <h2>A · shadcn's rule (recommended)</h2>
+    <p class="why">Hint 4 px under its own setting, lined up with the label; settings 16 apart; groups 32. Scale: 4 · 8 · 12 · 16 · 24 · 32.</p>
+    <div class="drawer a"><div class="top"></div><div class="sec">
+      <div class="group"><div class="title">Save to</div>
+        <div class="items">
+          <div class="setting"><div class="path">D:\Videos\Neria</div>
+            <div class="btns"><span class="ghost">Change…</span><span class="ghost">Open folder</span></div></div>
+          <div class="setting"><div class="tick"><span class="box on">✓</span>Sort into Audio, Video and Photos folders</div>
+            <div class="hint">Playlists and posts get a folder of their own, inside Audio, Video or Photos when everything in it is one kind.</div></div>
+          <div class="setting"><div class="tick"><span class="box on">✓</span>Number playlist and post items in order (01, 02…)</div></div>
+          <div class="setting"><div class="tick"><span class="box"></span>Offer links I copy in other apps</div>
+            <div class="hint">A strip on the Download page lets you download or preview it. Neria only looks at a lone link.</div></div>
+        </div>
+      </div>
+      <div class="group"><div class="title">Video</div>
+        <div class="items">
+          <div class="row"><span class="label">Container</span><span class="combo">mp4 <span>⌄</span></span></div>
+          <div class="tick"><span class="box"></span>Prefer H.264 (plays everywhere, max 1080p on YouTube)</div>
+          <div class="tick"><span class="box"></span>Embed subtitles</div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="col">
+    <h2>B · same rule, roomier</h2>
+    <p class="why">Hint 6 px; settings 20 apart; groups 40; 28 around. Calmer, but Settings gets about a third longer.</p>
+    <div class="drawer b"><div class="top"></div><div class="sec">
+      <div class="group"><div class="title">Save to</div>
+        <div class="items">
+          <div class="setting"><div class="path">D:\Videos\Neria</div>
+            <div class="btns"><span class="ghost">Change…</span><span class="ghost">Open folder</span></div></div>
+          <div class="setting"><div class="tick"><span class="box on">✓</span>Sort into Audio, Video and Photos folders</div>
+            <div class="hint">Playlists and posts get a folder of their own, inside Audio, Video or Photos when everything in it is one kind.</div></div>
+          <div class="setting"><div class="tick"><span class="box on">✓</span>Number playlist and post items in order (01, 02…)</div></div>
+          <div class="setting"><div class="tick"><span class="box"></span>Offer links I copy in other apps</div>
+            <div class="hint">A strip on the Download page lets you download or preview it. Neria only looks at a lone link.</div></div>
+        </div>
+      </div>
+      <div class="group"><div class="title">Video</div>
+        <div class="items">
+          <div class="row"><span class="label">Container</span><span class="combo">mp4 <span>⌄</span></span></div>
+          <div class="tick"><span class="box"></span>Prefer H.264 (plays everywhere, max 1080p on YouTube)</div>
+          <div class="tick"><span class="box"></span>Embed subtitles</div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+</div>
+
+<div class="wrap">
+  <table>
+    <tr><th>Between</th><th>Now</th><th>A</th><th>shadcn (source)</th></tr>
+    <tr><td>a setting and its own hint</td><td class="n">8</td><td class="n">4</td><td class="n">6–8 (Field gap-1.5 / gap-2)</td></tr>
+    <tr><td>one setting and the next</td><td class="n">8</td><td class="n">16</td><td class="n">24 (FieldGroup gap-6/7, looser forms)</td></tr>
+    <tr><td>a heading and its first setting</td><td class="n">8</td><td class="n">12</td><td class="n">12 (FieldSet gap-3 / mb-3)</td></tr>
+    <tr><td>one group and the next</td><td class="n">22</td><td class="n">32</td><td class="n">24–28 (gap-6 / gap-7)</td></tr>
+    <tr><td>inside a dialog / card</td><td class="n">22–24</td><td class="n">24 (16 compact)</td><td class="n">24 (Dialog p-6, Card py-6 px-6)</td></tr>
+    <tr><td>icon and its label</td><td class="n">7–10</td><td class="n">8</td><td class="n">8 (Button gap-2)</td></tr>
+    <tr><td>values in use</td><td class="n">27</td><td class="n">7</td><td class="n">4 · 6 · 8 · 12 · 16 · 24 · 28</td></tr>
+  </table>
+</div>
+</body>
+</html>

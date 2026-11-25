@@ -21,6 +21,10 @@ After porting anything (or re-reviewing upstream), move the baseline forward and
 | scrcpy | [Genymobile/scrcpy](https://github.com/Genymobile/scrcpy) | `master` | `a60891aea193d92e7e5c3942700eca63f9d19a5f` (tag `v5.0.1`) | 2026-10-08 | v5.0.1 | Apache-2.0: its prebuilt Windows release is fetched as a tool (adb + scrcpy + `scrcpy-server`); code may be ported with credit and the NOTICE kept |
 | adb (platform-tools) | [platform/packages/modules/adb](https://android.googlesource.com/platform/packages/modules/adb) | `main` | read 2026-11-22 | 2026-11-22 | the adb inside scrcpy's release | Apache-2.0: studied only (pairing, keys, mDNS) |
 | loopgif (our own) | [PizzaSpark/loopgif](https://github.com/PizzaSpark/loopgif) | `main` | `cf5c980ee120026feeaef370d4affba5023425ef` | 2026-11-07 | n/a | Ours: port freely |
+| UI SDK | [vercel-labs/ui](https://github.com/vercel-labs/ui) | `main` | `d5c6249e1a0b1df47334d3012180bfba9b9374ec` | 2026-11-24 | 0.1.0-beta.1 | Apache-2.0: behaviour studied for the shared controls (`widgets.slint`); code may be ported with credit and the NOTICE kept |
+| Radix primitives | [radix-ui/primitives](https://github.com/radix-ui/primitives) | `main` | `eb3a2b7091293e27df8f9ba906632d8daa3d81a3` | 2026-10-14 | n/a | MIT: behaviour studied (what shadcn/ui's components run on) |
+| Sonner | [emilkowalski/sonner](https://github.com/emilkowalski/sonner) | `main` | `8e4662b39255120b62138312058f5d77c0139a5e` | 2026-08-10 | n/a | MIT: toast timing studied |
+| shadcn/ui | [shadcn-ui/ui](https://github.com/shadcn-ui/ui) | `main` | `055aa6b7837b1808456a24beb4c97a677864aa82` | 2026-11-23 | n/a | MIT: spacing and checkbox proportions read from `apps/v4/registry/new-york-v4/ui/*.tsx` |
 
 Why Sunnify is ideas-only: its LICENSE allows using and redistributing the software only
 "not modified or altered in any way", free of charge and with attribution, and it asks people
@@ -261,6 +265,38 @@ Measured 2026-11-22 (this PC): `--version` 1.3 s → 0.45 s; a short YouTube dow
 (`--example verify`) 10.1 s → 8.6 s. The one-file build unpacks Python into a temp folder on
 every start; the onedir one starts straight away.
 
+### The shared controls (`widgets.slint`): UI SDK, Radix, Sonner, shadcn/ui
+
+How Neria's controls behave and are spaced follows these, read in their source (not from
+memory). Slint has no DOM, so it's our own Slint and Rust; no code copied.
+- **Dialog, drawer, sheet** (`Backdrop`): Esc and a click outside close it (Radix
+  `dismissable-layer`, UI SDK `foundation/popups`); the page behind doesn't scroll (Radix
+  `RemoveScroll`, UI SDK `modal.ts`); Tab goes round inside (Radix `focus-scope` `loop` +
+  `trapped`); opened from the keyboard it starts on its first control, and focus goes back to
+  what opened it when it's gone (Radix `dialog.tsx`, UI SDK `popup.ts` focus restore: in
+  Neria, Rust reads Slint's focus item through its unstable API, hence the exact Slint pin).
+  An editor with unsaved changes (Dialog `dirty`) asks "Discard your changes?" before Esc,
+  × or a click outside closes it, "Keep editing" first (the UI SDK's `dismissible: false` +
+  `onDismissAttempt`, `foundation/popups/dismissal.ts`; Radix AlertDialog's safe-button focus).
+- **Tabs, chip rows, section lists** (KeyPress `roving`): one Tab stop on the picked option,
+  arrows move and pick, go round at the ends, Home / End (Radix `roving-focus`, `tabs`,
+  `radio-group`; UI SDK `foundation/focus/collection.ts`, `tabs.ts`).
+- **Menus**: opened from the keyboard, the first item has focus; ↑ ↓ move; hover and keyboard
+  share one highlight; typeahead: letters within 500ms add up, the same letter again goes to
+  the next match (Radix `menu.tsx`, UI SDK `menu-api.ts`, `foundation/text/typeahead.ts`; in
+  Neria, Rust presses Tab until the focused row's label matches).
+- **Buttons**: Enter on key down without repeat, Space on key up (UI SDK
+  `foundation/platform/button.ts`). A click focuses the control, so Tab and the arrows go on
+  from there (browser default, UI SDK `tabs.ts` press focus); like `:focus-visible`, no ring
+  after a click, and Space / Enter go on to the page then (ours: the Clip page's Space plays).
+- **Toasts**: 4 s (Sonner's default; problems 8 s, ours); the clock stops while hovered and
+  while the window is behind, then goes on with what's left (Sonner `pause`/`start`, UI SDK
+  `toast-timers.ts`). Not yet: announcing them to screen readers (Slint 1.18 has no live region).
+- **Spacing** (theme.slint `Space`): shadcn's Field / Dialog / Card spacing, on a 4px scale:
+  a hint 4px under its own setting, settings 16 apart, groups 32, dialogs 24 in.
+- **Tickbox**: shadcn's `checkbox.tsx` proportions (Lucide's check filling the box, 2px
+  rounded stroke) instead of an icon-font glyph.
+
 ## How to check what changed since the baseline
 
 Quick look in the browser (replace the SHA with the baseline above):
@@ -300,3 +336,4 @@ Also skim both repos' open issues for the symptom (e.g. "429", "embed", "no matc
 | 2026-11-18 | whisper.cpp | n/a → `b5454` | Speech to text (`transcribe.rs`): its prebuilt `whisper-cli` + ggml models, run as a tool. No code copied; JSON output parsed. |
 | 2026-11-22 | scrcpy | n/a → `a60891a` (v5.0.1) | Phone track: the server's start, the wire (session packets are new in 4.0), control messages, codec options; adb's QR pairing, auto-connect and where it keeps its keys. Release fetched as a tool; our own Rust client (`phone.rs`), no code copied. |
 | 2026-11-22 | yt-dlp | n/a → release `2026.10.26` | Neria's own yt-dlp updater: the release layout (`releases/latest` redirect, `yt-dlp_win.zip`, `SHA2-256SUMS`), why onedir can't `-U` (`yt_dlp/update.py`). Fetched as a tool; no code copied. |
+| 2026-11-25 | UI SDK, Radix, Sonner, shadcn/ui | n/a → the baselines above | Read for the shared controls' behaviour and spacing (see "The shared controls" above). Settings didn't scroll (a ScrollView whose children were all `if`s); found while fixing it. Nothing copied. |

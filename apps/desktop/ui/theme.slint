@@ -96,8 +96,29 @@ export global Screen {
     out property <length> medium-from: 720px;
     out property <bool> wide: root.width >= root.wide-from;
     out property <bool> compact: root.width < root.medium-from;
-    // Page padding: 26px, 16px on compact.
-    out property <length> pad: root.compact ? 16px : 26px;
+    // Page padding: 24px, 16px on compact (the Space scale's `inset`).
+    out property <length> pad: root.compact ? 16px : 24px;
+}
+
+// Spacing (docs/DESIGN.md → Spacing): one 4px scale, and the rule shadcn's form layout uses:
+// tight inside a thing, loose between things, so what belongs together reads together.
+// Every spacing and padding is one of 0, 2, 4, 6 or a multiple of 4 up to 48 (ui_rules checks);
+// these names are for the common cases.
+export global Space {
+    // A setting and its own hint; a title and the line under it.
+    out property <length> hint: 4px;
+    // Side by side in one control or row: an icon and its label, buttons in a row.
+    out property <length> inline: 8px;
+    // A heading and what's under it.
+    out property <length> title: 12px;
+    // One setting, row or field and the next.
+    out property <length> item: 16px;
+    // The blocks of a dialog or card.
+    out property <length> block: Screen.compact ? 12px : 16px;
+    // One group of settings and the next.
+    out property <length> group: Screen.compact ? 24px : 32px;
+    // Inside a dialog, drawer or card, around its content.
+    out property <length> inset: Screen.compact ? 16px : 24px;
 }
 
 // Moving between places from anywhere. On compact windows Settings isn't in the tab bar:
@@ -106,4 +127,29 @@ export global Nav {
     in-out property <bool> settings-open;
     // The command palette (Ctrl+K, the rail's search button, compact's magnifier).
     in-out property <bool> palette-open;
+    // Keyboard: move focus as Tab (true) or Shift+Tab (false) would. Rust presses the key, as
+    // .slint can't focus "the next one". Arrow keys in menus and groups, and a dialog's Tab
+    // going round, use it.
+    callback focus-step(bool);
+    // The same, n times (negative: back). A group's arrows going round its ends, Home, End.
+    callback focus-steps(int);
+    // Steps still to go in that move: a group picks only the option the last one lands on.
+    in-out property <int> steps-left;
+    // On while an arrow key moves through a group of choices (tabs, chips, sections): its
+    // other options take focus for that step, and the one reached is picked.
+    in-out property <bool> arrowing;
+    // The pointer is over a toast: its time stops until the pointer leaves.
+    in-out property <bool> toast-hover;
+    // The last thing done was a key, not the mouse (Rust, from the window's events). A
+    // dialog or menu opened from the keyboard starts on its first control.
+    in-out property <bool> keyboard;
+    // Neria's window is in front (a toast's time stops while it isn't).
+    in-out property <bool> window-active: true;
+    // A Backdrop opens (before it takes the keyboard) / has taken it: Rust remembers what had
+    // the keyboard, and gives it back when the layer is gone.
+    callback layer-opening();
+    callback layer-opened();
+    // A letter typed in a menu: Rust moves to the next item whose label starts with what was
+    // typed. False when it's not a letter or digit (the key goes on).
+    callback typeahead(string) -> bool;
 }

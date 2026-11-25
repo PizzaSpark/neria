@@ -91,7 +91,7 @@ pub fn ready(ui: &AppWindow, sample: Sample) {
     let ok = PLAYER.with(|p| {
         let mut p = p.borrow_mut();
         if let Err(e) = p.ensure_mpv() {
-            crate::show_toast(ui, &format!("Player unavailable: {e}"));
+            crate::toast_problem(ui, &format!("Player unavailable: {e}"));
             return false;
         }
         p.after = c.get_side() == 1;
@@ -213,7 +213,7 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
             match p.mpv.as_ref().unwrap().create_gl_renderer(redraw) {
                 Ok(r) => p.renderer = Some(r),
                 Err(e) => {
-                    crate::show_toast(ui, &format!("Video renderer failed: {e}"));
+                    crate::toast_problem(ui, &format!("Video renderer failed: {e}"));
                     return;
                 }
             }

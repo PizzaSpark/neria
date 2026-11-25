@@ -99,7 +99,7 @@ export component JobRow inherits Rectangle {
     }
 
     HorizontalLayout {
-        spacing: 14px;
+        spacing: 12px;
         padding-left: root.job.child ? 28px : 0;
         // Room for the list's scrollbar, which is drawn over the right edge.
         padding-right: Theme.lane;
@@ -223,7 +223,7 @@ export component JobRow inherits Rectangle {
             }
             // Under the tape: where it begins · what's going on · now.
             if root.taped && !root.compact: HorizontalLayout {
-                spacing: 10px;
+                spacing: 8px;
                 Text {
                     text: root.job.live.left;
                     color: Theme.muted;

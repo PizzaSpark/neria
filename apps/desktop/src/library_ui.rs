@@ -18,7 +18,9 @@ use neria_core::settings::Settings;
 use neria_core::{fmt, media};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use crate::{AppWindow, ClipGif, Compress, LibAttached, LibDetail, LibRow, Library, Music, show_toast};
+use crate::{
+    AppWindow, ClipGif, Compress, LibAttached, LibDetail, LibRow, Library, Music, show_toast, toast_info, toast_problem,
+};
 
 /// Frames made per pass before the list is shown again.
 const FRAMES_AT_ONCE: usize = 10;
@@ -969,7 +971,7 @@ fn bulk(ui: &AppWindow, what: &str) {
             if copy_files(&files) {
                 show_toast(ui, &format!("{} files copied. Paste them into a folder or a chat (Ctrl+V).", files.len()));
             } else {
-                show_toast(ui, "Couldn't copy the files. Try again.");
+                toast_problem(ui, "Couldn't copy the files. Try again.");
             }
         }
         "remove" => {
@@ -1059,7 +1061,7 @@ pub(crate) fn act(ui: &AppWindow, id: u64, what: &str) {
         what
     };
     if !here && !matches!(what, "download" | "update" | "find" | "remove" | "copy-link" | "spotify" | "original") {
-        show_toast(ui, "That file isn't there. Find it first, or download it again.");
+        toast_info(ui, "That file isn't there. Find it first, or download it again.");
         return;
     }
     ui.global::<Library>().set_sheet_open(false);
@@ -1097,13 +1099,13 @@ pub(crate) fn act(ui: &AppWindow, id: u64, what: &str) {
         "download" | "update" => go_download(ui, &it.url),
         "copy-link" => match arboard::Clipboard::new().and_then(|mut c| c.set_text(it.url.clone())) {
             Ok(()) => show_toast(ui, "Link copied"),
-            Err(_) => show_toast(ui, "Couldn't copy the link. Try again."),
+            Err(_) => toast_problem(ui, "Couldn't copy the link. Try again."),
         },
         "copy-file" => {
             if copy_file(&it.file) {
                 show_toast(ui, "File copied. Paste it into Discord, a chat or a folder (Ctrl+V).");
             } else {
-                show_toast(ui, "Couldn't copy the file. Try again.");
+                toast_problem(ui, "Couldn't copy the file. Try again.");
             }
         }
         "original" => {
@@ -1120,7 +1122,7 @@ pub(crate) fn act(ui: &AppWindow, id: u64, what: &str) {
                     select(ui, oid);
                 }
                 None if src.exists() => crate::reveal(&src),
-                None => show_toast(ui, "The original isn't there any more."),
+                None => toast_info(ui, "The original isn't there any more."),
             }
         }
         "spotify" => {
@@ -1158,17 +1160,17 @@ fn repair(ui: &AppWindow, it: &Item) {
     let Some(gaps) = it.gaps.clone() else { return };
     let (busy, demo, settings) = with(|s| (s.repairing.contains(&it.id), s.demo, s.settings.clone()));
     if busy {
-        show_toast(ui, "Still getting them back. It can take a few minutes.");
+        toast_info(ui, "Still getting them back. It can take a few minutes.");
         return;
     }
     if demo {
-        show_toast(ui, "Getting the missed bits back…");
+        toast_info(ui, "Getting the missed bits back…");
         return;
     }
     let Some(settings) = settings else { return };
     with(|s| s.repairing.insert(it.id));
     select(ui, it.id);
-    show_toast(ui, "Getting the missed bits back from the site. It can take a few minutes.");
+    toast_info(ui, "Getting the missed bits back from the site. It can take a few minutes.");
     let (weak, id, file, url) = (ui.as_weak(), it.id, it.file.clone(), it.url.clone());
     std::thread::spawn(move || {
         let s = settings.lock().unwrap().clone();
@@ -1187,6 +1189,7 @@ fn repair(ui: &AppWindow, it: &Item) {
                 }
             });
             let got = gaps.missed() - left.as_ref().map_or(0.0, |g| g.missed());
+            let ok = result.is_ok();
             let msg = match result {
                 Ok(left) if left.is_empty() => format!("Got back all {} missed", fmt::duration(gaps.missed())),
                 Ok(_) if got > 0.0 => {
@@ -1195,7 +1198,8 @@ fn repair(ui: &AppWindow, it: &Item) {
                 Ok(_) => "Fetched the missed bits, but they didn't line up with the recording".to_string(),
                 Err(e) => format!("Couldn't get them back: {e}"),
             };
-            show_toast(&ui, &msg);
+            let say = if ok { show_toast } else { toast_problem };
+            say(&ui, &msg);
             rebuild(&ui);
             if ui.global::<Library>().get_selected() as u64 == id {
                 select(&ui, id);
@@ -1323,7 +1327,8 @@ fn delete(ui: &AppWindow) {
         }
         forget(ui, &gone);
         pick_clear(ui);
-        show_toast(
+        let say = if failed == 0 { show_toast } else { crate::toast_problem };
+        say(
             ui,
             &match failed {
                 0 => format!("Moved {} to the Recycle Bin", gone.len()),
@@ -1343,7 +1348,7 @@ fn delete(ui: &AppWindow) {
             forget(ui, &[id]);
             show_toast(ui, "Moved to the Recycle Bin");
         }
-        Err(e) => show_toast(ui, &format!("Couldn't delete it: {e}")),
+        Err(e) => toast_problem(ui, &format!("Couldn't delete it: {e}")),
     }
 }
 

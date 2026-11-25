@@ -28,7 +28,7 @@ export component SetupScreen inherits Rectangle {
             // Logo mark, same sticker as the nav rail, a size up.
             HorizontalLayout {
                 alignment: start;
-                padding-bottom: 26px;
+                padding-bottom: 24px;
                 LogoMark {
                     size: 44px;
                     radius: 12px;
@@ -58,8 +58,8 @@ export component SetupScreen inherits Rectangle {
 
             // Can't write here: where it is now, and what to do.
             if root.blocked: VerticalLayout {
-                padding-top: 18px;
-                spacing: 18px;
+                padding-top: 20px;
+                spacing: 20px;
                 Rectangle {
                     border-radius: 9px;
                     background: Theme.panel;
@@ -67,8 +67,8 @@ export component SetupScreen inherits Rectangle {
                     border-color: Theme.line;
                     HorizontalLayout {
                         padding: 12px;
-                        padding-left: 14px;
-                        spacing: 10px;
+                        padding-left: 12px;
+                        spacing: 8px;
                         Icon {
                             text: "\u{E8B7}";
                             font-size: 14px;
@@ -94,7 +94,7 @@ export component SetupScreen inherits Rectangle {
                 }
                 HorizontalLayout {
                     padding-top: 4px;
-                    spacing: 18px;
+                    spacing: 16px;
                     alignment: start;
                     PrimaryButton {
                         text: "Show Neria's folder";
@@ -113,7 +113,7 @@ export component SetupScreen inherits Rectangle {
 
             // One calm row per tool, each with its own meter.
             if !root.blocked: VerticalLayout {
-                padding-top: 22px;
+                padding-top: 24px;
                 Divider { }
                 for tool in root.tools: ListRow {
                     height: 58px;
@@ -142,7 +142,7 @@ export component SetupScreen inherits Rectangle {
                         VerticalLayout {
                             alignment: center;
                             width: Screen.compact ? 120px : 168px;
-                            spacing: 7px;
+                            spacing: 8px;
                             HorizontalLayout {
                                 alignment: end;
                                 if tool.state == 1: Text {
@@ -165,8 +165,8 @@ export component SetupScreen inherits Rectangle {
             }
 
             if !root.blocked && root.failed: HorizontalLayout {
-                padding-top: 22px;
-                spacing: 18px;
+                padding-top: 24px;
+                spacing: 16px;
                 alignment: start;
                 PrimaryButton {
                     text: "Try again";

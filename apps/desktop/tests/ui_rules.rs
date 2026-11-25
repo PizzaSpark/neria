@@ -264,3 +264,227 @@ fn theme_colours_keep_their_contrast() {
     }
     fail_if_any(problems, "Theme colours lost contrast (ui/theme.slint):");
 }
+
+// ---- Behaviour the shared controls promise (shadcn / Radix-style) ----
+
+/// The direct children of the `{ … }` block that opens on line `i`: (line index, trimmed text
+/// of the line that opens each one).
+fn children(lines: &[String], i: usize) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    for (k, l) in lines.iter().enumerate().skip(i) {
+        let code = l.split("//").next().unwrap_or("");
+        if depth == 1 && k > i && code.contains('{') {
+            out.push((k, code.trim().to_string()));
+        }
+        depth += code.matches('{').count() as i32 - code.matches('}').count() as i32;
+        if depth <= 0 && k > i {
+            break;
+        }
+    }
+    out
+}
+
+#[test]
+fn scroll_areas_size_to_what_they_show() {
+    // Slint sizes a ScrollView's / Flickable's content from its layout children and leaves
+    // out `if` and `for` ones: with them straight inside, nothing scrolls (Settings did this).
+    let mut problems = Vec::new();
+    for (file, lines) in slint_files() {
+        for (i, l) in lines.iter().enumerate() {
+            let code = l.split("//").next().unwrap_or("");
+            let opens = code.contains("ScrollView {") || code.contains("Flickable {");
+            if !opens || code.trim_start().starts_with("export") {
+                continue;
+            }
+            let sets_height = block(&lines, i).iter().any(|b| {
+                let t = b.trim_start();
+                t.starts_with("content-height:") || t.starts_with("viewport-height:")
+            });
+            let conditional = children(&lines, i).iter().any(|(_, c)| c.starts_with("if ") || c.starts_with("for "));
+            if conditional && !sets_height && !excused(&lines, i) {
+                problems.push(format!("  {file}:{}: {}", i + 1, l.trim()));
+            }
+        }
+    }
+    fail_if_any(
+        problems,
+        "These scroll areas have `if` / `for` children straight inside, which Slint leaves out of \
+         the scrolled size, so they won't scroll. Put one VerticalLayout inside and the `if`s in it:",
+    );
+}
+
+#[test]
+fn dimmed_layers_use_the_backdrop() {
+    // Backdrop (widgets.slint) is what makes a dialog, drawer or sheet close on Esc and on a
+    // click outside, stop the wheel from scrolling the page behind, and keep Tab inside.
+    let mut problems = Vec::new();
+    for (file, lines) in slint_files() {
+        if file == "widgets.slint" || file == "theme.slint" {
+            continue;
+        }
+        for (i, l) in lines.iter().enumerate() {
+            if l.contains("Theme.scrim") && !excused(&lines, i) {
+                problems.push(format!("  {file}:{}: {}", i + 1, l.trim()));
+            }
+        }
+    }
+    fail_if_any(
+        problems,
+        "A dimmed layer over the page: use `Backdrop` (or `Dialog` / `Sheet`, built on it) from \
+         widgets.slint instead of drawing Theme.scrim yourself:",
+    );
+}
+
+#[test]
+fn dialogs_you_type_in_ask_before_throwing_it_away() {
+    let mut problems = Vec::new();
+    for (file, lines) in slint_files() {
+        for (i, l) in lines.iter().enumerate() {
+            let t = l.trim_start();
+            let component = t.starts_with("export component ") || t.starts_with("component ");
+            let opens = (component && t.contains("inherits Dialog {")) || t.ends_with(": Dialog {") || t == "Dialog {";
+            if !opens {
+                continue;
+            }
+            let b = block(&lines, i);
+            let types =
+                b.iter().any(|x| x.contains("LineEdit {") || x.contains("TextEdit {") || x.contains("TextInput {"));
+            let guarded = b.iter().any(|x| x.contains("dirty:") || x.contains("outside-closes"));
+            if types && !guarded && !excused(&lines, i) {
+                problems.push(format!("  {file}:{}: {}", i + 1, l.trim()));
+            }
+        }
+    }
+    fail_if_any(
+        problems,
+        "A dialog with a text field can lose what was typed on Esc, × or a click outside. If \
+         it's saved with a button, give it `dirty: <changed since it opened>;` (closing then \
+         asks \"Discard your changes?\"); if what's typed applies as it's typed, say so just \
+         above the component: `// ui-rules: …`:",
+    );
+}
+
+#[test]
+fn no_number_box_that_the_wheel_changes() {
+    // std's SpinBox changes its number under the mouse wheel even when it isn't focused, so
+    // scrolling a page past it changes the setting.
+    let mut problems = Vec::new();
+    for (file, lines) in slint_files() {
+        for (i, l) in lines.iter().enumerate() {
+            let code = l.split("//").next().unwrap_or("");
+            if code.contains("SpinBox {") && !excused(&lines, i) {
+                problems.push(format!("  {file}:{}: {}", i + 1, l.trim()));
+            }
+        }
+    }
+    fail_if_any(problems, "Use a ComboBox (or ChoiceChips) instead of a SpinBox:");
+}
+
+#[test]
+fn shared_controls_arent_copied() {
+    // A page's own Hint, Toast or text box drifts from the shared one (sizes, Esc, hover).
+    let widgets = fs::read_to_string(ui_dir().join("widgets.slint")).unwrap();
+    let shared: Vec<String> = widgets
+        .lines()
+        .filter_map(|l| l.strip_prefix("export component "))
+        .filter_map(|l| l.split_whitespace().next())
+        .map(str::to_string)
+        .collect();
+    let mut problems = Vec::new();
+    for (file, lines) in slint_files() {
+        if file == "widgets.slint" {
+            continue;
+        }
+        for (i, l) in lines.iter().enumerate() {
+            let t = l.trim_start();
+            let Some(rest) = t.strip_prefix("export component ").or_else(|| t.strip_prefix("component ")) else {
+                continue;
+            };
+            let name = rest.split_whitespace().next().unwrap_or("");
+            let base = rest.split("inherits").nth(1).map(str::trim).unwrap_or("");
+            let copies = shared.iter().any(|s| s == name);
+            let own_toast = name.ends_with("Toast") && !base.starts_with("Toast");
+            if (copies || own_toast) && !excused(&lines, i) {
+                problems.push(format!("  {file}:{}: {}", i + 1, l.trim()));
+            }
+        }
+    }
+    fail_if_any(
+        problems,
+        "These copy a control widgets.slint already has (a toast must inherit `Toast`). Import \
+         the shared one, or give it what it lacks there:",
+    );
+}
+
+#[test]
+fn picked_menu_rows_say_so() {
+    // A ✓ drawn as the row's icon is only a picture; `checked:` also tells a screen reader.
+    let mut problems = Vec::new();
+    for (file, lines) in slint_files() {
+        for (i, l) in lines.iter().enumerate() {
+            let t = l.trim_start();
+            if t.starts_with("icon:") && t.contains("E73E}\" : \"\"") && !excused(&lines, i) {
+                problems.push(format!("  {file}:{}: {}", i + 1, l.trim()));
+            }
+        }
+    }
+    fail_if_any(problems, "Mark the picked MenuItem with `checked: <condition>;` instead of a ✓ icon:");
+}
+
+#[test]
+fn groups_of_choices_move_with_the_arrow_keys() {
+    // Tabs, chips and section lists are one Tab stop with the arrow keys between them
+    // (KeyPress `roving`); menus move with ↑ ↓ (`arrows`). Pin it in the shared controls.
+    let widgets = fs::read_to_string(ui_dir().join("widgets.slint")).unwrap();
+    let lines: Vec<String> = widgets.lines().map(str::to_string).collect();
+    let mut problems = Vec::new();
+    for name in ["Chip", "FilterTab", "NavItem"] {
+        let i = lines.iter().position(|l| l.starts_with(&format!("export component {name} "))).unwrap();
+        if !block(&lines, i).iter().any(|l| l.trim() == "roving: true;" || l.trim() == "roving: root.roving;") {
+            problems.push(format!("  widgets.slint:{}: {name}", i + 1));
+        }
+    }
+    let i = lines.iter().position(|l| l.starts_with("export component MenuItem ")).unwrap();
+    if !block(&lines, i).iter().any(|l| l.trim() == "arrows: true;") {
+        problems.push(format!("  widgets.slint:{}: MenuItem", i + 1));
+    }
+    fail_if_any(problems, "These lost their arrow keys (KeyPress `roving` / `arrows`):");
+}
+
+#[test]
+fn spacing_stays_on_the_scale() {
+    // One 4px scale (theme.slint `Space`, docs/DESIGN.md → Spacing): 0, 2, 4, 6, then
+    // multiples of 4 up to 48. Odd values (5, 7, 10, 14, 22…) are how screens drift apart.
+    let ok = |n: u32| n <= 2 || n == 4 || n == 6 || (n % 4 == 0 && n <= 48);
+    let mut problems = Vec::new();
+    for (file, lines) in slint_files() {
+        for (i, l) in lines.iter().enumerate() {
+            let code = l.split("//").next().unwrap_or("").trim();
+            let Some((key, value)) = code.split_once(':') else { continue };
+            let key = key.trim();
+            if !["spacing", "padding", "padding-left", "padding-right", "padding-top", "padding-bottom"].contains(&key)
+            {
+                continue;
+            }
+            // Only literal lengths (alone or in `cond ? a : b`); sums and max() are worked out.
+            if value.contains('(') || value.contains('+') || value.contains('/') || value.contains('*') {
+                continue;
+            }
+            let off = value
+                .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == 'p' || c == 'x'))
+                .filter_map(|w| w.strip_suffix("px"))
+                .filter_map(|n| n.parse::<f32>().ok())
+                .any(|n| n.fract() != 0.0 || !ok(n as u32));
+            if off && !excused(&lines, i) {
+                problems.push(format!("  {file}:{}: {}", i + 1, l.trim()));
+            }
+        }
+    }
+    fail_if_any(
+        problems,
+        "Spacing off the 4px scale (0, 2, 4, 6, 8, 12, 16, 20, 24, 28, 32…). Use a `Space` token \
+         (hint 4, inline 8, title 12, item 16, group 32, inset 24) or the nearest step; an \
+         alignment that must be exact gets `// ui-rules: <why>`:",
+    );
+}

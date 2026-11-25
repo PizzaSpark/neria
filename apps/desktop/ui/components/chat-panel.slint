@@ -15,13 +15,13 @@ component PickBox inherits Rectangle {
     accessible-checkable: true;
     accessible-checked: root.checked;
     accessible-action-default => { root.toggled(); }
-    KeyPress {
+    kp := KeyPress {
         radius: 5px;
         activated => { root.toggled(); }
     }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.toggled(); }
+        clicked => { kp.take(); root.toggled(); }
     }
     Rectangle {
         border-radius: 5px;
@@ -46,13 +46,13 @@ component Row inherits Rectangle {
     accessible-action-default => { ClipChat.jump(root.item.id); }
     background: ta.has-hover ? Theme.raised : transparent;
     border-radius: 6px;
-    KeyPress {
+    kp := KeyPress {
         radius: 6px;
         activated => { ClipChat.jump(root.item.id); }
     }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { ClipChat.jump(root.item.id); }
+        clicked => { kp.take(); ClipChat.jump(root.item.id); }
     }
     HorizontalLayout {
         spacing: 6px;
@@ -202,10 +202,27 @@ export component ChatPanel inherits Rectangle {
             current <=> ClipChat.view;
             changed => { ClipChat.view-changed(); }
         }
-        if (ClipChat.state == 3 || ClipChat.state == 4) && (root.very-roomy || ClipChat.find != ""): LineEdit {
-            placeholder-text: "Find a word or name";
-            text <=> ClipChat.find;
-            edited => { ClipChat.find-changed(); }
+        // Esc clears what's typed, as the Library's search does.
+        if (ClipChat.state == 3 || ClipChat.state == 4) && (root.very-roomy || ClipChat.find != ""): FocusScope {
+            min-height: find.min-height;
+            preferred-height: find.preferred-height;
+            focus-on-click: false;
+            focus-on-tab-navigation: false;
+            key-pressed(event) => {
+                if event.text == Key.Escape && ClipChat.find != "" {
+                    ClipChat.find = "";
+                    ClipChat.find-changed();
+                    return accept;
+                }
+                reject
+            }
+            find := LineEdit {
+                width: parent.width;
+                height: parent.height;
+                placeholder-text: "Find a word or name";
+                text <=> ClipChat.find;
+                edited => { ClipChat.find-changed(); }
+            }
         }
         // The messages: a window of them, newest at the bottom.
         list := Rectangle {
@@ -266,7 +283,7 @@ export component ChatPanel inherits Rectangle {
             }
             if (ClipChat.state != 3 && ClipChat.state != 4) || ClipChat.rows.length == 0: VerticalLayout {
                 alignment: center;
-                spacing: 10px;
+                spacing: 12px;
                 padding: 8px;
                 Text {
                     text: ClipChat.state == 0 ? "No chat for this." : ClipChat.state == 1 ? "This past stream kept its chat."

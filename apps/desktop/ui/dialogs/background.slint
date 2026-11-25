@@ -37,7 +37,7 @@ export component CloseAskDialog inherits Dialog {
         }
     }
     if Screen.compact: VerticalLayout {
-        spacing: 10px;
+        spacing: 12px;
         PrimaryButton {
             text: Background.recording > 0 ? "Keep recording in the tray" : "Keep going in the tray";
             icon: "\u{E896}";
@@ -52,6 +52,9 @@ export component CloseAskDialog inherits Dialog {
 
 // "Download later": pick when, the row waits as "Starts at 02:00".
 export component LaterDialog inherits Dialog {
+    // Changes not saved yet: closing asks first (Discard your changes?).
+    dirty: Background.later-dirty;
+    init => { Background.later-dirty = false; }
     callback confirm();
     title: "Download later";
     subtitle: "The download waits in the queue until then.";
@@ -64,13 +67,16 @@ export component LaterDialog inherits Dialog {
         changed => { Background.later-changed(); }
     }
     if Background.later-choice == 3: HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         alignment: start;
         LineEdit {
             width: 110px;
             placeholder-text: "22:30";
             text <=> Background.later-time;
-            edited => { Background.later-changed(); }
+            edited => {
+                Background.later-dirty = true;
+                Background.later-changed();
+            }
             accepted => { Background.later-confirm(); }
         }
         Text {

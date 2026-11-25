@@ -1255,12 +1255,9 @@ pub fn toast(ui: &AppWindow, tag: &str, text: &str, undo: bool, file: Option<&Pa
         s.toast_gen += 1;
         s.toast_gen
     });
-    let weak = ui.as_weak();
-    Timer::single_shot(Duration::from_secs(8), move || {
-        if ST.with(|s| s.borrow().toast_gen) == n
-            && let Some(ui) = weak.upgrade()
-        {
-            hide_toast(&ui);
+    crate::after_toast_time(ui.as_weak(), Duration::from_secs(8), move |ui| {
+        if ST.with(|s| s.borrow().toast_gen) == n {
+            hide_toast(ui);
         }
     });
 }

@@ -1,7 +1,8 @@
 // Shared controls. Rule: anything you press is playful (outline, sticker
 // yellow, hard shadow on the main action); anything you read is calm.
 
-import { Theme, Screen, Nav } from "theme.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Screen, Nav, Space } from "theme.slint";
 
 export component Icon inherits Text {
     font-family: Theme.icons;
@@ -12,20 +13,112 @@ export component Icon inherits Text {
 }
 
 // Keyboard for a pressable control: Tab reaches it, Enter or Space presses it, and a 2px
-// ring shows around it while it has focus (clicks with the mouse don't show it). Put it
-// inside the control; it fills it. `radius` is the control's corner radius.
+// ring shows around it while it has focus from the keyboard. Put it inside the control; it
+// fills it. `radius` is the control's corner radius.
+// A click focuses it too (`take()` from the control's TouchArea), as a browser button and the
+// UI SDK do, so Tab and the arrows go on from what was clicked; but then, like
+// `:focus-visible`, no ring shows, and Space / Enter go on to the page (Space still plays on
+// the Clip page) until the keyboard moves focus.
+// Enter presses it once (held down it doesn't repeat); Space presses it when let go, as a
+// button does.
+// In a group where one is picked (tabs, chips, a section list), set `roving`: Tab stops only
+// on the picked one (`active`), and the arrow keys move to the next one and pick it, as Radix
+// Tabs / RadioGroup and the UI SDK do. With `index` and `count` set, the arrows go round at
+// the ends and Home / End reach the first / last; without them (a group with hidden options),
+// `first` / `last` stop the arrows at the ends.
+// In a list you move through without picking (a menu), set `arrows`: ↑ ↓ move.
+// `ring: false` for controls that show focus their own way (a menu row's highlight).
 export component KeyPress inherits FocusScope {
     in property <length> radius: 10px;
+    in property <bool> roving;
+    in property <bool> active;
+    in property <bool> arrows;
+    in property <int> index: -1;
+    in property <int> count;
+    in property <bool> first: root.count > 0 && root.index == 0;
+    in property <bool> last: root.count > 0 && root.index == root.count - 1;
+    in property <bool> ring: true;
     callback activated();
     focus-on-click: false;
+    focus-on-tab-navigation: !root.roving || root.active || Nav.arrowing;
+    property <bool> space-down;
+    property <bool> counted: root.count > 0 && root.index >= 0;
+    // Focus came from the keyboard (Tab, an arrow, a dialog opened by key), not a click.
+    property <bool> by-keys;
+    property <bool> clicking;
+    // The control was clicked: take the keyboard, quietly.
+    public function take() {
+        root.clicking = true;
+        root.focus();
+        root.clicking = false;
+    }
+    focus-gained(reason) => {
+        root.by-keys = !root.clicking && (reason == FocusReason.tab-navigation || Nav.keyboard);
+        // Picked when an arrow's last step lands here (not on the options it passes).
+        if root.roving && Nav.arrowing && Nav.steps-left == 0 && !root.active {
+            root.activated();
+        }
+    }
+    focus-lost(reason) => { root.space-down = false; }
+    // Move `n` options along a group (negative: back), picking the one it lands on.
+    function move(n: int) {
+        if n != 0 {
+            Nav.arrowing = root.roving;
+            Nav.focus-steps(n);
+        }
+    }
     key-pressed(event) => {
-        if event.text == Key.Return || event.text == " " {
+        // Focused by a click: Space and Enter are the page's (play / pause), not this one's.
+        if !root.by-keys && (event.text == Key.Return || event.text == " ") {
+            return reject;
+        }
+        if event.text == Key.Return {
+            if !event.repeat {
+                root.activated();
+            }
+            return accept;
+        }
+        if event.text == " " {
+            root.space-down = true;
+            return accept;
+        }
+        if root.roving || root.arrows {
+            if event.text == Key.RightArrow || event.text == Key.DownArrow {
+                if !root.last {
+                    root.move(1);
+                } else if root.counted {
+                    root.move(1 - root.count);
+                }
+                return accept;
+            }
+            if event.text == Key.LeftArrow || event.text == Key.UpArrow {
+                if !root.first {
+                    root.move(-1);
+                } else if root.counted {
+                    root.move(root.count - 1);
+                }
+                return accept;
+            }
+            if root.counted && event.text == Key.Home {
+                root.move(-root.index);
+                return accept;
+            }
+            if root.counted && event.text == Key.End {
+                root.move(root.count - 1 - root.index);
+                return accept;
+            }
+        }
+        reject
+    }
+    key-released(event) => {
+        if event.text == " " && root.space-down {
+            root.space-down = false;
             root.activated();
             return accept;
         }
         reject
     }
-    if root.has-focus: Rectangle {
+    if root.has-focus && root.ring && root.by-keys: Rectangle {
         x: -4px;
         y: -4px;
         width: root.width + 8px;
@@ -44,6 +137,8 @@ export component PrimaryButton inherits Rectangle {
     in property <bool> enabled: true;
     // A split button: a ▾ part on the right opens more ways to do it (`menu-clicked`).
     in property <bool> has-menu;
+    // What a screen reader says for the ▾ ("More ways to record").
+    in property <string> menu-label: "More ways to download";
     callback clicked();
     callback menu-clicked();
     property <length> menu-w: root.has-menu ? 34px : 0px;
@@ -56,7 +151,7 @@ export component PrimaryButton inherits Rectangle {
     accessible-label: root.text;
     accessible-enabled: root.enabled;
     accessible-action-default => { if root.enabled { root.clicked(); } }
-    KeyPress {
+    kp := KeyPress {
         enabled: root.enabled;
         activated => { root.clicked(); }
     }
@@ -83,8 +178,8 @@ export component PrimaryButton inherits Rectangle {
         face-row := HorizontalLayout {
             width: parent.width - root.menu-w;
             x: 0;
-            padding-left: 18px;
-            padding-right: root.has-menu ? 14px : 18px;
+            padding-left: 16px;
+            padding-right: root.has-menu ? 12px : 16px;
             spacing: 8px;
             alignment: center;
             if root.icon != "": Icon {
@@ -122,22 +217,26 @@ export component PrimaryButton inherits Rectangle {
         x: 0;
         enabled: root.enabled;
         mouse-cursor: root.enabled ? pointer : default;
-        clicked => { root.clicked(); }
+        clicked => { kp.take(); root.clicked(); }
     }
-    // The ▾ part: its own key stop, so Tab reaches "more ways" too.
+    // The ▾ part: its own key stop, so Tab reaches "more ways" too. Greyed out with the
+    // button: what it offers is the same action done another way.
     if root.has-menu: Rectangle {
         x: parent.width - root.menu-w - 3px;
         width: root.menu-w + 3px;
         accessible-role: button;
-        accessible-label: "More ways to download";
-        accessible-action-default => { root.menu-clicked(); }
+        accessible-label: root.menu-label;
+        accessible-enabled: root.enabled;
+        accessible-action-default => { if root.enabled { root.menu-clicked(); } }
         KeyPress {
             radius: 10px;
+            enabled: root.enabled;
             activated => { root.menu-clicked(); }
         }
         TouchArea {
+            enabled: root.enabled;
             changed pressed => { root.menu-pressed = self.pressed; }
-            mouse-cursor: pointer;
+            mouse-cursor: root.enabled ? pointer : default;
             clicked => { root.menu-clicked(); }
         }
     }
@@ -155,6 +254,10 @@ export component GhostButton inherits Rectangle {
     in property <bool> on;
     // A small icon after the text (a fold's chevron).
     in property <string> trail;
+    // Greyed out: shown, but neither a click nor a key presses it.
+    in property <bool> enabled: true;
+    // Give it the keyboard (with the ring when the keyboard is in use).
+    public function take-focus() { kp.focus(); }
     callback clicked();
     // Regular size matches PrimaryButton exactly: the same 44px slot with a 41px face at
     // the top (the yellow button's 3px shadow sits below its face), so a pair lines up.
@@ -162,9 +265,11 @@ export component GhostButton inherits Rectangle {
     // Sized by its content (which sits inside the face).
     min-width: row.min-width;
     preferred-width: row.preferred-width;
+    opacity: root.enabled ? 1 : 0.4;
     accessible-role: button;
     accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
     face := Rectangle {
         y: 0;
         width: parent.width;
@@ -174,18 +279,20 @@ export component GhostButton inherits Rectangle {
         border-width: 2px;
         border-color: root.on ? Theme.accent-hi : ta.has-hover ? Theme.muted : Theme.line-strong;
         animate background, border-color { duration: 100ms; }
-        KeyPress {
+        kp := KeyPress {
             radius: parent.border-radius;
+            enabled: root.enabled;
             activated => { root.clicked(); }
         }
         ta := TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.clicked(); }
+            enabled: root.enabled;
+            mouse-cursor: root.enabled ? pointer : default;
+            clicked => { kp.take(); root.clicked(); }
         }
         row := HorizontalLayout {
-            padding-left: root.compact ? 10px : 14px;
-            padding-right: root.compact ? 10px : 14px;
-            spacing: 7px;
+            padding-left: root.compact ? 8px : 12px;
+            padding-right: root.compact ? 8px : 12px;
+            spacing: 8px;
             alignment: center;
             if root.icon != "": Icon {
                 text: root.icon;
@@ -214,23 +321,28 @@ export component IconButton inherits Rectangle {
     in property <color> tint: Theme.muted;
     // What a screen reader says ("Close", "Remove"…).
     in property <string> label;
+    in property <bool> enabled: true;
     callback clicked();
     width: 32px;
     height: 32px;
     border-radius: 8px;
+    opacity: root.enabled ? 1 : 0.4;
     accessible-role: button;
     accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    KeyPress {
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    kp := KeyPress {
         radius: 8px;
+        enabled: root.enabled;
         activated => { root.clicked(); }
     }
     border-width: 2px;
     border-color: ta.has-hover ? Theme.line-strong : transparent;
     background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
     ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { kp.take(); root.clicked(); }
     }
     Icon {
         text: root.icon;
@@ -242,16 +354,30 @@ export component IconButton inherits Rectangle {
 export component Chip inherits Rectangle {
     in property <string> text;
     in property <bool> selected;
+    in property <bool> enabled: true;
+    // In a ChoiceChips row: one Tab stop (`tab-stop`), arrows move and pick.
+    in property <bool> roving;
+    in property <bool> tab-stop;
+    // Its place in the row (ChoiceChips): the arrows go round, Home / End.
+    in property <int> index: -1;
+    in property <int> count;
     callback clicked();
     height: 34px;
     border-radius: 9px;
+    opacity: root.enabled ? 1 : 0.4;
     accessible-role: radio-button;
     accessible-label: root.text;
     accessible-checkable: true;
     accessible-checked: root.selected;
-    accessible-action-default => { root.clicked(); }
-    KeyPress {
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    kp := KeyPress {
         radius: 9px;
+        enabled: root.enabled;
+        roving: root.roving;
+        active: root.tab-stop;
+        index: root.index;
+        count: root.count;
         activated => { root.clicked(); }
     }
     background: root.selected ? Theme.ink : ta.has-hover ? Theme.raised : transparent;
@@ -259,12 +385,13 @@ export component Chip inherits Rectangle {
     border-color: root.selected ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
     animate background, border-color { duration: 100ms; }
     ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { kp.take(); root.clicked(); }
     }
     HorizontalLayout {
-        padding-left: Screen.compact ? 10px : 13px;
-        padding-right: Screen.compact ? 10px : 13px;
+        padding-left: Screen.compact ? 8px : 12px;
+        padding-right: Screen.compact ? 8px : 12px;
         Text {
             text: root.text;
             color: root.selected ? Theme.bg : Theme.ink;
@@ -305,6 +432,15 @@ export component NavItem inherits Rectangle {
     in property <bool> active;
     // A small red dot: something of this page's is running (instant replay on).
     in property <bool> dot;
+    // The rail's ends: the arrow keys stop there.
+    // Its place in the row: the arrows go round, Home / End. Without them (hidden options),
+    // `first` / `last` stop the arrows at the ends.
+    in property <int> index: -1;
+    in property <int> count;
+    in property <bool> first: root.count > 0 && root.index == 0;
+    in property <bool> last: root.count > 0 && root.index == root.count - 1;
+    // The rail's one Tab stop: the open page (the tab bar keeps it while Settings covers it).
+    in property <bool> tab-stop: root.active;
     callback clicked();
     height: 56px;
     border-radius: 12px;
@@ -312,8 +448,15 @@ export component NavItem inherits Rectangle {
     accessible-label: root.label + (root.dot ? ", on" : "");
     accessible-item-selected: root.active;
     accessible-action-default => { root.clicked(); }
-    KeyPress {
+    // One Tab stop for the rail (the open page); ↑ ↓ move to the next page.
+    kp := KeyPress {
         radius: 12px;
+        roving: true;
+        active: root.tab-stop;
+        index: root.index;
+        count: root.count;
+        first: root.first;
+        last: root.last;
         activated => { root.clicked(); }
     }
     border-width: 2px;
@@ -321,7 +464,7 @@ export component NavItem inherits Rectangle {
     background: root.active ? Theme.panel : ta.has-hover ? Theme.raised : transparent;
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { kp.take(); root.clicked(); }
     }
     VerticalLayout {
         alignment: center;
@@ -396,7 +539,7 @@ export component PageTitle inherits VerticalLayout {
     in property <string> subtitle;
     spacing: Screen.compact ? 4px : 6px;
     HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         if Screen.compact: VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
@@ -452,7 +595,7 @@ export component Tag inherits Rectangle {
         padding-right: 8px;
         padding-top: 2px;
         padding-bottom: 2px;
-        spacing: 5px;
+        spacing: 4px;
         if root.kind == 5: VerticalLayout {
             alignment: center;
             Rectangle {
@@ -554,16 +697,28 @@ export component LiveTape inherits Rectangle {
 }
 
 // The big link box. Buttons placed inside it go on the right.
-export component LinkField inherits Rectangle {
+// The one text box drawn our way (the link box, the Library's search): 2px outline, ink
+// when it has the keyboard; the text input itself is the Tab stop. `small` is the search
+// size; `icon` sits before the text; `escape-clears` empties it on Esc (`cleared`).
+// Buttons (Paste, Clear) go inside, after the text.
+export component TextBox inherits Rectangle {
     in-out property <string> text;
     in property <string> placeholder;
+    in property <string> icon;
+    // What a screen reader calls it, when the placeholder doesn't say.
+    in property <string> label: root.placeholder;
+    in property <bool> small;
+    in property <bool> escape-clears;
+    // Ctrl+Shift+V in the box: `paste-download` instead of a plain paste (the link box).
+    in property <bool> paste-and-go;
     public function focus-input() { input.focus(); }
     callback edited(string);
     callback accepted();
-    // Ctrl+Shift+V in the box: "Paste & download" instead of a plain paste.
+    callback cleared();
     callback paste-download();
-    height: 54px;
-    border-radius: 12px;
+    property <length> font: root.small ? 13.5px : 15px;
+    height: root.small ? 41px : 54px;
+    border-radius: root.small ? 10px : 12px;
     background: Theme.panel;
     border-width: 2px;
     border-color: input.has-focus ? Theme.ink : ta.has-hover ? Theme.muted : Theme.line-strong;
@@ -574,9 +729,15 @@ export component LinkField inherits Rectangle {
         clicked => { input.focus(); }
     }
     HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 6px;
-        spacing: 8px;
+        padding-left: root.small ? 12px : 16px;
+        padding-right: root.small ? 8px : 6px;
+        spacing: root.small ? 8px : 8px;
+        if root.icon != "": Icon {
+            horizontal-stretch: 0;
+            text: root.icon;
+            font-size: 13px;
+            color: Theme.muted;
+        }
         Rectangle {
             horizontal-stretch: 1;
             if root.text == "": Text {
@@ -586,7 +747,7 @@ export component LinkField inherits Rectangle {
                 text: root.placeholder;
                 color: Theme.muted;
                 font-family: Theme.body;
-                font-size: 15px;
+                font-size: root.font;
                 vertical-alignment: center;
                 overflow: elide;
             }
@@ -597,8 +758,16 @@ export component LinkField inherits Rectangle {
                 focus-on-click: false;
                 focus-on-tab-navigation: false;
                 capture-key-pressed(event) => {
-                    if event.modifiers.control && event.modifiers.shift && (event.text == "v" || event.text == "V") {
+                    if root.paste-and-go && event.modifiers.control && event.modifiers.shift && (event.text == "v" || event.text == "V") {
                         root.paste-download();
+                        return accept;
+                    }
+                    reject
+                }
+                key-pressed(event) => {
+                    if root.escape-clears && event.text == Key.Escape && root.text != "" {
+                        root.text = "";
+                        root.cleared();
                         return accept;
                     }
                     reject
@@ -610,9 +779,10 @@ export component LinkField inherits Rectangle {
                     text <=> root.text;
                     color: Theme.ink;
                     font-family: Theme.body;
-                    font-size: 15px;
+                    font-size: root.font;
                     vertical-alignment: center;
                     single-line: true;
+                    accessible-label: root.label;
                     accessible-placeholder-text: root.placeholder;
                     selection-background-color: Theme.pop.with-alpha(0.45);
                     selection-foreground-color: Theme.ink;
@@ -625,6 +795,11 @@ export component LinkField inherits Rectangle {
     }
 }
 
+// The link box (Download page, Phone tab): a big TextBox; Ctrl+Shift+V pastes and downloads.
+export component LinkField inherits TextBox {
+    paste-and-go: true;
+}
+
 // Quiet secondary action (queue header): muted text, ink on hover.
 // A queue filter: a word and its count, underlined when picked. Calm (it's a view of the
 // list, not an action); `attention` tints the count when there's something to look at.
@@ -635,20 +810,38 @@ export component FilterTab inherits Rectangle {
     in property <bool> attention;
     // Tabs that aren't a filter (Capture page: This PC / Phone) have no count.
     in property <bool> show-count: true;
+    in property <bool> enabled: true;
+    // The row's ends: the arrow keys stop there.
+    // Its place in the row: the arrows go round, Home / End. Without them (hidden options),
+    // `first` / `last` stop the arrows at the ends.
+    in property <int> place: -1;
+    in property <int> places;
+    in property <bool> first: root.places > 0 && root.place == 0;
+    in property <bool> last: root.places > 0 && root.place == root.places - 1;
     callback clicked();
     min-width: row.preferred-width;
     height: 32px;
     accessible-role: tab;
     accessible-label: root.show-count ? root.text + ", " + root.count : root.text;
     accessible-item-selected: root.active;
-    accessible-action-default => { root.clicked(); }
-    KeyPress {
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    // One Tab stop for the row (the picked tab); ← → move to the next one.
+    kp := KeyPress {
         radius: 6px;
+        enabled: root.enabled;
+        roving: true;
+        active: root.active;
+        index: root.place;
+        count: root.places;
+        first: root.first;
+        last: root.last;
         activated => { root.clicked(); }
     }
     ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { kp.take(); root.clicked(); }
     }
     row := HorizontalLayout {
         spacing: 6px;
@@ -681,19 +874,24 @@ export component FilterTab inherits Rectangle {
 export component TextLink inherits Rectangle {
     in property <string> text;
     in property <string> icon;
+    in property <bool> enabled: true;
     callback clicked();
     min-width: row.preferred-width;
     height: 30px;
+    opacity: root.enabled ? 1 : 0.4;
     accessible-role: button;
     accessible-label: root.text;
-    accessible-action-default => { root.clicked(); }
-    KeyPress {
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    kp := KeyPress {
         radius: 6px;
+        enabled: root.enabled;
         activated => { root.clicked(); }
     }
     ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { kp.take(); root.clicked(); }
     }
     row := HorizontalLayout {
         spacing: 6px;
@@ -728,8 +926,8 @@ export component Kbd inherits Rectangle {
     HorizontalLayout {
         padding-left: 6px;
         padding-right: 6px;
-        padding-top: 1px;
-        padding-bottom: 3px;
+        padding-top: 1px;  // ui-rules: a keycap, thicker at the bottom
+        padding-bottom: 3px;  // ui-rules: a keycap, thicker at the bottom
         Text {
             text: root.text;
             color: Theme.muted;
@@ -741,101 +939,172 @@ export component Kbd inherits Rectangle {
 }
 
 // A tickbox you press: 2px outline, ink fill with a check when on. The label is part of
-// the target.
-export component Tick inherits Rectangle {
+// the target. `hint`: what it does, in a muted line 4px under the label and lined up with it
+// (shadcn's Field description), so it reads as this setting's, not the next one's.
+// A column (the row you press, then the hint) so the hint's wrapped lines count in the
+// height: inside the pressable box, Slint measured them short and they ran into what's next.
+export component Tick inherits VerticalLayout {
     in-out property <bool> checked;
     in property <string> text;
     // One line, cut with "…" when too long (song names in a list).
     in property <bool> elide;
+    in property <bool> enabled: true;
+    in property <string> hint;
     callback toggled(bool);
-    min-height: 28px;
-    min-width: root.elide ? 60px : row.preferred-width;
-    accessible-role: checkbox;
-    accessible-label: root.text;
-    accessible-checkable: true;
-    accessible-checked: root.checked;
-    accessible-action-default => {
-        root.checked = !root.checked;
-        root.toggled(root.checked);
-    }
-    KeyPress {
-        radius: 8px;
-        activated => {
-            root.checked = !root.checked;
-            root.toggled(root.checked);
-        }
-    }
-    ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => {
-            root.checked = !root.checked;
-            root.toggled(root.checked);
-        }
-    }
-    row := HorizontalLayout {
-        spacing: 10px;
-        alignment: start;
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                width: 20px;
-                height: 20px;
-                border-radius: 6px;
-                border-width: 2px;
-                border-color: root.checked ? Theme.ink : ta.has-hover ? Theme.muted : Theme.edge;
-                background: root.checked ? Theme.ink : transparent;
-                animate background, border-color { duration: 90ms; }
-                if root.checked: Icon {
-                    text: "\u{E73E}";
-                    font-size: 11px;
-                    color: Theme.bg;
-                }
+    spacing: Space.hint;
+    box := Rectangle {
+        min-height: 28px;
+        // Its full text as the narrowest it gets (labels are short).
+        min-width: root.elide ? 60px : row.preferred-width;
+        opacity: root.enabled ? 1 : 0.4;
+        accessible-role: checkbox;
+        accessible-label: root.text;
+        accessible-description: root.hint;
+        accessible-checkable: true;
+        accessible-checked: root.checked;
+        accessible-enabled: root.enabled;
+        accessible-action-default => {
+            if root.enabled {
+                root.checked = !root.checked;
+                root.toggled(root.checked);
             }
         }
-        if root.text != "": Text {
-            text: root.text;
-            color: Theme.ink;
+        kp := KeyPress {
+            radius: 8px;
+            enabled: root.enabled;
+            activated => {
+                root.checked = !root.checked;
+                root.toggled(root.checked);
+            }
+        }
+        ta := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: root.enabled ? pointer : default;
+            clicked => {
+                kp.take();
+                root.checked = !root.checked;
+                root.toggled(root.checked);
+            }
+        }
+        row := HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                // shadcn's checkbox proportions (its checkbox.tsx): the tick is Lucide's
+                // check path, drawn with a 2px rounded stroke and filling most of the box,
+                // not an icon-font glyph (that one was a hairline speck in a white block).
+                Rectangle {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 5px;
+                    border-width: 2px;
+                    border-color: root.checked ? Theme.ink : ta.has-hover ? Theme.muted : Theme.edge;
+                    background: root.checked ? Theme.ink : transparent;
+                    animate background, border-color { duration: 90ms; }
+                    if root.checked: Path {
+                        width: 14px;
+                        height: 14px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M 20 6 L 9 17 L 4 12";
+                        stroke: Theme.bg;
+                        stroke-width: 2.25px;
+                        stroke-line-cap: round;
+                        stroke-line-join: round;
+                        fill: transparent;
+                    }
+                }
+            }
+            if root.text != "": Text {
+                horizontal-stretch: 1;
+                text: root.text;
+                color: Theme.ink;
+                font-family: Theme.body;
+                font-size: 13px;
+                vertical-alignment: center;
+                wrap: root.elide ? no-wrap : word-wrap;
+                overflow: root.elide ? TextOverflow.elide : TextOverflow.clip;
+            }
+        }
+    }
+    // Under the label: the box (18) and the gap (8) to its left. The text gets its width
+    // here and its holder takes the height it wraps to: an indent from a layout's padding
+    // made Slint measure the wrapped lines at the full width, a line or two short, and the
+    // hint ran into what came next.
+    if root.hint != "": Rectangle {
+        height: hint-text.preferred-height;
+        hint-text := Text {
+            x: 26px;
+            y: 0;
+            width: parent.width - 26px;
+            text: root.hint;
+            color: Theme.muted;
             font-family: Theme.body;
-            font-size: 13px;
-            vertical-alignment: center;
-            wrap: root.elide ? no-wrap : word-wrap;
-            overflow: root.elide ? TextOverflow.elide : TextOverflow.clip;
-            horizontal-stretch: 1;
+            font-size: 12px;
+            wrap: word-wrap;
+            opacity: root.enabled ? 1 : 0.4;
         }
     }
 }
 
-// The floating card for dialogs: scrim, `panel`, 1px `line-strong`, 12px radius, a title
-// with an optional line under it, and a close button. Put it over the whole window.
-// `fit` sizes the card to its content instead of `card-height`.
-export component Dialog inherits Rectangle {
-    in property <string> title;
-    in property <string> subtitle;
-    in property <length> card-width: 560px;
-    in property <length> card-height: 520px;
-    in property <bool> fit;
-    // Clicking outside or the × closes it. Off for dialogs that need an answer.
+// The dimmed layer under a dialog, the Settings drawer, the palette or a sheet; put it over
+// the whole window and the card inside it. What every one of them does:
+// - a click on the dimmed part closes it (`outside-closes`; off where something typed
+//   would be lost), Esc closes it from anywhere inside (`closable`);
+// - the mouse wheel stops here: the page behind never scrolls;
+// - it takes the keyboard when it opens (`take-focus`), and Tab goes round the controls
+//   inside instead of out to the page behind (Shift+Tab too).
+// The card should swallow clicks and the wheel itself (`TouchArea { scroll-event(e) => {
+// return accept; } }` first inside it), so they don't reach the layer.
+export component Backdrop inherits Rectangle {
     in property <bool> closable: true;
+    in property <bool> outside-closes: true;
+    // Compact's Settings is a full sheet: nothing to dim.
+    in property <bool> dim: true;
+    in property <bool> take-focus: true;
+    in property <string> label;
     callback close();
-    background: Theme.scrim;
-    // keyboard: Esc closes it (when it can be closed).
+    background: root.dim ? Theme.scrim : transparent;
+    // keyboard: Esc closes it (the FocusScope below).
     TouchArea {
         clicked => {
-            if root.closable {
+            if root.closable && root.outside-closes {
                 root.close();
             }
         }
+        scroll-event(event) => { return accept; }
     }
-    // Compact windows: the card goes nearly edge to edge.
-    property <length> margin: Screen.compact ? 24px : 48px;
-    // Esc closes it (from anywhere inside, the search box included). It takes the
-    // keyboard when it opens, so Tab starts inside the dialog.
-    init => { keys.focus(); }
+    // Which way the last Tab went (Shift+Tab: back), for going round at the ends.
+    property <bool> back;
+    // Rust remembers what had the keyboard and gives it back once this layer is gone. Opened
+    // from the keyboard, it starts on its first control (a text field, or a dialog's safe
+    // button: "Keep it" comes before "Delete"); from the mouse, nothing shows a ring until Tab.
+    init => {
+        if root.take-focus {
+            Nav.layer-opening();
+            head.focus();
+            Nav.layer-opened();
+            if Nav.keyboard {
+                Nav.focus-step(true);
+            }
+        }
+    }
     keys := FocusScope {
         width: root.width;
         height: root.height;
         focus-on-click: false;
         focus-on-tab-navigation: false;
+        accessible-role: groupbox;
+        accessible-label: root.label;
+        capture-key-pressed(event) => {
+            if event.text == Key.Tab {
+                root.back = event.modifiers.shift;
+            } else if event.text == Key.Backtab {
+                root.back = true;
+            }
+            reject
+        }
         key-pressed(event) => {
             if event.text == Key.Escape && root.closable {
                 root.close();
@@ -843,8 +1112,85 @@ export component Dialog inherits Rectangle {
             }
             reject
         }
-        accessible-role: groupbox;
-        accessible-label: root.title;
+        // The ends of the Tab order inside: reaching one goes round to the other side.
+        head := FocusScope {
+            x: 0;
+            y: 0;
+            width: 1px;
+            height: 1px;
+            focus-on-click: false;
+            focus-gained(reason) => {
+                if reason == FocusReason.tab-navigation && root.back {
+                    tail.focus();
+                    Nav.focus-step(false);
+                }
+            }
+            key-pressed(event) => {
+                // Shift+Tab right after it opened: round to the last control.
+                if event.text == Key.Backtab || (event.text == Key.Tab && event.modifiers.shift) {
+                    tail.focus();
+                    Nav.focus-step(false);
+                    return accept;
+                }
+                reject
+            }
+        }
+        @children
+        tail := FocusScope {
+            x: 0;
+            y: 0;
+            width: 1px;
+            height: 1px;
+            focus-on-click: false;
+            focus-gained(reason) => {
+                if reason == FocusReason.tab-navigation && !root.back {
+                    head.focus();
+                    Nav.focus-step(true);
+                }
+            }
+        }
+    }
+}
+
+// The floating card for dialogs: scrim, `panel`, 1px `line-strong`, 12px radius, a title
+// with an optional line under it, and a close button. Put it over the whole window.
+// `fit` sizes the card to its content instead of `card-height`. Behaves as `Backdrop` says.
+export component Dialog inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <length> card-width: 560px;
+    in property <length> card-height: 520px;
+    in property <bool> fit;
+    // Esc and the × close it. Off for dialogs that need an answer.
+    in property <bool> closable: true;
+    // A click outside closes it too. Off where even an untouched dialog shouldn't go on a
+    // stray click.
+    in property <bool> outside-closes: true;
+    // An editor with changes not saved yet: Esc, × or a click outside first asks "Discard
+    // your changes?" (the UI SDK's `dismissible: false` + `onDismissAttempt`). Untouched, it
+    // closes as any dialog does.
+    in property <bool> dirty;
+    callback close();
+    // Compact windows: the card goes nearly edge to edge.
+    property <length> margin: Screen.compact ? 24px : 48px;
+    property <bool> asking;
+    // A way out was taken (Esc, ×, a click outside).
+    function leave() {
+        if root.asking {
+            root.asking = false;
+        } else if root.dirty {
+            root.asking = true;
+        } else {
+            root.close();
+        }
+    }
+    Backdrop {
+        width: root.width;
+        height: root.height;
+        closable: root.closable;
+        outside-closes: root.outside-closes;
+        label: root.title;
+        close => { root.leave(); }
         Rectangle {
             width: min(root.card-width, root.width - root.margin);
             height: root.fit ? min(body.preferred-height, root.height - root.margin) : min(root.card-height, root.height - root.margin);
@@ -853,16 +1199,17 @@ export component Dialog inherits Rectangle {
             border-width: 1px;
             border-color: Theme.line-strong;
             clip: true;
-            TouchArea { }
+            TouchArea {
+                scroll-event(event) => { return accept; }
+            }
             body := VerticalLayout {
-                padding: Screen.compact ? 18px : 24px;
-                padding-top: Screen.compact ? 18px : 22px;
-                spacing: Screen.compact ? 14px : 16px;
+                padding: Space.inset;
+                spacing: Space.block;
                 HorizontalLayout {
-                    spacing: 12px;
+                    spacing: Space.inline;
                     VerticalLayout {
                         horizontal-stretch: 1;
-                        spacing: 4px;
+                        spacing: Space.hint;
                         Text {
                             text: root.title;
                             color: Theme.ink;
@@ -880,16 +1227,73 @@ export component Dialog inherits Rectangle {
                             overflow: elide;
                         }
                     }
-                    if root.closable: VerticalLayout {
-                        alignment: start;
-                        IconButton {
-                            icon: "\u{E711}";
-                            label: "Close";
-                            clicked => { root.close(); }
-                        }
+                    // Room for the ×, drawn below (after the content, so Tab reaches the
+                    // dialog's own controls first, as shadcn's dialog does).
+                    if root.closable: Rectangle {
+                        width: 32px;
+                        height: 32px;
                     }
                 }
                 @children
+            }
+            if root.closable: IconButton {
+                x: parent.width - self.width - Space.inset;
+                y: Space.inset;
+                icon: "\u{E711}";
+                label: "Close";
+                clicked => { root.leave(); }
+            }
+            // "Discard your changes?" over the card; Esc (or a click outside) keeps editing.
+            // A small card over the dimmed editor, not the whole tall card.
+            if root.asking: Rectangle {
+                background: Theme.scrim;
+                TouchArea {
+                    scroll-event(event) => { return accept; }
+                }
+                Rectangle {
+                    width: min(360px, parent.width - 2 * Space.inset);
+                    height: ask.preferred-height;
+                    border-radius: 12px;
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: Theme.line-strong;
+                ask := VerticalLayout {
+                    padding: Space.inset;
+                    spacing: Space.block;
+                    alignment: start;
+                    Text {
+                        text: "Discard your changes?";
+                        color: Theme.ink;
+                        font-family: Theme.display;
+                        font-size: 18px;
+                        font-weight: 700;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: "What you changed here isn't saved yet.";
+                        color: Theme.muted;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: Space.inline;
+                        alignment: start;
+                        // First: the safe one gets the keyboard (Radix AlertDialog, UI SDK).
+                        keep := GhostButton {
+                            text: "Keep editing";
+                            clicked => { root.asking = false; }
+                        }
+                        GhostButton {
+                            text: "Discard";
+                            clicked => {
+                                root.asking = false;
+                                root.close();
+                            }
+                        }
+                    }
+                }
+                }
+                init => { keep.take-focus(); }
             }
         }
     }
@@ -908,7 +1312,7 @@ export component ChoiceTile inherits Rectangle {
     accessible-label: root.title;
     accessible-description: root.text;
     accessible-action-default => { root.clicked(); }
-    KeyPress {
+    kp := KeyPress {
         radius: 12px;
         activated => { root.clicked(); }
     }
@@ -918,7 +1322,7 @@ export component ChoiceTile inherits Rectangle {
     animate background, border-color { duration: 100ms; }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { kp.take(); root.clicked(); }
     }
     col := VerticalLayout {
         padding: 16px;
@@ -954,12 +1358,18 @@ export component ChoiceChips inherits FlexboxLayout {
     callback changed();
     horizontal-stretch: 1;
     vertical-stretch: 0;
-    spacing: Screen.compact ? 7px : 8px;
+    spacing: Screen.compact ? 8px : 8px;
     accessible-role: radio-group;
+    // One Tab stop (the picked chip, or the first when none is), ← → move and pick, as a
+    // radio group does.
     for option[i] in root.options: Chip {
         horizontal-stretch: 0;
         text: option;
         selected: root.current == i;
+        roving: true;
+        tab-stop: root.current == i || (i == 0 && (root.current < 0 || root.current >= root.options.length));
+        index: i;
+        count: root.options.length;
         clicked => {
             root.current = i;
             root.changed();
@@ -968,18 +1378,61 @@ export component ChoiceChips inherits FlexboxLayout {
 }
 
 // The ⋯ button's pop-up (queue rows on compact windows): a floating card of calm rows.
-// Put the `MenuItem`s inside; the `PopupWindow` around it closes on any click.
+// Put the `MenuItem`s inside; the `PopupWindow` around it closes on any click, and Esc
+// closes it and gives the keyboard back. ↓ (or Tab) reaches the first item, ↑ ↓ move.
+// Longer than `tallest`, it scrolls.
 export component Menu inherits Rectangle {
+    in property <length> tallest: 420px;
     width: 200px;
-    height: col.preferred-height;
+    height: min(col.preferred-height, root.tallest);
     border-radius: 12px;
     background: Theme.panel;
     border-width: 1px;
     border-color: Theme.line-strong;
-    col := VerticalLayout {
-        padding: 6px;
-        spacing: 2px;
-        @children
+    clip: true;
+    accessible-role: list;
+    // Takes the keyboard once it's open, so ↓ works before anything is focused. (Not in
+    // `init`: Slint clears the focus right after building a pop-up, and gives it back to
+    // what had it when the pop-up closes.)
+    Timer {
+        interval: 1ms;
+        running: true;
+        triggered => {
+            self.running = false;
+            keys.focus();
+            // Opened from the keyboard: straight to the first item (Radix, the UI SDK).
+            if Nav.keyboard {
+                Nav.focus-step(true);
+            }
+        }
+    }
+    keys := FocusScope {
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        key-pressed(event) => {
+            if event.text == Key.DownArrow {
+                Nav.focus-step(true);
+                return accept;
+            }
+            // Typeahead: a letter jumps to the next item starting with it (typed quickly, a
+            // few letters; the same letter again goes on to the next match), as in Radix
+            // and the UI SDK. Rust does the moving.
+            if !event.modifiers.control && !event.modifiers.alt && !event.modifiers.meta && Nav.typeahead(event.text) {
+                return accept;
+            }
+            if event.text == Key.UpArrow {
+                Nav.focus-step(false);
+                return accept;
+            }
+            reject
+        }
+        Flickable {
+            col := VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                @children
+            }
+        }
     }
 }
 
@@ -988,30 +1441,50 @@ export component MenuItem inherits Rectangle {
     in property <string> text;
     // Its keyboard shortcut, said quietly on the right ("Ctrl+Shift+V").
     in property <string> shortcut;
+    // The picked one of a list (Site: YouTube): a ✓ in place of the icon, said as checked.
+    in property <bool> checked;
+    in property <bool> enabled: true;
     callback clicked();
     height: 36px;
     border-radius: 8px;
-    accessible-role: button;
-    accessible-label: root.text;
-    accessible-action-default => { root.clicked(); }
-    KeyPress {
+    opacity: root.enabled ? 1 : 0.4;
+    // The pointer and the keyboard share one highlight: hovering a row focuses it (so ↓ goes
+    // on from there), and a focused row shows the hover fill, no ring (Radix, the UI SDK).
+    // What a screen reader says sits on the part that takes focus: screen readers follow
+    // focus, and the menu's typeahead (Rust) matches letters against this label.
+    kp := KeyPress {
         radius: 8px;
+        enabled: root.enabled;
+        arrows: true;
+        ring: false;
+        accessible-role: button;
+        accessible-label: root.text;
+        accessible-checkable: root.checked;
+        accessible-checked: root.checked;
+        accessible-enabled: root.enabled;
+        accessible-action-default => { if root.enabled { root.clicked(); } }
         activated => { root.clicked(); }
     }
-    background: ta.pressed ? Theme.line : ta.has-hover ? Theme.raised : transparent;
+    background: ta.pressed ? Theme.line : ta.has-hover || kp.has-focus ? Theme.raised : transparent;
     ta := TouchArea {
-        mouse-cursor: pointer;
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => { root.clicked(); }
+        changed has-hover => {
+            if self.has-hover && root.enabled {
+                kp.focus();
+            }
+        }
     }
     HorizontalLayout {
-        padding-left: 10px;
+        padding-left: 8px;
         padding-right: 12px;
-        spacing: 10px;
+        spacing: 8px;
         Icon {
             width: 16px;
-            text: root.icon;
+            text: root.checked ? "\u{E73E}" : root.icon;
             font-size: 13px;
-            color: ta.has-hover ? Theme.ink : Theme.muted;
+            color: ta.has-hover || kp.has-focus ? Theme.ink : Theme.muted;
         }
         Text {
             horizontal-stretch: 1;
@@ -1086,13 +1559,13 @@ export component PlayMark inherits Rectangle {
     accessible-role: button;
     accessible-label: root.label;
     accessible-action-default => { root.clicked(); }
-    KeyPress {
+    kp := KeyPress {
         radius: 20px;
         activated => { root.clicked(); }
     }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { kp.take(); root.clicked(); }
     }
     Icon {
         x: (parent.width - self.width) / 2 + 1px;
@@ -1135,41 +1608,142 @@ export component Notice inherits HorizontalLayout {
     @children
 }
 
-// text, up to `widest`; the window centres it.
+// The one toast: a short message at the bottom (or over the player), up to `widest`; the
+// window places it. `kind`: 0 done (✓), 1 heads-up (i), 2 a problem (!); `tag` shows a Tag
+// in place of the icon ("Saved", 'Heard "clip that"'). Long text wraps (three lines at
+// most). Buttons (Undo, Open) go inside, after the text. × closes it (`closed`); while the
+// pointer is over it, it stays (`Nav.toast-hover`, read by the Rust timers).
 export component Toast inherits Rectangle {
     in property <string> text;
+    in property <int> kind;
+    in property <string> tag;
+    in property <int> tag-kind: 1;
     in property <length> widest;
+    in property <bool> closable: true;
+    callback closed();
     width: min(row.preferred-width, root.widest);
-    height: 46px;
+    height: max(46px, row.preferred-height);
     border-radius: 12px;
     background: Theme.panel;
     border-width: 1px;
-    border-color: Theme.line-strong;
+    border-color: root.kind == 2 ? Theme.bad : Theme.line-strong;
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.text;
+    hover := TouchArea {
+        changed has-hover => { Nav.toast-hover = self.has-hover; }
+    }
     row := HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 20px;
-        spacing: 10px;
-        VerticalLayout {
+        padding-left: 12px;
+        padding-right: root.closable ? 6px : 16px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 8px;
+        if root.tag != "": VerticalLayout {
             alignment: center;
+            horizontal-stretch: 0;
+            Tag {
+                text: root.tag;
+                kind: root.tag-kind;
+            }
+        }
+        if root.tag == "": VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
             Rectangle {
                 width: 20px;
                 height: 20px;
                 border-radius: 6px;
-                background: Theme.ok-bg;
+                background: root.kind == 2 ? Theme.bad-bg : root.kind == 1 ? Theme.raised : Theme.ok-bg;
                 Icon {
-                    text: "\u{E73E}";
+                    text: root.kind == 2 ? "\u{E7BA}" : root.kind == 1 ? "\u{E946}" : "\u{E73E}";
                     font-size: 11px;
-                    color: Theme.ok;
+                    color: root.kind == 2 ? Theme.bad : root.kind == 1 ? Theme.ink : Theme.ok;
                 }
             }
         }
         Text {
+            horizontal-stretch: 1;
             text: root.text;
             color: Theme.ink;
             font-family: Theme.body;
             font-size: 13px;
             vertical-alignment: center;
+            wrap: word-wrap;
+            max-height: 3 * 18px;
             overflow: elide;
+        }
+        @children
+        if root.closable: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            IconButton {
+                icon: "\u{E711}";
+                label: "Close";
+                clicked => { root.closed(); }
+            }
+        }
+    }
+}
+
+// A control and the hint that explains it, kept together: the hint 4px under it (the next
+// setting is further away, `Space.item`). Tick has its own `hint`; this is for the rest
+// (a SettingRow, a text box, a choice row).
+export component Field inherits VerticalLayout {
+    spacing: Space.hint;
+}
+
+// A small heading over a group of choices (Capture page, Phone tab).
+export component Head inherits Text {
+    color: Theme.ink;
+    font-family: Theme.display;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+// A sheet from the bottom on compact windows (Library: Filter, the picked thing): a grab
+// bar, then what's inside (its own title row with ×), scrolling when it's taller than the
+// window allows. `title` is what a screen reader says. Behaves as `Backdrop` says.
+export component Sheet inherits Rectangle {
+    in property <string> title;
+    in property <bool> outside-closes: true;
+    callback close();
+    Backdrop {
+        width: root.width;
+        height: root.height;
+        outside-closes: root.outside-closes;
+        label: root.title;
+        close => { root.close(); }
+        Rectangle {
+            x: 0;
+            y: root.height - self.height;
+            width: root.width;
+            height: min(col.preferred-height + 2px, root.height - 40px);
+            border-radius: 14px;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line-strong;
+            clip: true;
+            TouchArea {
+                scroll-event(event) => { return accept; }
+            }
+            ScrollView {
+                col := VerticalLayout {
+                    padding: 16px;
+                    padding-top: 12px;
+                    spacing: 12px;
+                    alignment: start;
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 40px;
+                            height: 4px;
+                            border-radius: 2px;
+                            background: Theme.line-strong;
+                        }
+                    }
+                    @children
+                }
+            }
         }
     }
 }
@@ -1441,7 +2015,7 @@ export component ChoiceRow inherits Rectangle {
     accessible-checkable: true;
     accessible-checked: root.selected;
     accessible-action-default => { root.clicked(); }
-    KeyPress {
+    kp := KeyPress {
         radius: 8px;
         activated => { root.clicked(); }
     }
@@ -1449,7 +2023,7 @@ export component ChoiceRow inherits Rectangle {
     border-radius: 8px;
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { kp.take(); root.clicked(); }
     }
     Rectangle {
         x: 0;
@@ -1461,8 +2035,8 @@ export component ChoiceRow inherits Rectangle {
     col := HorizontalLayout {
         padding-left: 6px;
         padding-right: 8px;
-        padding-top: 9px;
-        padding-bottom: 9px;
+        padding-top: 8px;
+        padding-bottom: 8px;
         spacing: 12px;
         VerticalLayout {
             alignment: center;
@@ -1686,13 +2260,13 @@ export component RailSearch inherits Rectangle {
     accessible-role: button;
     accessible-label: "Search and do anything (Ctrl+K)";
     accessible-action-default => { Nav.palette-open = true; }
-    KeyPress {
+    kp := KeyPress {
         radius: 10px;
         activated => { Nav.palette-open = true; }
     }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { Nav.palette-open = true; }
+        clicked => { kp.take(); Nav.palette-open = true; }
     }
     VerticalLayout {
         alignment: center;

@@ -16,13 +16,13 @@ export component Sidebar inherits Rectangle {
         background: Theme.line;
     }
     VerticalLayout {
-        padding: 10px;
-        padding-top: 18px;
+        padding: 12px;
+        padding-top: 20px;
         spacing: 6px;
         // Logo mark: the one sticker that's always on screen.
         HorizontalLayout {
             alignment: center;
-            padding-bottom: 14px;
+            padding-bottom: 16px;
             LogoMark { }
         }
         RailSearch { }
@@ -31,6 +31,7 @@ export component Sidebar inherits Rectangle {
             icon: "\u{E896}";
             label: "Download";
             active: root.page == 0;
+            first: true;
             clicked => { root.page = 0; }
         }
         NavItem {
@@ -63,6 +64,7 @@ export component Sidebar inherits Rectangle {
             icon: "\u{E713}";
             label: "Settings";
             active: root.settings-open;
+            last: true;
             clicked => { root.open-settings(); }
         }
     }
@@ -83,7 +85,7 @@ export component TabBar inherits Rectangle {
         background: Theme.line;
     }
     HorizontalLayout {
-        padding: 5px;
+        padding: 4px;
         padding-top: 6px;
         spacing: 4px;
         NavItem {
@@ -91,6 +93,9 @@ export component TabBar inherits Rectangle {
             icon: "\u{E896}";
             label: "Download";
             active: root.page == 0 && !root.settings-open;
+            tab-stop: root.page == 0;
+            index: 0;
+            count: 5;
             clicked => { root.page = 0; root.close-settings(); }
         }
         NavItem {
@@ -98,6 +103,9 @@ export component TabBar inherits Rectangle {
             icon: "\u{E8C6}";
             label: "Clip";
             active: root.page == 1 && !root.settings-open;
+            tab-stop: root.page == 1;
+            index: 1;
+            count: 5;
             clicked => { root.page = 1; root.close-settings(); }
         }
         NavItem {
@@ -105,6 +113,9 @@ export component TabBar inherits Rectangle {
             icon: "\u{E73F}";
             label: "Compress";
             active: root.page == 2 && !root.settings-open;
+            tab-stop: root.page == 2;
+            index: 2;
+            count: 5;
             clicked => { root.page = 2; root.close-settings(); }
         }
         NavItem {
@@ -112,6 +123,9 @@ export component TabBar inherits Rectangle {
             icon: "\u{E7C8}";
             label: "Capture";
             active: root.page == 3 && !root.settings-open;
+            tab-stop: root.page == 3;
+            index: 3;
+            count: 5;
             dot: Capture.state == 2 || Phone.state >= 5;
             clicked => { root.page = 3; root.close-settings(); }
         }
@@ -120,6 +134,9 @@ export component TabBar inherits Rectangle {
             icon: "\u{E8F1}";
             label: "Library";
             active: root.page == 4 && !root.settings-open;
+            tab-stop: root.page == 4;
+            index: 4;
+            count: 5;
             clicked => { root.page = 4; root.close-settings(); }
         }
     }

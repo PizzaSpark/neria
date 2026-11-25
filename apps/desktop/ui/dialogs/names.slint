@@ -61,7 +61,7 @@ component PieceChip inherits Rectangle {
         }
     }
     row := HorizontalLayout {
-        padding-left: 9px;
+        padding-left: 8px;
         padding-right: 4px;
         spacing: 4px;
         Text {
@@ -76,13 +76,13 @@ component PieceChip inherits Rectangle {
             accessible-role: button;
             accessible-label: "Remove " + root.text;
             accessible-action-default => { Names.remove(root.index); }
-            KeyPress {
+            kp := KeyPress {
                 radius: 6px;
                 activated => { Names.remove(root.index); }
             }
             TouchArea {
                 mouse-cursor: pointer;
-                clicked => { Names.remove(root.index); }
+                clicked => { kp.take(); Names.remove(root.index); }
             }
             Icon {
                 text: "\u{E711}";
@@ -95,7 +95,7 @@ component PieceChip inherits Rectangle {
 
 // A field to add: click it, or drag it onto the line.
 component FieldChip inherits Chip {
-    in property <int> index;
+    // `index` (Chip's): which field it adds.
     clicked => { Names.add-field(root.index); }
     TouchArea {
         mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
@@ -113,16 +113,26 @@ component FieldChip inherits Chip {
 }
 
 // Settings → Download → File names → Change: build a name from fields and text.
+// ui-rules: changes apply as they're made; the typed template is applied on closing too.
 export component NamesDialog inherits Dialog {
     title: "File names";
     subtitle: "Click or drag fields onto the line. A / makes a folder.";
     card-width: 640px;
     fit: true;
-    close => { Names.open = false; }
+    close => { root.finish(); }
+    // The template typed in Advanced, not yet applied.
+    property <string> raw-typed;
+    property <bool> raw-dirty;
+    function finish() {
+        if root.raw-dirty {
+            Names.set-raw(root.raw-typed);
+        }
+        Names.open = false;
+    }
 
     // Ready-made names and your own.
     FlexboxLayout {
-        spacing: 7px;
+        spacing: 8px;
         horizontal-stretch: 1;
         vertical-stretch: 0;
         for p[i] in Names.presets: Chip {
@@ -147,7 +157,7 @@ export component NamesDialog inherits Dialog {
         background: Theme.bg;
         FlexboxLayout {
             padding: 8px;
-            spacing: 5px;
+            spacing: 4px;
             for p[i] in Names.pieces: PieceChip {
                 text: p.text;
                 field: p.field;
@@ -179,7 +189,7 @@ export component NamesDialog inherits Dialog {
         }
     }
     if !Names.custom: FlexboxLayout {
-        spacing: 7px;
+        spacing: 8px;
         horizontal-stretch: 1;
         vertical-stretch: 0;
         for f[i] in Names.fields: FieldChip {
@@ -199,7 +209,7 @@ export component NamesDialog inherits Dialog {
         wrap: word-wrap;
     }
     if Names.warning != "": HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         VerticalLayout {
             alignment: start;
             horizontal-stretch: 0;
@@ -224,17 +234,25 @@ export component NamesDialog inherits Dialog {
             clicked => { Names.advanced = !Names.advanced; }
         }
     }
+    // Applied on Enter, and on Done or closing, so typing isn't interrupted by a refresh
+    // and nothing typed is lost.
     if Names.advanced: LineEdit {
         text: Names.raw;
-        // Applied on Enter, so typing isn't interrupted.
-        accepted(t) => { Names.set-raw(t); }
+        edited(t) => {
+            root.raw-typed = t;
+            root.raw-dirty = true;
+        }
+        accepted(t) => {
+            Names.set-raw(t);
+            root.raw-dirty = false;
+        }
     }
     HorizontalLayout {
         alignment: end;
         PrimaryButton {
             text: "Done";
             icon: "\u{E73E}";
-            clicked => { Names.open = false; }
+            clicked => { root.finish(); }
         }
     }
 }

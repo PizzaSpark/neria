@@ -1,12 +1,19 @@
 import { Theme, Screen, Nav } from "../theme.slint";
 import { Commands, PalRow } from "../globals.slint";
-import { Icon, Kbd, Thumb } from "../widgets.slint";
+import { Icon, Kbd, Thumb, Backdrop } from "../widgets.slint";
 
 // One row: a heading, or an action / a saved thing to pick.
 component PaletteRow inherits Rectangle {
     in property <PalRow> item;
     in property <bool> on;
     callback clicked();
+    // It became the highlighted row: the list scrolls it into view.
+    callback reveal(length, length);
+    changed on => {
+        if self.on {
+            root.reveal(self.y, self.height);
+        }
+    }
     height: root.item.heading ? 30px : 42px;
     border-radius: 8px;
     background: root.on ? Theme.raised : transparent;
@@ -23,9 +30,9 @@ component PaletteRow inherits Rectangle {
         letter-spacing: 0.8px;
     }
     if !root.item.heading: HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 11px;
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 12px;
         alignment: stretch;
         // The thing's frame, or the action's glyph in a small outlined square.
         if root.item.has-thumb: VerticalLayout {
@@ -126,212 +133,225 @@ component PaletteRow inherits Rectangle {
 // (compact). Ctrl+K opens it; typing filters, ↑ ↓ move, Enter does it, → a thing's actions,
 // Esc closes.
 export component PaletteBox inherits Rectangle {
-    background: Theme.scrim;
-    // A click outside the box closes it; keyboard: Esc.
-    TouchArea {
-        clicked => { Nav.palette-open = false; }
-    }
     property <length> box-width: Screen.compact ? root.width : min(560px, root.width - 32px); // ui-rules: shrinks to the window
     property <length> list-max: root.height - (Screen.compact ? 120px : 200px);
-    card := Rectangle {
-        x: (root.width - root.box-width) / 2;
-        y: Screen.compact ? 0px : 70px;
-        width: root.box-width;
-        height: col.preferred-height;
-        background: Theme.panel;
-        border-width: 1px;
-        border-color: Theme.line-strong;
-        border-top-left-radius: Screen.compact ? 0px : 14px;
-        border-top-right-radius: Screen.compact ? 0px : 14px;
-        border-bottom-left-radius: 14px;
-        border-bottom-right-radius: 14px;
-        clip: true;
-        drop-shadow-blur: 40px;
-        drop-shadow-offset-y: 16px;
-        drop-shadow-color: #00000099; // ui-rules: a shadow, not a surface colour
-        // Clicks inside don't close it.
-        TouchArea { }
-        col := VerticalLayout {
-            // The box: what's typed, after the crumb of a second step.
-            HorizontalLayout {
-                height: 52px;
-                padding-left: 14px;
-                padding-right: 14px;
-                spacing: 10px;
-                Icon {
-                    text: "\u{E721}";
-                    color: Theme.muted;
-                    horizontal-stretch: 0;
-                }
-                if Commands.crumb != "": VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    Rectangle {
-                        height: 26px;
-                        border-radius: 7px;
-                        background: Theme.raised;
-                        border-width: 1px;
-                        border-color: Theme.line-strong;
-                        HorizontalLayout {
-                            padding-left: 8px;
-                            padding-right: 8px;
-                            spacing: 6px;
-                            if Commands.crumb-has-thumb: VerticalLayout {
-                                alignment: center;
-                                Thumb {
-                                    width: 22px;
-                                    height: 13px;
-                                    border-radius: 3px;
-                                    source: Commands.crumb-thumb;
+    // A click outside the box or Esc closes it; the wheel doesn't reach the page. The box
+    // takes the keyboard itself (its search line), and Tab there goes into a thing.
+    Backdrop {
+        width: root.width;
+        height: root.height;
+        take-focus: false;
+        label: "Command palette";
+        close => { Nav.palette-open = false; }
+        card := Rectangle {
+            x: (root.width - root.box-width) / 2;
+            y: Screen.compact ? 0px : 70px;
+            width: root.box-width;
+            height: col.preferred-height;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line-strong;
+            border-top-left-radius: Screen.compact ? 0px : 14px;
+            border-top-right-radius: Screen.compact ? 0px : 14px;
+            border-bottom-left-radius: 14px;
+            border-bottom-right-radius: 14px;
+            clip: true;
+            drop-shadow-blur: 40px;
+            drop-shadow-offset-y: 16px;
+            drop-shadow-color: #00000099; // ui-rules: a shadow, not a surface colour
+            // Clicks inside don't close it.
+            TouchArea {
+                scroll-event(event) => { return accept; }
+            }
+            col := VerticalLayout {
+                // The box: what's typed, after the crumb of a second step.
+                HorizontalLayout {
+                    height: 52px;
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
+                    Icon {
+                        text: "\u{E721}";
+                        color: Theme.muted;
+                        horizontal-stretch: 0;
+                    }
+                    if Commands.crumb != "": VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        Rectangle {
+                            height: 26px;
+                            border-radius: 7px;
+                            background: Theme.raised;
+                            border-width: 1px;
+                            border-color: Theme.line-strong;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 6px;
+                                if Commands.crumb-has-thumb: VerticalLayout {
+                                    alignment: center;
+                                    Thumb {
+                                        width: 22px;
+                                        height: 13px;
+                                        border-radius: 3px;
+                                        source: Commands.crumb-thumb;
+                                    }
+                                }
+                                if !Commands.crumb-has-thumb: Icon {
+                                    text: Commands.crumb-icon;
+                                    font-size: 12px;
+                                }
+                                Text {
+                                    text: Commands.crumb;
+                                    color: Theme.ink;
+                                    font-size: 12.5px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    max-width: Screen.compact ? 150px : 220px;
                                 }
                             }
-                            if !Commands.crumb-has-thumb: Icon {
-                                text: Commands.crumb-icon;
-                                font-size: 12px;
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        if Commands.query == "": Text {
+                            width: parent.width;
+                            text: Commands.placeholder;
+                            color: Theme.dim;
+                            font-size: 15px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        keys := FocusScope {
+                            capture-key-pressed(event) => {
+                                if event.text == Key.Escape {
+                                    Nav.palette-open = false;
+                                    return accept;
+                                }
+                                if event.text == Key.UpArrow {
+                                    Commands.move(-1);
+                                    return accept;
+                                }
+                                if event.text == Key.DownArrow {
+                                    Commands.move(1);
+                                    return accept;
+                                }
+                                if event.text == Key.Return {
+                                    Commands.pick(Commands.selected);
+                                    return accept;
+                                }
+                                if event.text == Key.Tab || (event.text == Key.RightArrow && input.cursor-position-byte-offset >= Commands.query.character-count) {
+                                    if Commands.go-into() {
+                                        return accept;
+                                    }
+                                    return event.text == Key.Tab ? accept : reject;
+                                }
+                                if (event.text == Key.Backspace || event.text == Key.LeftArrow) && Commands.query == "" && Commands.crumb != "" {
+                                    Commands.back();
+                                    return accept;
+                                }
+                                reject
                             }
-                            Text {
-                                text: Commands.crumb;
+                            input := TextInput {
+                                width: parent.width;
+                                height: parent.height;
+                                text <=> Commands.query;
                                 color: Theme.ink;
-                                font-size: 12.5px;
+                                font-size: 15px;
                                 vertical-alignment: center;
-                                overflow: elide;
-                                max-width: Screen.compact ? 150px : 220px;
+                                single-line: true;
+                                accessible-label: "What do you want to do?";
+                                edited => { Commands.changed(); }
+                            }
+                        }
+                    }
+                    if !Screen.compact: VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        Kbd { text: "Esc"; }
+                    }
+                    // Compact has no keyboard Esc: an × closes it.
+                    if Screen.compact: VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 0;
+                        Rectangle {
+                            width: 32px;
+                            height: 32px;
+                            Icon {
+                                text: "\u{E711}";
+                                color: Theme.muted;
+                            }
+                            // keyboard: Esc closes it too.
+                            TouchArea {
+                                accessible-role: button;
+                                accessible-label: "Close";
+                                clicked => { Nav.palette-open = false; }
                             }
                         }
                     }
                 }
                 Rectangle {
-                    horizontal-stretch: 1;
-                    if Commands.query == "": Text {
-                        width: parent.width;
-                        text: Commands.placeholder;
-                        color: Theme.dim;
-                        font-size: 15px;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                    keys := FocusScope {
-                        capture-key-pressed(event) => {
-                            if event.text == Key.Escape {
-                                Nav.palette-open = false;
-                                return accept;
-                            }
-                            if event.text == Key.UpArrow {
-                                Commands.move(-1);
-                                return accept;
-                            }
-                            if event.text == Key.DownArrow {
-                                Commands.move(1);
-                                return accept;
-                            }
-                            if event.text == Key.Return {
-                                Commands.pick(Commands.selected);
-                                return accept;
-                            }
-                            if event.text == Key.Tab || (event.text == Key.RightArrow && input.cursor-position-byte-offset >= Commands.query.character-count) {
-                                if Commands.go-into() {
-                                    return accept;
+                    height: 1px;
+                    background: Theme.line;
+                }
+                list := Flickable {
+                    height: min(rows.preferred-height, root.list-max);
+                    content-height: rows.preferred-height;
+                    rows := VerticalLayout {
+                        padding: 6px;
+                        padding-top: 2px;
+                        spacing: 2px;
+                        for row[i] in Commands.rows: PaletteRow {
+                            item: row;
+                            on: i == Commands.selected;
+                            clicked => { Commands.pick(i); }
+                            reveal(y, h) => {
+                                if y + h > -list.content-y + list.height {
+                                    list.content-y = -(y + h + 6px - list.height);
+                                } else if y < -list.content-y {
+                                    list.content-y = -max(0px, y - 6px);
                                 }
-                                return event.text == Key.Tab ? accept : reject;
                             }
-                            if (event.text == Key.Backspace || event.text == Key.LeftArrow) && Commands.query == "" && Commands.crumb != "" {
-                                Commands.back();
-                                return accept;
-                            }
-                            reject
                         }
-                        input := TextInput {
-                            width: parent.width;
-                            height: parent.height;
-                            text <=> Commands.query;
-                            color: Theme.ink;
-                            font-size: 15px;
-                            vertical-alignment: center;
-                            single-line: true;
-                            accessible-label: "What do you want to do?";
-                            edited => { Commands.changed(); }
-                        }
-                    }
-                }
-                if !Screen.compact: VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    Kbd { text: "Esc"; }
-                }
-                // Compact has no keyboard Esc: an × closes it.
-                if Screen.compact: VerticalLayout {
-                    alignment: center;
-                    horizontal-stretch: 0;
-                    Rectangle {
-                        width: 32px;
-                        height: 32px;
-                        Icon {
-                            text: "\u{E711}";
+                        if Commands.rows.length == 0: Text {
+                            height: 44px;
+                            x: 10px;
+                            text: "Nothing like that. Try other words.";
                             color: Theme.muted;
-                        }
-                        // keyboard: Esc closes it too.
-                        TouchArea {
-                            accessible-role: button;
-                            accessible-label: "Close";
-                            clicked => { Nav.palette-open = false; }
+                            font-size: 13px;
+                            vertical-alignment: center;
                         }
                     }
                 }
-            }
-            Rectangle {
-                height: 1px;
-                background: Theme.line;
-            }
-            Flickable {
-                height: min(rows.preferred-height, root.list-max);
-                content-height: rows.preferred-height;
-                rows := VerticalLayout {
-                    padding: 6px;
-                    padding-top: 2px;
-                    spacing: 2px;
-                    for row[i] in Commands.rows: PaletteRow {
-                        item: row;
-                        on: i == Commands.selected;
-                        clicked => { Commands.pick(i); }
-                    }
-                    if Commands.rows.length == 0: Text {
-                        height: 44px;
-                        x: 10px;
-                        text: "Nothing like that. Try other words.";
-                        color: Theme.muted;
-                        font-size: 13px;
-                        vertical-alignment: center;
-                    }
+                if !Screen.compact: Rectangle {
+                    height: 1px;
+                    background: Theme.line;
                 }
-            }
-            if !Screen.compact: Rectangle {
-                height: 1px;
-                background: Theme.line;
-            }
-            if !Screen.compact: HorizontalLayout {
-                padding-left: 16px;
-                padding-right: 16px;
-                padding-top: 8px;
-                padding-bottom: 9px;
-                spacing: 14px;
-                alignment: start;
-                for hint in Commands.crumb != "" ? [
-                    { key: "↑↓", text: "move" },
-                    { key: "Enter", text: "do it" },
-                    { key: "←", text: "back" },
-                ] : [
-                    { key: "↑↓", text: "move" },
-                    { key: "Enter", text: "do it" },
-                    { key: "→", text: "its actions" },
-                    { key: "Esc", text: "close" },
-                ]: HorizontalLayout {
-                    spacing: 5px;
-                    Kbd { text: hint.key; }
-                    Text {
-                        text: hint.text;
-                        color: Theme.dim;
-                        font-size: 11.5px;
-                        vertical-alignment: center;
+                if !Screen.compact: HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    spacing: 12px;
+                    alignment: start;
+                    for hint in Commands.crumb != "" ? [
+                        { key: "↑↓", text: "move" },
+                        { key: "Enter", text: "do it" },
+                        { key: "←", text: "back" },
+                    ] : [
+                        { key: "↑↓", text: "move" },
+                        { key: "Enter", text: "do it" },
+                        { key: "→", text: "its actions" },
+                        { key: "Esc", text: "close" },
+                    ]: HorizontalLayout {
+                        spacing: 4px;
+                        Kbd { text: hint.key; }
+                        Text {
+                            text: hint.text;
+                            color: Theme.dim;
+                            font-size: 11.5px;
+                            vertical-alignment: center;
+                        }
                     }
                 }
             }

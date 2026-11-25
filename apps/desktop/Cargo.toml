@@ -10,7 +10,7 @@ neria-core = { path = "../../crates/neria-core" }
 neria-player = { path = "../../crates/neria-player" }
 glow = "0.18"
 anyhow.workspace = true
-slint = { version = "1.18", features = ["unstable-winit-030"] }
+slint = { version = "=1.18.1", features = ["unstable-winit-030"] } # exact: main.rs uses its unstable focus API (focus back to a dialog's opener)
 rfd = "0.17"
 arboard = { version = "3.7", default-features = false }
 open = "5"
@@ -44,4 +44,4 @@ windows-core = "0.62"
 tauri-winrt-notification = "0.8"
 
 [build-dependencies]
-slint-build = "1.18"
+slint-build = "=1.18.1"

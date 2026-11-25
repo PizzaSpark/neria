@@ -68,7 +68,17 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
 - Radius: 9–12px on controls and thumbnails, 6px on tags and small thumbnails. No pills.
 - Outlines: 2px on controls, 1px hairlines for structure.
 - Hard shadow: 3px 3px, no blur, only on the main action (and the logo mark).
-- Spacing scale: 4, 8, 12, 16, 22, 26px. Page padding 22–26px. Queue rows 60px.
+- Spacing: one 4px scale, 0 2 4 6 8 12 16 20 24 28 32 (… 48), named in theme.slint's `Space`.
+  The rule (shadcn's form layout): **tight inside a thing, loose between things**, so what
+  belongs together reads together:
+  - a setting and its own hint: 4px (`Space.hint`; Tick has `hint:`, other controls go in a
+    `Field` with theirs), lined up with the label, never floating between two settings;
+  - side by side in a row (icon and label, buttons): 8 (`inline`);
+  - a heading and its first setting: 12 (`title`); one setting and the next: 16 (`item`);
+  - one group and the next: 32, 24 on compact (`group`);
+  - inside a dialog, drawer or card: 24, 16 on compact (`inset`); page padding 24 / 16.
+  `ui_rules` fails on a spacing off the scale; an exact alignment says why
+  (`// ui-rules: …`). Mock: design/spacing.html. Queue rows 60px.
 - Thumbnails lead: link previews at 184×104, queue rows 64×36.
 
 ## Components
@@ -127,9 +137,25 @@ All three are SIL OFL; bundle the `.ttf` files and register them with Slint (`im
   lists inside are calm rows with hairlines, never cards per row.
 - **Keyboard focus**: every pressable control uses `KeyPress` (Tab reaches it, Enter/Space
   presses it): a 2px `focus` (ink) ring, 4px outside the control, only while focused from the
-  keyboard. Dialogs and the drawer close on Esc.
-- **Tick**: 20px box, 2px `line-strong` outline, 6px radius; ticked = `ink` fill with a `bg`
-  check. The label is part of the target.
+  keyboard. Enter presses on key down (no repeat), Space when let go. A group where one is
+  picked (tabs, chips, section lists) is one Tab stop: arrows move and pick, go round at the
+  ends, Home / End (KeyPress `roving`). Menus: ↑ ↓, the first item focused when opened from
+  the keyboard, hover and keyboard share one highlight, a letter jumps to the next row
+  starting with it. A click focuses a control too (Tab and arrows go on from it) but shows no
+  ring, and Space / Enter then belong to the page. Greyed-out controls (`enabled: false`)
+  take neither clicks nor keys.
+- **Dialogs, the drawer, sheets, the palette** sit on `Backdrop`: Esc and a click outside
+  close them (an editor with unsaved changes asks "Discard your changes?" first), the wheel never scrolls the page
+  behind, Tab goes round inside, opened from the keyboard they start on their first control,
+  and focus goes back to what opened them. Read from Radix, the UI SDK and Sonner's source:
+  docs/UPSTREAM.md → The shared controls.
+- **Toasts** (`Toast`, one widget): done ✓ / heads-up i / problem ! (red edge, 8s instead of
+  4s; a newer toast waits for a problem to go). Text wraps (3 lines), × closes, the clock
+  stops while hovered or while Neria is behind another window. Drawn above dialogs.
+- **Tick**: 18px box, 2px `edge` outline, 5px radius; ticked = `ink` fill with a `bg` check
+  drawn as a path (Lucide's check, 2px rounded stroke, 14px: shadcn's proportions, so it reads
+  as a tick, not a white block). The label is part of the target; `hint:` puts its muted line
+  4px under the label. Mock: design/tick.html (A).
 - **Set, not as is** (`GhostButton { on: true }`): an `accent-hi` outline on a secondary
   button whose thing has been changed (Sound, Picture, Clips · 3). It's what still tells
   you so when narrow windows shrink the button to its icon.

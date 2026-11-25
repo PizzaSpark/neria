@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -1592,19 +1592,227 @@ fn is_single_gif(info: &probe::MediaInfo) -> bool {
     info.items.len() == 1 && info.items[0].kind == post::ItemKind::Gif
 }
 
-/// Show a short message at the bottom of the window for a few seconds.
-pub(crate) fn show_toast(ui: &AppWindow, msg: &str) {
-    static SHOWN: AtomicU64 = AtomicU64::new(0);
-    let me = SHOWN.fetch_add(1, Ordering::SeqCst) + 1;
-    ui.set_toast(msg.into());
+/// Keyboard focus moves .slint can't do by itself:
+/// - `Nav.focus-step(forward)` / `Nav.focus-steps(n)`: move focus as Tab / Shift+Tab would,
+///   n times, by pressing that key on the window. Arrow keys in menus and groups use it (n > 1:
+///   going round a group's ends, Home / End), and a dialog's Tab going round. Pressed a moment
+///   later, out of the key event that asked. `Nav.steps-left` counts down, so a group picks only
+///   the option the last step lands on; `Nav.arrowing` is cleared once it has moved.
+/// - `Nav.layer-opening()` / `layer-opened()` (Backdrop): remember what had the keyboard when
+///   a dialog, drawer or sheet opened, and give it back once that layer is gone, as Radix and
+///   the UI SDK do. Slint has no "what had focus" in its public API; the window's focus item is
+///   in its unstable one (pinned: Cargo.toml has `slint = "=1.18.1"`).
+fn install_focus_step(ui: &AppWindow) {
     let weak = ui.as_weak();
-    slint::Timer::single_shot(Duration::from_secs(4), move || {
-        // A newer toast keeps its own full time.
-        if SHOWN.load(Ordering::SeqCst) == me
-            && let Some(ui) = weak.upgrade()
-        {
-            ui.set_toast("".into());
+    let step = move |n: i32| {
+        let weak = weak.clone();
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let key: slint::SharedString =
+                if n > 0 { slint::platform::Key::Tab } else { slint::platform::Key::Backtab }.into();
+            let window = ui.window();
+            let nav = ui.global::<Nav>();
+            let total = n.unsigned_abs().max(1) as i32;
+            for k in 1..=total {
+                nav.set_steps_left(total - k);
+                window.dispatch_event(slint::platform::WindowEvent::KeyPressed { text: key.clone() });
+                window.dispatch_event(slint::platform::WindowEvent::KeyReleased { text: key.clone() });
+            }
+            nav.set_steps_left(0);
+            nav.set_arrowing(false);
+        });
+    };
+    let one = step.clone();
+    ui.global::<Nav>().on_focus_step(move |forward| one(if forward { 1 } else { -1 }));
+    ui.global::<Nav>().on_focus_steps(move |n| step(n));
+
+    // Typeahead in menus (Radix `menu.tsx`, UI SDK `foundation/text/typeahead.ts`): letters
+    // typed within half a second add up; the same letter again goes on to the next match. Tab
+    // is pressed until the focused item's label starts with them, or every item was tried.
+    let typed: Rc<RefCell<(String, std::time::Instant)>> =
+        Rc::new(RefCell::new((String::new(), std::time::Instant::now())));
+    ui.global::<Nav>().on_typeahead({
+        let weak = ui.as_weak();
+        move |text| {
+            let mut chars = text.chars();
+            let (Some(c), None) = (chars.next(), chars.next()) else { return false };
+            if !c.is_alphanumeric() {
+                return false;
+            }
+            let want = {
+                let mut t = typed.borrow_mut();
+                if t.1.elapsed() > Duration::from_millis(500) {
+                    t.0.clear();
+                }
+                t.0.extend(c.to_lowercase());
+                t.1 = std::time::Instant::now();
+                // "sss": the next item starting with s, not one starting with "sss".
+                let first = t.0.chars().next().unwrap_or(c);
+                if t.0.chars().all(|x| x == first) { first.to_string() } else { t.0.clone() }
+            };
+            let weak = weak.clone();
+            slint::Timer::single_shot(Duration::ZERO, move || {
+                let Some(ui) = weak.upgrade() else { return };
+                use slint::private_unstable_api::re_exports::{AccessibleStringProperty, WindowInner};
+                let window = ui.window();
+                let focus = || WindowInner::from_pub(window).focus_item.borrow().upgrade();
+                let start = focus();
+                let tab: slint::SharedString = slint::platform::Key::Tab.into();
+                for _ in 0..64 {
+                    window.dispatch_event(slint::platform::WindowEvent::KeyPressed { text: tab.clone() });
+                    window.dispatch_event(slint::platform::WindowEvent::KeyReleased { text: tab.clone() });
+                    let Some(now) = focus() else { break };
+                    let label = now.accessible_string_property(AccessibleStringProperty::Label).unwrap_or_default();
+                    if label.to_lowercase().starts_with(&want) || Some(&now) == start.as_ref() {
+                        break;
+                    }
+                }
+            });
+            true
         }
+    });
+
+    // Layers open now: (what had focus before, the layer's own first focus).
+    type Weak = slint::private_unstable_api::re_exports::ItemWeak;
+    let layers: Rc<RefCell<Vec<(Weak, Weak)>>> = Rc::default();
+    let focused = |ui: &AppWindow| -> Weak {
+        slint::private_unstable_api::re_exports::WindowInner::from_pub(ui.window()).focus_item.borrow().clone()
+    };
+    ui.global::<Nav>().on_layer_opening({
+        let (weak, layers) = (ui.as_weak(), layers.clone());
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            layers.borrow_mut().push((focused(&ui), Weak::default()));
+        }
+    });
+    let watch = Rc::new(slint::Timer::default());
+    ui.global::<Nav>().on_layer_opened({
+        let (weak, layers, watch) = (ui.as_weak(), layers.clone(), watch.clone());
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(top) = layers.borrow_mut().last_mut() {
+                top.1 = focused(&ui);
+            }
+            if watch.running() {
+                return;
+            }
+            // While a layer is open, look 10 times a second whether it's gone (its own first
+            // focus no longer exists), and hand the keyboard back to what opened it.
+            let (weak, layers, me) = (weak.clone(), layers.clone(), Rc::downgrade(&watch));
+            watch.start(slint::TimerMode::Repeated, Duration::from_millis(100), move || {
+                let Some(ui) = weak.upgrade() else { return };
+                let mut l = layers.borrow_mut();
+                // Nothing open any more: stop looking.
+                if l.is_empty()
+                    && let Some(t) = me.upgrade()
+                {
+                    t.stop();
+                    return;
+                }
+                while let Some((opener, own)) = l.last() {
+                    if own.upgrade().is_some() {
+                        break;
+                    }
+                    if let Some(item) = opener.upgrade()
+                        && item.is_visible()
+                    {
+                        slint::private_unstable_api::re_exports::WindowInner::from_pub(ui.window()).set_focus_item(
+                            &item,
+                            true,
+                            slint::private_unstable_api::re_exports::FocusReason::Programmatic,
+                        );
+                    }
+                    l.pop();
+                }
+            });
+        }
+    });
+}
+
+/// What a toast says it is: done (✓), a heads-up (i), or a problem (!, and it stays longer).
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum ToastKind {
+    Done = 0,
+    Info = 1,
+    Problem = 2,
+}
+
+/// Show a short message at the bottom of the window for a few seconds: something done.
+pub(crate) fn show_toast(ui: &AppWindow, msg: &str) {
+    toast(ui, msg, ToastKind::Done);
+}
+
+/// A heads-up: why nothing happened, what to do first, something under way ("Looking up…").
+pub(crate) fn toast_info(ui: &AppWindow, msg: &str) {
+    toast(ui, msg, ToastKind::Info);
+}
+
+/// Something failed ("Couldn't copy the link"): marked as a problem, up for longer.
+pub(crate) fn toast_problem(ui: &AppWindow, msg: &str) {
+    toast(ui, msg, ToastKind::Problem);
+}
+
+static TOAST_SHOWN: AtomicU64 = AtomicU64::new(0);
+
+thread_local! {
+    /// The toast up now is a problem: a newer done / heads-up toast waits for it (only the
+    /// latest waits), so a failure isn't wiped off the screen before it's read.
+    static TOAST_PROBLEM_UP: Cell<bool> = const { Cell::new(false) };
+    static TOAST_WAITING: RefCell<Option<(String, ToastKind)>> = const { RefCell::new(None) };
+}
+
+fn toast(ui: &AppWindow, msg: &str, kind: ToastKind) {
+    if kind != ToastKind::Problem && TOAST_PROBLEM_UP.with(Cell::get) {
+        TOAST_WAITING.with(|w| *w.borrow_mut() = Some((msg.to_string(), kind)));
+        return;
+    }
+    let me = TOAST_SHOWN.fetch_add(1, Ordering::SeqCst) + 1;
+    TOAST_PROBLEM_UP.with(|p| p.set(kind == ToastKind::Problem));
+    ui.set_toast_kind(kind as i32);
+    ui.set_toast(msg.into());
+    let secs = if kind == ToastKind::Problem { 8 } else { 4 };
+    after_toast_time(ui.as_weak(), Duration::from_secs(secs), move |ui| {
+        // A newer toast keeps its own full time.
+        if TOAST_SHOWN.load(Ordering::SeqCst) != me {
+            return;
+        }
+        ui.set_toast("".into());
+        TOAST_PROBLEM_UP.with(|p| p.set(false));
+        if let Some((msg, kind)) = TOAST_WAITING.with(|w| w.borrow_mut().take()) {
+            toast(ui, &msg, kind);
+        }
+    });
+}
+
+/// Run `hide` once a toast has been up for `time`, counting only while it can be read: the
+/// clock stops while the pointer is over a toast and while Neria's window isn't in front,
+/// and goes on with what's left afterwards (Sonner and the UI SDK do the same). Every toast's
+/// timer goes through here.
+pub(crate) fn after_toast_time(weak: slint::Weak<AppWindow>, time: Duration, hide: impl FnOnce(&AppWindow) + 'static) {
+    toast_tick(weak, time, Duration::ZERO, Duration::ZERO, hide);
+}
+
+fn toast_tick(
+    weak: slint::Weak<AppWindow>,
+    time: Duration,
+    shown: Duration,
+    waited: Duration,
+    hide: impl FnOnce(&AppWindow) + 'static,
+) {
+    const TICK: Duration = Duration::from_millis(200);
+    slint::Timer::single_shot(TICK, move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let nav = ui.global::<Nav>();
+        let counting = !nav.get_toast_hover() && nav.get_window_active();
+        let shown = if counting { shown + TICK } else { shown };
+        // Paused for 2 minutes at most: a toast that went away under the pointer can't
+        // hold the next ones for ever.
+        if shown >= time || waited >= Duration::from_secs(120) {
+            nav.set_toast_hover(false);
+            hide(&ui);
+            return;
+        }
+        toast_tick(weak, time, shown, waited + TICK, hide);
     });
 }
 
@@ -1612,7 +1820,7 @@ pub(crate) fn show_toast(ui: &AppWindow, msg: &str) {
 fn copy_report(ui: &AppWindow, text: &str) {
     match arboard::Clipboard::new().and_then(|mut c| c.set_text(text.to_string())) {
         Ok(()) => show_toast(ui, "Report copied. Paste it in a message to whoever helps you with Neria (Ctrl+V)."),
-        Err(_) => show_toast(ui, "Couldn't copy the report to the clipboard. Try again."),
+        Err(_) => toast_problem(ui, "Couldn't copy the report to the clipboard. Try again."),
     }
 }
 
@@ -2116,7 +2324,7 @@ fn main() -> anyhow::Result<()> {
             let ui = weak.unwrap();
             match queue.report(id as u64) {
                 Some(text) => copy_report(&ui, &text),
-                None => show_toast(&ui, "That download is gone from the list."),
+                None => toast_info(&ui, "That download is gone from the list."),
             }
         }
     });
@@ -2139,6 +2347,7 @@ fn main() -> anyhow::Result<()> {
     capture_ui::install(&ui, settings.clone());
     library_ui::install(&ui, settings.clone());
     palette_ui::install(&ui);
+    install_focus_step(&ui);
     tags_ui::install(&ui);
     organize_ui::install(&ui, settings.clone());
     workflow_ui::install(&ui, queue.clone());

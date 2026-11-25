@@ -21,7 +21,7 @@ use neria_core::ytmusic::{self, Candidate};
 use neria_core::{fmt, lyrics};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
-use crate::{AppWindow, MatchItem, show_toast};
+use crate::{AppWindow, MatchItem, toast_info, toast_problem};
 
 /// Candidates checked automatically when the dialog opens.
 const AUTO_CHECK: usize = 5;
@@ -305,7 +305,7 @@ pub fn install(ui: &AppWindow, queue: Queue, settings: Arc<Mutex<Settings>>) {
     let open: OpenSong = Rc::new({
         let (weak, state, generation) = (ui.as_weak(), state.clone(), generation.clone());
         move |file: PathBuf, url: String| {
-            show_toast(&weak.unwrap(), "Looking up the song…");
+            toast_info(&weak.unwrap(), "Looking up the song…");
             let (weak, state, generation) = (weak.clone(), state.clone(), generation.clone());
             std::thread::spawn(move || {
                 let track = song_track(&file, &url);
@@ -314,7 +314,7 @@ pub fn install(ui: &AppWindow, queue: Queue, settings: Arc<Mutex<Settings>>) {
                         let fill = State { track, song: Some(file), ..State::default() };
                         open_dialog(&ui, &state, &generation, fill);
                     }
-                    None => show_toast(&ui, "Couldn't tell which song this is (it has no title or artist inside)."),
+                    None => toast_problem(&ui, "Couldn't tell which song this is (it has no title or artist inside)."),
                 });
             });
         }
@@ -365,7 +365,7 @@ pub fn install(ui: &AppWindow, queue: Queue, settings: Arc<Mutex<Settings>>) {
                 };
                 queue.add(DownloadRequest::music(job));
                 ui.set_match_open(false);
-                show_toast(&ui, "Downloading that match over the song. It's on the Download page.");
+                toast_info(&ui, "Downloading that match over the song. It's on the Download page.");
                 return;
             }
             if queue.rematch(st.job, c.url()) {

@@ -171,8 +171,10 @@ export component AppWindow inherits Window {
     in property <string> app-version;
     // One "name version" per line, filled in once the tools are ready.
     in property <string> tool-versions;
-    // Short message at the bottom of the window ("Report copied…"); Rust clears it.
-    in property <string> toast;
+    // Short message at the bottom of the window ("Report copied…"); Rust clears it, × too.
+    // toast-kind: 0 done, 1 a heads-up, 2 a problem (main.rs `ToastKind`).
+    in-out property <string> toast;
+    in property <int> toast-kind;
 
     // Updates. update-state: 0 idle, 1 checking, 2 downloading, 3 ready to restart, 4 failed
     in-out property <bool> check-updates: true;
@@ -603,19 +605,6 @@ export component AppWindow inherits Window {
         height: root.height;
     }
 
-    if Capture.toast-text != "": CaptureToast {
-        x: (root.width - self.width) / 2;
-        y: root.height - self.height - (Screen.compact ? 66px + 14px : 26px) - (root.toast != "" ? 56px : 0px);
-        widest: root.width - (Screen.compact ? 32px : 80px);
-    }
-
-    if root.toast != "": Toast {
-        x: (root.width - self.width) / 2;
-        y: root.height - self.height - (Screen.compact ? 66px + 14px : 26px);
-        widest: root.width - (Screen.compact ? 32px : 80px);
-        text: root.toast;
-    }
-
     if root.match-open: MatchDialog {
         x: 0;
         y: 0;
@@ -763,5 +752,22 @@ export component AppWindow inherits Window {
         retry => { root.retry-setup(); }
         copy-details => { root.setup-copy-details(); }
         show-folder => { root.setup-show-folder(); }
+    }
+
+    // Toasts last, so they show above any dialog's dimmed layer (a dialog's own action can
+    // toast: "Paste times" in the clip list).
+    toast := Toast {
+        visible: root.toast != "";
+        x: (root.width - self.width) / 2;
+        y: root.height - self.height - (Screen.compact ? 66px + 14px : 26px);
+        widest: root.width - (Screen.compact ? 32px : 80px);
+        text: root.toast;
+        kind: root.toast-kind;
+        closed => { root.toast = ""; }
+    }
+    if Capture.toast-text != "": CaptureToast {
+        x: (root.width - self.width) / 2;
+        y: root.height - self.height - (Screen.compact ? 66px + 14px : 26px) - (root.toast != "" ? toast.height + 10px : 0px);
+        widest: root.width - (Screen.compact ? 32px : 80px);
     }
 }

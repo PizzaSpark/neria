@@ -5,6 +5,7 @@ import { PrimaryButton, GhostButton, IconButton, Hint, Tick, Dialog, Divider, Li
 
 // Clip page → Clips: several selections of one video, saved in one go (one file each, or
 // joined). Add the selection (or all chapters), rename, reorder, jump to one, remove.
+// ui-rules: what's typed here applies as it's typed, so closing loses nothing.
 export component ClipsDialog inherits Dialog {
     in property <bool> has-chapters;
     // A .gif is saved one GIF per clip; links join in time order (how the pieces come).
@@ -32,7 +33,7 @@ export component ClipsDialog inherits Dialog {
     close => { ClipList.open = false; }
 
     HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         alignment: start;
         GhostButton {
             horizontal-stretch: 0;

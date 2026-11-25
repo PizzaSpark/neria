@@ -1,22 +1,27 @@
-import { LineEdit, ComboBox, SpinBox, ScrollView } from "std-widgets.slint";
-import { Theme, Screen } from "../theme.slint";
+import { LineEdit, ComboBox, ScrollView } from "std-widgets.slint";
+import { Theme, Screen, Space } from "../theme.slint";
 import { Formats } from "../types.slint";
 import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe, ClipChat, Voice, Workflows, WfRow, Tools, ExtTool } from "../globals.slint";
-import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider, Notice, ChoiceChips } from "../widgets.slint";
+import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider, Notice, ChoiceChips, Backdrop, Field } from "../widgets.slint";
 
 // One group of settings under a small heading.
 component Group inherits VerticalLayout {
     in property <string> title;
-    spacing: 8px;
+    // Heading to its first setting 12px, one setting to the next 16px (`Space`); a setting's
+    // own hint sits 4px under it (Tick `hint`, or `Field`).
+    spacing: Space.title;
     SectionTitle { text: root.title; }
-    @children
+    VerticalLayout {
+        spacing: Space.item;
+        @children
+    }
 }
 
 // A followed channel or playlist: name, how it's going, and what you can do.
 component FollowRow inherits VerticalLayout {
     in property <FollowItem> item;
     spacing: 6px;
-    padding-bottom: 10px;
+    padding-bottom: 12px;
     Text {
         text: root.item.name;
         color: root.item.paused ? Theme.muted : Theme.ink;
@@ -32,7 +37,7 @@ component FollowRow inherits VerticalLayout {
     }
     // Songs taken off a followed Spotify playlist: nothing goes until you've looked.
     if root.item.removed > 0: Notice {
-        spacing: 10px;
+        spacing: 8px;
         icon-size: 14px;
         wrap: true;
         text: root.item.removed == 1 ? "1 song in your folder was taken off it on Spotify."
@@ -91,8 +96,8 @@ component FollowRow inherits VerticalLayout {
 // itself), a switch to pause an automatic one, Edit.
 component WorkflowRow inherits VerticalLayout {
     in property <WfRow> item;
-    padding-top: 10px;
-    spacing: 10px;
+    padding-top: 12px;
+    spacing: 12px;
     HorizontalLayout {
         spacing: 12px;
         Rectangle {
@@ -140,6 +145,7 @@ component WorkflowRow inherits VerticalLayout {
     HorizontalLayout {
         spacing: 6px;
         alignment: start;
+        // ui-rules: lines up with the text beside the 34px mark (34 + 12)
         padding-left: 46px;
         if Screen.compact: VerticalLayout {
             alignment: center;
@@ -165,8 +171,8 @@ component WorkflowRow inherits VerticalLayout {
 // One of the user's own tools: its name, program, what it takes and makes, Edit.
 component ToolLine inherits VerticalLayout {
     in property <ExtTool> item;
-    padding-top: 10px;
-    spacing: 10px;
+    padding-top: 12px;
+    spacing: 12px;
     HorizontalLayout {
         spacing: 12px;
         Rectangle {
@@ -214,6 +220,7 @@ component ToolLine inherits VerticalLayout {
     HorizontalLayout {
         spacing: 6px;
         alignment: start;
+        // ui-rules: lines up with the text beside the 34px mark (34 + 12)
         padding-left: 46px;
         if !root.item.tried: VerticalLayout {
             alignment: center;
@@ -234,7 +241,7 @@ component ToolLine inherits VerticalLayout {
 // A label on the left, its control (150px wide) on the right.
 component SettingRow inherits HorizontalLayout {
     in property <string> label;
-    spacing: 10px;
+    spacing: 8px;
     Text {
         text: root.label;
         color: Theme.ink;
@@ -411,7 +418,7 @@ component SayBox inherits Rectangle {
 // the mic with its meter, Test it (three sayings; spellings that sound the same offered for a
 // word it doesn't know), how much to keep and the sound.
 component VoiceSection inherits VerticalLayout {
-    spacing: 22px;
+    spacing: 24px;
     alignment: start;
     init => { Voice.section-open(true); }
 
@@ -421,9 +428,7 @@ component VoiceSection inherits VerticalLayout {
             text: "Listen for a phrase";
             checked <=> Voice.on;
             toggled(on) => { Voice.toggled(on); }
-        }
-        Hint {
-            text: "While the live player is open or instant replay runs, saying it does what the button does: Clip the last while recording a stream, Save the last while watching one, and instant replay's save (like its key) while that runs. The mic is only listened to on this PC, never recorded or sent anywhere.";
+            hint: "While the live player is open or instant replay runs, saying it does what the button does: Clip the last while recording a stream, Save the last while watching one, and instant replay's save (like its key) while that runs. The mic is only listened to on this PC, never recorded or sent anywhere.";
         }
         if Voice.getting: VerticalLayout {
             spacing: 6px;
@@ -469,7 +474,7 @@ component VoiceSection inherits VerticalLayout {
             }
             // Phrases save as you type: says so for a moment.
             if Voice.saved-phrase == i: HorizontalLayout {
-                spacing: 5px;
+                spacing: 4px;
                 Icon {
                     text: "\u{E73E}";
                     font-size: 11px;
@@ -540,7 +545,7 @@ component VoiceSection inherits VerticalLayout {
         }
         Divider { }
         HorizontalLayout {
-            spacing: 10px;
+            spacing: 8px;
             VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: center;
@@ -609,7 +614,7 @@ component VoiceSection inherits VerticalLayout {
                     vertical-alignment: center;
                 }
                 if Voice.saved-set == st.id: HorizontalLayout {
-                    spacing: 5px;
+                    spacing: 4px;
                     Icon {
                         text: "\u{E73E}";
                         font-size: 11px;
@@ -638,7 +643,7 @@ component VoiceSection inherits VerticalLayout {
         }
         for sp in Voice.spellings: VerticalLayout {
             HorizontalLayout {
-                spacing: 10px;
+                spacing: 8px;
                 padding-top: 6px;
                 padding-bottom: 6px;
                 Text {
@@ -694,13 +699,15 @@ component VoiceSection inherits VerticalLayout {
             color: Theme.ink;
             font-size: 13px;
         }
-        LineEdit {
-            text: Voice.undo-phrase;
-            placeholder-text: "undo that (leave empty for none)";
-            edited(t) => { Voice.undo-edited(t); }
-        }
-        Hint {
-            text: "Works for a few minutes after a clip, like Undo on its message.";
+        Field {
+            LineEdit {
+                text: Voice.undo-phrase;
+                placeholder-text: "undo that (leave empty for none)";
+                edited(t) => { Voice.undo-edited(t); }
+            }
+            Hint {
+                text: "Works for a few minutes after a clip, like Undo on its message.";
+            }
         }
     }
 
@@ -740,6 +747,9 @@ component SectionLink inherits Rectangle {
     in property <bool> active;
     // The compact strip is words only, so all five fit at the 400px minimum.
     in property <bool> show-icon: true;
+    // Its place in the list: the arrows go round, Home / End.
+    in property <int> index: -1;
+    in property <int> count;
     callback clicked();
     height: 38px;
     border-radius: 9px;
@@ -750,18 +760,23 @@ component SectionLink inherits Rectangle {
     accessible-label: root.label;
     accessible-item-selected: root.active;
     accessible-action-default => { root.clicked(); }
-    KeyPress {
+    // One Tab stop for the list (the open section); the arrow keys move to the next one.
+    kp := KeyPress {
         radius: 9px;
+        roving: true;
+        active: root.active;
+        index: root.index;
+        count: root.count;
         activated => { root.clicked(); }
     }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { kp.take(); root.clicked(); }
     }
     HorizontalLayout {
-        padding-left: root.show-icon ? 10px : 6px;
+        padding-left: root.show-icon ? 8px : 6px;
         padding-right: root.show-icon ? 8px : 6px;
-        spacing: 9px;
+        spacing: 8px;
         if root.show-icon: Icon {
             text: root.icon;
             font-size: 14px;
@@ -840,12 +855,6 @@ export component SettingsDrawer inherits Rectangle {
     callback tools-update();
     callback copy-report();
 
-    background: Screen.compact ? transparent : Theme.scrim;
-    // keyboard: Esc closes the drawer.
-    TouchArea {
-        clicked => { root.close(); }
-    }
-
     changed section => { scroll.content-y = 0; }
 
     // In the order they show; `id` is the section's number (Workflows came later, so it's 7
@@ -862,20 +871,14 @@ export component SettingsDrawer inherits Rectangle {
         { icon: "\u{E946}", label: "About", id: 6 },
     ];
 
-    // Esc closes it, from anywhere inside; it takes the keyboard when it opens.
-    init => { keys.focus(); }
-    keys := FocusScope {
+    // The dimmed page (none on compact, a full sheet): a click there or Esc closes it, the
+    // wheel doesn't reach the page, Tab goes round inside (`Backdrop`).
+    Backdrop {
         width: root.width;
         height: root.height;
-        focus-on-click: false;
-        focus-on-tab-navigation: false;
-        key-pressed(event) => {
-            if event.text == Key.Escape {
-                root.close();
-                return accept;
-            }
-            reject
-        }
+        dim: !Screen.compact;
+        label: "Settings";
+        close => { root.close(); }
         Rectangle {
             x: Screen.compact ? 0 : parent.width - self.width;
             y: 0;
@@ -886,15 +889,17 @@ export component SettingsDrawer inherits Rectangle {
             background: Theme.surface;
             border-width: Screen.compact ? 0 : 1px;
             border-color: Theme.border;
-            TouchArea { }
+            TouchArea {
+                scroll-event(event) => { return accept; }
+            }
 
             VerticalLayout {
-                padding-top: Screen.compact ? 16px : 22px;
-                spacing: Screen.compact ? 10px : 14px;
+                padding-top: Screen.compact ? 16px : 24px;
+                spacing: Screen.compact ? 12px : 16px;
 
                 HorizontalLayout {
-                    padding-left: Screen.compact ? 16px : 22px;
-                    padding-right: Screen.compact ? 12px : 22px;
+                    padding-left: Screen.compact ? 16px : 24px;
+                    padding-right: Screen.compact ? 12px : 24px;
                     Text {
                         text: "Settings";
                         color: Theme.text;
@@ -934,6 +939,8 @@ export component SettingsDrawer inherits Rectangle {
                                 icon: s.icon;
                                 label: s.label;
                                 active: root.section == s.id;
+                                index: i;
+                                count: root.sections.length;
                                 clicked => { root.section = s.id; }
                             }
                         }
@@ -949,15 +956,17 @@ export component SettingsDrawer inherits Rectangle {
 
                     if !Screen.compact: VerticalLayout {
                         width: 150px;
-                        padding-left: 14px;
+                        padding-left: 12px;
                         padding-right: 12px;
-                        padding-bottom: 22px;
+                        padding-bottom: 24px;
                         spacing: 4px;
                         alignment: start;
                         for s[i] in root.sections: SectionLink {
                             icon: s.icon;
                             label: s.label;
                             active: root.section == s.id;
+                            index: i;
+                            count: root.sections.length;
                             clicked => { root.section = s.id; }
                         }
                     }
@@ -969,783 +978,807 @@ export component SettingsDrawer inherits Rectangle {
 
                     scroll := ScrollView {
                         horizontal-stretch: 1;
-
-                        // ---- Download ----
-                        if root.section == 0: VerticalLayout {
-                            spacing: 22px;
-                            padding-top: Screen.compact ? 14px : 0px;
-                            padding-left: Screen.compact ? 16px : 20px;
-                            padding-right: Theme.lane;
-                            padding-bottom: 22px;
+                        // One layout around the sections: Slint sizes a ScrollView's content from
+                        // its layout children and leaves out `if` ones, so with the sections
+                        // straight inside, nothing scrolled.
+                        VerticalLayout {
                             alignment: start;
 
-                            Group {
-                                title: "Save to";
-                                Text {
-                                    text: root.output-dir;
-                                    color: Theme.muted;
-                                    font-family: Theme.mono;
-                                    font-size: 11.5px;
-                                    overflow: elide;
-                                }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    alignment: start;
-                                    GhostButton {
-                                        text: "Change…";
-                                        clicked => { root.choose-output(); }
-                                    }
-                                    GhostButton {
-                                        text: "Open folder";
-                                        clicked => { root.open-output(); }
-                                    }
-                                }
-                                Tick {
-                                    text: "Sort into Audio, Video and Photos folders";
-                                    checked <=> root.sort-folders;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Hint {
-                                    text: "Playlists and posts get a folder of their own, inside Audio, Video or Photos when everything in it is one kind.";
-                                }
-                                Tick {
-                                    text: "Number playlist and post items in order (01, 02…)";
-                                    checked <=> root.number-items;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Tick {
-                                    text: "Offer links I copy in other apps";
-                                    checked <=> Bulk.watch;
-                                    toggled => { Bulk.watch-changed(); }
-                                }
-                                Hint {
-                                    text: "A strip on the Download page (a notification while Neria is in the tray) lets you download or preview it. Neria only looks when something is copied, and only at a lone link.";
-                                }
-                            }
+                            // ---- Download ----
+                            if root.section == 0: VerticalLayout {
+                                spacing: Space.group;
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
 
-                            Group {
-                                title: "Video";
-                                SettingRow {
-                                    label: "Container";
-                                    ComboBox {
-                                        width: 150px;
-                                        model: Formats.containers;
-                                        current-index <=> root.container-index;
-                                        selected => { root.settings-changed(); }
-                                    }
-                                }
-                                Tick {
-                                    text: "Prefer H.264 (plays everywhere, max 1080p on YouTube)";
-                                    checked <=> root.prefer-h264;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Tick {
-                                    text: "Embed subtitles";
-                                    checked <=> root.embed-subs;
-                                    toggled => { root.settings-changed(); }
-                                }
-                            }
-
-                            Group {
-                                title: "Audio only";
-                                SettingRow {
-                                    label: "Convert to";
-                                    ComboBox {
-                                        width: 150px;
-                                        model: Formats.audio;
-                                        current-index <=> root.audio-format-index;
-                                        selected => { root.settings-changed(); }
-                                    }
-                                }
-                                Hint { text: "Spotify songs are saved in this format too."; }
-                            }
-
-                            Group {
-                                title: "Extras";
-                                Tick {
-                                    text: "Embed thumbnail as cover art";
-                                    checked <=> root.embed-thumbnail;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Tick {
-                                    text: "Also save the thumbnail as a .jpg";
-                                    checked <=> root.save-thumbnail;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Tick {
-                                    text: "Embed title, artist and other metadata";
-                                    checked <=> root.embed-metadata;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Tick {
-                                    text: "Save live chat with recordings and past streams";
-                                    checked <=> ClipChat.save;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Tick {
-                                    text: "Cut out sponsor segments (SponsorBlock)";
-                                    checked <=> root.sponsorblock;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Tick {
-                                    text: "Download whole playlists";
-                                    checked <=> root.allow-playlists;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Tick {
-                                    text: "Save X (Twitter) GIFs as real .gif files";
-                                    checked <=> root.x-gifs-as-gif;
-                                    toggled => { root.settings-changed(); }
-                                }
-                            }
-
-                            Group {
-                                title: "File names";
-                                HorizontalLayout {
-                                    spacing: 10px;
-                                    Text {
-                                        horizontal-stretch: 1;
-                                        text: Names.summary;
-                                        color: Theme.ink;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                    GhostButton {
-                                        horizontal-stretch: 0;
-                                        compact: true;
-                                        text: "Change";
-                                        clicked => { Names.show(); }
-                                    }
-                                }
-                                Hint { text: "For single videos. Items picked from a playlist or post are named by their number and title."; }
-                            }
-
-                            Group {
-                                title: "Speech to text";
-                                HorizontalLayout {
-                                    spacing: 10px;
-                                    Text {
-                                        horizontal-stretch: 1;
-                                        text: Transcribe.settings-text;
-                                        color: Transcribe.ready ? Theme.ink : Theme.muted;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                        wrap: word-wrap;
-                                    }
-                                    GhostButton {
-                                        horizontal-stretch: 0;
-                                        compact: true;
-                                        text: Transcribe.ready ? "Remove" : "Get it…";
-                                        clicked => {
-                                            if Transcribe.ready {
-                                                Transcribe.remove();
-                                            } else {
-                                                Transcribe.open-get();
-                                            }
-                                        }
-                                    }
-                                }
-                                if Transcribe.ready: HorizontalLayout {
-                                    spacing: 10px;
-                                    Text {
-                                        text: "Model";
-                                        color: Theme.ink;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                        horizontal-stretch: 0;
-                                    }
-                                    ChoiceChips {
-                                        options: ["Fast", "Best quality"];
-                                        current <=> Transcribe.model;
-                                        changed => {
-                                            if Transcribe.model == 0 {
-                                                Transcribe.translate = false;
-                                            }
-                                            Transcribe.changed();
-                                        }
-                                    }
-                                }
-                                if Transcribe.ready: Hint {
-                                    text: Transcribe.model == 0
-                                        ? "Quick, and good on clear speech."
-                                        : "Slower (a little on an NVIDIA card, about 3 times on the processor): better on mixed languages, accents and poor sound, and it can translate." + (Transcribe.best-ready ? "" : " A one-time " + Transcribe.best-size + " download, the first time.");
-                                }
-                                if Transcribe.best-ready: HorizontalLayout {
-                                    spacing: 10px;
-                                    Text {
-                                        horizontal-stretch: 1;
-                                        text: "Best quality model: " + Transcribe.best-size + " on this PC";
-                                        color: Theme.muted;
-                                        font-size: 12px;
-                                        vertical-alignment: center;
-                                        wrap: word-wrap;
-                                    }
-                                    TextLink {
-                                        horizontal-stretch: 0;
-                                        text: "Remove it";
-                                        clicked => { Transcribe.remove-best(); }
-                                    }
-                                }
-                                if Transcribe.ready && Transcribe.nvidia && !Transcribe.on-gpu: TextLink {
-                                    text: "Use my NVIDIA graphics card: about 20 times faster (685 MB)";
-                                    clicked => { Transcribe.use-gpu = true; Transcribe.open-get(); }
-                                }
-                                Hint { text: "Writes down what's said in a video or sound file, on this PC: Clip page → Export ▾ → Transcribe, drop a file on Neria, or Transcript under a video's preview."; }
-                            }
-                        }
-
-                        // ---- Following ----
-                        if root.section == 1: VerticalLayout {
-                            spacing: 22px;
-                            padding-top: Screen.compact ? 14px : 0px;
-                            padding-left: Screen.compact ? 16px : 20px;
-                            padding-right: Theme.lane;
-                            padding-bottom: 22px;
-                            alignment: start;
-
-                            Group {
-                                title: "Following";
-                                if Following.items.length == 0: Hint {
-                                    text: "Nothing yet. Paste a channel, playlist or Spotify playlist link and press Follow under its preview: Neria then downloads what's new by itself.";
-                                }
-                                for f in Following.items: FollowRow { item: f; }
-                            }
-                            Hint {
-                                text: "Only uploads that are new since you followed are downloaded, into a folder named after the channel or playlist, in the kind of file you had picked. Checks run while Neria is open (the tray counts); one that was missed runs when Neria starts.";
-                            }
-                            Hint {
-                                text: "Spotify playlists: songs added to it download into its folder. Songs taken off it stay until you review them here, and only the ones you tick go to the Recycle Bin.";
-                            }
-                        }
-
-                        // ---- Workflows ----
-                        if root.section == 7: VerticalLayout {
-                            spacing: 22px;
-                            padding-top: Screen.compact ? 14px : 0px;
-                            padding-left: Screen.compact ? 16px : 20px;
-                            padding-right: Theme.lane;
-                            padding-bottom: 22px;
-                            alignment: start;
-
-                            Group {
-                                title: "Workflows";
-                                Hint {
-                                    text: "What happens to a file after it's saved. Pick one with Then under a video's preview, or let one run by itself.";
-                                }
-                                VerticalLayout {
-                                    for w in Workflows.items: WorkflowRow { item: w; }
-                                }
-                                HorizontalLayout {
-                                    alignment: start;
-                                    GhostButton {
-                                        compact: true;
-                                        icon: "\u{E710}";
-                                        text: "New workflow";
-                                        clicked => { Workflows.new-one(); }
-                                    }
-                                }
-                            }
-                            Hint {
-                                text: "The original stays unless a workflow replaces it (it then goes to the Recycle Bin). Files you already have: Run a workflow… in a Library row's menu, or Ctrl+K and the workflow's name.";
-                            }
-                        }
-
-                        // ---- Tools ----
-                        if root.section == 8: VerticalLayout {
-                            spacing: 22px;
-                            padding-top: Screen.compact ? 14px : 0px;
-                            padding-left: Screen.compact ? 16px : 20px;
-                            padding-right: Theme.lane;
-                            padding-bottom: 22px;
-                            alignment: start;
-
-                            Group {
-                                title: "Tools";
-                                Hint {
-                                    text: Tools.items.length == 0
-                                        ? "Your own command-line programs (HandBrake, an upscaler, a script) as Neria actions: Neria fills in the file and runs them in the queue. Nothing comes with Neria."
-                                        : "Your own command-line programs. Run one from a Library row's menu, with Ctrl+K, or as a workflow's Change it.";
-                                }
-                                VerticalLayout {
-                                    for t in Tools.items: ToolLine { item: t; }
-                                }
-                                HorizontalLayout {
-                                    alignment: start;
-                                    GhostButton {
-                                        compact: true;
-                                        icon: "\u{E710}";
-                                        text: "New tool";
-                                        clicked => { Tools.new-one(); }
-                                    }
-                                }
-                            }
-                            Hint {
-                                text: "Neria starts the program itself with the words you typed, never through a shell, and keeps what it prints for the report. A tool runs by itself (every download, a watched folder) only after it has run once by hand and finished.";
-                            }
-                        }
-
-                        // ---- Spotify ----
-                        if root.section == 2: VerticalLayout {
-                            spacing: 22px;
-                            padding-top: Screen.compact ? 14px : 0px;
-                            padding-left: Screen.compact ? 16px : 20px;
-                            padding-right: Theme.lane;
-                            padding-bottom: 22px;
-                            alignment: start;
-
-                            Group {
-                                title: "Songs";
-                                Hint { text: "Song info comes from Spotify, audio from YouTube Music. Songs use the \"Audio only\" format under Download."; }
-                                Tick {
-                                    text: "Number playlist songs (01 Artist - Title)";
-                                    checked <=> Music.number-songs;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Hint { text: "So the folder sorts in playlist order. Songs you already have are renamed, not downloaded again. Albums are always numbered."; }
-                                Tick {
-                                    text: "Check each song against Spotify's 30 s preview";
-                                    checked <=> root.verify-audio;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                Hint { text: "Catches re-recordings, live and cover versions by their sound, and tries other versions automatically. Adds about a second per song."; }
-                                Tick {
-                                    text: "Explain where the audio comes from before downloading";
-                                    checked <=> root.spotify-explain;
-                                    toggled => { root.settings-changed(); }
-                                }
-                            }
-
-                            Group {
-                                title: "Lyrics";
-                                Tick {
-                                    text: "Add lyrics (inside the song + a synced .lrc file next to it)";
-                                    checked <=> root.lyrics;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                if root.lyrics: Hint { text: "Neria asks these in order and stops at the first synced lyrics. Each song's row says what it found."; }
-                                if root.lyrics: Tick {
-                                    text: "LRCLIB: synced, free and open";
-                                    checked <=> Music.lrclib;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                if root.lyrics: Tick {
-                                    text: "Spotify's own synced lyrics (Musixmatch): needs a Spotify sign-in";
-                                    checked <=> Music.spotify;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                // The warning comes before any sign-in, and stays while it's on.
-                                if root.lyrics && Music.spotify: HorizontalLayout {
-                                    alignment: start;
-                                    Tag {
-                                        text: "Use a spare account";
-                                        kind: 2;
-                                    }
-                                }
-                                if root.lyrics && Music.spotify: Hint {
-                                    text: "This reads lyrics the way Spotify's web player does, which is against Spotify's terms: the account could be restricted or banned. Sign in with a spare (burner) Spotify account, never your main one. Neria uses it for lyrics only, never for audio, and only when LRCLIB has no synced lyrics.";
-                                }
-                                if root.lyrics && Music.spotify && !Music.spotify-signed-in: HorizontalLayout {
-                                    alignment: start;
-                                    GhostButton {
-                                        text: Accounts.busy ? "Signing in…" : "Sign in to Spotify…";
-                                        icon: "\u{E77B}";
-                                        clicked => { Accounts.sign-in("spotify.com"); }
-                                    }
-                                }
-                                if root.lyrics && Music.spotify && Music.spotify-signed-in: HorizontalLayout {
-                                    spacing: 10px;
-                                    alignment: start;
-                                    Icon {
-                                        text: "\u{E73E}";
-                                        color: Theme.ok;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                    Text {
-                                        text: "Signed in to Spotify";
-                                        color: Theme.ink;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-                                    TextLink {
-                                        text: "Sign out";
-                                        clicked => { Accounts.sign-out("spotify.com"); }
-                                    }
-                                }
-                                if root.lyrics: Tick {
-                                    text: "Synced lyrics only (skip songs with plain text only)";
-                                    checked <=> Music.synced-only;
-                                    toggled => { root.settings-changed(); }
-                                }
-                                HorizontalLayout {
-                                    alignment: start;
-                                    TextLink {
-                                        text: "Add lyrics to songs I already have…";
-                                        icon: "\u{E8B7}";
-                                        clicked => { Music.add-lyrics(); }
-                                    }
-                                }
-                                Hint { text: "Pick a folder of songs (tagged with artist and title, like Neria's): each gets lyrics inside it and a .lrc next to it. Songs that have lyrics already are skipped."; }
-                            }
-
-                            Group {
-                                title: "Your own Spotify key";
-                                Hint { text: "Optional: your own Spotify app (developer.spotify.com → Create app) unlocks playlists over 100 songs. Never shared, stored only in settings.json next to Neria."; }
-                                LineEdit {
-                                    placeholder-text: "Client ID";
-                                    text <=> root.spotify-client-id;
-                                    edited => { root.settings-changed(); }
-                                }
-                                LineEdit {
-                                    placeholder-text: "Client secret";
-                                    input-type: password;
-                                    text <=> root.spotify-client-secret;
-                                    edited => { root.settings-changed(); }
-                                }
-                            }
-                        }
-
-                        // ---- Network ----
-                        if root.section == 3: VerticalLayout {
-                            spacing: 22px;
-                            padding-top: Screen.compact ? 14px : 0px;
-                            padding-left: Screen.compact ? 16px : 20px;
-                            padding-right: Theme.lane;
-                            padding-bottom: 22px;
-                            alignment: start;
-
-                            Group {
-                                title: "Signed in";
-                                Hint {
-                                    text: "For private, age-restricted and members-only videos. Sign in from a link's problem, or here. Cookies stay in Neria's folder and are only sent to the site they came from.";
-                                }
-                                for s in Accounts.sites: VerticalLayout {
-                                    HorizontalLayout {
-                                        spacing: 10px;
-                                        padding-top: 7px;
-                                        padding-bottom: 7px;
+                                Group {
+                                    title: "Save to";
+                                    Field {
                                         Text {
-                                            text: s.name;
-                                            color: Theme.ink;
-                                            font-size: 13px;
-                                            font-weight: 600;
-                                            vertical-alignment: center;
-                                            horizontal-stretch: 0;
-                                        }
-                                        Text {
-                                            text: s.detail;
+                                            text: root.output-dir;
                                             color: Theme.muted;
                                             font-family: Theme.mono;
                                             font-size: 11.5px;
-                                            vertical-alignment: center;
-                                            horizontal-stretch: 1;
                                             overflow: elide;
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            alignment: start;
+                                            GhostButton {
+                                                text: "Change…";
+                                                clicked => { root.choose-output(); }
+                                            }
+                                            GhostButton {
+                                                text: "Open folder";
+                                                clicked => { root.open-output(); }
+                                            }
+                                        }
+                                    }
+                                    Tick {
+                                        text: "Sort into Audio, Video and Photos folders";
+                                        checked <=> root.sort-folders;
+                                        toggled => { root.settings-changed(); }
+                                        hint: "Playlists and posts get a folder of their own, inside Audio, Video or Photos when everything in it is one kind.";
+                                    }
+                                    Tick {
+                                        text: "Number playlist and post items in order (01, 02…)";
+                                        checked <=> root.number-items;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    Tick {
+                                        text: "Offer links I copy in other apps";
+                                        checked <=> Bulk.watch;
+                                        toggled => { Bulk.watch-changed(); }
+                                        hint: "A strip on the Download page (a notification while Neria is in the tray) lets you download or preview it. Neria only looks when something is copied, and only at a lone link.";
+                                    }
+                                }
+
+                                Group {
+                                    title: "Video";
+                                    SettingRow {
+                                        label: "Container";
+                                        ComboBox {
+                                            width: 150px;
+                                            model: Formats.containers;
+                                            current-index <=> root.container-index;
+                                            selected => { root.settings-changed(); }
+                                        }
+                                    }
+                                    Tick {
+                                        text: "Prefer H.264 (plays everywhere, max 1080p on YouTube)";
+                                        checked <=> root.prefer-h264;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    Tick {
+                                        text: "Embed subtitles";
+                                        checked <=> root.embed-subs;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                }
+
+                                Group {
+                                    title: "Audio only";
+                                    Field {
+                                        SettingRow {
+                                            label: "Convert to";
+                                            ComboBox {
+                                                width: 150px;
+                                                model: Formats.audio;
+                                                current-index <=> root.audio-format-index;
+                                                selected => { root.settings-changed(); }
+                                            }
+                                        }
+                                        Hint { text: "Spotify songs are saved in this format too."; }
+                                    }
+                                }
+
+                                Group {
+                                    title: "Extras";
+                                    Tick {
+                                        text: "Embed thumbnail as cover art";
+                                        checked <=> root.embed-thumbnail;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    Tick {
+                                        text: "Also save the thumbnail as a .jpg";
+                                        checked <=> root.save-thumbnail;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    Tick {
+                                        text: "Embed title, artist and other metadata";
+                                        checked <=> root.embed-metadata;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    Tick {
+                                        text: "Save live chat with recordings and past streams";
+                                        checked <=> ClipChat.save;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    Tick {
+                                        text: "Cut out sponsor segments (SponsorBlock)";
+                                        checked <=> root.sponsorblock;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    Tick {
+                                        text: "Download whole playlists";
+                                        checked <=> root.allow-playlists;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    Tick {
+                                        text: "Save X (Twitter) GIFs as real .gif files";
+                                        checked <=> root.x-gifs-as-gif;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                }
+
+                                Group {
+                                    title: "File names";
+                                    Field {
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            Text {
+                                                horizontal-stretch: 1;
+                                                text: Names.summary;
+                                                color: Theme.ink;
+                                                font-size: 13px;
+                                                vertical-alignment: center;
+                                                overflow: elide;
+                                            }
+                                            GhostButton {
+                                                horizontal-stretch: 0;
+                                                compact: true;
+                                                text: "Change";
+                                                clicked => { Names.show(); }
+                                            }
+                                        }
+                                        Hint { text: "For single videos. Items picked from a playlist or post are named by their number and title."; }
+                                    }
+                                }
+
+                                Group {
+                                    title: "Speech to text";
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        Text {
+                                            horizontal-stretch: 1;
+                                            text: Transcribe.settings-text;
+                                            color: Transcribe.ready ? Theme.ink : Theme.muted;
+                                            font-size: 13px;
+                                            vertical-alignment: center;
+                                            wrap: word-wrap;
+                                        }
+                                        GhostButton {
+                                            horizontal-stretch: 0;
+                                            compact: true;
+                                            text: Transcribe.ready ? "Remove" : "Get it…";
+                                            clicked => {
+                                                if Transcribe.ready {
+                                                    Transcribe.remove();
+                                                } else {
+                                                    Transcribe.open-get();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if Transcribe.ready: HorizontalLayout {
+                                        spacing: 8px;
+                                        Text {
+                                            text: "Model";
+                                            color: Theme.ink;
+                                            font-size: 13px;
+                                            vertical-alignment: center;
+                                            horizontal-stretch: 0;
+                                        }
+                                        ChoiceChips {
+                                            options: ["Fast", "Best quality"];
+                                            current <=> Transcribe.model;
+                                            changed => {
+                                                if Transcribe.model == 0 {
+                                                    Transcribe.translate = false;
+                                                }
+                                                Transcribe.changed();
+                                            }
+                                        }
+                                    }
+                                    if Transcribe.ready: Hint {
+                                        text: Transcribe.model == 0
+                                            ? "Quick, and good on clear speech."
+                                            : "Slower (a little on an NVIDIA card, about 3 times on the processor): better on mixed languages, accents and poor sound, and it can translate." + (Transcribe.best-ready ? "" : " A one-time " + Transcribe.best-size + " download, the first time.");
+                                    }
+                                    if Transcribe.best-ready: HorizontalLayout {
+                                        spacing: 8px;
+                                        Text {
+                                            horizontal-stretch: 1;
+                                            text: "Best quality model: " + Transcribe.best-size + " on this PC";
+                                            color: Theme.muted;
+                                            font-size: 12px;
+                                            vertical-alignment: center;
+                                            wrap: word-wrap;
+                                        }
+                                        TextLink {
+                                            horizontal-stretch: 0;
+                                            text: "Remove it";
+                                            clicked => { Transcribe.remove-best(); }
+                                        }
+                                    }
+                                    if Transcribe.ready && Transcribe.nvidia && !Transcribe.on-gpu: TextLink {
+                                        text: "Use my NVIDIA graphics card: about 20 times faster (685 MB)";
+                                        clicked => { Transcribe.use-gpu = true; Transcribe.open-get(); }
+                                    }
+                                    Hint { text: "Writes down what's said in a video or sound file, on this PC: Clip page → Export ▾ → Transcribe, drop a file on Neria, or Transcript under a video's preview."; }
+                                }
+                            }
+
+                            // ---- Following ----
+                            if root.section == 1: VerticalLayout {
+                                spacing: Space.group;
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
+
+                                Group {
+                                    title: "Following";
+                                    if Following.items.length == 0: Hint {
+                                        text: "Nothing yet. Paste a channel, playlist or Spotify playlist link and press Follow under its preview: Neria then downloads what's new by itself.";
+                                    }
+                                    for f in Following.items: FollowRow { item: f; }
+                                }
+                                Hint {
+                                    text: "Only uploads that are new since you followed are downloaded, into a folder named after the channel or playlist, in the kind of file you had picked. Checks run while Neria is open (the tray counts); one that was missed runs when Neria starts.";
+                                }
+                                Hint {
+                                    text: "Spotify playlists: songs added to it download into its folder. Songs taken off it stay until you review them here, and only the ones you tick go to the Recycle Bin.";
+                                }
+                            }
+
+                            // ---- Workflows ----
+                            if root.section == 7: VerticalLayout {
+                                spacing: Space.group;
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
+
+                                Group {
+                                    title: "Workflows";
+                                    Hint {
+                                        text: "What happens to a file after it's saved. Pick one with Then under a video's preview, or let one run by itself.";
+                                    }
+                                    VerticalLayout {
+                                        for w in Workflows.items: WorkflowRow { item: w; }
+                                    }
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        GhostButton {
+                                            compact: true;
+                                            icon: "\u{E710}";
+                                            text: "New workflow";
+                                            clicked => { Workflows.new-one(); }
+                                        }
+                                    }
+                                }
+                                Hint {
+                                    text: "The original stays unless a workflow replaces it (it then goes to the Recycle Bin). Files you already have: Run a workflow… in a Library row's menu, or Ctrl+K and the workflow's name.";
+                                }
+                            }
+
+                            // ---- Tools ----
+                            if root.section == 8: VerticalLayout {
+                                spacing: Space.group;
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
+
+                                Group {
+                                    title: "Tools";
+                                    Hint {
+                                        text: Tools.items.length == 0
+                                            ? "Your own command-line programs (HandBrake, an upscaler, a script) as Neria actions: Neria fills in the file and runs them in the queue. Nothing comes with Neria."
+                                            : "Your own command-line programs. Run one from a Library row's menu, with Ctrl+K, or as a workflow's Change it.";
+                                    }
+                                    VerticalLayout {
+                                        for t in Tools.items: ToolLine { item: t; }
+                                    }
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        GhostButton {
+                                            compact: true;
+                                            icon: "\u{E710}";
+                                            text: "New tool";
+                                            clicked => { Tools.new-one(); }
+                                        }
+                                    }
+                                }
+                                Hint {
+                                    text: "Neria starts the program itself with the words you typed, never through a shell, and keeps what it prints for the report. A tool runs by itself (every download, a watched folder) only after it has run once by hand and finished.";
+                                }
+                            }
+
+                            // ---- Spotify ----
+                            if root.section == 2: VerticalLayout {
+                                spacing: Space.group;
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
+
+                                Group {
+                                    title: "Songs";
+                                    Hint { text: "Song info comes from Spotify, audio from YouTube Music. Songs use the \"Audio only\" format under Download."; }
+                                    Tick {
+                                        text: "Number playlist songs (01 Artist - Title)";
+                                        checked <=> Music.number-songs;
+                                        toggled => { root.settings-changed(); }
+                                        hint: "So the folder sorts in playlist order. Songs you already have are renamed, not downloaded again. Albums are always numbered.";
+                                    }
+                                    Tick {
+                                        text: "Check each song against Spotify's 30 s preview";
+                                        checked <=> root.verify-audio;
+                                        toggled => { root.settings-changed(); }
+                                        hint: "Catches re-recordings, live and cover versions by their sound, and tries other versions automatically. Adds about a second per song.";
+                                    }
+                                    Tick {
+                                        text: "Explain where the audio comes from before downloading";
+                                        checked <=> root.spotify-explain;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                }
+
+                                Group {
+                                    title: "Lyrics";
+                                    Tick {
+                                        text: "Add lyrics (inside the song + a synced .lrc file next to it)";
+                                        checked <=> root.lyrics;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    if root.lyrics: Hint { text: "Neria asks these in order and stops at the first synced lyrics. Each song's row says what it found."; }
+                                    if root.lyrics: Tick {
+                                        text: "LRCLIB: synced, free and open";
+                                        checked <=> Music.lrclib;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    if root.lyrics: Tick {
+                                        text: "Spotify's own synced lyrics (Musixmatch): needs a Spotify sign-in";
+                                        checked <=> Music.spotify;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                    // The warning comes before any sign-in, and stays while it's on.
+                                    if root.lyrics && Music.spotify: HorizontalLayout {
+                                        alignment: start;
+                                        Tag {
+                                            text: "Use a spare account";
+                                            kind: 2;
+                                        }
+                                    }
+                                    if root.lyrics && Music.spotify: Hint {
+                                        text: "This reads lyrics the way Spotify's web player does, which is against Spotify's terms: the account could be restricted or banned. Sign in with a spare (burner) Spotify account, never your main one. Neria uses it for lyrics only, never for audio, and only when LRCLIB has no synced lyrics.";
+                                    }
+                                    if root.lyrics && Music.spotify && !Music.spotify-signed-in: HorizontalLayout {
+                                        alignment: start;
+                                        GhostButton {
+                                            text: Accounts.busy ? "Signing in…" : "Sign in to Spotify…";
+                                            icon: "\u{E77B}";
+                                            clicked => { Accounts.sign-in("spotify.com"); }
+                                        }
+                                    }
+                                    if root.lyrics && Music.spotify && Music.spotify-signed-in: HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Icon {
+                                            text: "\u{E73E}";
+                                            color: Theme.ok;
+                                            font-size: 13px;
+                                            vertical-alignment: center;
+                                        }
+                                        Text {
+                                            text: "Signed in to Spotify";
+                                            color: Theme.ink;
+                                            font-size: 13px;
+                                            vertical-alignment: center;
                                         }
                                         TextLink {
                                             text: "Sign out";
-                                            clicked => { Accounts.sign-out(s.site); }
+                                            clicked => { Accounts.sign-out("spotify.com"); }
                                         }
                                     }
-                                    Divider { }
-                                }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    // As tall as the button's face (41px), level with it.
-                                    LineEdit {
-                                        horizontal-stretch: 1;
-                                        height: 41px;
-                                        y: 0;
-                                        placeholder-text: "A site, e.g. vimeo.com";
-                                        text <=> Accounts.other-site;
-                                        accepted => { Accounts.sign-in(Accounts.other-site); }
+                                    if root.lyrics: Tick {
+                                        text: "Synced lyrics only (skip songs with plain text only)";
+                                        checked <=> Music.synced-only;
+                                        toggled => { root.settings-changed(); }
                                     }
-                                    GhostButton {
-                                        horizontal-stretch: 0;
-                                        text: Accounts.busy ? "Signing in…" : "Sign in";
-                                        icon: "\u{E77B}";
-                                        clicked => { Accounts.sign-in(Accounts.other-site); }
+                                    Field {
+                                        HorizontalLayout {
+                                            alignment: start;
+                                            TextLink {
+                                                text: "Add lyrics to songs I already have…";
+                                                icon: "\u{E8B7}";
+                                                clicked => { Music.add-lyrics(); }
+                                            }
+                                        }
+                                        Hint { text: "Pick a folder of songs (tagged with artist and title, like Neria's): each gets lyrics inside it and a .lrc next to it. Songs that have lyrics already are skipped."; }
                                     }
                                 }
-                                HorizontalLayout {
-                                    alignment: start;
-                                    TextLink {
-                                        text: "Import a cookies.txt file";
-                                        icon: "\u{E8E5}";
-                                        clicked => { Accounts.import-file(); }
-                                    }
-                                }
-                            }
 
-                            Group {
-                                title: "Or use a browser's cookies";
-                                SettingRow {
-                                    label: "Borrow sign-in from";
-                                    ComboBox {
-                                        width: 150px;
-                                        model: ["None", "Chrome", "Edge", "Firefox", "Brave", "Opera", "Vivaldi"];
-                                        current-index <=> root.cookies-index;
-                                        selected => { root.settings-changed(); }
-                                    }
-                                }
-                                Hint { text: "For sites you haven't signed in to above. Also helps with \"confirm you're not a bot\"."; }
-                                // Chromium browsers lock their cookie file while open and encrypt it.
-                                // Two separate `if`s: wrapped text nested inside a sub-layout gets
-                                // measured as one line and squashes the next group.
-                                if root.cookies-index == 1 || root.cookies-index == 2 || root.cookies-index >= 4: HorizontalLayout {
-                                    alignment: start;
-                                    Tag {
-                                        text: "Heads-up";
-                                        kind: 2;
-                                    }
-                                }
-                                if root.cookies-index == 1 || root.cookies-index == 2: Hint {
-                                    text: "This browser usually blocks it: it locks its cookies while open and encrypts them. Firefox works best: sign in there and pick Firefox.";
-                                }
-                                if root.cookies-index >= 4: Hint {
-                                    text: (root.cookies-index == 4 ? "Brave" : root.cookies-index == 5 ? "Opera" : "Vivaldi")
-                                        + " locks its cookies while it's open: close it fully before downloading. Firefox works even while open.";
-                                }
-                            }
-
-                            Group {
-                                title: "Speed";
-                                SettingRow {
-                                    label: "Speed limit";
+                                Group {
+                                    title: "Your own Spotify key";
+                                    Hint { text: "Optional: your own Spotify app (developer.spotify.com → Create app) unlocks playlists over 100 songs. Never shared, stored only in settings.json next to Neria."; }
                                     LineEdit {
-                                        width: 150px;
-                                        placeholder-text: "e.g. 5M";
-                                        text <=> root.rate-limit;
+                                        placeholder-text: "Client ID";
+                                        text <=> root.spotify-client-id;
                                         edited => { root.settings-changed(); }
                                     }
-                                }
-                                Hint { text: "Per download, in bytes a second: 500K, 5M. Empty means no limit."; }
-                                SettingRow {
-                                    label: "Downloads at once";
-                                    SpinBox {
-                                        width: 150px;
-                                        minimum: 1;
-                                        maximum: 8;
-                                        value <=> root.max-concurrent;
+                                    LineEdit {
+                                        placeholder-text: "Client secret";
+                                        input-type: password;
+                                        text <=> root.spotify-client-secret;
                                         edited => { root.settings-changed(); }
                                     }
                                 }
                             }
 
-                            Group {
-                                title: "Expert";
-                                Text {
-                                    text: "Extra yt-dlp arguments";
-                                    color: Theme.ink;
-                                    font-family: Theme.body;
-                                    font-size: 13px;
-                                }
-                                LineEdit {
-                                    placeholder-text: "e.g. --write-description";
-                                    text <=> root.extra-args;
-                                    edited => { root.settings-changed(); }
-                                }
-                                Hint { text: "Added to every download. Leave empty unless you know yt-dlp."; }
-                            }
-                        }
+                            // ---- Network ----
+                            if root.section == 3: VerticalLayout {
+                                spacing: Space.group;
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
 
-                        // ---- General: closing, notifications, theme ----
-                        if root.section == 4: VerticalLayout {
-                            init => { Background.check-sounds(); }
-                            spacing: 22px;
-                            padding-top: Screen.compact ? 14px : 0px;
-                            padding-left: Screen.compact ? 16px : 20px;
-                            padding-right: Theme.lane;
-                            padding-bottom: 22px;
-                            alignment: start;
-
-                            Group {
-                                title: "When I close Neria";
-                                SettingRow {
-                                    label: "With downloads going";
-                                    ComboBox {
-                                        width: 150px;
-                                        model: ["Ask", "Keep going in the tray", "Stop and quit"];
-                                        current-index <=> Background.close-action;
-                                        selected => { Background.settings-changed(); }
+                                Group {
+                                    title: "Signed in";
+                                    Hint {
+                                        text: "For private, age-restricted and members-only videos. Sign in from a link's problem, or here. Cookies stay in Neria's folder and are only sent to the site they came from.";
+                                    }
+                                    for s in Accounts.sites: VerticalLayout {
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            padding-top: 8px;
+                                            padding-bottom: 8px;
+                                            Text {
+                                                text: s.name;
+                                                color: Theme.ink;
+                                                font-size: 13px;
+                                                font-weight: 600;
+                                                vertical-alignment: center;
+                                                horizontal-stretch: 0;
+                                            }
+                                            Text {
+                                                text: s.detail;
+                                                color: Theme.muted;
+                                                font-family: Theme.mono;
+                                                font-size: 11.5px;
+                                                vertical-alignment: center;
+                                                horizontal-stretch: 1;
+                                                overflow: elide;
+                                            }
+                                            TextLink {
+                                                text: "Sign out";
+                                                clicked => { Accounts.sign-out(s.site); }
+                                            }
+                                        }
+                                        Divider { }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        // As tall as the button's face (41px), level with it.
+                                        LineEdit {
+                                            horizontal-stretch: 1;
+                                            height: 41px;
+                                            y: 0;
+                                            placeholder-text: "A site, e.g. vimeo.com";
+                                            text <=> Accounts.other-site;
+                                            accepted => { Accounts.sign-in(Accounts.other-site); }
+                                        }
+                                        GhostButton {
+                                            horizontal-stretch: 0;
+                                            text: Accounts.busy ? "Signing in…" : "Sign in";
+                                            icon: "\u{E77B}";
+                                            clicked => { Accounts.sign-in(Accounts.other-site); }
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        TextLink {
+                                            text: "Import a cookies.txt file";
+                                            icon: "\u{E8E5}";
+                                            clicked => { Accounts.import-file(); }
+                                        }
                                     }
                                 }
-                                Hint { text: "In the tray (next to the clock) downloads, Download later and followed channels keep going. With nothing going, closing just quits."; }
-                            }
 
-                            Group {
-                                title: "Notifications";
-                                Tick {
-                                    text: "Tell me when a download, clip or compress finishes or fails";
-                                    checked <=> Background.notify;
-                                    toggled => { Background.settings-changed(); }
+                                Group {
+                                    title: "Or use a browser's cookies";
+                                    Field {
+                                        SettingRow {
+                                            label: "Borrow sign-in from";
+                                            ComboBox {
+                                                width: 150px;
+                                                model: ["None", "Chrome", "Edge", "Firefox", "Brave", "Opera", "Vivaldi"];
+                                                current-index <=> root.cookies-index;
+                                                selected => { root.settings-changed(); }
+                                            }
+                                        }
+                                        Hint { text: "For sites you haven't signed in to above. Also helps with \"confirm you're not a bot\"."; }
+                                    }
+                                    // Chromium browsers lock their cookie file while open and encrypt it.
+                                    // Two separate `if`s: wrapped text nested inside a sub-layout gets
+                                    // measured as one line and squashes the next group.
+                                    if root.cookies-index == 1 || root.cookies-index == 2 || root.cookies-index >= 4: HorizontalLayout {
+                                        alignment: start;
+                                        Tag {
+                                            text: "Heads-up";
+                                            kind: 2;
+                                        }
+                                    }
+                                    if root.cookies-index == 1 || root.cookies-index == 2: Hint {
+                                        text: "This browser usually blocks it: it locks its cookies while open and encrypts them. Firefox works best: sign in there and pick Firefox.";
+                                    }
+                                    if root.cookies-index >= 4: Hint {
+                                        text: (root.cookies-index == 4 ? "Brave" : root.cookies-index == 5 ? "Opera" : "Vivaldi")
+                                            + " locks its cookies while it's open: close it fully before downloading. Firefox works even while open.";
+                                    }
                                 }
-                                if Background.notify: Tick {
-                                    text: "Only when I'm not looking at Neria";
-                                    checked <=> Background.notify-unfocused;
-                                    toggled => { Background.settings-changed(); }
-                                }
-                                if Background.notify: SettingRow {
-                                    label: "Sound when done";
-                                    ComboBox {
-                                        width: 150px;
-                                        model: ["Neria chime", "Windows' sound", "None", "Your own sound…"];
-                                        current-index <=> Background.sound-done;
-                                        selected => {
-                                            if self.current-index == 3 {
-                                                Background.pick-sound(false, false);
-                                            } else {
-                                                Background.settings-changed();
-                                                Background.test-sound(false);
+
+                                Group {
+                                    title: "Speed";
+                                    Field {
+                                        SettingRow {
+                                            label: "Speed limit";
+                                            LineEdit {
+                                                width: 150px;
+                                                placeholder-text: "e.g. 5M";
+                                                text <=> root.rate-limit;
+                                                edited => { root.settings-changed(); }
+                                            }
+                                        }
+                                        Hint { text: "Per download, in bytes a second: 500K, 5M. Empty means no limit."; }
+                                    }
+                                    SettingRow {
+                                        label: "Downloads at once";
+                                        // A pick list, not a SpinBox: that one changes its
+                                        // number under the wheel while the page scrolls past.
+                                        ComboBox {
+                                            width: 150px;
+                                            model: ["1", "2", "3", "4", "5", "6", "7", "8"];
+                                            current-index: Math.clamp(root.max-concurrent, 1, 8) - 1;
+                                            selected => {
+                                                root.max-concurrent = self.current-index + 1;
+                                                root.settings-changed();
                                             }
                                         }
                                     }
                                 }
-                                if Background.notify && Background.sound-done == 3: OwnSound {
-                                    name: Background.own-done;
-                                    missing: Background.own-done-missing;
-                                    failed: false;
+
+                                Group {
+                                    title: "Expert";
+                                    Text {
+                                        text: "Extra yt-dlp arguments";
+                                        color: Theme.ink;
+                                        font-family: Theme.body;
+                                        font-size: 13px;
+                                    }
+                                    Field {
+                                        LineEdit {
+                                            placeholder-text: "e.g. --write-description";
+                                            text <=> root.extra-args;
+                                            edited => { root.settings-changed(); }
+                                        }
+                                        Hint { text: "Added to every download. Leave empty unless you know yt-dlp."; }
+                                    }
                                 }
-                                if Background.notify: SettingRow {
-                                    label: "Sound when it fails";
-                                    ComboBox {
-                                        width: 150px;
-                                        model: ["Low chime", "Windows' sound", "None", "Your own sound…"];
-                                        current-index <=> Background.sound-failed;
-                                        selected => {
-                                            if self.current-index == 3 {
-                                                Background.pick-sound(true, false);
-                                            } else {
-                                                Background.settings-changed();
-                                                Background.test-sound(true);
+                            }
+
+                            // ---- General: closing, notifications, theme ----
+                            if root.section == 4: VerticalLayout {
+                                init => { Background.check-sounds(); }
+                                spacing: 24px;
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
+
+                                Group {
+                                    title: "When I close Neria";
+                                    Field {
+                                        SettingRow {
+                                            label: "With downloads going";
+                                            ComboBox {
+                                                width: 150px;
+                                                model: ["Ask", "Keep going in the tray", "Stop and quit"];
+                                                current-index <=> Background.close-action;
+                                                selected => { Background.settings-changed(); }
+                                            }
+                                        }
+                                        Hint { text: "In the tray (next to the clock) downloads, Download later and followed channels keep going. With nothing going, closing just quits."; }
+                                    }
+                                }
+
+                                Group {
+                                    title: "Notifications";
+                                    Tick {
+                                        text: "Tell me when a download, clip or compress finishes or fails";
+                                        checked <=> Background.notify;
+                                        toggled => { Background.settings-changed(); }
+                                    }
+                                    if Background.notify: Tick {
+                                        text: "Only when I'm not looking at Neria";
+                                        checked <=> Background.notify-unfocused;
+                                        toggled => { Background.settings-changed(); }
+                                    }
+                                    if Background.notify: SettingRow {
+                                        label: "Sound when done";
+                                        ComboBox {
+                                            width: 150px;
+                                            model: ["Neria chime", "Windows' sound", "None", "Your own sound…"];
+                                            current-index <=> Background.sound-done;
+                                            selected => {
+                                                if self.current-index == 3 {
+                                                    Background.pick-sound(false, false);
+                                                } else {
+                                                    Background.settings-changed();
+                                                    Background.test-sound(false);
+                                                }
                                             }
                                         }
                                     }
+                                    if Background.notify && Background.sound-done == 3: OwnSound {
+                                        name: Background.own-done;
+                                        missing: Background.own-done-missing;
+                                        failed: false;
+                                    }
+                                    if Background.notify: SettingRow {
+                                        label: "Sound when it fails";
+                                        ComboBox {
+                                            width: 150px;
+                                            model: ["Low chime", "Windows' sound", "None", "Your own sound…"];
+                                            current-index <=> Background.sound-failed;
+                                            selected => {
+                                                if self.current-index == 3 {
+                                                    Background.pick-sound(true, false);
+                                                } else {
+                                                    Background.settings-changed();
+                                                    Background.test-sound(true);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if Background.notify && Background.sound-failed == 3: OwnSound {
+                                        name: Background.own-failed;
+                                        missing: Background.own-failed-missing;
+                                        failed: true;
+                                    }
+                                    if Background.notify && (Background.sound-done == 3 || Background.sound-failed == 3): Hint {
+                                        text: "Your own sound is copied into Neria's folder, so it moves with Neria. WAV files only.";
+                                    }
+                                    if Background.notify: Hint { text: "A group (a playlist, an album) sends one: \"12 songs saved\"."; }
                                 }
-                                if Background.notify && Background.sound-failed == 3: OwnSound {
-                                    name: Background.own-failed;
-                                    missing: Background.own-failed-missing;
-                                    failed: true;
+
+                                Group {
+                                    title: "Theme";
+                                    Field {
+                                        SettingRow {
+                                            label: "Colours";
+                                            ComboBox {
+                                                width: 150px;
+                                                model: ["Same as Windows", "Dark", "Light"];
+                                                current-index <=> root.theme-index;
+                                                selected => {
+                                                    root.theme-changed();
+                                                    root.settings-changed();
+                                                }
+                                            }
+                                        }
+                                        Hint { text: "\"Same as Windows\" follows your app colour in Windows settings."; }
+                                    }
                                 }
-                                if Background.notify && (Background.sound-done == 3 || Background.sound-failed == 3): Hint {
-                                    text: "Your own sound is copied into Neria's folder, so it moves with Neria. WAV files only.";
-                                }
-                                if Background.notify: Hint { text: "A group (a playlist, an album) sends one: \"12 songs saved\"."; }
                             }
 
-                            Group {
-                                title: "Theme";
-                                SettingRow {
-                                    label: "Colours";
-                                    ComboBox {
-                                        width: 150px;
-                                        model: ["Same as Windows", "Dark", "Light"];
-                                        current-index <=> root.theme-index;
-                                        selected => {
-                                            root.theme-changed();
-                                            root.settings-changed();
+                            // ---- Voice: "clip that" ----
+                            if root.section == 5: VerticalLayout {
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
+                                VoiceSection { }
+                            }
+
+                            // ---- About ----
+                            if root.section == 6: VerticalLayout {
+                                spacing: Space.group;
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
+
+                                Group {
+                                    title: "Neria " + root.app-version;
+                                    if root.update-status != "": Text {
+                                        text: root.update-status;
+                                        color: root.update-state == 4 ? Theme.danger : root.update-version != "" ? Theme.accent-hi : Theme.muted;
+                                        font-size: 12px;
+                                        wrap: word-wrap;
+                                    }
+                                    if root.update-version != "" && root.update-notes != "": Rectangle {
+                                        border-radius: 8px;
+                                        background: Theme.surface-hi;
+                                        VerticalLayout {
+                                            padding: 12px;
+                                            Hint { text: root.update-notes; }
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        spacing: 8px;
+                                        if root.update-version != "" && (root.update-state == 0 || root.update-state == 4): PrimaryButton {
+                                            text: "Update to " + root.update-version;
+                                            clicked => { root.update-install(); }
+                                        }
+                                        if root.update-state == 3: PrimaryButton {
+                                            text: "Restart now";
+                                            clicked => { root.update-restart(); }
+                                        }
+                                        if root.update-state == 0 || root.update-state == 4: GhostButton {
+                                            text: "Check now";
+                                            icon: "\u{E72C}";
+                                            clicked => { root.update-check(); }
+                                        }
+                                    }
+                                    if root.update-state == 2: Bar { value: root.update-progress; }
+                                    Tick {
+                                        text: "Check for updates when Neria starts";
+                                        checked <=> root.check-updates;
+                                        toggled => { root.settings-changed(); }
+                                    }
+                                }
+
+                                Group {
+                                    title: "Tools";
+                                    Text {
+                                        text: root.tool-versions == "" ? "Checking tool versions…" : root.tool-versions;
+                                        color: Theme.muted;
+                                        font-family: Theme.mono;
+                                        font-size: 11.5px;
+                                        wrap: word-wrap;
+                                    }
+                                    Hint { text: "Neria keeps yt-dlp current: it looks for a new one daily and whenever a site stops working. FFmpeg, Deno and libmpv are offered an update once a newer build exists and yours is over a month old."; }
+                                    if root.tools-status != "": Text {
+                                        text: root.tools-status;
+                                        color: root.tools-outdated != "" ? Theme.accent-hi : Theme.muted;
+                                        font-size: 12px;
+                                        wrap: word-wrap;
+                                    }
+                                    if root.tools-outdated != "" && !root.tools-updating: HorizontalLayout {
+                                        alignment: start;
+                                        GhostButton {
+                                            text: "Update tools";
+                                            icon: "\u{E896}";
+                                            clicked => { root.tools-update(); }
                                         }
                                     }
                                 }
-                                Hint { text: "\"Same as Windows\" follows your app colour in Windows settings."; }
-                            }
-                        }
 
-                        // ---- Voice: "clip that" ----
-                        if root.section == 5: VerticalLayout {
-                            padding-top: Screen.compact ? 14px : 0px;
-                            padding-left: Screen.compact ? 16px : 20px;
-                            padding-right: Theme.lane;
-                            padding-bottom: 22px;
-                            alignment: start;
-                            VoiceSection { }
-                        }
-
-                        // ---- About ----
-                        if root.section == 6: VerticalLayout {
-                            spacing: 22px;
-                            padding-top: Screen.compact ? 14px : 0px;
-                            padding-left: Screen.compact ? 16px : 20px;
-                            padding-right: Theme.lane;
-                            padding-bottom: 22px;
-                            alignment: start;
-
-                            Group {
-                                title: "Neria " + root.app-version;
-                                if root.update-status != "": Text {
-                                    text: root.update-status;
-                                    color: root.update-state == 4 ? Theme.danger : root.update-version != "" ? Theme.accent-hi : Theme.muted;
-                                    font-size: 12px;
-                                    wrap: word-wrap;
-                                }
-                                if root.update-version != "" && root.update-notes != "": Rectangle {
-                                    border-radius: 8px;
-                                    background: Theme.surface-hi;
-                                    VerticalLayout {
-                                        padding: 10px;
-                                        Hint { text: root.update-notes; }
-                                    }
-                                }
-                                HorizontalLayout {
-                                    alignment: start;
-                                    spacing: 8px;
-                                    if root.update-version != "" && (root.update-state == 0 || root.update-state == 4): PrimaryButton {
-                                        text: "Update to " + root.update-version;
-                                        clicked => { root.update-install(); }
-                                    }
-                                    if root.update-state == 3: PrimaryButton {
-                                        text: "Restart now";
-                                        clicked => { root.update-restart(); }
-                                    }
-                                    if root.update-state == 0 || root.update-state == 4: GhostButton {
-                                        text: "Check now";
-                                        icon: "\u{E72C}";
-                                        clicked => { root.update-check(); }
-                                    }
-                                }
-                                if root.update-state == 2: Bar { value: root.update-progress; }
-                                Tick {
-                                    text: "Check for updates when Neria starts";
-                                    checked <=> root.check-updates;
-                                    toggled => { root.settings-changed(); }
-                                }
-                            }
-
-                            Group {
-                                title: "Tools";
-                                Text {
-                                    text: root.tool-versions == "" ? "Checking tool versions…" : root.tool-versions;
-                                    color: Theme.muted;
-                                    font-family: Theme.mono;
-                                    font-size: 11.5px;
-                                    wrap: word-wrap;
-                                }
-                                Hint { text: "Neria keeps yt-dlp current: it looks for a new one daily and whenever a site stops working. FFmpeg, Deno and libmpv are offered an update once a newer build exists and yours is over a month old."; }
-                                if root.tools-status != "": Text {
-                                    text: root.tools-status;
-                                    color: root.tools-outdated != "" ? Theme.accent-hi : Theme.muted;
-                                    font-size: 12px;
-                                    wrap: word-wrap;
-                                }
-                                if root.tools-outdated != "" && !root.tools-updating: HorizontalLayout {
-                                    alignment: start;
-                                    GhostButton {
-                                        text: "Update tools";
-                                        icon: "\u{E896}";
-                                        clicked => { root.tools-update(); }
-                                    }
-                                }
-                            }
-
-                            Group {
-                                title: "Report a problem";
-                                Hint { text: "Something not working? Copy a report and paste it in a message. It has the versions above and your settings, never your Spotify key. Failed downloads have their own report button (bug icon) with the link and log."; }
-                                HorizontalLayout {
-                                    alignment: start;
-                                    GhostButton {
-                                        text: "Copy report";
-                                        icon: "\u{EBE8}";
-                                        clicked => { root.copy-report(); }
+                                Group {
+                                    title: "Report a problem";
+                                    Hint { text: "Something not working? Copy a report and paste it in a message. It has the versions above and your settings, never your Spotify key. Failed downloads have their own report button (bug icon) with the link and log."; }
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        GhostButton {
+                                            text: "Copy report";
+                                            icon: "\u{EBE8}";
+                                            clicked => { root.copy-report(); }
+                                        }
                                     }
                                 }
                             }

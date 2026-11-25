@@ -940,7 +940,7 @@ pub fn dropped(ui: &AppWindow, serial: String, name: String, files: Vec<PathBuf>
     let is_apk = |p: &PathBuf| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("apk"));
     let (apks, others): (Vec<PathBuf>, Vec<PathBuf>) = files.into_iter().filter(|p| p.is_file()).partition(is_apk);
     if apks.is_empty() && others.is_empty() {
-        crate::show_toast(ui, "Drop files, not folders, to send them to the phone.");
+        crate::toast_info(ui, "Drop files, not folders, to send them to the phone.");
         return;
     }
     let file_name = |p: &PathBuf| p.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -949,7 +949,7 @@ pub fn dropped(ui: &AppWindow, serial: String, name: String, files: Vec<PathBuf>
         (0, 1) => format!("Sending {} to {name}…", file_name(&others[0])),
         (a, o) => format!("Sending {} to {name}…", plural(a + o, "file")),
     };
-    crate::show_toast(ui, &what);
+    crate::toast_info(ui, &what);
     let weak = ui.as_weak();
     std::thread::spawn(move || {
         let mut said = Vec::new();
@@ -966,8 +966,11 @@ pub fn dropped(ui: &AppWindow, serial: String, name: String, files: Vec<PathBuf>
                 Err(e) => said.push(format!("Couldn't send {one}: {e}")),
             }
         }
+        let failed = said.iter().any(|s| s.starts_with("Couldn't"));
         let text = said.join(". ");
-        let _ = weak.upgrade_in_event_loop(move |ui| crate::show_toast(&ui, &text));
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            if failed { crate::toast_problem(&ui, &text) } else { crate::show_toast(&ui, &text) }
+        });
     });
 }
 
@@ -1727,7 +1730,7 @@ fn load_picture(ui: &AppWindow, url: &str) {
         Ok(())
     });
     if let Err(e) = ok {
-        crate::show_toast(ui, &format!("Player unavailable: {e}"));
+        crate::toast_problem(ui, &format!("Player unavailable: {e}"));
     }
     ui.window().request_redraw();
 }
@@ -1779,7 +1782,7 @@ pub fn render(ui: &AppWindow, gl: &glow::Context) {
             match u.mpv.as_ref().unwrap().create_gl_renderer(redraw) {
                 Ok(r) => u.renderer = Some(r),
                 Err(e) => {
-                    crate::show_toast(ui, &format!("Video renderer failed: {e}"));
+                    crate::toast_problem(ui, &format!("Video renderer failed: {e}"));
                     return;
                 }
             }
@@ -1939,7 +1942,7 @@ fn fake(ui: &AppWindow) {
             set_state(ui, st::STARTING);
             running(ui, s, Some(b), false);
         }
-        Err(e) => crate::show_toast(ui, &format!("Fake phone: {e}")),
+        Err(e) => crate::toast_problem(ui, &format!("Fake phone: {e}")),
     }
 }
 

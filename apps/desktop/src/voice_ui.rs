@@ -297,7 +297,7 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
             ST.with(|s| s.borrow_mut().mic = None);
             match voice::remove() {
                 Ok(()) => crate::show_toast(&ui, "Voice model removed from this PC."),
-                Err(e) => crate::show_toast(&ui, &format!("Couldn't remove it all: {e}")),
+                Err(e) => crate::toast_problem(&ui, &format!("Couldn't remove it all: {e}")),
             }
             save(|p| p.on = false);
             show_prefs(&ui);
@@ -350,6 +350,10 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
     v.on_show({
         let weak = ui.as_weak();
         move || show_saved(&weak.unwrap())
+    });
+    v.on_heard_closed({
+        let weak = ui.as_weak();
+        move || hide_toast(&weak.unwrap())
     });
 
     if let Ok(demo) = std::env::var("NERIA_VOICE_DEMO") {
@@ -1018,12 +1022,9 @@ fn toast(ui: &AppWindow, tag: &str, text: &str, kind: i32, undo: bool) {
         s.toast_gen += 1;
         s.toast_gen
     });
-    let weak = ui.as_weak();
-    Timer::single_shot(Duration::from_secs(8), move || {
-        if ST.with(|s| s.borrow().toast_gen) == n
-            && let Some(ui) = weak.upgrade()
-        {
-            hide_toast(&ui);
+    crate::after_toast_time(ui.as_weak(), Duration::from_secs(8), move |ui| {
+        if ST.with(|s| s.borrow().toast_gen) == n {
+            hide_toast(ui);
         }
     });
 }
@@ -1088,7 +1089,7 @@ fn show_saved(ui: &AppWindow) {
     };
     match file {
         Some(f) if f.is_file() => crate::reveal(&f),
-        _ => crate::show_toast(ui, &format!("Still saving. It goes in {}.", dir.display())),
+        _ => crate::toast_info(ui, &format!("Still saving. It goes in {}.", dir.display())),
     }
 }
 

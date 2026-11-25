@@ -1,6 +1,6 @@
 import { ScrollView, Slider } from "std-widgets.slint";
 import { Theme, Screen } from "../theme.slint";
-import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, LinkField, ChoiceRow, ChoiceChips } from "../widgets.slint";
+import { Menu, MenuItem, PrimaryButton, GhostButton, TextLink, Notice, Divider, Tick, Tag, Icon, Bar, TextBox, ChoiceRow, ChoiceChips, Head, Hint } from "../widgets.slint";
 import { Phone, PhoneRow, Capture } from "../globals.slint";
 import { SavedList } from "../components/saved-list.slint";
 import { QualityChoice } from "../components/quality-choice.slint";
@@ -12,27 +12,13 @@ import { QualityChoice } from "../components/quality-choice.slint";
 // the sound plays, and a volume here, for all three). The picture is drawn by mpv
 // (`phone_ui.rs`); taps, scrolling and typing on it go to the phone.
 
-component Head inherits Text {
-    color: Theme.ink;
-    font-family: Theme.display;
-    font-size: 14px;
-    font-weight: 700;
-}
-
-component Hint inherits Text {
-    color: Theme.muted;
-    font-family: Theme.body;
-    font-size: 12px;
-    wrap: word-wrap;
-}
-
 // The state line between hairlines: a tag, the big line, the line under it, the mono line.
 component PhoneStatus inherits VerticalLayout {
     spacing: 12px;
     vertical-stretch: 0;
     Divider { }
     HorizontalLayout {
-        spacing: 14px;
+        spacing: 12px;
         if Phone.state >= 4: VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
@@ -44,7 +30,7 @@ component PhoneStatus inherits VerticalLayout {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 3px;
+            spacing: 4px;
             Text {
                 text: Phone.status;
                 color: Theme.ink;
@@ -74,7 +60,7 @@ component PhoneStatus inherits VerticalLayout {
 
 // The tools aren't here yet: what they are, and getting them.
 component GetTools inherits VerticalLayout {
-    spacing: 14px;
+    spacing: 16px;
     alignment: start;
     Text {
         text: "Mirror, record and clip your Android phone";
@@ -122,8 +108,8 @@ component Step inherits VerticalLayout {
     property <bool> done: Phone.step > root.n;
     property <bool> now: Phone.step == root.n;
     HorizontalLayout {
-        padding-top: 10px;
-        padding-bottom: 10px;
+        padding-top: 12px;
+        padding-bottom: 12px;
         spacing: 12px;
         VerticalLayout {
             alignment: start;
@@ -214,7 +200,7 @@ component CodeBox inherits VerticalLayout {
     }
     HorizontalLayout {
         spacing: 8px;
-        code := LinkField {
+        code := TextBox {
             horizontal-stretch: 1;
             max-width: 240px;
             placeholder: "6 digits";
@@ -298,13 +284,13 @@ component ConnectSteps inherits VerticalLayout {
 
 // Connecting: the QR and the steps; a pairing code and USB as quiet links.
 component Connect inherits VerticalLayout {
-    spacing: 14px;
+    spacing: 16px;
     property <bool> side: !Screen.compact;
     if root.side: HorizontalLayout {
-        spacing: 30px;
+        spacing: 32px;
         VerticalLayout {
             horizontal-stretch: 0;
-            spacing: 10px;
+            spacing: 12px;
             alignment: start;
             QrCode { }
             Text {
@@ -323,7 +309,7 @@ component Connect inherits VerticalLayout {
         }
     }
     if !root.side: VerticalLayout {
-        spacing: 10px;
+        spacing: 12px;
         Text {
             text: "Connect your Android phone";
             color: Theme.ink;
@@ -351,10 +337,10 @@ component Connect inherits VerticalLayout {
 component PhoneItem inherits VerticalLayout {
     in property <PhoneRow> item;
     HorizontalLayout {
-        padding-top: 9px;
-        padding-bottom: 9px;
+        padding-top: 8px;
+        padding-bottom: 8px;
         padding-left: 4px;
-        spacing: 10px;
+        spacing: 8px;
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
@@ -373,7 +359,7 @@ component PhoneItem inherits VerticalLayout {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 1px;
+            spacing: 2px;
             Text {
                 text: root.item.name;
                 color: Theme.ink;
@@ -458,7 +444,7 @@ component PhoneList inherits VerticalLayout {
         item: p;
     }
     HorizontalLayout {
-        padding-top: 10px;
+        padding-top: 12px;
         alignment: start;
         TextLink {
             text: "+ Add a phone";
@@ -606,7 +592,7 @@ component SoundChoices inherits VerticalLayout {
         clicked => { Phone.sound-place = 2; Phone.changed(); }
     }
     HorizontalLayout {
-        padding-top: 10px;
+        padding-top: 12px;
         spacing: 12px;
         VerticalLayout {
             alignment: center;
@@ -687,10 +673,10 @@ component PhoneKeys inherits HorizontalLayout {
 
 // Mirroring: Clip the last 30 s (the yellow one), Record, Screenshot, Present.
 component MirrorActions inherits VerticalLayout {
-    spacing: 10px;
+    spacing: 12px;
     if Screen.wide: HorizontalLayout {
         alignment: start;
-        spacing: 10px;
+        spacing: 8px;
         PrimaryButton {
             text: "Clip the last 30 s";
             icon: "\u{E8C6}";
@@ -716,7 +702,7 @@ component MirrorActions inherits VerticalLayout {
         }
     }
     if !Screen.compact && !Screen.wide: FlexboxLayout {
-        spacing: 10px;
+        spacing: 8px;
         PrimaryButton {
             text: "Clip the last 30 s";
             icon: "\u{E8C6}";
@@ -874,7 +860,7 @@ component MirrorChoices inherits VerticalLayout {
         toggled => { Phone.changed(); }
     }
     if !Screen.compact: HorizontalLayout {
-        padding-top: 10px;
+        padding-top: 12px;
         spacing: 8px;
         alignment: start;
         GhostButton {
@@ -894,7 +880,7 @@ component MirrorChoices inherits VerticalLayout {
 
 // Sound only: the volume here, Record, Show the picture, Stop.
 component SoundOnly inherits VerticalLayout {
-    spacing: 10px;
+    spacing: 12px;
     HorizontalLayout {
         spacing: 8px;
         alignment: Screen.compact ? stretch : start;
@@ -940,7 +926,7 @@ component UsbOffer inherits VerticalLayout {
         wrap: true;
     }
     HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         alignment: start;
         GhostButton {
             compact: true;
@@ -973,10 +959,10 @@ export component PhonePane inherits Rectangle {
     property <length> top-h: root.top-w / root.aspect;
 
     if root.beside: HorizontalLayout {
-        spacing: 26px;
+        spacing: 24px;
         VerticalLayout {
             horizontal-stretch: 0;
-            spacing: 10px;
+            spacing: 12px;
             if !Phone.presenting: Picture {
                 width: root.side-w;
                 height: root.side-w / root.aspect;
@@ -992,7 +978,7 @@ export component PhonePane inherits Rectangle {
             horizontal-stretch: 1;
             VerticalLayout {
                 padding-right: Theme.lane;
-                spacing: 14px;
+                spacing: 16px;
                 alignment: start;
                 PhoneStatus { }
                 if Phone.usb-offer: UsbOffer { }
@@ -1005,7 +991,7 @@ export component PhonePane inherits Rectangle {
     if !root.beside: ScrollView {
         VerticalLayout {
             padding-right: Theme.lane;
-            spacing: 14px;
+            spacing: 16px;
             alignment: start;
             if Phone.state <= 1: GetTools { }
             if Phone.state == 2: Connect { }
@@ -1013,7 +999,7 @@ export component PhonePane inherits Rectangle {
             if Phone.state == 3: PhoneList { }
             if Phone.state == 3 && Phone.phones.length > 0: PhoneQuality { }
             if root.showing: VerticalLayout {
-                spacing: 10px;
+                spacing: 12px;
                 HorizontalLayout {
                     alignment: center;
                     if !Phone.presenting: Picture {

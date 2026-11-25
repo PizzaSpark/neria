@@ -295,7 +295,7 @@ fn paste_download(ui: &AppWindow, queue: &Queue) {
     let text = arboard::Clipboard::new().and_then(|mut c| c.get_text()).unwrap_or_default();
     let links = probe::split_links(&text);
     if links.is_empty() {
-        crate::show_toast(ui, "There's no link on the clipboard. Copy one, then try again.");
+        crate::toast_info(ui, "There's no link on the clipboard. Copy one, then try again.");
         return;
     }
     let said = queue_links(ui, queue, &links);

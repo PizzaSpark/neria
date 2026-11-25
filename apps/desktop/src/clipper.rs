@@ -1489,7 +1489,7 @@ pub fn install(
                         Rc::new(go),
                     );
                 }
-                None => crate::show_toast(&ui, "Open a video or sound file first, then transcribe it."),
+                None => crate::toast_info(&ui, "Open a video or sound file first, then transcribe it."),
             }
         }
     });

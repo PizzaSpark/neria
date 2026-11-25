@@ -5,6 +5,7 @@ import { PrimaryButton, Hint, Tick, Dialog, Divider, ListRow, TextLink, ChoiceCh
 
 // One picker for the three things inside a video: captions languages, audio tracks and
 // chapters. Calm rows with ticks, groups as small headings, the options below the list.
+// ui-rules: what's typed here applies as it's typed, so closing loses nothing.
 export component TracksDialog inherits Dialog {
     property <int> kind: Extras.open;
     title: root.kind == 1 ? "Captions" : root.kind == 2 ? "Audio tracks" : "Chapters";
@@ -14,7 +15,7 @@ export component TracksDialog inherits Dialog {
     close => { Extras.open = 0; }
 
     HorizontalLayout {
-        spacing: 14px;
+        spacing: 12px;
         if root.kind == 1 && Extras.total > 8: LineEdit {
             horizontal-stretch: 1;
             placeholder-text: "Search " + Extras.total + " languages";
@@ -56,7 +57,7 @@ export component TracksDialog inherits Dialog {
                 HorizontalLayout {
                     padding-left: 4px;
                     padding-right: Theme.lane;
-                    spacing: 10px;
+                    spacing: 8px;
                     if row.header: Text {
                         text: row.label;
                         color: Theme.muted;

@@ -29,8 +29,8 @@ component FileRow inherits Rectangle {
         background: Theme.line;
     }
     row := HorizontalLayout {
-        padding-top: 9px;
-        padding-bottom: 9px;
+        padding-top: 8px;
+        padding-bottom: 8px;
         spacing: 12px;
         Thumb {
             width: 64px;
@@ -41,7 +41,7 @@ component FileRow inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 3px;
+            spacing: 4px;
             Text {
                 text: root.file.name;
                 color: Theme.ink;
@@ -110,7 +110,7 @@ component Goals inherits VerticalLayout {
     // A video: keep the picture, or make a sound file of it (mock design/audio-tools.html 2A).
     if Compress.has-video: HorizontalLayout {
         padding-bottom: 12px;
-        spacing: 10px;
+        spacing: 8px;
         ChoiceChips {
             horizontal-stretch: 0;
             options: ["Video", "Sound only"];
@@ -137,7 +137,7 @@ component Goals inherits VerticalLayout {
         }
     }
     if Compress.goal == 5: HorizontalLayout {
-        padding-top: 10px;
+        padding-top: 12px;
         padding-left: 36px;
         spacing: 8px;
         LineEdit {
@@ -198,7 +198,7 @@ component Player inherits VerticalLayout {
 
 // Before / after, the sizes, and the sample to play.
 component Result inherits VerticalLayout {
-    spacing: 10px;
+    spacing: 12px;
     if Compress.verdict != "": Text {
         text: Compress.verdict;
         color: Theme.ink;
@@ -246,13 +246,13 @@ component Advanced inherits VerticalLayout {
         accessible-role: button;
         accessible-label: (Compress.advanced-open ? "Hide" : "Show") + " advanced options";
         accessible-action-default => { Compress.advanced-open = !Compress.advanced-open; }
-        KeyPress {
+        kp := KeyPress {
             radius: 6px;
             activated => { Compress.advanced-open = !Compress.advanced-open; }
         }
         ta := TouchArea {
             mouse-cursor: pointer;
-            clicked => { Compress.advanced-open = !Compress.advanced-open; }
+            clicked => { kp.take(); Compress.advanced-open = !Compress.advanced-open; }
         }
         HorizontalLayout {
             spacing: 8px;
@@ -281,7 +281,7 @@ component Advanced inherits VerticalLayout {
         }
     }
     if Compress.advanced-open: VerticalLayout {
-        spacing: 14px;
+        spacing: 16px;
         padding-left: 4px;
         VerticalLayout {
             spacing: 6px;
@@ -416,10 +416,10 @@ export component CompressPage inherits Rectangle {
         if Compress.count == 0: VerticalLayout {
             vertical-stretch: 1;
             alignment: start;
-            spacing: 14px;
+            spacing: 16px;
             HorizontalLayout {
                 alignment: start;
-                spacing: 10px;
+                spacing: 8px;
                 PrimaryButton {
                     text: "Open files…";
                     icon: "\u{E8E5}";
@@ -568,7 +568,7 @@ export component CompressPage inherits Rectangle {
                     }
                     // Several parts: keep this one, pick the next on the strip, and so on.
                     HorizontalLayout {
-                        spacing: 10px;
+                        spacing: 8px;
                         GhostButton {
                             horizontal-stretch: 0;
                             compact: true;
@@ -586,7 +586,7 @@ export component CompressPage inherits Rectangle {
                         }
                     }
                     for p[i] in Compress.parts: HorizontalLayout {
-                        spacing: 10px;
+                        spacing: 8px;
                         Text {
                             horizontal-stretch: 0;
                             min-width: 46px;
@@ -631,7 +631,7 @@ export component CompressPage inherits Rectangle {
                 // Goals beside the result on wide windows; stacked below that, so the hints
                 // keep their room (the picture then stays a readable size, not full width).
                 if root.one && Screen.wide: HorizontalLayout {
-                    spacing: 22px;
+                    spacing: 24px;
                     Goals {
                         horizontal-stretch: 1;
                     }
@@ -650,7 +650,7 @@ export component CompressPage inherits Rectangle {
                 if root.many: Goals { }
 
                 if Compress.problem != "": HorizontalLayout {
-                    spacing: 10px;
+                    spacing: 8px;
                     Notice {
                         text: Compress.problem;
                         wrap: true;

@@ -102,6 +102,21 @@ pub fn install(ui: &AppWindow) {
             ole_ready.set(ole::install(&ui));
         }
         match event {
+            // How the last thing was done (a dialog or menu opened from the keyboard starts on
+            // its first control; from the mouse it doesn't), and whether the window is in front
+            // (a toast's time doesn't run out while Neria is behind something).
+            WindowEvent::KeyboardInput { .. } => {
+                ui.global::<crate::Nav>().set_keyboard(true);
+                return EventResult::Propagate;
+            }
+            WindowEvent::MouseInput { .. } => {
+                ui.global::<crate::Nav>().set_keyboard(false);
+                return EventResult::Propagate;
+            }
+            WindowEvent::Focused(front) => {
+                ui.global::<crate::Nav>().set_window_active(*front);
+                return EventResult::Propagate;
+            }
             WindowEvent::HoveredFile(path) => {
                 // Only the first file of a hover batch sets the label.
                 if !ui.get_drop_hover() {
@@ -122,7 +137,7 @@ pub fn install(ui: &AppWindow) {
                 }
                 let now = Instant::now();
                 if last_drop.get().is_some_and(|t| now.duration_since(t) < Duration::from_millis(600)) {
-                    crate::show_toast(&ui, "One file at a time: Neria opened the first one.");
+                    crate::toast_info(&ui, "One file at a time: Neria opened the first one.");
                     return EventResult::PreventDefault;
                 }
                 last_drop.set(Some(now));
@@ -191,7 +206,7 @@ fn dropped_files(ui: &AppWindow, first: PathBuf, all: Vec<PathBuf>) {
     let more = all.len() > 1;
     dropped(ui, first);
     if more {
-        crate::show_toast(ui, "One file at a time: Neria opened the first one. Compress takes several.");
+        crate::toast_info(ui, "One file at a time: Neria opened the first one. Compress takes several.");
     }
 }
 
@@ -204,7 +219,7 @@ fn dropped(ui: &AppWindow, path: PathBuf) {
         return;
     }
     if path.is_dir() {
-        crate::show_toast(ui, "That's a folder. Drop a video or audio file instead.");
+        crate::toast_info(ui, "That's a folder. Drop a video or audio file instead.");
         return;
     }
     let e = ext(&path);
@@ -217,7 +232,7 @@ fn dropped(ui: &AppWindow, path: PathBuf) {
             .unwrap_or_default();
         let links = probe::split_links(&text);
         if links.is_empty() {
-            crate::show_toast(ui, "There are no links in that file.");
+            crate::toast_info(ui, "There are no links in that file.");
             return;
         }
         let joined = links.join(" ");
@@ -231,7 +246,7 @@ fn dropped(ui: &AppWindow, path: PathBuf) {
     let audio = AUDIO.contains(&e.as_str());
     if !video && !audio {
         let what = if e.is_empty() { "that file".to_string() } else { format!("a .{e} file") };
-        crate::show_toast(ui, &format!("Neria opens video and audio files, not {what}."));
+        crate::toast_info(ui, &format!("Neria opens video and audio files, not {what}."));
         return;
     }
     let file = path.to_string_lossy().into_owned();

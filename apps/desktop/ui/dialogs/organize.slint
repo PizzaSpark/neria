@@ -18,7 +18,7 @@ export component OrganizeDialog inherits Dialog {
         changed => { Organize.changed(); }
     }
     if !Organize.done: HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         Text {
             text: "In";
             color: Theme.muted;
@@ -75,7 +75,7 @@ export component OrganizeDialog inherits Dialog {
     }
     if Organize.hint != "": Hint { text: Organize.hint; }
     HorizontalLayout {
-        spacing: 10px;
+        spacing: 8px;
         alignment: end;
         if Organize.done: GhostButton {
             text: "Undo";

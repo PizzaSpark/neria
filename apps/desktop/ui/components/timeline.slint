@@ -565,13 +565,13 @@ export component ChapterStrip inherits Rectangle {
         accessible-role: button;
         accessible-label: "Chapter " + (i + 1) + ": " + c.title;
         accessible-action-default => { root.picked(i); }
-        KeyPress {
+        kp := KeyPress {
             radius: 6px;
             activated => { root.picked(i); }
         }
         ta := TouchArea {
             mouse-cursor: pointer;
-            clicked => { root.picked(i); }
+            clicked => { kp.take(); root.picked(i); }
         }
         Text {
             x: 7px;
