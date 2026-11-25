@@ -1087,6 +1087,22 @@ last minute is always kept, and saving turns it into a file that opens in the cl
    `docs/UPSTREAM.md`. Must not fire on game sound or friends on Discord: listen to the mic
    track only, and test with a game playing loudly
 
+- [x] **Settings → Capture, OBS-style (2026-11-26).** The user couldn't find the encoder
+   (it was folded under Quality → Advanced). Encoder now has its own heading on the page,
+   and Settings → Capture shows the same choices (keep, Quality, Encoder, sound, Never
+   record, save key, turn on at start), both bound to the one `Capture` global. Also
+   Settings → General → **Video work on** (Automatic / Graphics card / Processor, `gpu.rs`)
+   for everything outside instant replay: clips cut exactly, Sound and Picture, GIFs as
+   MP4, chat and captions burned in (these were processor-only before), Compress's starting
+   tick, workflows and speech to text; a file the card refuses is made again on the
+   processor. Not yet: checked on an AMD or Intel encoder (only NVIDIA here).
+- [x] **File names: real dragging; Settings moves (2026-11-26).** A piece of the name lifts
+   and follows the mouse, a bar shows where it lands, and a field dragged up from below
+   lands where it's dropped (`insert-field`), not only at the end. The Settings drawer
+   slides in from the right and out again, the dimming fades with it, a pill slides to the
+   picked section, and a section fades in. Not yet: watched by the user in the real app
+   (screenshots only show them at rest).
+
 ## Phone: mirror, record and clip your Android phone (own track)
 Planned 2026-11-21. scrcpy's video is excellent, but getting it running (developer options,
 adb, IPs and ports for wireless) is the hard part, and it stops at a plain window. Neria's

@@ -549,10 +549,18 @@ export global Names {
     in property <bool> custom;
     in-out property <bool> advanced;
     in-out property <string> typing;
-    // A field chip held over the line (it lands at the end when dropped there).
-    in-out property <bool> dragging;
+    // Dragging (dialogs/names.slint): a piece of the line (`drag-from` its place) or a field
+    // from below (`drag-from` -2); the pointer in the window; where it would land: before
+    // piece `drop-at` (the end: the number of pieces), -1 off the line.
+    in-out property <bool> drag-on;
+    in-out property <int> drag-from: -1;
+    in-out property <length> drag-x;
+    in-out property <length> drag-y;
+    in-out property <int> drop-at: -1;
     callback show();
     callback add-field(int);
+    // A field dropped on the line: field, before which piece.
+    callback insert-field(int, int);
     callback add-text(string);
     callback remove(int);
     callback move(int, int);
@@ -1590,4 +1598,13 @@ export global Tools {
     in-out property <bool> run-open;
     in property <string> run-subtitle;
     callback run(int);
+}
+
+// Settings → General → Video work on: where Neria makes video outside instant replay (clips,
+// Sound, Picture, GIFs as MP4, burn-ins, Compress, workflows, speech to text). `gpu.rs`.
+export global Work {
+    // 0 Automatic, 1 Graphics card, 2 Processor.
+    in-out property <int> processing;
+    // The card found with an encoder that works ("NVIDIA"), "" for none, "…" while testing.
+    in property <string> card: "…";
 }

@@ -367,7 +367,9 @@ fn burn(
     a.extend(["-f", "concat", "-safe", "0", "-i"].map(String::from));
     a.push(s(&list_path));
     a.extend(["-filter_complex".into(), graph, "-map".into(), "[v]".into(), "-map".into(), "0:a?".into()]);
-    a.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "copy"].map(String::from));
+    // The processor or the graphics card: filled in when it runs (`gpu::fill`).
+    a.push(crate::gpu::H264.into());
+    a.extend(["-c:a", "copy"].map(String::from));
     let ext = out.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     if ext == "webm" {
         bail!("Burned-in chat is saved as MP4 or MKV");
@@ -376,8 +378,10 @@ fn burn(
         a.extend(["-movflags".into(), "+faststart".into()]);
     }
     a.push(s(out));
-    crate::sound::run_ffmpeg(&a, len, cancel, |x| on(draw_share + x * (1.0 - draw_share)))
-        .map_err(|e| if e.to_string() == "Cancelled" { e } else { anyhow::anyhow!("Couldn't put the chat in: {e}") })?;
+    crate::gpu::or_on_cpu(|| {
+        crate::sound::run_ffmpeg(&crate::gpu::fill(&a, 18), len, cancel, |x| on(draw_share + x * (1.0 - draw_share)))
+    })
+    .map_err(|e| if e.to_string() == "Cancelled" { e } else { anyhow::anyhow!("Couldn't put the chat in: {e}") })?;
     Ok(())
 }
 

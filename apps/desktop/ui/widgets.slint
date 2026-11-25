@@ -1064,8 +1064,10 @@ export component Backdrop inherits Rectangle {
     in property <bool> dim: true;
     in property <bool> take-focus: true;
     in property <string> label;
+    // 0 → 1 as what's on it comes in (Settings slides): the dimming follows.
+    in property <float> fade: 1;
     callback close();
-    background: root.dim ? Theme.scrim : transparent;
+    background: root.dim ? Theme.scrim.transparentize(1 - root.fade) : transparent;
     // keyboard: Esc closes it (the FocusScope below).
     TouchArea {
         clicked => {

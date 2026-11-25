@@ -141,9 +141,8 @@ pub fn build_args(input: &Path, start: f64, dur: f64, spec: &GifSpec, out: &Path
             let mut vf = base;
             vf.push("format=yuv420p".into());
             a.extend(["-vf".into(), vf.join(",")]);
-            a.extend(
-                ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-movflags", "+faststart"].map(String::from),
-            );
+            a.extend(crate::gpu::h264_args(23));
+            a.extend(["-movflags", "+faststart"].map(String::from));
         }
     }
     a.push(out.to_string_lossy().into_owned());
@@ -172,7 +171,10 @@ pub fn make(
     }
     let out = output_path(input, start, end, spec.kind);
     let dur = end - start;
-    if let Err(e) = sound::run_ffmpeg(&build_args(input, start, dur, spec, &out), dur, cancel, on_progress) {
+    let mut on_progress = on_progress;
+    if let Err(e) = crate::gpu::or_on_cpu(|| {
+        sound::run_ffmpeg(&build_args(input, start, dur, spec, &out), dur, cancel, &mut on_progress)
+    }) {
         let _ = std::fs::remove_file(&out);
         if e.to_string() == "Cancelled" {
             bail!("Cancelled");
@@ -206,7 +208,9 @@ pub fn estimate(input: &Path, start: f64, end: f64, spec: &GifSpec, cancel: &Ato
     static RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let run = RUN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let tmp = dir.join(format!("estimate-{}-{run}.{}", std::process::id(), spec.kind.ext()));
-    let result = sound::run_ffmpeg(&build_args(input, from, sample, spec, &tmp), sample, cancel, |_| {});
+    let result = crate::gpu::or_on_cpu(|| {
+        sound::run_ffmpeg(&build_args(input, from, sample, spec, &tmp), sample, cancel, |_| {})
+    });
     let size = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
     let _ = std::fs::remove_file(&tmp);
     result?;

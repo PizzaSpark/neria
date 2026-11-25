@@ -108,6 +108,9 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_spotify_client_secret(s.spotify_client_secret.as_str().into());
     ui.set_check_updates(s.check_updates);
     ui.set_theme_index(index_of(&THEMES, &s.theme));
+    neria_core::gpu::set(s.processing);
+    ui.global::<Work>().set_processing(s.processing.index());
+    ui.global::<Compress>().set_use_gpu(neria_core::gpu::allowed());
 }
 
 fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
@@ -144,6 +147,8 @@ fn ui_to_settings(ui: &AppWindow, s: &mut Settings) {
     s.spotify_client_secret = ui.get_spotify_client_secret().trim().to_string();
     s.check_updates = ui.get_check_updates();
     s.theme = pick(&THEMES, ui.get_theme_index());
+    s.processing = neria_core::gpu::Processing::from_index(ui.global::<Work>().get_processing());
+    neria_core::gpu::set(s.processing);
     s.tips_done = !ui.get_show_tips();
 }
 
@@ -1245,8 +1250,18 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                 ui.global::<Music>().invoke_add_lyrics();
             }
             if let Ok(section) = std::env::var("NERIA_SETTINGS") {
-                let names =
-                    ["download", "following", "spotify", "network", "general", "voice", "about", "workflows", "tools"];
+                let names = [
+                    "download",
+                    "following",
+                    "spotify",
+                    "network",
+                    "general",
+                    "voice",
+                    "about",
+                    "workflows",
+                    "tools",
+                    "capture",
+                ];
                 let section = if section.eq_ignore_ascii_case("appearance") { "general".into() } else { section };
                 if let Some(i) = names.iter().position(|n| section.eq_ignore_ascii_case(n)) {
                     ui.set_settings_section(i as i32);
@@ -1954,6 +1969,16 @@ fn main() -> anyhow::Result<()> {
         let save = save.clone();
         move || save()
     });
+
+    // The graphics card's encoders, tested once in the background (the first clip doesn't
+    // wait), and its maker for Settings → General → Video work on.
+    {
+        let weak = ui.as_weak();
+        std::thread::spawn(move || {
+            let card = neria_core::gpu::card().map(neria_core::gpu::maker).unwrap_or("");
+            let _ = weak.upgrade_in_event_loop(move |ui| ui.global::<Work>().set_card(card.into()));
+        });
+    }
 
     let probe_state = Rc::new(ProbeState {
         generation: Arc::new(AtomicU64::new(0)),

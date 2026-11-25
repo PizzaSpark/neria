@@ -13,8 +13,8 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Result, bail};
@@ -481,8 +481,7 @@ pub struct Done {
 }
 
 fn encoders() -> &'static Encoders {
-    static E: OnceLock<Encoders> = OnceLock::new();
-    E.get_or_init(Encoders::detect)
+    crate::gpu::encoders()
 }
 
 /// Longest video Make a GIF takes in a workflow (seconds).
@@ -517,7 +516,9 @@ pub fn run(
                 None
             } else {
                 let stage = format!("Making it smaller {}…", size.words());
-                let opts = compress::Options::for_goal(goal);
+                let mut opts = compress::Options::for_goal(goal);
+                // Settings → General → Video work on.
+                opts.use_gpu = crate::gpu::allowed();
                 let out = compress::run(file, &info, &opts, encoders(), cancel, |p| on(p.fraction, &stage))?;
                 said = format!("a copy, {}", crate::fmt::mb(out.bytes as f64));
                 Some(out.path)

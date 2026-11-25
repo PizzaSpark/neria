@@ -126,6 +126,25 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
             }
         }
     });
+    n.on_insert_field({
+        let (weak, settings) = (ui.as_weak(), settings.clone());
+        move |i, at| {
+            let ui = weak.unwrap();
+            let (Some(mut p), Some(f)) = (pieces_of(&ui), Field::from_index(i.max(0) as usize)) else { return };
+            let at = (at.max(0) as usize).min(p.len());
+            // Fields next to each other would run together: a space between.
+            let mut put = vec![Piece::Field(f)];
+            if at > 0 && matches!(p[at - 1], Piece::Field(_)) {
+                put.insert(0, Piece::Text(" ".into()));
+            }
+            if at < p.len() && matches!(p[at], Piece::Field(_)) {
+                put.push(Piece::Text(" ".into()));
+            }
+            p.splice(at..at, put);
+            set_pieces(&ui, &settings, p);
+        }
+    });
+
     n.on_move({
         let (weak, settings) = (ui.as_weak(), settings.clone());
         move |from, to| {

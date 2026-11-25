@@ -491,8 +491,9 @@ component SourceList inherits VerticalLayout {
     }
 }
 
-// How much, the sound tracks, the key, turning on at start.
-component Choices inherits VerticalLayout {
+// How much, the quality and encoder, the sound tracks, the key, turning on at start. On the
+// page and in Settings → Capture: the same `Capture` global, so the two stay the same.
+export component CaptureChoices inherits VerticalLayout {
     spacing: 8px;
     alignment: start;
     Head { text: "How much to keep"; }
@@ -509,7 +510,7 @@ component Choices inherits VerticalLayout {
         note: Capture.quality-note;
         note-warn: Capture.quality-warn;
         open <=> Capture.quality-open;
-        summary: "size, frame rate, bit rate, encoder";
+        summary: "size, frame rate, bit rate";
         custom: Capture.quality-custom;
         sizes: Capture.q-sizes;
         size: Capture.q-size;
@@ -521,11 +522,17 @@ component Choices inherits VerticalLayout {
         rate-picked(i) => { Capture.quality-rate(i); }
         mbps-step(d) => { Capture.quality-mbps(d); }
         back => { Capture.quality-back(); }
-        // The encoder: Automatic picks the fastest that works, so it lives in here.
-        encoders: Capture.encoders;
-        encoder <=> Capture.encoder;
-        encoder-hint: Capture.encoder-hint;
-        encoder-picked => { Capture.changed(); }
+    }
+    // What makes the video: the graphics card's encoder or the processor (OBS's Encoder).
+    Rectangle { height: 8px; }
+    Head { text: "Encoder"; }
+    ChoiceChips {
+        options: Capture.encoders;
+        current <=> Capture.encoder;
+        changed => { Capture.changed(); }
+    }
+    if Capture.encoder-hint != "": Hint {
+        text: Capture.encoder-hint;
     }
     Rectangle { height: 8px; }
     Head { text: "Sound"; }
@@ -649,12 +656,12 @@ export component CapturePage inherits Rectangle {
                     SourceList {
                         horizontal-stretch: 1;
                     }
-                    Choices {
+                    CaptureChoices {
                         horizontal-stretch: 1;
                     }
                 }
                 if !Screen.wide: SourceList { }
-                if !Screen.wide: Choices { }
+                if !Screen.wide: CaptureChoices { }
                 if Capture.saved.length > 0: SavedList { }
             }
         }

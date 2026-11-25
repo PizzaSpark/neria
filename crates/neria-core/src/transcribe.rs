@@ -509,9 +509,11 @@ pub fn run(req: &Request, cancel: &AtomicBool, mut on: impl FnMut(Progress)) -> 
         let json_base = work.join("out");
         let st = status();
         let tr = req.spec.translate;
-        let mut out = whisper(&wav, &json_base, model, lang.as_deref(), tr, false, cancel, &mut on);
+        // Settings → General → Video work on: Processor keeps the NVIDIA pack off the card.
+        let cpu = !crate::gpu::allowed();
+        let mut out = whisper(&wav, &json_base, model, lang.as_deref(), tr, cpu, cancel, &mut on);
         // The NVIDIA pack on a card or driver it can't use: the same pack runs on the CPU.
-        if out.is_err() && st.gpu && !cancel.load(Ordering::SeqCst) {
+        if out.is_err() && st.gpu && !cpu && !cancel.load(Ordering::SeqCst) {
             out = whisper(&wav, &json_base, model, lang.as_deref(), tr, true, cancel, &mut on);
         }
         out?;
@@ -564,7 +566,7 @@ pub fn run(req: &Request, cancel: &AtomicBool, mut on: impl FnMut(Progress)) -> 
         {
             on(Progress { fraction: 0.99, stage: Stage::Preparing });
             let out = crate::clip::unique_path(&dir, &format!("{base} (captions)"), "mp4");
-            burn(first, req.range, &segs, &work, &out, cancel)?;
+            crate::gpu::or_on_cpu(|| burn(first, req.range, &segs, &work, &out, cancel))?;
             files.push(out);
         }
         on(Progress { fraction: 1.0, stage: Stage::Listening(String::new()) });
@@ -690,21 +692,10 @@ fn burn(
         "0:v:0",
         "-map",
         "0:a:0?",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "20",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        "-movflags",
-        "+faststart",
     ]);
+    // The processor or the graphics card (Settings → General → Video work on).
+    cmd.args(crate::gpu::h264_args(20));
+    cmd.args(["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]);
     cmd.arg(&out_abs);
     let mut child = cmd.stdout(Stdio::null()).stderr(Stdio::piped()).spawn().context("starting ffmpeg")?;
     proc::end_with_neria(&child);

@@ -306,7 +306,8 @@ pub fn edit_in_place(
     }
     if let Some(vf) = picture.filter() {
         a.extend(["-vf".into(), vf]);
-        a.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"].map(String::from));
+        // The processor or the graphics card: filled in when it runs (`gpu::fill`).
+        a.push(crate::gpu::H264.into());
     }
     if sound.mutes() {
         a.push("-an".into());
@@ -325,7 +326,9 @@ pub fn edit_in_place(
     }
     a.push(tmp.to_string_lossy().into_owned());
     let base = if measured.is_some() { 0.3 } else { 0.0 };
-    let result = run_ffmpeg(&a, info.duration, cancel, |p| on_progress(base + p * (1.0 - base)));
+    let result = crate::gpu::or_on_cpu(|| {
+        run_ffmpeg(&crate::gpu::fill(&a, 18), info.duration, cancel, |p| on_progress(base + p * (1.0 - base)))
+    });
     if let Err(e) = result {
         let _ = std::fs::remove_file(&tmp);
         if e.to_string() == "Cancelled" {

@@ -19,6 +19,7 @@ pub mod fmt;
 pub mod folders;
 pub mod follow;
 pub mod gif;
+pub mod gpu;
 pub mod history;
 pub mod hotkey;
 pub mod library;

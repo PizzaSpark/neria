@@ -209,13 +209,9 @@ pub fn build_args(req: &ClipRequest, start: f64, measured: Option<&sound::Loudne
                 if let Some(vf) = req.picture.filter() {
                     a.extend(["-vf".into(), vf]);
                 }
-                a.extend(
-                    [
-                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac",
-                        "-b:a", "192k",
-                    ]
-                    .map(String::from),
-                )
+                // The processor or the graphics card, as Settings → General → Video work on says.
+                a.extend(crate::gpu::h264_args(18));
+                a.extend(["-c:a", "aac", "-b:a", "192k"].map(String::from))
             }
             // Audio-only files: the natural encoder for the container.
             (_, false) => a.extend(sound::encoder_for(&out_ext)),
@@ -404,8 +400,10 @@ fn export_to(
     };
 
     let out = out.unwrap_or_else(|| output_path(&req));
-    if let Err(e) = sound::run_ffmpeg(&build_args(&req, start, measured.as_ref(), &out), dur, cancel, |p| {
-        on_progress(base + p * (1.0 - base))
+    if let Err(e) = crate::gpu::or_on_cpu(|| {
+        sound::run_ffmpeg(&build_args(&req, start, measured.as_ref(), &out), dur, cancel, |p| {
+            on_progress(base + p * (1.0 - base))
+        })
     }) {
         let _ = std::fs::remove_file(&out);
         if e.to_string() == "Cancelled" {
@@ -424,6 +422,7 @@ mod tests {
 
     #[test]
     fn exact_video_goes_to_mp4() {
+        crate::gpu::set(crate::gpu::Processing::Cpu);
         let req = ClipRequest::new("Z:/nope/My video.webm", 12.0, 45.5, ClipMode::Exact, true);
         let out = output_path(&req);
         assert_eq!(out.file_name().unwrap().to_string_lossy(), "My video (clip 0m12s-0m45s).mp4");

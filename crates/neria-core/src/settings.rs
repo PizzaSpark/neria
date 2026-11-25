@@ -120,6 +120,9 @@ pub struct Settings {
     pub check_updates: bool,
     /// "system" (follow Windows), "dark" or "light".
     pub theme: String,
+    /// Settings → General → Video work on: processor or graphics card for clips, Sound,
+    /// GIFs, burn-ins, Compress, workflows and speech to text (`gpu.rs`).
+    pub processing: crate::gpu::Processing,
     /// The first-run "How it works" steps were seen through (a download started, or the
     /// user hid them).
     pub tips_done: bool,
@@ -196,6 +199,7 @@ impl Default for Settings {
             spotify_client_secret: String::new(),
             check_updates: true,
             theme: "system".into(),
+            processing: crate::gpu::Processing::Auto,
             tips_done: false,
             watch_clipboard: false,
             caption_langs: Vec::new(),

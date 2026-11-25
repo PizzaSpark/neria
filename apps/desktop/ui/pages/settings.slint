@@ -3,6 +3,8 @@ import { Theme, Screen, Space } from "../theme.slint";
 import { Formats } from "../types.slint";
 import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe, ClipChat, Voice, Workflows, WfRow, Tools, ExtTool } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider, Notice, ChoiceChips, Backdrop, Field } from "../widgets.slint";
+import { Capture, Work, Compress } from "../globals.slint";
+import { CaptureChoices } from "capture.slint";
 
 // One group of settings under a small heading.
 component Group inherits VerticalLayout {
@@ -747,6 +749,8 @@ component SectionLink inherits Rectangle {
     in property <bool> active;
     // The compact strip is words only, so all five fit at the 400px minimum.
     in property <bool> show-icon: true;
+    // In the side list a pill slides to the open one and draws its look; the strip has none.
+    in property <bool> pill;
     // Its place in the list: the arrows go round, Home / End.
     in property <int> index: -1;
     in property <int> count;
@@ -754,8 +758,9 @@ component SectionLink inherits Rectangle {
     height: 38px;
     border-radius: 9px;
     border-width: 2px;
-    border-color: root.active ? Theme.line-strong : transparent;
-    background: root.active ? Theme.bg : ta.has-hover ? Theme.raised : transparent;
+    border-color: root.active && !root.pill ? Theme.line-strong : transparent;
+    background: root.active ? (root.pill ? transparent : Theme.bg) : ta.has-hover ? Theme.raised : transparent;
+    animate background, border-color { duration: 120ms; }
     accessible-role: tab;
     accessible-label: root.label;
     accessible-item-selected: root.active;
@@ -803,7 +808,7 @@ component SectionLink inherits Rectangle {
 // formats, and both pages pick everything per file.
 export component SettingsDrawer inherits Rectangle {
     // 0 Download, 1 Following, 2 Spotify, 3 Network, 4 General (closing, notifications,
-    // theme), 5 Voice, 6 About.
+    // video work, theme), 5 Voice, 6 About, 7 Workflows, 8 Tools, 9 Capture.
     in-out property <int> section;
 
     in property <string> output-dir;
@@ -855,7 +860,59 @@ export component SettingsDrawer inherits Rectangle {
     callback tools-update();
     callback copy-report();
 
-    changed section => { scroll.content-y = 0; }
+    changed section => {
+        scroll.content-y = 0;
+        // The new section fades in: shown at once at 0, then eased to 1.
+        root.snap = true;
+        root.fade = 0;
+        fade-in.running = true;
+    }
+
+    // 0 → 1 as the drawer comes in; back to 0 as it goes.
+    property <float> t: 0;
+    animate t {
+        duration: 200ms;
+        easing: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    property <bool> leaving;
+    property <float> fade: 1;
+    property <bool> snap;
+    animate fade { duration: root.snap ? 0ms : 160ms; }
+    // Opens on the next frame, so the slide runs (a value set while building doesn't animate).
+    Timer {
+        interval: 1ms;
+        running: true;
+        triggered => {
+            self.running = false;
+            root.t = 1;
+        }
+    }
+    fade-in := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.snap = false;
+            root.fade = 1;
+        }
+    }
+    // Slides out, then really closes.
+    closer := Timer {
+        interval: 170ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.close();
+        }
+    }
+    function leave() {
+        if root.leaving {
+            return;
+        }
+        root.leaving = true;
+        root.t = 0;
+        closer.running = true;
+    }
 
     // In the order they show; `id` is the section's number (Workflows came later, so it's 7
     // but sits after Following).
@@ -864,6 +921,7 @@ export component SettingsDrawer inherits Rectangle {
         { icon: "\u{E728}", label: "Following", id: 1 },
         { icon: "\u{E945}", label: "Workflows", id: 7 },
         { icon: "\u{E90F}", label: "Tools", id: 8 },
+        { icon: "\u{E7C8}", label: "Capture", id: 9 },
         { icon: "\u{E8D6}", label: "Spotify", id: 2 },
         { icon: "\u{E774}", label: "Network", id: 3 },
         { icon: "\u{E790}", label: "General", id: 4 },
@@ -877,11 +935,14 @@ export component SettingsDrawer inherits Rectangle {
         width: root.width;
         height: root.height;
         dim: !Screen.compact;
+        fade: root.t;
         label: "Settings";
-        close => { root.close(); }
+        close => { root.leave(); }
         Rectangle {
-            x: Screen.compact ? 0 : parent.width - self.width;
-            y: 0;
+            // In from the right edge (compact: rises a little and fades in).
+            x: Screen.compact ? 0 : parent.width - self.width * root.t;
+            y: Screen.compact ? 24px * (1 - root.t) : 0;
+            opacity: Screen.compact ? root.t : 1;
             // Wide enough for the section list plus the old 400px column; on medium windows
             // it leaves a strip of the page showing so it still reads as a drawer.
             width: Screen.compact ? parent.width : min(600px, parent.width - 120px);
@@ -912,7 +973,7 @@ export component SettingsDrawer inherits Rectangle {
                     IconButton {
                         icon: "\u{E711}";
                         label: "Close Settings";
-                        clicked => { root.close(); }
+                        clicked => { root.leave(); }
                     }
                 }
 
@@ -961,13 +1022,35 @@ export component SettingsDrawer inherits Rectangle {
                         padding-bottom: 24px;
                         spacing: 4px;
                         alignment: start;
-                        for s[i] in root.sections: SectionLink {
-                            icon: s.icon;
-                            label: s.label;
-                            active: root.section == s.id;
-                            index: i;
-                            count: root.sections.length;
-                            clicked => { root.section = s.id; }
+                        Rectangle {
+                            height: root.sections.length * 42px - 4px;
+                            // Under the open section; its place in the list by its number
+                            // (keep in step with `sections`).
+                            Rectangle {
+                                y: [0, 1, 5, 6, 7, 8, 9, 2, 3, 4][root.section] * 42px;
+                                height: 38px;
+                                border-radius: 9px;
+                                border-width: 2px;
+                                border-color: Theme.line-strong;
+                                background: Theme.bg;
+                                animate y {
+                                    duration: 180ms;
+                                    easing: cubic-bezier(0.22, 1, 0.36, 1);
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                alignment: start;
+                                for s[i] in root.sections: SectionLink {
+                                    icon: s.icon;
+                                    label: s.label;
+                                    active: root.section == s.id;
+                                    pill: true;
+                                    index: i;
+                                    count: root.sections.length;
+                                    clicked => { root.section = s.id; }
+                                }
+                            }
                         }
                     }
 
@@ -978,6 +1061,7 @@ export component SettingsDrawer inherits Rectangle {
 
                     scroll := ScrollView {
                         horizontal-stretch: 1;
+                        opacity: root.fade;
                         // One layout around the sections: Slint sizes a ScrollView's content from
                         // its layout children and leaves out `if` ones, so with the sections
                         // straight inside, nothing scrolled.
@@ -1664,6 +1748,27 @@ export component SettingsDrawer inherits Rectangle {
                                 }
 
                                 Group {
+                                    title: "Video work on";
+                                    ChoiceChips {
+                                        options: ["Automatic", "Graphics card", "Processor"];
+                                        current <=> Work.processing;
+                                        changed => {
+                                            // Compress's own tick starts from it.
+                                            Compress.use-gpu = Work.processing != 2;
+                                            root.settings-changed();
+                                        }
+                                    }
+                                    Hint {
+                                        text: (Work.processing == 2
+                                            ? "Everything on the processor: slower, and the graphics card is left alone."
+                                            : Work.card == "…" ? "Checking the graphics card…"
+                                            : Work.card == "" ? "No graphics card encoder works on this PC, so the processor does it."
+                                            : "Your " + Work.card + " card makes it, several times faster; anything it can't make is made on the processor.")
+                                            + " Clips cut exactly, Sound and Picture, GIFs saved as MP4, chat and captions burned in, Compress, workflows and speech to text. Instant replay has its own: Capture → Encoder.";
+                                    }
+                                }
+
+                                Group {
                                     title: "Theme";
                                     Field {
                                         SettingRow {
@@ -1681,6 +1786,19 @@ export component SettingsDrawer inherits Rectangle {
                                         Hint { text: "\"Same as Windows\" follows your app colour in Windows settings."; }
                                     }
                                 }
+                            }
+
+                            // ---- Capture: the Capture page's choices, OBS-style ----
+                            if root.section == 9: VerticalLayout {
+                                init => { Capture.page-shown(true); }
+                                spacing: Space.group;
+                                padding-top: Screen.compact ? 16px : 0px;
+                                padding-left: Screen.compact ? 16px : 20px;
+                                padding-right: Theme.lane;
+                                padding-bottom: 24px;
+                                alignment: start;
+                                Hint { text: "Instant replay of your game or screen. The same choices as on the Capture page."; }
+                                CaptureChoices { }
                             }
 
                             // ---- Voice: "clip that" ----

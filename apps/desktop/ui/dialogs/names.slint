@@ -3,20 +3,41 @@ import { Theme, Screen } from "../theme.slint";
 import { Names } from "../globals.slint";
 import { PrimaryButton, GhostButton, Hint, Dialog, Chip, Tag, TextLink, Icon, KeyPress } from "../widgets.slint";
 
-// A field or text in the name you're building: drag it left or right to move it,
-// × removes it. Keyboard: Tab to it, ← / → move it, Delete removes it.
+// Where a dragged chip would land, as a thin ink bar between pieces. A move that would leave
+// the piece where it is shows none.
+global Drop {
+    out property <bool> pointless: Names.drag-from >= 0 && (Names.drop-at == Names.drag-from || Names.drop-at == Names.drag-from + 1);
+}
+
+// A field or text in the name you're building: drag it (it follows the mouse; a bar shows
+// where it lands), × removes it. Keyboard: Tab to it, ← / → move it, Delete removes it.
 component PieceChip inherits Rectangle {
     in property <string> text;
     in property <bool> field;
     in property <int> index;
     in property <int> count;
-    property <length> grab: 0px;
+    // How far it's been dragged; it lifts once it's moved a little.
+    property <length> dx;
+    property <length> dy;
+    property <bool> held: ta.pressed && (abs(root.dx) > 4px || abs(root.dy) > 4px);
+    // The pointer over this chip while anything is dragged: before it (left half) or after.
+    property <bool> over: Names.drag-on
+        && Names.drag-x >= root.absolute-position.x - 2px && Names.drag-x < root.absolute-position.x + root.width + 2px
+        && Names.drag-y >= root.absolute-position.y - 4px && Names.drag-y < root.absolute-position.y + root.height + 4px;
+    property <int> slot: !root.over ? -1 : Names.drag-x < root.absolute-position.x + root.width / 2 ? root.index : root.index + 1;
+    changed slot => {
+        if self.slot >= 0 {
+            Names.drop-at = self.slot;
+        }
+    }
     height: 30px;
     width: row.preferred-width;
+    // Above the chips after it while held.
+    z: root.held ? 10 : 0;
+    // Its place while it's held: an outline.
     border-radius: 8px;
-    border-width: 2px;
-    border-color: root.field ? Theme.ink : Theme.line-strong;
-    background: root.field ? Theme.ink : Theme.raised;
+    border-width: root.held ? 2px : 0px;
+    border-color: Theme.line;
     accessible-role: button;
     accessible-label: (root.field ? "Field " : "Text ") + root.text + ": arrows move it, Delete removes it";
     fs := FocusScope {
@@ -46,68 +67,146 @@ component PieceChip inherits Rectangle {
         border-width: 2px;
         border-color: Theme.focus;
     }
+    // Where it would land: before this one, or after the last.
+    if Names.drag-on && Names.drop-at == root.index && !Drop.pointless: Rectangle {
+        x: -3px;
+        width: 2px;
+        border-radius: 1px;
+        background: Theme.ink;
+    }
+    if Names.drag-on && root.index == root.count - 1 && Names.drop-at == root.count && !Drop.pointless: Rectangle {
+        x: root.width + 1px;
+        width: 2px;
+        border-radius: 1px;
+        background: Theme.ink;
+    }
     ta := TouchArea {
         mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
-        moved => { root.grab = self.mouse-x - self.pressed-x; }
+        moved => {
+            root.dx = self.mouse-x - self.pressed-x;
+            root.dy = self.mouse-y - self.pressed-y;
+            if root.held {
+                Names.drag-from = root.index;
+                Names.drag-x = root.absolute-position.x + self.mouse-x;
+                Names.drag-y = root.absolute-position.y + self.mouse-y;
+                Names.drag-on = true;
+            }
+        }
         pointer-event(e) => {
-            if e.kind == PointerEventKind.up {
-                // About one chip's width per place.
-                let to = max(0, min(root.count - 1, root.index + round(root.grab / 70px)));
-                if to != root.index {
-                    Names.move(root.index, to);
+            if e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel {
+                if e.kind == PointerEventKind.up && Names.drag-on && Names.drop-at >= 0 && !Drop.pointless {
+                    Names.move(root.index, Names.drop-at > root.index ? Names.drop-at - 1 : Names.drop-at);
                 }
-                root.grab = 0px;
+                Names.drag-on = false;
+                Names.drag-from = -1;
+                Names.drop-at = -1;
+                root.dx = 0px;
+                root.dy = 0px;
             }
         }
     }
-    row := HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 4px;
-        spacing: 4px;
-        Text {
-            text: root.field ? root.text : "\"" + root.text + "\"";
-            color: root.field ? Theme.bg : Theme.ink;
-            font-family: root.field ? Theme.body : Theme.mono;
-            font-size: 12.5px;
-            vertical-alignment: center;
-        }
-        Rectangle {
-            width: 20px;
-            accessible-role: button;
-            accessible-label: "Remove " + root.text;
-            accessible-action-default => { Names.remove(root.index); }
-            kp := KeyPress {
-                radius: 6px;
-                activated => { Names.remove(root.index); }
+    // The chip itself: under the mouse while held.
+    Rectangle {
+        x: root.held ? root.dx : 0px;
+        y: root.held ? root.dy : 0px;
+        width: root.width;
+        height: root.height;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: root.field ? Theme.ink : Theme.line-strong;
+        background: root.field ? Theme.ink : Theme.raised;
+        drop-shadow-blur: root.held ? 12px : 0px;
+        drop-shadow-offset-y: root.held ? 4px : 0px;
+        drop-shadow-color: #0006;
+        row := HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 4px;
+            spacing: 4px;
+            Text {
+                text: root.field ? root.text : "\"" + root.text + "\"";
+                color: root.field ? Theme.bg : Theme.ink;
+                font-family: root.field ? Theme.body : Theme.mono;
+                font-size: 12.5px;
+                vertical-alignment: center;
             }
-            TouchArea {
-                mouse-cursor: pointer;
-                clicked => { kp.take(); Names.remove(root.index); }
-            }
-            Icon {
-                text: "\u{E711}";
-                font-size: 9px;
-                color: root.field ? Theme.bg : Theme.muted;
+            Rectangle {
+                width: 20px;
+                accessible-role: button;
+                accessible-label: "Remove " + root.text;
+                accessible-action-default => { Names.remove(root.index); }
+                kp := KeyPress {
+                    radius: 6px;
+                    activated => { Names.remove(root.index); }
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { kp.take(); Names.remove(root.index); }
+                }
+                Icon {
+                    text: "\u{E711}";
+                    font-size: 9px;
+                    color: root.field ? Theme.bg : Theme.muted;
+                }
             }
         }
     }
 }
 
-// A field to add: click it, or drag it onto the line.
+// A field to add: click it, or drag it onto the line (it follows the mouse; a bar shows
+// where it lands).
 component FieldChip inherits Chip {
     // `index` (Chip's): which field it adds.
+    property <length> dx;
+    property <length> dy;
+    property <bool> held: drag.pressed && (abs(root.dx) > 4px || abs(root.dy) > 4px);
+    z: root.held ? 10 : 0;
     clicked => { Names.add-field(root.index); }
-    TouchArea {
+    drag := TouchArea {
         mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
-        moved => { Names.dragging = self.pressed && self.mouse-y - self.pressed-y < -12px; }
-        pointer-event(e) => {
-            if e.kind == PointerEventKind.up {
-                // Dropped above (on the line), or a plain click.
-                if Names.dragging || abs(self.mouse-y - self.pressed-y) < 6px {
-                    Names.add-field(root.index);
-                }
-                Names.dragging = false;
+        moved => {
+            root.dx = self.mouse-x - self.pressed-x;
+            root.dy = self.mouse-y - self.pressed-y;
+            if root.held {
+                Names.drag-from = -2;
+                Names.drag-x = root.absolute-position.x + self.mouse-x;
+                Names.drag-y = root.absolute-position.y + self.mouse-y;
+                Names.drag-on = true;
             }
+        }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel {
+                if e.kind == PointerEventKind.up {
+                    if Names.drag-on && Names.drop-at >= 0 {
+                        Names.insert-field(root.index, Names.drop-at);
+                    } else if !Names.drag-on {
+                        // A plain click.
+                        Names.add-field(root.index);
+                    }
+                }
+                Names.drag-on = false;
+                Names.drag-from = -1;
+                Names.drop-at = -1;
+                root.dx = 0px;
+                root.dy = 0px;
+            }
+        }
+    }
+    // What it'll be on the line, under the mouse.
+    if root.held: Rectangle {
+        x: root.dx;
+        y: root.dy + 2px;
+        width: ghost.preferred-width + 16px;
+        height: 30px;
+        border-radius: 8px;
+        background: Theme.ink;
+        drop-shadow-blur: 12px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: #0006;
+        ghost := Text {
+            text: root.text;
+            color: Theme.bg;
+            font-family: Theme.body;
+            font-size: 12.5px;
         }
     }
 }
@@ -153,8 +252,20 @@ export component NamesDialog inherits Dialog {
         min-height: 50px;
         border-radius: 10px;
         border-width: 2px;
-        border-color: Names.dragging ? Theme.ink : Theme.line-strong;
+        // Ink while something dragged would land on it.
+        border-color: Names.drag-on && Names.drop-at >= 0 && !Drop.pointless ? Theme.ink : Theme.line-strong;
         background: Theme.bg;
+        // Dragged onto the line but not over a piece: it lands at the end; off it, nowhere.
+        property <bool> in-line: Names.drag-on
+            && Names.drag-x >= self.absolute-position.x && Names.drag-x < self.absolute-position.x + self.width
+            && Names.drag-y >= self.absolute-position.y && Names.drag-y < self.absolute-position.y + self.height;
+        changed in-line => {
+            if !self.in-line {
+                Names.drop-at = -1;
+            } else if Names.drop-at < 0 {
+                Names.drop-at = Names.pieces.length;
+            }
+        }
         FlexboxLayout {
             padding: 8px;
             spacing: 4px;
