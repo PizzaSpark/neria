@@ -456,7 +456,7 @@ fn groups_of_choices_move_with_the_arrow_keys() {
 fn spacing_stays_on_the_scale() {
     // One 4px scale (theme.slint `Space`, docs/DESIGN.md → Spacing): 0, 2, 4, 6, then
     // multiples of 4 up to 48. Odd values (5, 7, 10, 14, 22…) are how screens drift apart.
-    let ok = |n: u32| n <= 2 || n == 4 || n == 6 || (n % 4 == 0 && n <= 48);
+    let ok = |n: u32| n <= 2 || n == 4 || n == 6 || (n.is_multiple_of(4) && n <= 48);
     let mut problems = Vec::new();
     for (file, lines) in slint_files() {
         for (i, l) in lines.iter().enumerate() {

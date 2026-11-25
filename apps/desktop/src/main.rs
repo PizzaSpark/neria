@@ -1640,7 +1640,7 @@ fn install_focus_step(ui: &AppWindow) {
     };
     let one = step.clone();
     ui.global::<Nav>().on_focus_step(move |forward| one(if forward { 1 } else { -1 }));
-    ui.global::<Nav>().on_focus_steps(move |n| step(n));
+    ui.global::<Nav>().on_focus_steps(step);
 
     // Typeahead in menus (Radix `menu.tsx`, UI SDK `foundation/text/typeahead.ts`): letters
     // typed within half a second add up; the same letter again goes on to the next match. Tab
