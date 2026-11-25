@@ -776,6 +776,11 @@ export global Transcribe {
     in property <string> fast-size: "575 MB";
     in-out property <bool> translate;
     callback remove-best();
+    // Fast off this PC (only while Best quality is here); picking it again gets it back.
+    callback remove-fast();
+    // Settings' list: Fast on this PC, and the engine's size ("1.0 GB").
+    in property <bool> fast-ready;
+    in property <string> engine-size;
     // One video: also a copy with the captions burned into the picture.
     in property <bool> can-burn;
     in-out property <bool> burn;

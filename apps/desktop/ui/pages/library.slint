@@ -1283,7 +1283,8 @@ export component LibraryPage inherits Rectangle {
             VerticalLayout {
                 horizontal-stretch: 1;
                 padding: Screen.compact ? Screen.pad : 24px;
-                padding-top: Screen.pad;
+                // The same top as the other pages, so the title doesn't jump when switching.
+                padding-top: Screen.compact ? Screen.pad : 28px;
                 padding-right: Screen.compact ? Screen.pad - 8px : 12px;
                 padding-bottom: 0px;
                 spacing: 0px;

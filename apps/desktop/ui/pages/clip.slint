@@ -682,8 +682,11 @@ export component ClipPage inherits FocusScope {
       spacing: 0px;
     VerticalLayout {
         horizontal-stretch: 1;
+        // The same edges as the other pages (24 px, a centred column on wide windows), so
+        // nothing jumps sideways when switching; a video open gets the whole width.
         padding: Screen.compact ? Screen.pad : 28px;
-        padding-right: root.chat-tall ? 20px : (Screen.compact ? Screen.pad : 28px);
+        padding-left: Screen.compact || root.loaded ? Screen.pad : max(Screen.pad, (parent.width - 1240px) / 2);
+        padding-right: root.chat-tall ? 20px : Screen.compact || root.loaded ? Screen.pad : max(Screen.pad, (parent.width - 1240px) / 2);
         padding-bottom: Screen.compact ? 12px : 28px;
         spacing: Screen.compact ? 8px : 16px;
 

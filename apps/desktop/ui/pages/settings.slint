@@ -6,6 +6,45 @@ import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, 
 import { Capture, Work, Compress } from "../globals.slint";
 import { CaptureChoices } from "capture.slint";
 
+// One part of an optional download (Speech to text's models, its engine): its name, what it
+// is and its size on one line under it, and its own action (Remove) on the right. Lines
+// elide rather than wrap, so the drawer measures it right.
+component PartRow inherits HorizontalLayout {
+    in property <string> name;
+    in property <string> detail;
+    in property <string> action;
+    // What a screen reader says for the action ("Remove the Fast model").
+    in property <string> action-label;
+    callback act();
+    spacing: 12px;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.name;
+            color: Theme.ink;
+            font-size: 13px;
+            overflow: elide;
+        }
+        Text {
+            text: root.detail;
+            color: Theme.muted;
+            font-size: 12px;
+            overflow: elide;
+        }
+    }
+    if root.action != "": VerticalLayout {
+        horizontal-stretch: 0;
+        alignment: center;
+        TextLink {
+            text: root.action;
+            accessible-label: root.action-label;
+            clicked => { root.act(); }
+        }
+    }
+}
+
 // One group of settings under a small heading.
 component Group inherits VerticalLayout {
     in property <string> title;
@@ -1275,25 +1314,46 @@ export component SettingsDrawer inherits Rectangle {
                                             ? "Whisper large-v3-turbo (" + Transcribe.fast-size + "): quick, and good on clear speech."
                                             : "Whisper large-v3 (" + Transcribe.best-size + "): slower (a little on an NVIDIA card, about 3 times on the processor), better on mixed languages, accents and poor sound, and it can translate." + (Transcribe.best-ready ? "" : " A one-time download, the first time.");
                                     }
+                                    // What's on this PC, each part with its size; a model goes on its own
+                                    // while the other stays (picking it again gets it back).
+                                    if Transcribe.ready: VerticalLayout {
+                                        spacing: 12px;
+                                        Hint { text: "On this PC"; }
+                                        PartRow {
+                                            name: "Fast model";
+                                            detail: Transcribe.fast-ready
+                                                ? "Whisper large-v3-turbo · " + Transcribe.fast-size
+                                                : "Not on this PC · gets it again when picked (" + Transcribe.fast-size + ")";
+                                            action: Transcribe.fast-ready && Transcribe.best-ready ? "Remove" : "";
+                                            action-label: "Remove the Fast model";
+                                            act => { Transcribe.remove-fast(); }
+                                        }
+                                        PartRow {
+                                            name: "Best quality model";
+                                            detail: Transcribe.best-ready
+                                                ? "Whisper large-v3 · " + Transcribe.best-size
+                                                : "Not on this PC · gets it the first time it's picked (" + Transcribe.best-size + ")";
+                                            action: Transcribe.best-ready && Transcribe.fast-ready ? "Remove" : "";
+                                            action-label: "Remove the Best quality model";
+                                            act => { Transcribe.remove-best(); }
+                                        }
+                                        PartRow {
+                                            name: Transcribe.on-gpu ? "Engine for NVIDIA cards" : "Engine";
+                                            detail: "whisper.cpp, what runs the models · " + Transcribe.engine-size;
+                                        }
+                                    }
                                     HorizontalLayout {
-                                        spacing: 16px;
                                         alignment: start;
                                         GhostButton {
                                             compact: true;
-                                            text: Transcribe.ready ? "Remove all" : "Get it…";
+                                            text: Transcribe.ready ? "Remove speech to text" : "Get it…";
+                                            label: Transcribe.ready ? "Remove speech to text: the engine and both models" : "Get speech to text";
                                             clicked => {
                                                 if Transcribe.ready {
                                                     Transcribe.remove();
                                                 } else {
                                                     Transcribe.open-get();
                                                 }
-                                            }
-                                        }
-                                        if Transcribe.best-ready: VerticalLayout {
-                                            alignment: center;
-                                            TextLink {
-                                                text: "Remove Best quality (" + Transcribe.best-size + ")";
-                                                clicked => { Transcribe.remove-best(); }
                                             }
                                         }
                                     }

@@ -191,8 +191,29 @@ export component AppWindow inherits Window {
     in property <bool> tools-updating;
 
     in-out property <int> page;
+    // Switching pages: the new one fades in quickly, without moving (a rise read as a bounce;
+    // shown at once at 0, then eased to 1, so it never fades the old one out first).
+    property <float> page-in: 1;
+    property <bool> page-snap;
+    animate page-in {
+        duration: root.page-snap ? 0ms : 120ms;
+        easing: ease-out;
+    }
+    page-ease := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.page-snap = false;
+            root.page-in = 1;
+        }
+    }
     // Compact: Settings is a sheet over the page, so picking a tab closes it.
     changed page => {
+        // The new page fades in (`page-in`).
+        root.page-snap = true;
+        root.page-in = 0;
+        page-ease.running = true;
         if Screen.compact {
             root.drawer-open = false;
         }
@@ -338,6 +359,8 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
                 Rectangle {
                     vertical-stretch: 1;
+                    // From mostly there, so it softens the switch instead of flashing.
+                    opacity: 0.4 + 0.6 * root.page-in;
 
                     if root.page == 0: DownloadPage {
                         window-width: root.width;

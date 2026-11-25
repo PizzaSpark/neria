@@ -105,6 +105,7 @@ pub fn refresh(ui: &AppWindow) {
         .into(),
     );
     t.set_best_ready(st.best);
+    t.set_fast_ready(st.model);
     let best = transcribe::dir().join(transcribe::Model::Best.file());
     let bytes = best.metadata().map(|m| m.len()).unwrap_or(transcribe::Model::Best.mb() * 1_000_000);
     t.set_best_size(fmt::bytes(bytes as f64).into());
@@ -112,6 +113,13 @@ pub fn refresh(ui: &AppWindow) {
     let fast = transcribe::dir().join(transcribe::Model::Fast.file());
     let fast = fast.metadata().map(|m| m.len()).unwrap_or(transcribe::Model::Fast.mb() * 1_000_000);
     t.set_fast_size(fmt::bytes(fast as f64).into());
+    // The rest of the folder: the engine (and voice detection, a few MB).
+    let models = [transcribe::Model::Fast, transcribe::Model::Best]
+        .iter()
+        .filter_map(|m| transcribe::dir().join(m.file()).metadata().ok())
+        .map(|m| m.len())
+        .sum::<u64>();
+    t.set_engine_size(fmt::bytes(transcribe::disk_bytes().saturating_sub(models) as f64).into());
     update_size(ui);
 }
 
@@ -317,6 +325,25 @@ pub fn install(ui: &AppWindow, settings: Arc<Mutex<Settings>>) {
                 Err(e) => crate::toast_problem(&ui, &format!("Couldn't remove it all: {e}")),
             }
             reset_download(&ui);
+            refresh(&ui);
+        }
+    });
+
+    t.on_remove_fast({
+        let (weak, settings) = (ui.as_weak(), settings.clone());
+        move || {
+            let ui = weak.unwrap();
+            if STATE.with(|s| s.borrow().cancel.is_some()) {
+                crate::toast_info(&ui, "Speech to text is busy. Remove it once it's done.");
+                return;
+            }
+            match transcribe::remove_model(transcribe::Model::Fast) {
+                Ok(()) => crate::show_toast(&ui, "The Fast model is off this PC. Best quality stays."),
+                Err(e) => crate::toast_problem(&ui, &format!("Couldn't remove it: {e}")),
+            }
+            // On to Best quality, which is still there.
+            ui.global::<Transcribe>().set_model(1);
+            remember(&ui, &settings);
             refresh(&ui);
         }
     });
