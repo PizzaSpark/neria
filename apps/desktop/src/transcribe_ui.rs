@@ -95,8 +95,8 @@ pub fn refresh(ui: &AppWindow) {
     t.set_settings_text(
         if st.ready() {
             format!(
-                "Ready{} · {} on this PC",
-                if st.gpu { " · uses your NVIDIA card" } else { "" },
+                "Whisper is ready · runs on {} · {} in all on this PC",
+                if st.gpu && neria_core::gpu::allowed() { "your NVIDIA card" } else { "the processor" },
                 fmt::bytes(transcribe::disk_bytes() as f64)
             )
         } else {
@@ -108,6 +108,10 @@ pub fn refresh(ui: &AppWindow) {
     let best = transcribe::dir().join(transcribe::Model::Best.file());
     let bytes = best.metadata().map(|m| m.len()).unwrap_or(transcribe::Model::Best.mb() * 1_000_000);
     t.set_best_size(fmt::bytes(bytes as f64).into());
+    // Sized as Best is (the file on disk, else what it'll be), so the two compare.
+    let fast = transcribe::dir().join(transcribe::Model::Fast.file());
+    let fast = fast.metadata().map(|m| m.len()).unwrap_or(transcribe::Model::Fast.mb() * 1_000_000);
+    t.set_fast_size(fmt::bytes(fast as f64).into());
     update_size(ui);
 }
 

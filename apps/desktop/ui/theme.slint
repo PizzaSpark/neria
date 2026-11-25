@@ -125,6 +125,8 @@ export global Space {
 // each page's header ends with a gear (`SettingsGear`) that opens it.
 export global Nav {
     in-out property <bool> settings-open;
+    // Dev (`NERIA_SETTINGS_END`): Settings scrolled to its end once it's open, for shots.
+    in-out property <bool> settings-end;
     // The command palette (Ctrl+K, the rail's search button, compact's magnifier).
     in-out property <bool> palette-open;
     // Keyboard: move focus as Tab (true) or Shift+Tab (false) would. Rust presses the key, as

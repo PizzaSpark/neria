@@ -772,6 +772,8 @@ export global Transcribe {
     in-out property <int> model;
     in property <bool> best-ready;
     in property <string> best-size;
+    // Fast's size ("575 MB"), for Settings' hint.
+    in property <string> fast-size: "575 MB";
     in-out property <bool> translate;
     callback remove-best();
     // One video: also a copy with the captions burned into the picture.

@@ -1,5 +1,5 @@
 import { LineEdit, ComboBox, ScrollView } from "std-widgets.slint";
-import { Theme, Screen, Space } from "../theme.slint";
+import { Theme, Screen, Space, Nav } from "../theme.slint";
 import { Formats } from "../types.slint";
 import { Accounts, Background, Names, Bulk, Following, FollowItem, Music, Transcribe, ClipChat, Voice, Workflows, WfRow, Tools, ExtTool } from "../globals.slint";
 import { PrimaryButton, GhostButton, IconButton, Icon, Bar, SectionTitle, Hint, Tag, Tick, KeyPress, TextLink, Divider, Notice, ChoiceChips, Backdrop, Field } from "../widgets.slint";
@@ -875,6 +875,8 @@ export component SettingsDrawer inherits Rectangle {
         easing: cubic-bezier(0.22, 1, 0.36, 1);
     }
     property <bool> leaving;
+    // The open section's own height (each reports it).
+    property <length> sec-h;
     property <float> fade: 1;
     property <bool> snap;
     animate fade { duration: root.snap ? 0ms : 160ms; }
@@ -885,6 +887,15 @@ export component SettingsDrawer inherits Rectangle {
         triggered => {
             self.running = false;
             root.t = 1;
+        }
+    }
+    // Dev: scrolled to the end (`NERIA_SETTINGS_END`), to see what the last section ends with.
+    Timer {
+        interval: 800ms;
+        running: Nav.settings-end;
+        triggered => {
+            self.running = false;
+            scroll.content-y = min(0px, scroll.visible-height - scroll.content-height);
         }
     }
     fade-in := Timer {
@@ -1065,11 +1076,17 @@ export component SettingsDrawer inherits Rectangle {
                         // One layout around the sections: Slint sizes a ScrollView's content from
                         // its layout children and leaves out `if` ones, so with the sections
                         // straight inside, nothing scrolled.
+                        // As tall as the open section says it is: measured from here, a section
+                        // with many wrapped lines came out shorter than it is (89 px at 400 px
+                        // wide), and its end was cut off.
                         VerticalLayout {
                             alignment: start;
+                            min-height: root.sec-h;
 
                             // ---- Download ----
                             if root.section == 0: VerticalLayout {
+                                init => { root.sec-h = self.preferred-height; }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 spacing: Space.group;
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;
@@ -1223,28 +1240,15 @@ export component SettingsDrawer inherits Rectangle {
 
                                 Group {
                                     title: "Speech to text";
-                                    HorizontalLayout {
-                                        spacing: 8px;
-                                        Text {
-                                            horizontal-stretch: 1;
-                                            text: Transcribe.settings-text;
-                                            color: Transcribe.ready ? Theme.ink : Theme.muted;
-                                            font-size: 13px;
-                                            vertical-alignment: center;
-                                            wrap: word-wrap;
-                                        }
-                                        GhostButton {
-                                            horizontal-stretch: 0;
-                                            compact: true;
-                                            text: Transcribe.ready ? "Remove" : "Get it…";
-                                            clicked => {
-                                                if Transcribe.ready {
-                                                    Transcribe.remove();
-                                                } else {
-                                                    Transcribe.open-get();
-                                                }
-                                            }
-                                        }
+                                    // No wrapped line beside a button here: Slint measures a
+                                    // wrapped Text in a HorizontalLayout as one line, so the
+                                    // drawer came up short and cut off the end of the section.
+                                    Hint { text: "Whisper writes down what's said in a video or sound file, on this PC: Clip page → Export → Transcribe, drop a file on Neria, or Transcript under a video's preview."; }
+                                    Text {
+                                        text: Transcribe.settings-text;
+                                        color: Transcribe.ready ? Theme.ink : Theme.muted;
+                                        font-size: 13px;
+                                        wrap: word-wrap;
                                     }
                                     if Transcribe.ready: HorizontalLayout {
                                         spacing: 8px;
@@ -1268,35 +1272,42 @@ export component SettingsDrawer inherits Rectangle {
                                     }
                                     if Transcribe.ready: Hint {
                                         text: Transcribe.model == 0
-                                            ? "Quick, and good on clear speech."
-                                            : "Slower (a little on an NVIDIA card, about 3 times on the processor): better on mixed languages, accents and poor sound, and it can translate." + (Transcribe.best-ready ? "" : " A one-time " + Transcribe.best-size + " download, the first time.");
+                                            ? "Whisper large-v3-turbo (" + Transcribe.fast-size + "): quick, and good on clear speech."
+                                            : "Whisper large-v3 (" + Transcribe.best-size + "): slower (a little on an NVIDIA card, about 3 times on the processor), better on mixed languages, accents and poor sound, and it can translate." + (Transcribe.best-ready ? "" : " A one-time download, the first time.");
                                     }
-                                    if Transcribe.best-ready: HorizontalLayout {
-                                        spacing: 8px;
-                                        Text {
-                                            horizontal-stretch: 1;
-                                            text: "Best quality model: " + Transcribe.best-size + " on this PC";
-                                            color: Theme.muted;
-                                            font-size: 12px;
-                                            vertical-alignment: center;
-                                            wrap: word-wrap;
+                                    HorizontalLayout {
+                                        spacing: 16px;
+                                        alignment: start;
+                                        GhostButton {
+                                            compact: true;
+                                            text: Transcribe.ready ? "Remove all" : "Get it…";
+                                            clicked => {
+                                                if Transcribe.ready {
+                                                    Transcribe.remove();
+                                                } else {
+                                                    Transcribe.open-get();
+                                                }
+                                            }
                                         }
-                                        TextLink {
-                                            horizontal-stretch: 0;
-                                            text: "Remove it";
-                                            clicked => { Transcribe.remove-best(); }
+                                        if Transcribe.best-ready: VerticalLayout {
+                                            alignment: center;
+                                            TextLink {
+                                                text: "Remove Best quality (" + Transcribe.best-size + ")";
+                                                clicked => { Transcribe.remove-best(); }
+                                            }
                                         }
                                     }
                                     if Transcribe.ready && Transcribe.nvidia && !Transcribe.on-gpu: TextLink {
                                         text: "Use my NVIDIA graphics card: about 20 times faster (685 MB)";
                                         clicked => { Transcribe.use-gpu = true; Transcribe.open-get(); }
                                     }
-                                    Hint { text: "Writes down what's said in a video or sound file, on this PC: Clip page → Export ▾ → Transcribe, drop a file on Neria, or Transcript under a video's preview."; }
                                 }
                             }
 
                             // ---- Following ----
                             if root.section == 1: VerticalLayout {
+                                init => { root.sec-h = self.preferred-height; }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 spacing: Space.group;
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;
@@ -1321,6 +1332,8 @@ export component SettingsDrawer inherits Rectangle {
 
                             // ---- Workflows ----
                             if root.section == 7: VerticalLayout {
+                                init => { root.sec-h = self.preferred-height; }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 spacing: Space.group;
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;
@@ -1353,6 +1366,8 @@ export component SettingsDrawer inherits Rectangle {
 
                             // ---- Tools ----
                             if root.section == 8: VerticalLayout {
+                                init => { root.sec-h = self.preferred-height; }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 spacing: Space.group;
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;
@@ -1387,6 +1402,8 @@ export component SettingsDrawer inherits Rectangle {
 
                             // ---- Spotify ----
                             if root.section == 2: VerticalLayout {
+                                init => { root.sec-h = self.preferred-height; }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 spacing: Space.group;
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;
@@ -1510,6 +1527,8 @@ export component SettingsDrawer inherits Rectangle {
 
                             // ---- Network ----
                             if root.section == 3: VerticalLayout {
+                                init => { root.sec-h = self.preferred-height; }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 spacing: Space.group;
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;
@@ -1663,7 +1682,8 @@ export component SettingsDrawer inherits Rectangle {
 
                             // ---- General: closing, notifications, theme ----
                             if root.section == 4: VerticalLayout {
-                                init => { Background.check-sounds(); }
+                                init => { root.sec-h = self.preferred-height; Background.check-sounds(); }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 spacing: 24px;
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;
@@ -1790,7 +1810,8 @@ export component SettingsDrawer inherits Rectangle {
 
                             // ---- Capture: the Capture page's choices, OBS-style ----
                             if root.section == 9: VerticalLayout {
-                                init => { Capture.page-shown(true); }
+                                init => { root.sec-h = self.preferred-height; Capture.page-shown(true); }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 spacing: Space.group;
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;
@@ -1803,6 +1824,8 @@ export component SettingsDrawer inherits Rectangle {
 
                             // ---- Voice: "clip that" ----
                             if root.section == 5: VerticalLayout {
+                                init => { root.sec-h = self.preferred-height; }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;
                                 padding-right: Theme.lane;
@@ -1813,6 +1836,8 @@ export component SettingsDrawer inherits Rectangle {
 
                             // ---- About ----
                             if root.section == 6: VerticalLayout {
+                                init => { root.sec-h = self.preferred-height; }
+                                changed preferred-height => { root.sec-h = self.preferred-height; }
                                 spacing: Space.group;
                                 padding-top: Screen.compact ? 16px : 0px;
                                 padding-left: Screen.compact ? 16px : 20px;

@@ -1267,6 +1267,7 @@ fn start_setup(ui: &AppWindow, settings: Arc<Mutex<Settings>>, queue: Queue) {
                     ui.set_settings_section(i as i32);
                 }
                 ui.set_drawer_open(true);
+                ui.global::<Nav>().set_settings_end(std::env::var_os("NERIA_SETTINGS_END").is_some());
             }
             if let Some(url) = std::env::var_os("NERIA_URL") {
                 let url = url.to_string_lossy().into_owned();
